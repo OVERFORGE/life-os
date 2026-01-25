@@ -13,15 +13,20 @@ export async function GET(req: Request) {
 
   const userId = (session.user as any).id;
 
+  const { searchParams } = new URL(req.url);
+  const date = searchParams.get("date");
+
+  if (!date) {
+    return NextResponse.json({ error: "Date required" }, { status: 400 });
+  }
+
   await connectDB();
 
-  const { searchParams } = new URL(req.url);
-  const limit = Number(searchParams.get("limit") || 30);
+  const log = await DailyLog.findOne({ userId, date }).lean();
 
-  const logs = await DailyLog.find({ userId })
-    .sort({ date: -1 })
-    .limit(limit)
-    .lean();
+  if (!log) {
+    return NextResponse.json({ error: "Not found" }, { status: 404 });
+  }
 
-  return NextResponse.json(logs);
+  return NextResponse.json(log);
 }
