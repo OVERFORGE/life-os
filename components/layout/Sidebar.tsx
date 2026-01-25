@@ -9,7 +9,10 @@ import {
   BarChart3,
   Settings,
   X,
+  LogOut,
+  LogIn,
 } from "lucide-react";
+import { signIn, signOut, useSession } from "next-auth/react";
 
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
@@ -27,9 +30,11 @@ export function Sidebar({
   onClose?: () => void;
 }) {
   const pathname = usePathname();
+  const { data: session, status } = useSession();
 
   return (
     <div className="h-full w-64 bg-[#0f1115] border-r border-[#232632] flex flex-col">
+      {/* Header */}
       <div className="h-14 px-4 flex items-center justify-between border-b border-[#232632]">
         <div className="font-semibold">LifeOS</div>
         {mobile && (
@@ -39,7 +44,8 @@ export function Sidebar({
         )}
       </div>
 
-      <div className="p-2 space-y-1">
+      {/* Nav */}
+      <div className="p-2 space-y-1 flex-1">
         {nav.map((item) => {
           const active = pathname.startsWith(item.href);
           const Icon = item.icon;
@@ -60,6 +66,49 @@ export function Sidebar({
             </Link>
           );
         })}
+      </div>
+
+      {/* Footer / Auth */}
+      <div className="p-3 border-t border-[#232632]">
+        {status === "loading" ? (
+          <div className="text-sm text-gray-400">Loading...</div>
+        ) : session?.user ? (
+          <div className="space-y-3">
+            <div className="flex items-center gap-3">
+              {session.user.image && (
+                <img
+                  src={session.user.image}
+                  alt="avatar"
+                  className="w-8 h-8 rounded-full"
+                />
+              )}
+              <div className="text-sm">
+                <div className="text-gray-200 font-medium leading-tight">
+                  {session.user.name}
+                </div>
+                <div className="text-xs text-gray-400">
+                  {session.user.email}
+                </div>
+              </div>
+            </div>
+
+            <button
+              onClick={() => signOut()}
+              className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-red-400 hover:bg-[#161922]"
+            >
+              <LogOut className="w-4 h-4" />
+              Sign out
+            </button>
+          </div>
+        ) : (
+          <button
+            onClick={() => signIn("google")}
+            className="w-full flex items-center gap-2 px-3 py-2 rounded-lg text-sm text-gray-200 hover:bg-[#161922]"
+          >
+            <LogIn className="w-4 h-4" />
+            Sign in with Google
+          </button>
+        )}
       </div>
     </div>
   );
