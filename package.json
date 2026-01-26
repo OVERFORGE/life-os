@@ -6,9 +6,11 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "seed:life": "tsx scripts/seedLife.ts"
   },
   "dependencies": {
+    "dotenv": "^17.2.3",
     "lucide-react": "^0.563.0",
     "mongoose": "^9.1.5",
     "next": "16.1.4",
@@ -26,6 +28,7 @@
     "eslint": "^9",
     "eslint-config-next": "16.1.4",
     "tailwindcss": "^4",
+    "tsx": "^4.21.0",
     "typescript": "^5"
   }
 }
