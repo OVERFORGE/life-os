@@ -8,6 +8,7 @@ import {
   Calendar,
   BarChart3,
   Settings,
+  Target,
   X,
   LogOut,
   LogIn,
@@ -17,6 +18,7 @@ import { signIn, signOut, useSession } from "next-auth/react";
 const nav = [
   { href: "/dashboard", label: "Dashboard", icon: LayoutDashboard },
   { href: "/checkin", label: "Daily Check-in", icon: CheckSquare },
+  { href: "/goals", label: "Goals", icon: Target },
   { href: "/history", label: "History", icon: Calendar },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/settings", label: "Settings", icon: Settings },
