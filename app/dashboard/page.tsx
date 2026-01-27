@@ -8,19 +8,25 @@ import { StreakGrid } from "@/features/dashboard/components/StreakGrid";
 import { MoodEnergyChart } from "@/features/dashboard/components/MoodEnergyChart";
 import { InsightsGrid } from "@/features/dashboard/components/InsightsGrid";
 import { Heatmap } from "@/features/dashboard/components/Heatmap";
-
+import { TrajectoryCard } from "@/features/dashboard/components/TrajectoryCard";
+import { useRouter } from "next/navigation";
 export default function DashboardPage() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<any>(null);
+  const router = useRouter();
   useEffect(() => {
     fetch("/api/daily-log/dashboard")
       .then((res) => res.json())
       .then((data) => setLogs(data))
       .finally(() => setLoading(false));
-    fetch("/api/insights/phase")
-    .then((r) => r.json())
-    .then((d) => setPhase(d.phase));
+    fetch("/api/insights/trajectory")
+  .then((r) => r.json())
+  .then((d) => {
+    console.log("PHASE API RESPONSE:", d);
+    setPhase(d);
+  });
+
   }, []);
 
   if (loading) {
@@ -31,21 +37,27 @@ export default function DashboardPage() {
     <div className="min-h-screen bg-[#0f1115] text-gray-100">
       <div className="max-w-5xl mx-auto p-4 space-y-6">
         <h1 className="text-2xl font-bold">Dashboard</h1>
-        {phase && (
-  <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 flex items-center justify-between">
-    <div>
-      <div className="text-sm text-gray-400">Current Life Phase</div>
-      <div className="text-xl font-semibold capitalize">
-        {phase.phase.replace("_", " ")}
-      </div>
-      <div className="text-xs text-gray-400 mt-1">
-        Confidence: {Math.round(phase.confidence * 100)}%
-      </div>
-    </div>
+            {phase && (
+            <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 flex items-center justify-between">
+                <div>
+                <div className="text-sm text-gray-400">Current Life Phase</div>
+                <div className="text-xl font-semibold capitalize">
+                    {phase.phase?.replace("_", " ") || "Unknown"}
+                </div>
+                <div className="text-xs text-gray-400 mt-1">
+                    Confidence: {Math.round(phase.confidence * 100)}%
+                </div>
 
-    <PhaseBadge phase={phase.phase} />
-  </div>
-)}
+                <div className="text-xs text-gray-500 mt-1 max-w-md">
+                    {phase.reason}
+                </div>
+                </div>
+
+                <PhaseBadge phase={phase.phase} />
+            </div>
+            )}
+     
+        <TrajectoryCard />
         <SummaryGrid logs={logs} />
         <StreakGrid logs={logs} />
         <PersonalRecords logs={logs} />
