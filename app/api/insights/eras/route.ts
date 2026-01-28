@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth";
 import { connectDB } from "@/server/db/connect";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
-import { shapePhaseTimeline } from "@/features/insights/engine/shapePhaseTimeline";
+import { segmentLifeEras } from "@/features/insights/engine/segmentLifeEras";
 
 function daysBetween(a: string, b: string) {
   const d1 = new Date(a);
@@ -25,30 +25,19 @@ export async function GET() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // ✅ 1. Enrich raw timeline (THIS is what UI needs)
   const enriched = phases.map((p) => {
     const end = p.endDate || today;
-
     return {
       ...p,
-      startDate: p.startDate,
-      endDate: p.endDate,
       durationDays: daysBetween(p.startDate, end),
       isCurrent: !p.endDate,
     };
   });
 
-  // 🧠 2. Run shape engine on top of timeline
-  const shaped = shapePhaseTimeline(enriched);
+  const eras = segmentLifeEras(enriched);
 
-  console.log("🧱 TIMELINE:", enriched);
-  console.log("🧠 SHAPED:", shaped);
-
-  // ✅ 3. Return BOTH
   return NextResponse.json({
-    timeline: enriched,        // 👈 UI USES THIS
-    shapes: shaped.segments,   // 👈 insights layer
-    story: shaped.story,       // 👈 narrative text
-    warnings: shaped.warnings || [],
+    eras,
+    timeline: enriched,
   });
 }

@@ -8,10 +8,18 @@ export default function PhasesPage() {
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/insights/phases")
+    fetch("/api/insights/phases", { cache: "no-store" })
       .then((r) => r.json())
-      .then(setPhases)
-      .finally(() => setLoading(false));
+      .then((d) => {
+        console.log("PHASE API DATA:", d);
+        setPhases(d.timeline); // ✅ THIS IS THE REAL DATA
+      })
+      .catch((err) => {
+        console.error("Failed to load phases:", err);
+      })
+      .finally(() => {
+        setLoading(false);
+      });
   }, []);
 
   if (loading) {

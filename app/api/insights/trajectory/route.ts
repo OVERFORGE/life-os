@@ -73,13 +73,13 @@ export async function GET() {
   const today = todayStr();
 
   // 4️⃣ Update phase history timeline
-  await updatePhaseHistory({
-    userId: session.user.id,
-    newPhase: analysis.candidatePhase,
-    today,
-    snapshot: analysis.snapshot,
-    reason: analysis.reason,
-  });
+  // await updatePhaseHistory({
+  //   userId: session.user.id,
+  //   newPhase: analysis.candidatePhase,
+  //   today,
+  //   snapshot: analysis.snapshot,
+  //   reason: analysis.reason,
+  // });
 
   // 5️⃣ Return response
   return Response.json({

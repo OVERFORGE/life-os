@@ -1,3 +1,5 @@
+// features/insights/models/PhaseDailyState.ts
+
 import { Schema, model, models } from "mongoose";
 
 const PhaseDailyStateSchema = new Schema(
@@ -7,6 +9,16 @@ const PhaseDailyStateSchema = new Schema(
 
     candidatePhase: { type: String, required: true },
     confidence: { type: Number, required: true },
+    isWarning: { type: Boolean, default: false },
+
+    snapshot: {
+      avgSleep: Number,
+      avgMood: Number,
+      avgStress: Number,
+      avgEnergy: Number,
+      avgDeepWork: Number,
+      delta: Object,
+    },
   },
   { timestamps: true }
 );

@@ -3,6 +3,7 @@ import { PhaseRow } from "./PhaseRow";
 import { PhaseLegend } from "./PhaseLegend";
 
 export function PhaseTimeline({ phases }: { phases: any[] }) {
+  {console.log('phases in PhaseTimeline:', phases);}
   const normalized = normalizeWidths(phases);
 
   return (
@@ -14,9 +15,9 @@ export function PhaseTimeline({ phases }: { phases: any[] }) {
       <PhaseLegend />
 
       <div className="space-y-6">
-        {normalized.map((p) => (
-          <PhaseRow key={p._id} phase={p} />
-        ))}
+        {normalized.map((p, i) => (
+            <PhaseRow key={`${p.phase}-${p.startDate}-${i}`} phase={p} />
+          ))}
       </div>
     </div>
   );
