@@ -2,7 +2,8 @@ import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth";
 import { connectDB } from "@/server/db/connect";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
-import { shapePhaseTimeline } from "@/features/insights/engine/shapePhaseTimeline";
+import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
+
 
 function daysBetween(a: string, b: string) {
   const d1 = new Date(a);
@@ -25,12 +26,13 @@ export async function GET() {
 
   const today = new Date().toISOString().slice(0, 10);
 
-  // ✅ 1. Enrich raw timeline (THIS is what UI needs)
-  const enriched = phases.map((p) => {
+  // ✅ 1. Enrich + FORCE _id TO STRING
+  const enriched = phases.map((p: any) => {
     const end = p.endDate || today;
 
     return {
       ...p,
+      _id: p._id.toString(),     // ✅ THIS FIXES EVERYTHING
       startDate: p.startDate,
       endDate: p.endDate,
       durationDays: daysBetween(p.startDate, end),
@@ -38,17 +40,27 @@ export async function GET() {
     };
   });
 
-  // 🧠 2. Run shape engine on top of timeline
-  const shaped = shapePhaseTimeline(enriched);
+  // 🧠 2. Run shape engine
+  // 🧠 2. Attach intelligence to each phase
+  const enrichedWithIntel = enriched.map((p) => {
+    const explanation = explainLifePhase(p);
 
-  console.log("🧱 TIMELINE:", enriched);
-  console.log("🧠 SHAPED:", shaped);
+    const riskLevel =
+      explanation.scores.load > 0.8
+        ? "high"
+        : explanation.scores.load > 0.6
+        ? "medium"
+        : "low";
 
-  // ✅ 3. Return BOTH
-  return NextResponse.json({
-    timeline: enriched,        // 👈 UI USES THIS
-    shapes: shaped.segments,   // 👈 insights layer
-    story: shaped.story,       // 👈 narrative text
-    warnings: shaped.warnings || [],
+    return {
+      ...p,
+      intelligence: explanation,
+      riskLevel,
+    };
   });
+
+  return NextResponse.json({
+    timeline: enrichedWithIntel,
+  });
+
 }

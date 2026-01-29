@@ -3,6 +3,8 @@ import { getAuthSession } from "@/lib/auth";
 import { connectDB } from "@/server/db/connect";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 import { segmentLifeEras } from "@/features/insights/engine/segmentLifeEras";
+import { nameLifeEra } from "@/features/insights/engine/nameLifeEra";
+import { explainLifeEra } from "@/features/insights/engine/explainLifeEra";
 
 function daysBetween(a: string, b: string) {
   const d1 = new Date(a);
@@ -34,7 +36,17 @@ export async function GET() {
     };
   });
 
-  const eras = segmentLifeEras(enriched);
+  const rawEras = segmentLifeEras(enriched);
+
+  const eras = rawEras.map((era, i) => {
+    const prev = i > 0 ? rawEras[i - 1] : null;
+
+    return {
+      ...era,
+      narrative: nameLifeEra(era),
+      explanation: explainLifeEra(era, prev),
+    };
+  });
 
   return NextResponse.json({
     eras,

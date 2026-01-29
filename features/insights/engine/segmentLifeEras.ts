@@ -118,7 +118,7 @@ export function segmentLifeEras(phases: any[]): LifeEra[] {
     const dom = dominantPhase(buffer);
 
     const era: LifeEra = {
-      id: crypto.randomUUID(),
+      id: `${buffer[0].startDate}_${buffer[buffer.length - 1].endDate ?? "now"}`,
       from: buffer[0].startDate,
       to: buffer[buffer.length - 1].endDate ?? null,
       phases: buffer,

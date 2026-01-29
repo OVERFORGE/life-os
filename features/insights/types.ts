@@ -62,7 +62,7 @@ export type LifeEra = {
   }[];
 
   dominantPhase: Phase;
-
+  narrative?: EraNarrative;
   direction: LifeDirection;
   volatility: number;   // 0 → 1
   stability: number;    // 0 → 1
@@ -75,4 +75,13 @@ export type LifeEra = {
     avgSleep: number;
     avgDeepWork: number;
   };
+};
+
+export type EraNarrative = {
+  title: string;
+  subtitle: string;
+  theme: string;
+  story: string;
+  risks: string[];
+  opportunities: string[];
 };

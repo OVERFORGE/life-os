@@ -9,6 +9,7 @@ import { MoodEnergyChart } from "@/features/dashboard/components/MoodEnergyChart
 import { InsightsGrid } from "@/features/dashboard/components/InsightsGrid";
 import { Heatmap } from "@/features/dashboard/components/Heatmap";
 import { TrajectoryCard } from "@/features/dashboard/components/TrajectoryCard";
+import { CurrentEraCard } from "@/features/insights/eras/components/CurrentEraCard";
 import { useRouter } from "next/navigation";
 export default function DashboardPage() {
   const [logs, setLogs] = useState<Log[]>([]);
@@ -56,8 +57,12 @@ export default function DashboardPage() {
                 <PhaseBadge phase={phase.phase} />
             </div>
             )}
-     
-        <TrajectoryCard />
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+          <TrajectoryCard />
+          <CurrentEraCard />
+        </div>
+
+        
         <SummaryGrid logs={logs} />
         <StreakGrid logs={logs} />
         <PersonalRecords logs={logs} />
