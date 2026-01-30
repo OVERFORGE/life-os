@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import { AddSignalModal } from "@/features/goals/components/AddSignalModal";
+
 type Signal = {
   key: string;
   weight: number;
@@ -19,7 +20,9 @@ export default function GoalDetailPage() {
   const [dirty, setDirty] = useState(false);
   const [saving, setSaving] = useState(false);
   const [isEditing, setIsEditing] = useState(false);
-  const [history, setHistory] = useState<{ date: string; score: number; state: string }[]>([]);
+  const [history, setHistory] = useState<
+    { date: string; score: number; state: string }[]
+  >([]);
 
   useEffect(() => {
     fetch(`/api/goals/${id}`)
@@ -31,9 +34,10 @@ export default function GoalDetailPage() {
         }
       })
       .finally(() => setLoading(false));
+
     fetch(`/api/goals/${id}/history`)
-        .then((r) => r.json())
-        .then(setHistory);
+      .then((r) => r.json())
+      .then(setHistory);
   }, [id]);
 
   if (loading)
@@ -42,7 +46,7 @@ export default function GoalDetailPage() {
   if (!data || data.error)
     return <div className="p-6 text-red-400">Goal not found</div>;
 
-  const { goal, stats, explanation } = data;
+  const { goal, stats, explanation, pressure } = data;
 
   return (
     <div className="min-h-screen bg-[#0f1115] text-gray-100">
@@ -59,7 +63,6 @@ export default function GoalDetailPage() {
             </div>
           </div>
 
-          {/* Edit Button */}
           {!isEditing && (
             <button
               onClick={() => {
@@ -74,20 +77,29 @@ export default function GoalDetailPage() {
           )}
         </div>
 
-          <GoalTimeline history={history} />
+        {/* 🧠 Goal Pressure */}
+        {pressure && (
+          <GoalPressureCard pressure={pressure} />
+        )}
+
+        {/* Timeline */}
+        <GoalTimeline history={history} />
+
         {/* Signals */}
         <div className="space-y-4">
           <div className="text-sm text-gray-400">
             Signals (last 14 days)
           </div>
+
           {isEditing && (
-                <button
-                onClick={() => setShowAddSignal(true)}
-                className="text-sm px-3 py-1.5 rounded-lg border border-[#232632] bg-[#161922] hover:bg-[#1b1f2a]"
-                >
-                + Add Signal
-                </button>
-            )}
+            <button
+              onClick={() => setShowAddSignal(true)}
+              className="text-sm px-3 py-1.5 rounded-lg border border-[#232632] bg-[#161922] hover:bg-[#1b1f2a]"
+            >
+              + Add Signal
+            </button>
+          )}
+
           {draftSignals.map((s: Signal, idx: number) => {
             const explanationSignal = explanation.signals.find(
               (x: any) => x.key === s.key
@@ -106,7 +118,6 @@ export default function GoalDetailPage() {
                   <div className="flex items-center gap-3">
                     {isEditing ? (
                       <>
-                        {/* Weight Input */}
                         <input
                           type="number"
                           min={1}
@@ -124,10 +135,11 @@ export default function GoalDetailPage() {
                           className="w-16 bg-[#0f1115] border border-[#232632] rounded px-2 py-1 text-sm"
                         />
 
-                        {/* Remove */}
                         <button
                           onClick={() => {
-                            const next = draftSignals.filter((_, i) => i !== idx);
+                            const next = draftSignals.filter(
+                              (_, i) => i !== idx
+                            );
                             setDraftSignals(next);
                             setDirty(true);
                           }}
@@ -144,7 +156,6 @@ export default function GoalDetailPage() {
                   </div>
                 </div>
 
-                {/* Activity blocks */}
                 <div className="flex gap-1">
                   {(explanationSignal?.values || []).map(
                     (v: number, i: number) => (
@@ -168,7 +179,7 @@ export default function GoalDetailPage() {
           })}
         </div>
 
-        {/* Save / Cancel Buttons */}
+        {/* Save / Cancel */}
         {isEditing && (
           <div className="flex gap-3 pt-4">
             <button
@@ -203,56 +214,76 @@ export default function GoalDetailPage() {
           </div>
         )}
 
-        {/* Explanation */}
-        <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 text-sm text-gray-400">
-          <div className="font-medium mb-2 text-gray-300">
-            How this goal is evaluated
-          </div>
-          <p className="leading-relaxed">
-            This goal listens to {goal.signals.length} behavioral signals from
-            your daily logs. Each signal contributes based on its weight and
-            consistency over the last 14 days. The score represents how aligned
-            your recent behavior is with this goal.
-          </p>
-        </div>
         {showAddSignal && (
-        <AddSignalModal
+          <AddSignalModal
             existingKeys={draftSignals.map((s) => s.key)}
             onClose={() => setShowAddSignal(false)}
             onAdd={(signal) => {
-            setDraftSignals([...draftSignals, signal]);
-            setDirty(true);
+              setDraftSignals([...draftSignals, signal]);
+              setDirty(true);
             }}
-        />
+          />
         )}
       </div>
     </div>
   );
 }
 
-/* ---------- UI Components ---------- */
+/* ---------------- Components ---------------- */
 
-function StatusPill({ state }: { state: string }) {
-  const map: Record<
-    string,
-    { label: string; color: string }
-  > = {
-    on_track: { label: "On Track", color: "bg-green-400" },
-    slow: { label: "Slow", color: "bg-yellow-400" },
-    drifting: { label: "Drifting", color: "bg-red-400" },
-    stalled: { label: "Stalled", color: "bg-gray-400" },
-    recovering: { label: "Recovering", color: "bg-blue-400" },
+function GoalPressureCard({ pressure }: { pressure: any }) {
+  const colorMap: Record<string, string> = {
+    aligned: "border-green-500/30 bg-green-500/10 text-green-300",
+    strained: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300",
+    conflicting: "border-orange-500/30 bg-orange-500/10 text-orange-300",
+    toxic: "border-red-500/30 bg-red-500/10 text-red-300",
   };
 
-  const cfg = map[state] || {
-    label: "Unknown",
-    color: "bg-gray-500",
+  return (
+    <div
+      className={`border rounded-xl p-4 space-y-3 ${
+        colorMap[pressure.status]
+      }`}
+    >
+      <div className="font-semibold">
+        Goal Pressure: {pressure.status.toUpperCase()}
+      </div>
+
+      <div className="text-xs opacity-80">
+        Pressure score: {Math.round(pressure.pressureScore * 100)}%
+      </div>
+
+      <div className="space-y-1 text-sm">
+        {pressure.reasons.map((r: string, i: number) => (
+          <div key={i}>• {r}</div>
+        ))}
+      </div>
+
+      {pressure.adaptations.length > 0 && (
+        <div className="pt-2 text-sm text-gray-200">
+          <div className="font-medium mb-1">Suggested adaptations</div>
+          {pressure.adaptations.map((a: string, i: number) => (
+            <div key={i}>– {a}</div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function StatusPill({ state }: { state: string }) {
+  const map: Record<string, string> = {
+    on_track: "bg-green-400",
+    slow: "bg-yellow-400",
+    drifting: "bg-red-400",
+    stalled: "bg-gray-400",
+    recovering: "bg-blue-400",
   };
 
   return (
     <div className="flex items-center gap-2">
-      <div className={`w-2.5 h-2.5 rounded-full ${cfg.color}`} />
-      <span className="text-gray-300">{cfg.label}</span>
+      <div className={`w-2.5 h-2.5 rounded-full ${map[state] || "bg-gray-500"}`} />
+      <span className="text-gray-300">{state?.replace("_", " ")}</span>
     </div>
   );
 }
@@ -264,22 +295,14 @@ function GoalTimeline({
 }) {
   if (!history.length) return null;
 
-  const stateColor = (state: string) => {
-    switch (state) {
-      case "on_track":
-        return "bg-green-500";
-      case "slow":
-        return "bg-yellow-400";
-      case "drifting":
-        return "bg-red-500";
-      case "recovering":
-        return "bg-blue-500";
-      case "stalled":
-        return "bg-gray-500";
-      default:
-        return "bg-gray-700";
-    }
-  };
+  const color = (s: string) =>
+    ({
+      on_track: "bg-green-500",
+      slow: "bg-yellow-400",
+      drifting: "bg-red-500",
+      recovering: "bg-blue-500",
+      stalled: "bg-gray-500",
+    }[s] || "bg-gray-700");
 
   return (
     <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 space-y-3">
@@ -292,27 +315,10 @@ function GoalTimeline({
           <div
             key={h.date}
             title={`${h.date} — ${h.state} — ${h.score}%`}
-            className={`w-4 h-4 rounded-sm ${stateColor(h.state)}`}
+            className={`w-4 h-4 rounded-sm ${color(h.state)}`}
           />
         ))}
       </div>
-
-      <div className="flex gap-4 text-xs text-gray-400 pt-2">
-        <LegendDot color="bg-green-500" label="On Track" />
-        <LegendDot color="bg-yellow-400" label="Slow" />
-        <LegendDot color="bg-red-500" label="Drifting" />
-        <LegendDot color="bg-blue-500" label="Recovering" />
-        <LegendDot color="bg-gray-500" label="Stalled" />
-      </div>
-    </div>
-  );
-}
-
-function LegendDot({ color, label }: { color: string; label: string }) {
-  return (
-    <div className="flex items-center gap-1">
-      <div className={`w-3 h-3 rounded-sm ${color}`} />
-      <span>{label}</span>
     </div>
   );
 }

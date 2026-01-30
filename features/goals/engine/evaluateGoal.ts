@@ -1,81 +1,63 @@
+// features/goals/engine/evaluateGoal.ts
+
+import { Goal } from "../models/Goal";
 import { GoalStats } from "../models/GoalStats";
-import { DailyLog } from "@/server/db/models/DailyLog";
-import { GoalHistory } from "@/server/db/models/GoalHistory";
+import { analyzeGoalPressure } from "./analyzeGoalPressure";
+import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
+import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 
-function getValueByPath(obj: any, path: string) {
-  return path.split(".").reduce((acc, key) => acc?.[key], obj);
-}
-function getToday() {
-  const d = new Date();
-  const yyyy = d.getFullYear();
-  const mm = String(d.getMonth() + 1).padStart(2, "0");
-  const dd = String(d.getDate()).padStart(2, "0");
-  return `${yyyy}-${mm}-${dd}`;
-}
-export async function evaluateGoal(goal: any, userId: string) {
-  const logs = await DailyLog.find({ userId })
-    .sort({ date: -1 })
-    .limit(14)
-    .lean();
+export async function evaluateGoal(goal: any) {
+  // -----------------------------
+  // 1️⃣ Load or init stats
+  // -----------------------------
+  let stats = await GoalStats.findOne({ goalId: goal._id });
 
-  if (!logs.length) return;
-
-  let score = 0;
-  let maxScore = 0;
-  let activeDays = 0;
-
-  for (const signal of goal.signals) {
-    maxScore += signal.weight * logs.length;
-
-    for (const log of logs) {
-      const val = getValueByPath(log, signal.key);
-
-      if (val) {
-        score += signal.weight;
-        activeDays++;
-      }
-    }
+  if (!stats) {
+    stats = await GoalStats.create({
+      goalId: goal._id,
+      currentScore: 0,
+      state: "on_track",
+      momentum: "flat",
+      bestScoreEver: 0,
+      bestStreakEver: 0,
+      currentStreak: 0,
+      daysSinceProgress: 0,
+    });
   }
 
-  const progressScore = Math.min(
-    100,
-    Math.round((score / (maxScore || 1)) * 100)
-  );
+  // -----------------------------
+  // 2️⃣ Get latest life phase
+  // -----------------------------
+  const latestPhase = await PhaseHistory.findOne({
+    userId: goal.userId,
+  })
+    .sort({ createdAt: -1 })
+    .lean();
 
-  // Determine state
-  let state = "slow";
+  const phaseExplanation = latestPhase
+    ? {
+        phase: latestPhase.phase,
+        ...explainLifePhase(latestPhase),
+      }
+    : null;
 
-  if (activeDays === 0) state = "stalled";
-  else if (progressScore > 70) state = "on_track";
-  else if (progressScore < 30) state = "drifting";
+  // -----------------------------
+  // 3️⃣ Goal Pressure Analysis
+  // -----------------------------
+  const pressure = phaseExplanation
+    ? analyzeGoalPressure({
+        goal,
+        stats,
+        phase: phaseExplanation,
+      })
+    : null;
 
-  await GoalStats.findOneAndUpdate(
-    { goalId: goal._id },
-    {
-      goalId: goal._id,
-      currentScore: progressScore,
-      state,
-      lastEvaluatedAt: new Date(),
-    },
-    { upsert: true }
-  );
-  const today = getToday();
-
-  await GoalHistory.updateOne(
-    {
-      goalId: goal._id,
-      userId,
-      date: today,
-    },
-    {
-      $set: {
-        score: progressScore,
-        state,
-      },
-    },
-    { upsert: true }
-  );
-  
+  // -----------------------------
+  // 4️⃣ Return enriched result
+  // -----------------------------
+  return {
+    ...goal,
+    stats,
+    pressure,
+  };
 }
-
-  
