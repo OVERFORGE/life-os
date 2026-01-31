@@ -1,76 +1,158 @@
-// app/api/insights/rebuild/route.ts
-
 import { connectDB } from "@/server/db/connect";
-import { DailyLog } from "@/server/db/models/DailyLog";
-import { getAuthSession } from "@/lib/auth";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 
-import { LifeSettings } from "@/features/insights/models/LifeSettings";
-import { PhaseDailyState } from "@/features/insights/models/PhaseDailyState";
+import { DailyLog } from "@/server/db/models/DailyLog";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
+import { LifeSettings } from "@/features/insights/models/LifeSettings";
 
 import { computeBaselines } from "@/features/insights/engine/computeBaselines";
 import { computeDailyState } from "@/features/insights/engine/computeDailyState";
-import { DEFAULT_THRESHOLDS } from "@/features/insights/config/defaultThresholds";
 import { compressDailyStatesToPhases } from "@/features/insights/engine/compressDailyStatesToPhases";
+import { applyPhaseFeedback } from "@/features/insights/engine/applyPhaseFeedback";
+
+import { analyzeGlobalGoalLoad } from "@/features/goals/engine/analyzeGlobalGoalLoad";
+import { detectGoalLoadOutcome } from "@/features/goals/engine/detectGoalLoadOutcome";
+import { updateGoalLoadWeightsFromFeedback } from "@/features/goals/engine/updateGoalLoadWeightsFromFeedback";
+
+const DEFAULT_SENSITIVITY = {
+  sleepImpact: 1,
+  stressImpact: 1,
+  energyImpact: 1,
+  moodImpact: 1,
+  goalPressureWeights: {
+    cadence: 0.25,
+    energy: 0.25,
+    stress: 0.25,
+    phaseMismatch: 0.25,
+  },
+};
 
 export async function POST() {
-  const session = await getAuthSession();
+  const session = await getServerSession(authOptions);
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const userId = session.user.id;
   await connectDB();
 
-  // 1️⃣ Load logs
-  const logs = await DailyLog.find({ userId: session.user.id })
-    .sort({ date: 1 })
-    .lean();
-
-  if (logs.length < 10) {
-    return Response.json({ error: "Not enough data" });
+  const logs = await DailyLog.find({ userId }).sort({ date: 1 }).lean();
+  if (!logs.length) {
+    return Response.json({ ok: true, message: "No logs found" });
   }
 
-  // 2️⃣ Reset old states
-  await PhaseDailyState.deleteMany({ userId: session.user.id });
-  await PhaseHistory.deleteMany({ userId: session.user.id });
+  /* ---------------- SETTINGS ---------------- */
 
-  // 3️⃣ Load or create settings
-  let settings = await LifeSettings.findOne({ userId: session.user.id });
+  let settings = await LifeSettings.findOne({ userId });
 
   if (!settings) {
     const baselines = computeBaselines(logs);
     settings = await LifeSettings.create({
-      userId: session.user.id,
+      userId,
       baselines,
-      thresholds: DEFAULT_THRESHOLDS,
+      learnedSensitivity: DEFAULT_SENSITIVITY,
+      sensitivityHistory: [],
     });
   }
 
-  const thresholds = {
-    ...DEFAULT_THRESHOLDS,
-    ...settings.thresholds,
-    drifting: {
-      ...DEFAULT_THRESHOLDS.drifting,
-      ...(settings.thresholds?.drifting || {}),
-    },
-  };
+  /* ---------------- PHASE REBUILD ---------------- */
 
-  // 4️⃣ Build daily states
-  for (let i = 14; i < logs.length; i++) {
+  let previousPhase: string | null = null;
+  let previousSnapshot: any = null;
+
+  for (let i = 0; i < logs.length; i++) {
     const slice = logs.slice(0, i + 1);
-    const day = logs[i].date;
+    const today = slice[slice.length - 1];
 
-    await computeDailyState({
-      userId: session.user.id,
-      date: day,
-      logsUpToDate: slice.reverse(),
+    const state = await computeDailyState({
+      userId,
+      date: today.date,
+      logsUpToDate: [...slice].reverse(),
       baselines: settings.baselines,
-      thresholds,
+      sensitivity: settings.learnedSensitivity,
     });
+
+    if (previousPhase && previousSnapshot) {
+      const feedback = applyPhaseFeedback({
+        previousPhase,
+        currentPhase: state.candidatePhase,
+        snapshot: state.snapshot,
+        currentSensitivity: settings.learnedSensitivity,
+      });
+
+      if (feedback.changed) {
+        settings.sensitivityHistory.push({
+          date: today.date,
+          before: settings.learnedSensitivity,
+          after: feedback.nextSensitivity,
+          reason: feedback.reason,
+        });
+
+        settings.learnedSensitivity = feedback.nextSensitivity;
+        await settings.save();
+      }
+    }
+
+    previousPhase = state.candidatePhase;
+    previousSnapshot = state.snapshot;
   }
 
-  await compressDailyStatesToPhases(session.user.id);
+  /* ---------------- GOAL LOAD FEEDBACK (V2) ---------------- */
 
+  const goalLoad = await analyzeGlobalGoalLoad({
+    userId,
+    weights: settings.learnedSensitivity.goalPressureWeights,
+  });
 
-  return Response.json({ ok: true, days: logs.length });
+  const outcome = detectGoalLoadOutcome({
+    globalScore: goalLoad.global.score,
+    phase: previousPhase || "balanced",
+  });
+
+  const goalFeedback = updateGoalLoadWeightsFromFeedback({
+    outcome,
+    currentWeights: settings.learnedSensitivity.goalPressureWeights,
+  });
+
+  if (goalFeedback.changed) {
+    settings.sensitivityHistory.push({
+      date: logs[logs.length - 1].date,
+      before: settings.learnedSensitivity,
+      after: {
+        ...settings.learnedSensitivity,
+        goalPressureWeights: goalFeedback.nextWeights,
+      },
+      reason: goalFeedback.reason,
+    });
+
+    settings.learnedSensitivity.goalPressureWeights =
+      goalFeedback.nextWeights;
+
+    await settings.save();
+  }
+
+  /* ---------------- PHASE HISTORY ---------------- */
+
+  const phases = await compressDailyStatesToPhases(userId);
+
+  await PhaseHistory.deleteMany({ userId });
+
+  if (phases.length) {
+    await PhaseHistory.insertMany(
+      phases.map((p) => ({
+        userId,
+        phase: p.phase,
+        startDate: p.startDate,
+        endDate: p.endDate,
+        snapshot: p.snapshot,
+        reason: p.reason,
+      }))
+    );
+  }
+
+  return Response.json({
+    ok: true,
+    message: "Insights rebuilt with phase + goal load learning",
+  });
 }

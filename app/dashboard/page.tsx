@@ -10,13 +10,15 @@ import { InsightsGrid } from "@/features/dashboard/components/InsightsGrid";
 import { Heatmap } from "@/features/dashboard/components/Heatmap";
 import { TrajectoryCard } from "@/features/dashboard/components/TrajectoryCard";
 import { CurrentEraCard } from "@/features/insights/eras/components/CurrentEraCard";
+import { GoalLoadCard } from "@/features/dashboard/components/GoalLoadCard";
 import { useRouter } from "next/navigation";
 export default function DashboardPage() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<any>(null);
+  const [goalLoad , setGoalLoad] = useState<any>(null);
   const router = useRouter();
-  useEffect(() => {
+  useEffect(() =>  {
     fetch("/api/daily-log/dashboard")
       .then((res) => res.json())
       .then((data) => setLogs(data))
@@ -26,10 +28,18 @@ export default function DashboardPage() {
   .then((d) => {
     console.log("PHASE API RESPONSE:", d);
     setPhase(d);
+  
+  });
+
+  fetch("/api/dashboard/goal-load")
+  .then((r) => r.json())
+  .then((d) => {
+    console.log("GOAL LOAD API RESPONSE:", d);
+    setGoalLoad(d);
   });
 
   }, []);
-
+  
   if (loading) {
     return <div className="p-6 text-gray-400">Loading dashboard...</div>;
   }
@@ -61,7 +71,7 @@ export default function DashboardPage() {
           <TrajectoryCard />
           <CurrentEraCard />
         </div>
-
+        <GoalLoadCard goalLoad={goalLoad}/>
         
         <SummaryGrid logs={logs} />
         <StreakGrid logs={logs} />

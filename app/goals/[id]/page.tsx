@@ -77,6 +77,37 @@ export default function GoalDetailPage() {
           )}
         </div>
 
+        {/* Phase Adaptation */}
+        {data.adaptation &&  (
+          <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 text-sm text-gray-300 space-y-2">
+            <div className="font-medium text-gray-200">
+              Phase-aware adaptation
+            </div>
+
+            <div className="text-gray-400">
+              {data.adaptation.intensityNote}
+            </div>
+
+            {data.adaptation.cadenceOverride && (
+              <div className="text-xs text-gray-500">
+                Suggested cadence:{" "}
+                <span className="text-gray-300">
+                  {data.adaptation.cadenceOverride}
+                </span>
+              </div>
+            )}
+
+            {data.adaptation.rationale.length > 0 && (
+              <ul className="text-xs text-gray-500 list-disc pl-4">
+                {data.adaptation.rationale.map((r: string, i: number) => (
+                  <li key={i}>{r}</li>
+                ))}
+              </ul>
+            )}
+          </div>
+        )}
+
+
         {/* 🧠 Goal Pressure */}
         {pressure && (
           <GoalPressureCard pressure={pressure} />
@@ -232,36 +263,39 @@ export default function GoalDetailPage() {
 /* ---------------- Components ---------------- */
 
 function GoalPressureCard({ pressure }: { pressure: any }) {
-  const colorMap: Record<string, string> = {
-    aligned: "border-green-500/30 bg-green-500/10 text-green-300",
-    strained: "border-yellow-500/30 bg-yellow-500/10 text-yellow-300",
-    conflicting: "border-orange-500/30 bg-orange-500/10 text-orange-300",
-    toxic: "border-red-500/30 bg-red-500/10 text-red-300",
+  const labelMap: Record<string, string> = {
+    aligned: "Aligned",
+    strained: "Strained",
+    conflicting: "Conflicting",
+    toxic: "Overloading",
   };
 
   return (
-    <div
-      className={`border rounded-xl p-4 space-y-3 ${
-        colorMap[pressure.status]
-      }`}
-    >
-      <div className="font-semibold">
-        Goal Pressure: {pressure.status.toUpperCase()}
+    <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 space-y-3">
+      <div className="flex justify-between items-center">
+        <div className="font-medium text-gray-200">
+          Goal Load
+        </div>
+        <div className="text-xs text-gray-400">
+          {labelMap[pressure.status]}
+        </div>
       </div>
 
-      <div className="text-xs opacity-80">
+      <div className="text-xs text-gray-400">
         Pressure score: {Math.round(pressure.pressureScore * 100)}%
       </div>
 
-      <div className="space-y-1 text-sm">
+      <div className="space-y-1 text-sm text-gray-300">
         {pressure.reasons.map((r: string, i: number) => (
           <div key={i}>• {r}</div>
         ))}
       </div>
 
       {pressure.adaptations.length > 0 && (
-        <div className="pt-2 text-sm text-gray-200">
-          <div className="font-medium mb-1">Suggested adaptations</div>
+        <div className="pt-2 text-sm text-gray-400">
+          <div className="font-medium text-gray-300 mb-1">
+            Suggested adjustments
+          </div>
           {pressure.adaptations.map((a: string, i: number) => (
             <div key={i}>– {a}</div>
           ))}
@@ -270,6 +304,7 @@ function GoalPressureCard({ pressure }: { pressure: any }) {
     </div>
   );
 }
+
 
 function StatusPill({ state }: { state: string }) {
   const map: Record<string, string> = {

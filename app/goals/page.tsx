@@ -81,10 +81,20 @@ export default function GoalsPage() {
       return (
         <Link key={g._id} href={`/goals/${g._id}`}>
           <div className="bg-[#161922] border border-[#232632] rounded-xl p-5 space-y-4 hover:border-gray-600 transition cursor-pointer">
-            <div className="flex justify-between items-center">
-              <div className="font-semibold text-lg">{g.title}</div>
-              <StateBadge state={state} />
-            </div>
+            <div className="flex justify-between items-start">
+  <div className="space-y-1">
+    <div className="font-semibold text-lg">{g.title}</div>
+
+    {g.pressure?.status && g.pressure.status !== "aligned" && (
+      <div className="text-xs text-gray-400">
+        {pressureLabel(g.pressure.status)}
+      </div>
+    )}
+  </div>
+
+  <StateBadge state={state} />
+</div>
+
 
             {/* Progress Bar */}
             <div className="space-y-1">
@@ -132,4 +142,18 @@ function StateBadge({ state }: { state: string }) {
       {state.replace("_", " ")}
     </span>
   );
+}
+
+
+function pressureLabel(status: string) {
+  switch (status) {
+    case "strained":
+      return "Slightly heavy for current phase";
+    case "conflicting":
+      return "Conflicts with current life phase";
+    case "toxic":
+      return "Actively increasing life pressure";
+    default:
+      return "";
+  }
 }

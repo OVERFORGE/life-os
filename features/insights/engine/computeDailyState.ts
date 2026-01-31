@@ -6,18 +6,31 @@ export async function computeDailyState({
   date,
   logsUpToDate,
   baselines,
-  thresholds,
+  sensitivity,
 }: {
   userId: string;
   date: string;
   logsUpToDate: any[];
   baselines: any;
-  thresholds: any;
+  sensitivity?: {
+    sleepImpact: number;
+    stressImpact: number;
+    energyImpact: number;
+    moodImpact: number;
+  };
 }) {
+  const safeSensitivity =
+    sensitivity ?? {
+      sleepImpact: 1,
+      stressImpact: 1,
+      energyImpact: 1,
+      moodImpact: 1,
+    };
+
   const analysis = analyzeLifeState({
     recentLogs: logsUpToDate,
     baselines,
-    thresholds,
+    sensitivity: safeSensitivity,
   });
 
   await PhaseDailyState.findOneAndUpdate(
