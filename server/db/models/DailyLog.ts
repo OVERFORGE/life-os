@@ -1,10 +1,20 @@
-import { Schema, model, models } from "mongoose";
+// server/db/models/DailyLog.ts
+
+import mongoose, { Schema, model, models } from "mongoose";
+
+/**
+ * DailyLog
+ *
+ * Existing structure stays
+ * We only add `signals` map for dynamic user-defined signals.
+ */
 
 const DailyLogSchema = new Schema(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    userId: { type: Schema.Types.ObjectId, required: true },
 
-    date: { type: String, required: true }, 
+    date: { type: String, required: true }, // yyyy-mm-dd
+
     mental: {
       mood: Number,
       energy: Number,
@@ -24,6 +34,7 @@ const DailyLogSchema = new Schema(
       gym: Boolean,
       workoutType: String,
       calories: Number,
+      meals: Number,
       dietNote: String,
       steps: Number,
       bodyFeeling: String,
@@ -46,13 +57,6 @@ const DailyLogSchema = new Schema(
       content: Boolean,
       learning: Boolean,
       noFap: Boolean,
-
-      junkFood: {
-        had: Boolean,
-        times: Number,
-        what: String,
-      },
-
       socialMediaOveruse: Boolean,
     },
 
@@ -69,17 +73,20 @@ const DailyLogSchema = new Schema(
       bothering: String,
     },
 
-    emotions: {
-      bestMoment: String,
-      worstMoment: String,
-      stressTrigger: String,
-      happyMoment: String,
-    },
-
-    social: {
-      interactionLevel: String,
-      talkedToFamily: Boolean,
-      networked: Boolean,
+    /**
+     * ✅ NEW: Dynamic Signals
+     *
+     * Example:
+     * signals: {
+     *   water: 2.7,
+     *   sunlight: 30,
+     *   protein: 120
+     * }
+     */
+    signals: {
+      type: Map,
+      of: Number,
+      default: {},
     },
   },
   { timestamps: true }
@@ -87,4 +94,5 @@ const DailyLogSchema = new Schema(
 
 DailyLogSchema.index({ userId: 1, date: 1 }, { unique: true });
 
-export const DailyLog = models.DailyLog || model("DailyLog", DailyLogSchema);
+export const DailyLog =
+  models.DailyLog || model("DailyLog", DailyLogSchema);

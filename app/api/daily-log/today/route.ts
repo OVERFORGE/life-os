@@ -1,14 +1,23 @@
+// app/api/daily-log/today/route.ts
+
 import { connectDB } from "@/server/db/connect";
 import { DailyLog } from "@/server/db/models/DailyLog";
 import { getTodayDateString } from "@/utils/date";
+
 import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+
 import { DailyLogSchema } from "@/features/daily-log/schema";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+
+/* ===================================================== */
+/* GET — Fetch Today's Log                               */
+/* ===================================================== */
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session) {
+
+  if (!session?.user || !(session.user as any).id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -18,14 +27,19 @@ export async function GET() {
 
   const today = getTodayDateString();
 
-  const log = await DailyLog.findOne({ userId, date: today });
+  const log = await DailyLog.findOne({ userId, date: today }).lean();
 
   return NextResponse.json(log);
 }
 
+/* ===================================================== */
+/* POST — Save Today's Log (Preserve Signals)             */
+/* ===================================================== */
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session) {
+
+  if (!session?.user || !(session.user as any).id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -33,7 +47,12 @@ export async function POST(req: Request) {
 
   const body = await req.json();
 
+  /* ----------------------------- */
+  /* Validate Core Form            */
+  /* ----------------------------- */
+
   const parsed = DailyLogSchema.safeParse(body);
+
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.flatten() },
@@ -45,18 +64,41 @@ export async function POST(req: Request) {
 
   const today = getTodayDateString();
 
-  const log = await DailyLog.findOneAndUpdate(
-  { userId, date: today },
-  {
-    $set: parsed.data,
-    $setOnInsert: {
-      userId,
-      date: today,
-    },
-  },
-  { upsert: true, new: true }
-);
+  /* ----------------------------- */
+  /* Preserve Existing Signals     */
+  /* ----------------------------- */
 
+  const existing = await DailyLog.findOne({
+    userId,
+    date: today,
+  }).lean();
+
+  const existingSignals = existing?.signals || {};
+
+  /* ----------------------------- */
+  /* Merge Signals + Core Form     */
+  /* ----------------------------- */
+
+  const mergedData = {
+    ...parsed.data,
+    signals: existingSignals, // ✅ keep custom signals safe
+  };
+
+  /* ----------------------------- */
+  /* Save Document                 */
+  /* ----------------------------- */
+
+  const log = await DailyLog.findOneAndUpdate(
+    { userId, date: today },
+    {
+      $set: mergedData,
+      $setOnInsert: {
+        userId,
+        date: today,
+      },
+    },
+    { upsert: true, new: true }
+  );
 
   return NextResponse.json(log);
 }

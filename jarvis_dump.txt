@@ -49,6 +49,81 @@ export { handler as GET, handler as POST };
 
 
 
+===== FILE: D:\PROGRAMMING\Projects\life-os\app\api\categories\route.ts =====
+// app/api/categories/route.ts
+
+import { connectDB } from "@/server/db/connect";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { LifeCategory } from "@/features/schema/models/LifeCategory";
+
+/* ======================= */
+/* GET Categories          */
+/* ======================= */
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  await connectDB();
+
+  const categories = await LifeCategory.find({
+    userId: session.user.id,
+  })
+    .sort({ order: 1 })
+    .lean();
+
+  return Response.json({ categories });
+}
+
+/* ======================= */
+/* CREATE Category         */
+/* ======================= */
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  await connectDB();
+
+  const created = await LifeCategory.create({
+    userId: session.user.id,
+    key: body.key,
+    label: body.label,
+    order: body.order ?? 0,
+  });
+
+  return Response.json({ ok: true, category: created });
+}
+
+/* ======================= */
+/* DELETE Category         */
+/* ======================= */
+export async function DELETE(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const key = searchParams.get("key");
+
+  if (!key) {
+    return Response.json({ error: "Key required" }, { status: 400 });
+  }
+
+  await connectDB();
+
+  await LifeCategory.deleteOne({
+    userId: session.user.id,
+    key,
+  });
+
+  return Response.json({ ok: true });
+}
+
+
+
 ===== FILE: D:\PROGRAMMING\Projects\life-os\app\api\daily-log\by-date\route.ts =====
 import { NextResponse } from "next/server";
 import { getServerSession } from "next-auth";
@@ -145,17 +220,26 @@ export async function GET(req: Request) {
 
 
 ===== FILE: D:\PROGRAMMING\Projects\life-os\app\api\daily-log\today\route.ts =====
+// app/api/daily-log/today/route.ts
+
 import { connectDB } from "@/server/db/connect";
 import { DailyLog } from "@/server/db/models/DailyLog";
 import { getTodayDateString } from "@/utils/date";
+
 import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+
 import { DailyLogSchema } from "@/features/daily-log/schema";
 import { NextResponse } from "next/server";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+
+/* ===================================================== */
+/* GET — Fetch Today's Log                               */
+/* ===================================================== */
 
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session) {
+
+  if (!session?.user || !(session.user as any).id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -165,14 +249,19 @@ export async function GET() {
 
   const today = getTodayDateString();
 
-  const log = await DailyLog.findOne({ userId, date: today });
+  const log = await DailyLog.findOne({ userId, date: today }).lean();
 
   return NextResponse.json(log);
 }
 
+/* ===================================================== */
+/* POST — Save Today's Log (Preserve Signals)             */
+/* ===================================================== */
+
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
-  if (!session) {
+
+  if (!session?.user || !(session.user as any).id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -180,7 +269,12 @@ export async function POST(req: Request) {
 
   const body = await req.json();
 
+  /* ----------------------------- */
+  /* Validate Core Form            */
+  /* ----------------------------- */
+
   const parsed = DailyLogSchema.safeParse(body);
+
   if (!parsed.success) {
     return NextResponse.json(
       { error: parsed.error.flatten() },
@@ -192,18 +286,41 @@ export async function POST(req: Request) {
 
   const today = getTodayDateString();
 
-  const log = await DailyLog.findOneAndUpdate(
-  { userId, date: today },
-  {
-    $set: parsed.data,
-    $setOnInsert: {
-      userId,
-      date: today,
-    },
-  },
-  { upsert: true, new: true }
-);
+  /* ----------------------------- */
+  /* Preserve Existing Signals     */
+  /* ----------------------------- */
 
+  const existing = await DailyLog.findOne({
+    userId,
+    date: today,
+  }).lean();
+
+  const existingSignals = existing?.signals || {};
+
+  /* ----------------------------- */
+  /* Merge Signals + Core Form     */
+  /* ----------------------------- */
+
+  const mergedData = {
+    ...parsed.data,
+    signals: existingSignals, // ✅ keep custom signals safe
+  };
+
+  /* ----------------------------- */
+  /* Save Document                 */
+  /* ----------------------------- */
+
+  const log = await DailyLog.findOneAndUpdate(
+    { userId, date: today },
+    {
+      $set: mergedData,
+      $setOnInsert: {
+        userId,
+        date: today,
+      },
+    },
+    { upsert: true, new: true }
+  );
 
   return NextResponse.json(log);
 }
@@ -220,17 +337,22 @@ import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { Goal } from "@/features/goals/models/Goal";
 import { GoalStats } from "@/features/goals/models/GoalStats";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
+import { LifeSettings } from "@/features/insights/models/LifeSettings";
+
 import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
 import { analyzeGoalPressure } from "@/features/goals/engine/analyzeGoalPressure";
 import { analyzeGlobalGoalLoad } from "@/features/goals/engine/analyzeGlobalGoalLoad";
 
 export async function GET() {
   const session = await getServerSession(authOptions);
+
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   await connectDB();
+
+  /* ---------------- Load Current Phase ---------------- */
 
   const phase = await PhaseHistory.findOne({
     userId: session.user.id,
@@ -248,8 +370,25 @@ export async function GET() {
     phase: phase.phase,
   };
 
+  /* ---------------- Load Goal Weights ---------------- */
+
+  const settings = await LifeSettings.findOne({
+    userId: session.user.id,
+  }).lean();
+
+  const weights =
+    settings?.goalPressureWeights ?? {
+      cadence: 0.25,
+      energy: 0.25,
+      stress: 0.25,
+      phaseMismatch: 0.25,
+    };
+
+  /* ---------------- Per Goal Pressure ---------------- */
+
   const goals = await Goal.find({ userId: session.user.id }).lean();
   const stats = await GoalStats.find({}).lean();
+
   const statMap = new Map(stats.map((s) => [String(s.goalId), s]));
 
   const pressures = goals.map((g) =>
@@ -260,10 +399,15 @@ export async function GET() {
     })
   );
 
-  const global = analyzeGlobalGoalLoad(pressures);
+  /* ---------------- Global Goal Load ---------------- */
+
+  const globalLoad = await analyzeGlobalGoalLoad({
+    userId: session.user.id,
+    weights,
+  });
 
   return Response.json({
-    global,
+    global: globalLoad.global,
     perGoal: pressures,
   });
 }
@@ -900,6 +1044,8 @@ export async function GET() {
 
 
 ===== FILE: D:\PROGRAMMING\Projects\life-os\app\api\insights\rebuild\route.ts =====
+// app/api/insights/rebuild/route.ts
+
 import { connectDB } from "@/server/db/connect";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -917,48 +1063,59 @@ import { analyzeGlobalGoalLoad } from "@/features/goals/engine/analyzeGlobalGoal
 import { detectGoalLoadOutcome } from "@/features/goals/engine/detectGoalLoadOutcome";
 import { updateGoalLoadWeightsFromFeedback } from "@/features/goals/engine/updateGoalLoadWeightsFromFeedback";
 
+/* ---------------- Default Sensitivity ---------------- */
+
 const DEFAULT_SENSITIVITY = {
   sleepImpact: 1,
   stressImpact: 1,
   energyImpact: 1,
   moodImpact: 1,
-  goalPressureWeights: {
-    cadence: 0.25,
-    energy: 0.25,
-    stress: 0.25,
-    phaseMismatch: 0.25,
-  },
+};
+
+const DEFAULT_GOAL_WEIGHTS = {
+  cadence: 0.25,
+  energy: 0.25,
+  stress: 0.25,
+  phaseMismatch: 0.25,
 };
 
 export async function POST() {
   const session = await getServerSession(authOptions);
+
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const userId = session.user.id;
+
   await connectDB();
 
+  /* ---------------- Load Logs ---------------- */
+
   const logs = await DailyLog.find({ userId }).sort({ date: 1 }).lean();
+
   if (!logs.length) {
     return Response.json({ ok: true, message: "No logs found" });
   }
 
-  /* ---------------- SETTINGS ---------------- */
+  /* ---------------- Load or Init Settings ---------------- */
 
   let settings = await LifeSettings.findOne({ userId });
 
   if (!settings) {
     const baselines = computeBaselines(logs);
+
     settings = await LifeSettings.create({
       userId,
       baselines,
       learnedSensitivity: DEFAULT_SENSITIVITY,
+      goalPressureWeights: DEFAULT_GOAL_WEIGHTS,
       sensitivityHistory: [],
+      goalLoadHistory: [],
     });
   }
 
-  /* ---------------- PHASE REBUILD ---------------- */
+  /* ---------------- Phase Rebuild + Phase Learning ---------------- */
 
   let previousPhase: string | null = null;
   let previousSnapshot: any = null;
@@ -1000,41 +1157,41 @@ export async function POST() {
     previousSnapshot = state.snapshot;
   }
 
-  /* ---------------- GOAL LOAD FEEDBACK (V2) ---------------- */
+  /* ---------------- Goal Load Feedback Learning V2 ---------------- */
 
   const goalLoad = await analyzeGlobalGoalLoad({
     userId,
-    weights: settings.learnedSensitivity.goalPressureWeights,
+    weights: settings.goalPressureWeights,
   });
+
+  const confidence = Math.min(1, goalLoad.global.score);
 
   const outcome = detectGoalLoadOutcome({
     globalScore: goalLoad.global.score,
     phase: previousPhase || "balanced",
   });
 
-  const goalFeedback = updateGoalLoadWeightsFromFeedback({
+  const feedback = updateGoalLoadWeightsFromFeedback({
     outcome,
-    currentWeights: settings.learnedSensitivity.goalPressureWeights,
+    currentWeights: settings.goalPressureWeights,
+    confidence,
   });
 
-  if (goalFeedback.changed) {
-    settings.sensitivityHistory.push({
+  if (feedback.changed) {
+    settings.goalLoadHistory.push({
       date: logs[logs.length - 1].date,
-      before: settings.learnedSensitivity,
-      after: {
-        ...settings.learnedSensitivity,
-        goalPressureWeights: goalFeedback.nextWeights,
-      },
-      reason: goalFeedback.reason,
+      outcome,
+      confidence,
+      before: settings.goalPressureWeights,
+      after: feedback.nextWeights,
+      reason: feedback.reason,
     });
 
-    settings.learnedSensitivity.goalPressureWeights =
-      goalFeedback.nextWeights;
-
+    settings.goalPressureWeights = feedback.nextWeights;
     await settings.save();
   }
 
-  /* ---------------- PHASE HISTORY ---------------- */
+  /* ---------------- Phase History Compression ---------------- */
 
   const phases = await compressDailyStatesToPhases(userId);
 
@@ -1055,7 +1212,7 @@ export async function POST() {
 
   return Response.json({
     ok: true,
-    message: "Insights rebuilt with phase + goal load learning",
+    message: "Insights rebuilt successfully (Phase + Goal Load Learning V2)",
   });
 }
 
@@ -1153,6 +1310,98 @@ export async function GET() {
     snapshot: analysis.snapshot,
     insights: analysis.insights,
   });
+}
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\app\api\metrics\route.ts =====
+// app/api/metrics/route.ts
+
+import { connectDB } from "@/server/db/connect";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { LifeMetric } from "@/features/metrics/models/LifeMetric";
+
+/* ======================= */
+/* GET Metrics             */
+/* ======================= */
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  await connectDB();
+
+  const metrics = await LifeMetric.find({
+    userId: session.user.id,
+  }).lean();
+
+  return Response.json({ metrics });
+}
+
+/* ======================= */
+/* CREATE Metric           */
+/* ======================= */
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  await connectDB();
+
+  const created = await LifeMetric.create({
+    userId: session.user.id,
+    key: body.key,
+    label: body.label,
+    components: body.components || [],
+  });
+
+  return Response.json({ ok: true, metric: created });
+}
+
+/* ======================= */
+/* UPDATE Metric           */
+/* ======================= */
+export async function PUT(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+  await connectDB();
+
+  await LifeMetric.findOneAndUpdate(
+    { userId: session.user.id, key: body.key },
+    { $set: { components: body.components } }
+  );
+
+  return Response.json({ ok: true });
+}
+
+/* ======================= */
+/* DELETE Metric           */
+/* ======================= */
+export async function DELETE(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const { searchParams } = new URL(req.url);
+  const key = searchParams.get("key");
+
+  if (!key) {
+    return Response.json({ error: "Key required" }, { status: 400 });
+  }
+
+  await connectDB();
+
+  await LifeMetric.deleteOne({
+    userId: session.user.id,
+    key,
+  });
+
+  return Response.json({ ok: true });
 }
 
 
@@ -1281,11 +1530,162 @@ export async function DELETE() {
 
 
 
+===== FILE: D:\PROGRAMMING\Projects\life-os\app\api\signals\log\route.ts =====
+// app/api/signals/log/route.ts
+
+import { connectDB } from "@/server/db/connect";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { DailyLog } from "@/server/db/models/DailyLog";
+
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id)
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+
+  const body = await req.json();
+
+  await connectDB();
+
+  const log = await DailyLog.findOneAndUpdate(
+    {
+      userId: session.user.id,
+      date: body.date,
+    },
+    {
+      $set: {
+        [`signals.${body.key}`]: body.value,
+      },
+    },
+    { upsert: true, new: true }
+  );
+
+  return Response.json({ ok: true, log });
+}
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\app\api\signals\route.ts =====
+// app/api/signals/route.ts
+
+import { connectDB } from "@/server/db/connect";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { LifeSignal } from "@/features/signals/models/LifeSignal";
+
+/* ======================= */
+/* GET Signals             */
+/* ======================= */
+export async function GET() {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  await connectDB();
+
+  const rawSignals = await LifeSignal.find({
+    userId: session.user.id,
+    enabled: true,
+  }).lean();
+
+  // Normalize old signals
+  const signals = rawSignals.map((s: any) => ({
+    ...s,
+    categoryKey: s.categoryKey || s.category || "custom",
+  }));
+
+  return Response.json({ signals });
+}
+
+/* ======================= */
+/* CREATE Signal           */
+/* ======================= */
+export async function POST(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const body = await req.json();
+
+  // 🔥 Debug log (temporary)
+  console.log("SIGNAL CREATE BODY:", body);
+
+  await connectDB();
+
+  // ✅ CategoryKey must come from frontend
+  if (!body.categoryKey) {
+    return Response.json(
+      { error: "categoryKey is required" },
+      { status: 400 }
+    );
+  }
+
+  const created = await LifeSignal.create({
+    userId: session.user.id,
+
+    key: body.key,
+    label: body.label,
+
+    // ✅ FIX: Store correct categoryKey
+    categoryKey: body.categoryKey,
+
+    inputType: body.inputType ?? "number",
+
+    unit: body.unit ?? "",
+    target: body.target ?? null,
+
+    min: body.min ?? null,
+    max: body.max ?? null,
+    step: body.step ?? null,
+
+    direction: body.direction ?? "higher_better",
+    weight: body.weight ?? 1,
+
+    enabled: true,
+  });
+
+  return Response.json({ ok: true, signal: created });
+}
+
+/* ======================= */
+/* DELETE Signal           */
+/* ======================= */
+export async function DELETE(req: Request) {
+  const session = await getServerSession(authOptions);
+  if (!session?.user?.id) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { searchParams } = new URL(req.url);
+  const key = searchParams.get("key");
+
+  if (!key) {
+    return Response.json({ error: "Key required" }, { status: 400 });
+  }
+
+  await connectDB();
+
+  await LifeSignal.deleteOne({
+    userId: session.user.id,
+    key,
+  });
+
+  return Response.json({ ok: true });
+}
+
+
+
 ===== FILE: D:\PROGRAMMING\Projects\life-os\app\checkin\page.tsx =====
+// app/checkin/page.tsx
+
 "use client";
 
 import { useEffect, useState } from "react";
+
 import { DailyLogForm } from "@/features/daily-log/types";
+
 import { MentalCard } from "@/features/daily-log/components/MentalCard";
 import { SleepCard } from "@/features/daily-log/components/SleepCard";
 import { PhysicalCard } from "@/features/daily-log/components/PhysicalCard";
@@ -1294,12 +1694,20 @@ import { WorkCard } from "@/features/daily-log/components/WorkCard";
 import { PlanningCard } from "@/features/daily-log/components/PlanningCard";
 import { ReflectionCard } from "@/features/daily-log/components/ReflectionCard";
 
+import { DynamicCategorySections } from "@/features/schema/ui/DynamicCategorySections";
 
 
+import { getTodayDateString } from "@/utils/date";
+
+/* ----------------------------- */
+/* Default Form                  */
+/* ----------------------------- */
 
 const defaultForm: DailyLogForm = {
   mental: { mood: 5, energy: 5, stress: 5, anxiety: 5, focus: 5 },
+
   sleep: { hours: 0, quality: 5, sleepTime: "", wakeTime: "" },
+
   physical: {
     gym: false,
     workoutType: "rest",
@@ -1310,6 +1718,7 @@ const defaultForm: DailyLogForm = {
     bodyFeeling: "normal",
     painNote: "",
   },
+
   work: {
     deepWorkHours: 0,
     coded: false,
@@ -1317,6 +1726,7 @@ const defaultForm: DailyLogForm = {
     studied: false,
     mainWork: "",
   },
+
   habits: {
     gym: false,
     reading: false,
@@ -1328,26 +1738,52 @@ const defaultForm: DailyLogForm = {
     junkFood: { had: false, times: 0, what: "" },
     socialMediaOveruse: false,
   },
-  planning: { plannedTasks: 0, completedTasks: 0, reasonNotCompleted: "" },
+
+  planning: {
+    plannedTasks: 0,
+    completedTasks: 0,
+    reasonNotCompleted: "",
+  },
+
   reflection: { win: "", mistake: "", learned: "", bothering: "" },
 };
 
+/* ----------------------------- */
+/* Page Component                */
+/* ----------------------------- */
+
 export default function CheckinPage() {
   const [form, setForm] = useState<DailyLogForm>(defaultForm);
+
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
+
   const [status, setStatus] = useState("");
+
+  // Needed for DynamicSignalFields
+  const todayDate = getTodayDateString();
+
+  /* ----------------------------- */
+  /* Load Today's Log              */
+  /* ----------------------------- */
 
   useEffect(() => {
     fetch("/api/daily-log/today")
       .then((res) => res.json())
       .then((data) => {
-        if (data) {
-          setForm((prev) => ({ ...prev, ...data }));
+        if (data && !data.error) {
+          setForm((prev) => ({
+            ...prev,
+            ...data,
+          }));
         }
       })
       .finally(() => setLoading(false));
   }, []);
+
+  /* ----------------------------- */
+  /* Save Log                      */
+  /* ----------------------------- */
 
   async function save() {
     setSaving(true);
@@ -1365,43 +1801,47 @@ export default function CheckinPage() {
     setSaving(false);
   }
 
+  /* ----------------------------- */
+  /* UI                            */
+  /* ----------------------------- */
+
   if (loading) return <div className="p-8">Loading...</div>;
 
   return (
-  <div className="min-h-screen bg-[#0f1115] text-gray-100">
-    <div className="max-w-xl mx-auto p-4 space-y-6 pb-24">
-      <MentalCard form={form} setForm={setForm} />
-      <SleepCard form={form} setForm={setForm} />
-      <PhysicalCard form={form} setForm={setForm} />
-      <WorkCard form={form} setForm={setForm} />
-      <HabitsCard form={form} setForm={setForm} />
-      <PlanningCard form={form} setForm={setForm} />
-      <ReflectionCard form={form} setForm={setForm} />
+    <div className="min-h-screen bg-[#0f1115] text-gray-100">
+      <div className="max-w-xl mx-auto p-4 space-y-6 pb-24">
+        {/* Core Daily Check-in */}
+        <MentalCard form={form} setForm={setForm} />
+        <SleepCard form={form} setForm={setForm} />
+        <PhysicalCard form={form} setForm={setForm} />
+        <WorkCard form={form} setForm={setForm} />
+        <HabitsCard form={form} setForm={setForm} />
+        <PlanningCard form={form} setForm={setForm} />
+        <ReflectionCard form={form} setForm={setForm} />
 
-      {/* Save Button */}
-      <div className="pt-6">
-        <button
-          onClick={save}
-          disabled={saving}
-          className="w-full bg-white text-black py-3 rounded-xl font-semibold active:scale-[0.98] transition"
-        >
-          {saving ? "Saving..." : "Save Check-in"}
-        </button>
+        {/* ✅ Dynamic Custom Signals */}
+        <DynamicCategorySections date={todayDate} />
 
-        {status && (
-          <div className="text-center text-sm text-gray-400 mt-2">
-            {status}
-          </div>
-        )}
+        {/* Save Button */}
+        <div className="pt-6">
+          <button
+            onClick={save}
+            disabled={saving}
+            className="w-full bg-white text-black py-3 rounded-xl font-semibold active:scale-[0.98] transition"
+          >
+            {saving ? "Saving..." : "Save Check-in"}
+          </button>
+
+          {status && (
+            <div className="text-center text-sm text-gray-400 mt-2">
+              {status}
+            </div>
+          )}
+        </div>
       </div>
     </div>
-  </div>
-);
-
+  );
 }
-
-
-
 
 
 
@@ -3020,6 +3460,463 @@ export default function ReportsPage() {
   return (
     <div className="p-6 text-gray-400">
       Reports coming soon...
+    </div>
+  );
+}
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\app\settings\categories\page.tsx =====
+"use client";
+
+import { useEffect, useState } from "react";
+import { Card } from "@/features/daily-log/ui/Card";
+import { InputField } from "@/features/daily-log/ui/InputField";
+
+type Category = {
+  key: string;
+  label: string;
+  order: number;
+};
+
+export default function CategoriesPage() {
+  const [categories, setCategories] = useState<Category[]>([]);
+
+  const [form, setForm] = useState({
+    key: "",
+    label: "",
+    order: 0,
+  });
+
+  /* ---------------- Load ---------------- */
+
+  async function load() {
+    const res = await fetch("/api/categories");
+    const data = await res.json();
+    setCategories(data.categories || []);
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  /* ---------------- Actions ---------------- */
+
+  async function addCategory() {
+    if (!form.key || !form.label) return;
+
+    await fetch("/api/categories", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(form),
+    });
+
+    setForm({ key: "", label: "", order: 0 });
+    load();
+  }
+
+  async function removeCategory(key: string) {
+    await fetch(`/api/categories?key=${key}`, { method: "DELETE" });
+    load();
+  }
+
+  /* ---------------- UI ---------------- */
+
+  return (
+    <div className="min-h-screen bg-[#0f1115] text-gray-100">
+      <div className="max-w-4xl mx-auto p-6 space-y-8">
+        <h1 className="text-2xl font-semibold">Life Categories</h1>
+
+        <div className="text-sm text-gray-400 max-w-xl">
+          Categories define the structure of your Daily Check-in. Signals live
+          inside categories like Discipline, Training, Nutrition, etc.
+        </div>
+
+        {/* Add Category */}
+        <Card
+          title="Create Category"
+          subtitle="Add a new section to your daily form"
+        >
+          <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+            <InputField
+              label="Key"
+              description="internal id (discipline)"
+              value={form.key}
+              onChange={(v) => setForm({ ...form, key: v })}
+            />
+
+            <InputField
+              label="Label"
+              description="shown in UI (Discipline)"
+              value={form.label}
+              onChange={(v) => setForm({ ...form, label: v })}
+            />
+
+            <InputField
+              label="Order"
+              description="sorting priority"
+              type="number"
+              value={form.order}
+              onChange={(v) => setForm({ ...form, order: Number(v) })}
+            />
+          </div>
+
+          <button
+            onClick={addCategory}
+            className="px-5 py-2 rounded-lg bg-white text-black font-semibold active:scale-[0.98] transition"
+          >
+            + Add Category
+          </button>
+        </Card>
+
+        {/* Existing Categories */}
+        <Card
+          title="Your Categories"
+          subtitle="These will appear in your check-in form"
+        >
+          {categories.length === 0 && (
+            <div className="text-sm text-gray-500">
+              No categories yet. Create your first one above.
+            </div>
+          )}
+
+          <div className="space-y-3">
+            {categories.map((c) => (
+              <div
+                key={c.key}
+                className="flex justify-between items-center bg-[#0f1115] border border-[#232632] rounded-xl p-3"
+              >
+                <div>
+                  <div className="font-medium">{c.label}</div>
+                  <div className="text-xs text-gray-500">
+                    key: {c.key} · order: {c.order}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => removeCategory(c.key)}
+                  className="text-sm text-red-400 hover:text-red-300 transition"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
+    </div>
+  );
+}
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\app\settings\metrics\page.tsx =====
+"use client";
+
+import { useEffect, useState } from "react";
+
+type Metric = {
+  key: string;
+  label: string;
+  components: any[];
+};
+
+export default function MetricsPage() {
+  const [metrics, setMetrics] = useState<Metric[]>([]);
+  const [newKey, setNewKey] = useState("");
+  const [newLabel, setNewLabel] = useState("");
+
+  async function load() {
+    const res = await fetch("/api/metrics");
+    const data = await res.json();
+    setMetrics(data.metrics || []);
+  }
+
+  useEffect(() => {
+    load();
+  }, []);
+
+  async function addMetric() {
+    await fetch("/api/metrics", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        key: newKey,
+        label: newLabel,
+        components: [],
+      }),
+    });
+
+    setNewKey("");
+    setNewLabel("");
+    load();
+  }
+
+  async function removeMetric(key: string) {
+    await fetch(`/api/metrics?key=${key}`, {
+      method: "DELETE",
+    });
+    load();
+  }
+
+  return (
+    <div className="max-w-xl mx-auto p-6 space-y-6">
+      <h1 className="text-xl font-bold">Metric Builder</h1>
+
+      {/* Add */}
+      <div className="border p-4 rounded-xl space-y-2">
+        <input
+          placeholder="key (energy)"
+          value={newKey}
+          onChange={(e) => setNewKey(e.target.value)}
+          className="w-full border px-2 py-1 rounded"
+        />
+        <input
+          placeholder="label (Energy)"
+          value={newLabel}
+          onChange={(e) => setNewLabel(e.target.value)}
+          className="w-full border px-2 py-1 rounded"
+        />
+
+        <button
+          onClick={addMetric}
+          className="w-full bg-black text-white py-2 rounded"
+        >
+          Add Metric
+        </button>
+      </div>
+
+      {/* List */}
+      {metrics.map((m) => (
+        <div
+          key={m.key}
+          className="flex justify-between border p-3 rounded-xl"
+        >
+          <div>
+            <div className="font-medium">{m.label}</div>
+            <div className="text-xs text-gray-500">{m.key}</div>
+          </div>
+
+          <button
+            onClick={() => removeMetric(m.key)}
+            className="text-red-500 text-sm"
+          >
+            Delete
+          </button>
+        </div>
+      ))}
+    </div>
+  );
+}
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\app\settings\signals\page.tsx =====
+"use client";
+
+import { useEffect, useState } from "react";
+import { Card } from "@/features/daily-log/ui/Card";
+import { InputField } from "@/features/daily-log/ui/InputField";
+import { SelectField } from "@/features/daily-log/ui/SelectField";
+
+type Category = {
+  key: string;
+  label: string;
+};
+
+export default function SignalsPage() {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [signals, setSignals] = useState<any[]>([]);
+
+  const [form, setForm] = useState({
+    key: "",
+    label: "",
+    categoryKey: "",
+    inputType: "number",
+
+    unit: "",
+    target: "",
+
+    min: "",
+    max: "",
+    step: "",
+  });
+
+  /* ---------------- Load ---------------- */
+
+  async function loadAll() {
+    const c = await fetch("/api/categories").then((r) => r.json());
+    setCategories(c.categories || []);
+
+    const s = await fetch("/api/signals").then((r) => r.json());
+    setSignals(s.signals || []);
+  }
+
+  useEffect(() => {
+    loadAll();
+  }, []);
+
+  /* ---------------- Add Signal ---------------- */
+
+  async function addSignal() {
+    await fetch("/api/signals", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        ...form,
+
+        target: form.target ? Number(form.target) : null,
+
+        min: form.min ? Number(form.min) : null,
+        max: form.max ? Number(form.max) : null,
+        step: form.step ? Number(form.step) : null,
+      }),
+    });
+
+    setForm({
+      key: "",
+      label: "",
+      categoryKey: "",
+      inputType: "number",
+      unit: "",
+      target: "",
+      min: "",
+      max: "",
+      step: "",
+    });
+
+    loadAll();
+  }
+
+  async function removeSignal(key: string) {
+    await fetch(`/api/signals?key=${key}`, { method: "DELETE" });
+    loadAll();
+  }
+
+  /* ---------------- UI ---------------- */
+
+  return (
+    <div className="min-h-screen bg-[#0f1115] text-gray-100">
+      <div className="max-w-4xl mx-auto p-6 space-y-8">
+        <h1 className="text-2xl font-semibold">Life Signals</h1>
+
+        <div className="text-sm text-gray-400 max-w-xl">
+          Signals are customizable daily fields: stress sliders, water intake,
+          habits checkboxes, journaling text, etc.
+        </div>
+
+        {/* Create Signal */}
+        <Card title="Create Signal" subtitle="Add a new daily field">
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <InputField
+              label="Key"
+              description="stress, water, story"
+              value={form.key}
+              onChange={(v) => setForm({ ...form, key: v })}
+            />
+
+            <InputField
+              label="Label"
+              description="Stress Level"
+              value={form.label}
+              onChange={(v) => setForm({ ...form, label: v })}
+            />
+
+            <SelectField
+              label="Category"
+              value={form.categoryKey}
+              options={categories.map((c) => c.key)}
+              onChange={(v) => setForm({ ...form, categoryKey: v })}
+            />
+
+            <SelectField
+              label="Input Type"
+              value={form.inputType}
+              options={["checkbox", "number", "slider", "text", "textarea"]}
+              onChange={(v) => setForm({ ...form, inputType: v })}
+            />
+          </div>
+
+          {/* Number Config */}
+          {form.inputType === "number" && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+              <InputField
+                label="Unit (optional)"
+                description="L, hrs, reps"
+                value={form.unit}
+                onChange={(v) => setForm({ ...form, unit: v })}
+              />
+
+              <InputField
+                label="Target (optional)"
+                description="daily goal"
+                type="number"
+                value={form.target}
+                onChange={(v) => setForm({ ...form, target: v })}
+              />
+            </div>
+          )}
+
+          {/* Slider Config */}
+          {form.inputType === "slider" && (
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4 pt-4">
+              <InputField
+                label="Min"
+                type="number"
+                value={form.min}
+                onChange={(v) => setForm({ ...form, min: v })}
+              />
+
+              <InputField
+                label="Max"
+                type="number"
+                value={form.max}
+                onChange={(v) => setForm({ ...form, max: v })}
+              />
+
+              <InputField
+                label="Step"
+                type="number"
+                value={form.step}
+                onChange={(v) => setForm({ ...form, step: v })}
+              />
+            </div>
+          )}
+
+          <button
+            onClick={addSignal}
+            className="px-5 py-2 rounded-lg bg-white text-black font-semibold active:scale-[0.98] transition"
+          >
+            + Add Signal
+          </button>
+        </Card>
+
+        {/* Existing Signals */}
+        <Card title="Your Signals" subtitle="Active daily fields">
+          <div className="space-y-3">
+            {signals.map((s) => (
+              <div
+                key={s.key}
+                className="flex justify-between items-center bg-[#0f1115] border border-[#232632] rounded-xl p-3"
+              >
+                <div>
+                  <div className="font-medium">{s.label}</div>
+                  <div className="text-xs text-gray-500">
+                    {s.key} · {s.inputType} · {s.categoryKey}
+                  </div>
+                </div>
+
+                <button
+                  onClick={() => removeSignal(s.key)}
+                  className="text-sm text-red-400 hover:text-red-300 transition"
+                >
+                  Delete
+                </button>
+              </div>
+            ))}
+          </div>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -5870,6 +6767,8 @@ export async function explainGoal(goal: any, userId: string) {
 
 
 ===== FILE: D:\PROGRAMMING\Projects\life-os\features\goals\engine\updateGoalLoadWeightsFromFeedback.ts =====
+// features/goals/engine/updateGoalLoadWeightsFromFeedback.ts
+
 type GoalPressureWeights = {
   cadence: number;
   energy: number;
@@ -5877,39 +6776,37 @@ type GoalPressureWeights = {
   phaseMismatch: number;
 };
 
+/**
+ * Clamp weights into safe range
+ */
 function clamp(n: number, min = 0.05, max = 0.6) {
   if (Number.isNaN(n)) return min;
   return Math.max(min, Math.min(max, n));
 }
 
+/**
+ * Smooth Goal Load Feedback Learning V2
+ *
+ * - Overload → increase cadence + stress sensitivity
+ * - Underload → relax energy + mismatch sensitivity
+ * - Stable → no change
+ *
+ * Uses confidence-scaled EMA smoothing to prevent oscillation.
+ */
 export function updateGoalLoadWeightsFromFeedback({
   outcome,
   currentWeights,
+  confidence,
 }: {
   outcome: "stable" | "overloaded" | "underutilized";
   currentWeights: GoalPressureWeights;
+  confidence: number; // 0 → 1
 }): {
   changed: boolean;
   nextWeights: GoalPressureWeights;
   reason: string;
 } {
-  let next = { ...currentWeights };
-  let changed = false;
-  let reason = "";
-
-  if (outcome === "overloaded") {
-    next.cadence *= 1.05;
-    next.stress *= 1.05;
-    changed = true;
-    reason = "System overloaded → increased cadence & stress sensitivity";
-  }
-
-  if (outcome === "underutilized") {
-    next.energy *= 0.95;
-    next.phaseMismatch *= 0.95;
-    changed = true;
-    reason = "System underutilized → relaxed energy & phase mismatch impact";
-  }
+  /* ---------------- Stable → No Learning ---------------- */
 
   if (outcome === "stable") {
     return {
@@ -5919,14 +6816,59 @@ export function updateGoalLoadWeightsFromFeedback({
     };
   }
 
+  /* ---------------- Learning Rate ---------------- */
+
+  // Confidence controls how strong updates are
+  const lr = 0.05 * Math.max(0.2, confidence);
+
+  /* ---------------- Target Shift ---------------- */
+
+  const target =
+    outcome === "overloaded"
+      ? {
+          cadence: currentWeights.cadence + 0.05,
+          stress: currentWeights.stress + 0.05,
+          energy: currentWeights.energy,
+          phaseMismatch: currentWeights.phaseMismatch,
+        }
+      : {
+          cadence: currentWeights.cadence,
+          stress: currentWeights.stress,
+          energy: currentWeights.energy - 0.05,
+          phaseMismatch: currentWeights.phaseMismatch - 0.05,
+        };
+
+  /* ---------------- EMA Update ---------------- */
+
+  const next: GoalPressureWeights = {
+    cadence: clamp(
+      currentWeights.cadence * (1 - lr) + target.cadence * lr
+    ),
+
+    stress: clamp(
+      currentWeights.stress * (1 - lr) + target.stress * lr
+    ),
+
+    energy: clamp(
+      currentWeights.energy * (1 - lr) + target.energy * lr
+    ),
+
+    phaseMismatch: clamp(
+      currentWeights.phaseMismatch * (1 - lr) +
+        target.phaseMismatch * lr
+    ),
+  };
+
+  /* ---------------- Reason ---------------- */
+
+  const reason =
+    outcome === "overloaded"
+      ? "Overload detected → increased cadence & stress sensitivity smoothly"
+      : "Underutilization detected → relaxed energy & mismatch pressure smoothly";
+
   return {
-    changed,
-    nextWeights: {
-      cadence: clamp(next.cadence),
-      energy: clamp(next.energy),
-      stress: clamp(next.stress),
-      phaseMismatch: clamp(next.phaseMismatch),
-    },
+    changed: true,
+    nextWeights: next,
     reason,
   };
 }
@@ -8507,9 +9449,11 @@ export function EraSummary({ era }: any) {
 
 
 ===== FILE: D:\PROGRAMMING\Projects\life-os\features\insights\models\LifeSettings.ts =====
+// features/insights/models/LifeSettings.ts
+
 import { Schema, model, models } from "mongoose";
 
-/* ---------------- Sensitivity (Phase Detection) ---------------- */
+/* ---------------- Phase Sensitivity (Phase Detection) ---------------- */
 
 const PhaseSensitivitySchema = new Schema(
   {
@@ -8533,9 +9477,9 @@ const GoalPressureWeightsSchema = new Schema(
   { _id: false }
 );
 
-/* ---------------- Learning History ---------------- */
+/* ---------------- Phase Learning History ---------------- */
 
-const SensitivityHistorySchema = new Schema(
+const PhaseLearningHistorySchema = new Schema(
   {
     date: String,
     before: PhaseSensitivitySchema,
@@ -8545,11 +9489,41 @@ const SensitivityHistorySchema = new Schema(
   { _id: false }
 );
 
-/* ---------------- Life Settings ---------------- */
+/* ---------------- Goal Load Learning History (NEW V2) ---------------- */
+
+const GoalLoadHistorySchema = new Schema(
+  {
+    date: String,
+
+    outcome: String,
+    confidence: Number,
+
+    before: {
+      cadence: Number,
+      energy: Number,
+      stress: Number,
+      phaseMismatch: Number,
+    },
+
+    after: {
+      cadence: Number,
+      energy: Number,
+      stress: Number,
+      phaseMismatch: Number,
+    },
+
+    reason: String,
+  },
+  { _id: false }
+);
+
+/* ---------------- Life Settings Main Schema ---------------- */
 
 const LifeSettingsSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, index: true },
+
+    /* -------- Baselines -------- */
 
     baselines: {
       sleep: Number,
@@ -8558,6 +9532,8 @@ const LifeSettingsSchema = new Schema(
       energy: Number,
       deepWork: Number,
     },
+
+    /* -------- Learned Phase Sensitivity -------- */
 
     learnedSensitivity: {
       type: PhaseSensitivitySchema,
@@ -8569,6 +9545,8 @@ const LifeSettingsSchema = new Schema(
       }),
     },
 
+    /* -------- Learned Goal Pressure Weights -------- */
+
     goalPressureWeights: {
       type: GoalPressureWeightsSchema,
       default: () => ({
@@ -8579,8 +9557,17 @@ const LifeSettingsSchema = new Schema(
       }),
     },
 
+    /* -------- Phase Learning History -------- */
+
     sensitivityHistory: {
-      type: [SensitivityHistorySchema],
+      type: [PhaseLearningHistorySchema],
+      default: [],
+    },
+
+    /* -------- Goal Load Learning History (NEW) -------- */
+
+    goalLoadHistory: {
+      type: [GoalLoadHistorySchema],
       default: [],
     },
   },
@@ -9018,6 +10005,448 @@ export type EraNarrative = {
 
 
 
+===== FILE: D:\PROGRAMMING\Projects\life-os\features\metrics\engine\computeMetric.ts =====
+// features/metrics/engine/computeMetric.ts
+
+import { DailyLog } from "@/server/db/models/DailyLog";
+import { LifeMetric } from "../models/LifeMetric";
+import { LifeSignal } from "@/features/signals/models/LifeSignal";
+import { computeSignalScore } from "@/features/signals/engine/computeSignalScore";
+import { applyTransform } from "./transforms";
+
+/**
+ * Compute one metric dynamically.
+ *
+ * Example:
+ * computeMetric("energy")
+ */
+
+export async function computeMetric({
+  userId,
+  date,
+  metricKey,
+}: {
+  userId: string;
+  date: string;
+  metricKey: string;
+}) {
+  const metric = await LifeMetric.findOne({
+    userId,
+    key: metricKey,
+    enabled: true,
+  }).lean();
+
+  if (!metric) {
+    return { score: 0, breakdown: [] };
+  }
+
+  const log = await DailyLog.findOne({ userId, date }).lean();
+  if (!log) {
+    return { score: 0, breakdown: [] };
+  }
+
+  const signalsObj = log.signals || {};
+
+  let totalWeight = 0;
+  let totalScore = 0;
+
+  const breakdown: any[] = [];
+
+  for (const comp of metric.components) {
+    const def = await LifeSignal.findOne({
+      userId,
+      key: comp.signalKey,
+    }).lean();
+
+    if (!def) continue;
+
+    const rawValue =
+      typeof signalsObj[comp.signalKey] === "number"
+        ? signalsObj[comp.signalKey]
+        : 0;
+
+    // Normalize vs target
+    const baseScore = computeSignalScore({
+      value: rawValue,
+      target: def.target,
+      direction: def.direction,
+    });
+
+    // Apply nonlinear transform
+    const transformed = applyTransform({
+      x: baseScore,
+      transform: comp.transform,
+      params: comp.params,
+    });
+
+    totalWeight += comp.weight;
+    totalScore += transformed * comp.weight;
+
+    breakdown.push({
+      signalKey: comp.signalKey,
+      rawValue,
+      target: def.target,
+      baseScore,
+      transform: comp.transform,
+      transformed,
+      weight: comp.weight,
+    });
+  }
+
+  const final =
+    totalWeight > 0 ? totalScore / totalWeight : 0;
+
+  return {
+    score: Math.round(final * 100) / 100,
+    breakdown,
+  };
+}
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\features\metrics\engine\transforms.ts =====
+// features/metrics/engine/transforms.ts
+
+/**
+ * Transform raw normalized signal scores into nonlinear curves.
+ */
+
+export function applyTransform({
+  x,
+  transform,
+  params,
+}: {
+  x: number; // normalized 0–1
+  transform: string;
+  params?: Record<string, any>;
+}) {
+  // Clamp input
+  x = Math.max(0, Math.min(1, x));
+
+  switch (transform) {
+    case "linear":
+      return x;
+
+    /**
+     * Sigmoid curve
+     * Good for sleep: below threshold drops hard
+     */
+    case "sigmoid": {
+      const k = params?.k ?? 10; // steepness
+      const mid = params?.mid ?? 0.5;
+
+      const y = 1 / (1 + Math.exp(-k * (x - mid)));
+      return y;
+    }
+
+    /**
+     * Step function
+     * Example: gym done gives instant boost
+     */
+    case "step": {
+      const threshold = params?.threshold ?? 0.5;
+      return x >= threshold ? 1 : 0;
+    }
+
+    /**
+     * Saturating curve
+     * Example: water intake helps until enough, then flat
+     */
+    case "saturating": {
+      const alpha = params?.alpha ?? 2;
+      return 1 - Math.exp(-alpha * x);
+    }
+
+    default:
+      return x;
+  }
+}
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\features\metrics\models\LifeMetric.ts =====
+// features/metrics/models/LifeMetric.ts
+
+import { Schema, model, models } from "mongoose";
+
+/**
+ * Metric Component Definition
+ *
+ * Example:
+ * sleep contributes to energy using sigmoid curve
+ */
+
+const MetricComponentSchema = new Schema(
+  {
+    signalKey: { type: String, required: true },
+
+    weight: { type: Number, default: 1 },
+
+    /**
+     * Transform defines nonlinear scoring curve
+     */
+    transform: {
+      type: String,
+      enum: ["linear", "sigmoid", "step", "saturating"],
+      default: "linear",
+    },
+
+    /**
+     * Optional params for nonlinear transforms
+     */
+    params: {
+      type: Schema.Types.Mixed,
+      default: {},
+    },
+  },
+  { _id: false }
+);
+
+/**
+ * LifeMetric Definition
+ *
+ * Example:
+ * key = "energy"
+ * components = [sleep, gym, water]
+ */
+
+const LifeMetricSchema = new Schema(
+  {
+    userId: {
+      type: Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+
+    key: { type: String, required: true },
+
+    label: { type: String, required: true },
+
+    components: {
+      type: [MetricComponentSchema],
+      default: [],
+    },
+
+    enabled: { type: Boolean, default: true },
+  },
+  { timestamps: true }
+);
+
+LifeMetricSchema.index({ userId: 1, key: 1 }, { unique: true });
+
+export const LifeMetric =
+  models.LifeMetric || model("LifeMetric", LifeMetricSchema);
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\features\schema\models\LifeCategory.ts =====
+import { Schema, model, models } from "mongoose";
+
+const LifeCategorySchema = new Schema(
+  {
+    userId: {
+      type: Schema.Types.ObjectId,
+      required: true,
+      index: true,
+    },
+
+    key: {
+      type: String,
+      required: true,
+    },
+
+    label: {
+      type: String,
+      required: true,
+    },
+
+    order: {
+      type: Number,
+      default: 0,
+    },
+  },
+  { timestamps: true }
+);
+
+LifeCategorySchema.index({ userId: 1, key: 1 }, { unique: true });
+
+export const LifeCategory =
+  models.LifeCategory || model("LifeCategory", LifeCategorySchema);
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\features\schema\ui\DynamicCategorySections.tsx =====
+"use client";
+
+import { useEffect, useState } from "react";
+import { Card } from "@/features/daily-log/ui/Card";
+import { InputField } from "@/features/daily-log/ui/InputField";
+import { CheckboxField } from "@/features/daily-log/ui/CheckboxField";
+import { SliderField } from "@/features/daily-log/ui/SliderField";
+import { TextareaField } from "@/features/daily-log/ui/TextareaField";
+
+type Category = {
+  key: string;
+  label: string;
+};
+
+type Signal = {
+  key: string;
+  label: string;
+  categoryKey: string;
+
+  inputType: "checkbox" | "number" | "slider" | "text" | "textarea";
+
+  unit?: string;
+  target?: number | null;
+
+  min?: number | null;
+  max?: number | null;
+  step?: number | null;
+};
+
+export function DynamicCategorySections({ date }: { date: string }) {
+  const [categories, setCategories] = useState<Category[]>([]);
+  const [signals, setSignals] = useState<Signal[]>([]);
+  const [values, setValues] = useState<Record<string, any>>({});
+
+  /* ---------------- Load Schema ---------------- */
+
+  useEffect(() => {
+    async function loadSchema() {
+      const catRes = await fetch("/api/categories");
+      const catData = await catRes.json();
+      setCategories(catData.categories || []);
+
+      const sigRes = await fetch("/api/signals");
+      const sigData = await sigRes.json();
+      setSignals(sigData.signals || []);
+    }
+
+    loadSchema();
+  }, []);
+
+  /* ---------------- Save Signal Value ---------------- */
+
+  async function updateSignal(key: string, value: any) {
+    setValues((prev) => ({ ...prev, [key]: value }));
+
+    await fetch("/api/signals/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ date, key, value }),
+    });
+  }
+
+  /* ---------------- UI ---------------- */
+
+  return (
+    <div className="space-y-8 pt-8">
+      <h2 className="text-xl font-semibold">Custom Signals</h2>
+
+      {categories.map((cat) => {
+        const catSignals = signals.filter(
+          (s) => s.categoryKey === cat.key
+        );
+
+        if (!catSignals.length) return null;
+
+        return (
+          <Card
+            key={cat.key}
+            title={cat.label}
+            subtitle="Dynamic daily fields"
+          >
+            <div className="space-y-5">
+              {catSignals.map((s) => {
+                const current = values[s.key];
+
+                /* -------- Checkbox -------- */
+                if (s.inputType === "checkbox") {
+                  return (
+                    <CheckboxField
+                      key={s.key}
+                      label={s.label}
+                      checked={current === 1}
+                      onChange={(v) => updateSignal(s.key, v ? 1 : 0)}
+                    />
+                  );
+                }
+
+                /* -------- Number -------- */
+                if (s.inputType === "number") {
+                  return (
+                    <InputField
+                      key={s.key}
+                      label={s.label}
+                      description={
+                        s.target
+                          ? `Target: ${s.target} ${s.unit || ""}`
+                          : s.unit
+                          ? `Unit: ${s.unit}`
+                          : undefined
+                      }
+                      type="number"
+                      value={current ?? ""}
+                      onChange={(v) => updateSignal(s.key, Number(v))}
+                    />
+                  );
+                }
+
+                /* -------- Slider -------- */
+                if (s.inputType === "slider") {
+                  return (
+                    <SliderField
+                      key={s.key}
+                      label={s.label}
+                      leftLabel={`${s.min ?? 0}`}
+                      rightLabel={`${s.max ?? 10}`}
+                      value={current ?? s.min ?? 0}
+                      onChange={(v) => updateSignal(s.key, v)}
+                    />
+                  );
+                }
+
+                /* -------- Text -------- */
+                if (s.inputType === "text") {
+                  return (
+                    <InputField
+                      key={s.key}
+                      label={s.label}
+                      value={current ?? ""}
+                      onChange={(v) => updateSignal(s.key, v)}
+                    />
+                  );
+                }
+
+                /* -------- Textarea -------- */
+                if (s.inputType === "textarea") {
+                  return (
+                    <TextareaField
+                      key={s.key}
+                      label={s.label}
+                      value={current ?? ""}
+                      onChange={(v) => updateSignal(s.key, v)}
+                    />
+                  );
+                }
+
+                return null;
+              })}
+            </div>
+          </Card>
+        );
+      })}
+    </div>
+  );
+}
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\features\schema\ui\DynamicDailyForm.tsx =====
+
+
+
 ===== FILE: D:\PROGRAMMING\Projects\life-os\features\settings\components\DerivedSettingsCard.tsx =====
 "use client";
 
@@ -9194,6 +10623,185 @@ export function getEffectiveSettings({
 
 
 
+===== FILE: D:\PROGRAMMING\Projects\life-os\features\signals\engine\computeCategoryScore.ts =====
+// features/signals/engine/computeCategoryScore.ts
+
+import { LifeSignal } from "../models/LifeSignal";
+import { DailyLog } from "@/server/db/models/DailyLog";
+import { computeSignalScore } from "./computeSignalScore";
+
+/**
+ * Compute dynamic category score (Discipline, Recovery, etc.)
+ *
+ * ✅ Uses categoryKey correctly
+ */
+
+export async function computeCategoryScore({
+  userId,
+  date,
+  categoryKey,
+}: {
+  userId: string;
+  date: string;
+  categoryKey: string;
+}) {
+  const defs = await LifeSignal.find({
+    userId,
+    categoryKey, // ✅ FIXED
+    enabled: true,
+  }).lean();
+
+  const log = await DailyLog.findOne({ userId, date }).lean();
+
+  if (!log) {
+    return { score: 0, breakdown: [] };
+  }
+
+  const signalsObj = log.signals || {};
+
+  let totalWeight = 0;
+  let totalScore = 0;
+
+  const breakdown: any[] = [];
+
+  for (const def of defs) {
+    const rawValue =
+      typeof signalsObj[def.key] === "number"
+        ? signalsObj[def.key]
+        : 0;
+
+    const s = computeSignalScore({
+      value: rawValue,
+      target: def.target,
+      direction: def.direction,
+    });
+
+    totalWeight += def.weight;
+    totalScore += s * def.weight;
+
+    breakdown.push({
+      key: def.key,
+      label: def.label,
+      value: rawValue,
+      target: def.target,
+      score: s,
+      weight: def.weight,
+    });
+  }
+
+  const final =
+    totalWeight > 0 ? totalScore / totalWeight : 0;
+
+  return {
+    score: Math.round(final * 100) / 100,
+    breakdown,
+  };
+}
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\features\signals\engine\computeSignalScore.ts =====
+// features/signals/engine/computeSignalScore.ts
+
+/**
+ * Normalize a signal value against its target.
+ *
+ * Example:
+ * water = 2.5L, target = 3L → score = 0.83
+ */
+
+export function computeSignalScore({
+  value,
+  target,
+  direction,
+}: {
+  value: number;
+  target: number | null;
+  direction: "higher_better" | "lower_better";
+}) {
+  if (target == null) return 0;
+
+  let score = value / target;
+
+  if (direction === "lower_better") {
+    score = target / Math.max(value, 0.0001);
+  }
+
+  // Clamp 0–1.5 then normalize
+  score = Math.max(0, Math.min(score, 1.5));
+
+  return Math.min(1, score);
+}
+
+
+
+===== FILE: D:\PROGRAMMING\Projects\life-os\features\signals\models\LifeSignal.ts =====
+import { Schema, model, models } from "mongoose";
+
+/**
+ * LifeSignal = Dynamic field in Daily Log
+ */
+
+const LifeSignalSchema = new Schema(
+  {
+    userId: { type: Schema.Types.ObjectId, required: true },
+
+    key: { type: String, required: true },
+    label: { type: String, required: true },
+
+    categoryKey: {
+      type: String,
+      required: true,
+    },
+
+    /* ===================================================== */
+    /* INPUT TYPE                                            */
+    /* ===================================================== */
+
+    inputType: {
+      type: String,
+      enum: ["checkbox", "number", "slider", "text", "textarea"],
+      default: "number",
+    },
+
+    /* ===================================================== */
+    /* OPTIONAL NUMERIC CONFIG                               */
+    /* ===================================================== */
+
+    unit: { type: String, default: "" },
+
+    target: {
+      type: Number,
+      default: null, // ✅ optional always
+    },
+
+    min: { type: Number, default: null },
+    max: { type: Number, default: null },
+    step: { type: Number, default: null },
+
+    /* ===================================================== */
+    /* SIGNAL META                                           */
+    /* ===================================================== */
+
+    direction: {
+      type: String,
+      enum: ["higher_better", "lower_better"],
+      default: "higher_better",
+    },
+
+    weight: { type: Number, default: 1 },
+    enabled: { type: Boolean, default: true },
+  },
+  { timestamps: true }
+);
+
+LifeSignalSchema.index({ userId: 1, key: 1 }, { unique: true });
+
+export const LifeSignal =
+  models.LifeSignal || model("LifeSignal", LifeSignalSchema);
+
+
+
 ===== FILE: D:\PROGRAMMING\Projects\life-os\server\controllers\dailyLog.controller.ts =====
 
 
@@ -9203,13 +10811,23 @@ export function getEffectiveSettings({
 
 
 ===== FILE: D:\PROGRAMMING\Projects\life-os\server\db\models\DailyLog.ts =====
-import { Schema, model, models } from "mongoose";
+// server/db/models/DailyLog.ts
+
+import mongoose, { Schema, model, models } from "mongoose";
+
+/**
+ * DailyLog
+ *
+ * Existing structure stays
+ * We only add `signals` map for dynamic user-defined signals.
+ */
 
 const DailyLogSchema = new Schema(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    userId: { type: Schema.Types.ObjectId, required: true },
 
-    date: { type: String, required: true }, 
+    date: { type: String, required: true }, // yyyy-mm-dd
+
     mental: {
       mood: Number,
       energy: Number,
@@ -9229,6 +10847,7 @@ const DailyLogSchema = new Schema(
       gym: Boolean,
       workoutType: String,
       calories: Number,
+      meals: Number,
       dietNote: String,
       steps: Number,
       bodyFeeling: String,
@@ -9251,13 +10870,6 @@ const DailyLogSchema = new Schema(
       content: Boolean,
       learning: Boolean,
       noFap: Boolean,
-
-      junkFood: {
-        had: Boolean,
-        times: Number,
-        what: String,
-      },
-
       socialMediaOveruse: Boolean,
     },
 
@@ -9274,17 +10886,20 @@ const DailyLogSchema = new Schema(
       bothering: String,
     },
 
-    emotions: {
-      bestMoment: String,
-      worstMoment: String,
-      stressTrigger: String,
-      happyMoment: String,
-    },
-
-    social: {
-      interactionLevel: String,
-      talkedToFamily: Boolean,
-      networked: Boolean,
+    /**
+     * ✅ NEW: Dynamic Signals
+     *
+     * Example:
+     * signals: {
+     *   water: 2.7,
+     *   sunlight: 30,
+     *   protein: 120
+     * }
+     */
+    signals: {
+      type: Map,
+      of: Number,
+      default: {},
     },
   },
   { timestamps: true }
@@ -9292,7 +10907,8 @@ const DailyLogSchema = new Schema(
 
 DailyLogSchema.index({ userId: 1, date: 1 }, { unique: true });
 
-export const DailyLog = models.DailyLog || model("DailyLog", DailyLogSchema);
+export const DailyLog =
+  models.DailyLog || model("DailyLog", DailyLogSchema);
 
 
 
