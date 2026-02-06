@@ -1,3 +1,5 @@
+// app/api/insights/rebuild/route.ts
+
 import { connectDB } from "@/server/db/connect";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -15,48 +17,59 @@ import { analyzeGlobalGoalLoad } from "@/features/goals/engine/analyzeGlobalGoal
 import { detectGoalLoadOutcome } from "@/features/goals/engine/detectGoalLoadOutcome";
 import { updateGoalLoadWeightsFromFeedback } from "@/features/goals/engine/updateGoalLoadWeightsFromFeedback";
 
+/* ---------------- Default Sensitivity ---------------- */
+
 const DEFAULT_SENSITIVITY = {
   sleepImpact: 1,
   stressImpact: 1,
   energyImpact: 1,
   moodImpact: 1,
-  goalPressureWeights: {
-    cadence: 0.25,
-    energy: 0.25,
-    stress: 0.25,
-    phaseMismatch: 0.25,
-  },
+};
+
+const DEFAULT_GOAL_WEIGHTS = {
+  cadence: 0.25,
+  energy: 0.25,
+  stress: 0.25,
+  phaseMismatch: 0.25,
 };
 
 export async function POST() {
   const session = await getServerSession(authOptions);
+
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
   const userId = session.user.id;
+
   await connectDB();
 
+  /* ---------------- Load Logs ---------------- */
+
   const logs = await DailyLog.find({ userId }).sort({ date: 1 }).lean();
+
   if (!logs.length) {
     return Response.json({ ok: true, message: "No logs found" });
   }
 
-  /* ---------------- SETTINGS ---------------- */
+  /* ---------------- Load or Init Settings ---------------- */
 
   let settings = await LifeSettings.findOne({ userId });
 
   if (!settings) {
     const baselines = computeBaselines(logs);
+
     settings = await LifeSettings.create({
       userId,
       baselines,
       learnedSensitivity: DEFAULT_SENSITIVITY,
+      goalPressureWeights: DEFAULT_GOAL_WEIGHTS,
       sensitivityHistory: [],
+      goalLoadHistory: [],
     });
   }
 
-  /* ---------------- PHASE REBUILD ---------------- */
+  /* ---------------- Phase Rebuild + Phase Learning ---------------- */
 
   let previousPhase: string | null = null;
   let previousSnapshot: any = null;
@@ -98,41 +111,41 @@ export async function POST() {
     previousSnapshot = state.snapshot;
   }
 
-  /* ---------------- GOAL LOAD FEEDBACK (V2) ---------------- */
+  /* ---------------- Goal Load Feedback Learning V2 ---------------- */
 
   const goalLoad = await analyzeGlobalGoalLoad({
     userId,
-    weights: settings.learnedSensitivity.goalPressureWeights,
+    weights: settings.goalPressureWeights,
   });
+
+  const confidence = Math.min(1, goalLoad.global.score);
 
   const outcome = detectGoalLoadOutcome({
     globalScore: goalLoad.global.score,
     phase: previousPhase || "balanced",
   });
 
-  const goalFeedback = updateGoalLoadWeightsFromFeedback({
+  const feedback = updateGoalLoadWeightsFromFeedback({
     outcome,
-    currentWeights: settings.learnedSensitivity.goalPressureWeights,
+    currentWeights: settings.goalPressureWeights,
+    confidence,
   });
 
-  if (goalFeedback.changed) {
-    settings.sensitivityHistory.push({
+  if (feedback.changed) {
+    settings.goalLoadHistory.push({
       date: logs[logs.length - 1].date,
-      before: settings.learnedSensitivity,
-      after: {
-        ...settings.learnedSensitivity,
-        goalPressureWeights: goalFeedback.nextWeights,
-      },
-      reason: goalFeedback.reason,
+      outcome,
+      confidence,
+      before: settings.goalPressureWeights,
+      after: feedback.nextWeights,
+      reason: feedback.reason,
     });
 
-    settings.learnedSensitivity.goalPressureWeights =
-      goalFeedback.nextWeights;
-
+    settings.goalPressureWeights = feedback.nextWeights;
     await settings.save();
   }
 
-  /* ---------------- PHASE HISTORY ---------------- */
+  /* ---------------- Phase History Compression ---------------- */
 
   const phases = await compressDailyStatesToPhases(userId);
 
@@ -153,6 +166,6 @@ export async function POST() {
 
   return Response.json({
     ok: true,
-    message: "Insights rebuilt with phase + goal load learning",
+    message: "Insights rebuilt successfully (Phase + Goal Load Learning V2)",
   });
 }

@@ -1,6 +1,8 @@
+// features/insights/models/LifeSettings.ts
+
 import { Schema, model, models } from "mongoose";
 
-/* ---------------- Sensitivity (Phase Detection) ---------------- */
+/* ---------------- Phase Sensitivity (Phase Detection) ---------------- */
 
 const PhaseSensitivitySchema = new Schema(
   {
@@ -24,9 +26,9 @@ const GoalPressureWeightsSchema = new Schema(
   { _id: false }
 );
 
-/* ---------------- Learning History ---------------- */
+/* ---------------- Phase Learning History ---------------- */
 
-const SensitivityHistorySchema = new Schema(
+const PhaseLearningHistorySchema = new Schema(
   {
     date: String,
     before: PhaseSensitivitySchema,
@@ -36,11 +38,41 @@ const SensitivityHistorySchema = new Schema(
   { _id: false }
 );
 
-/* ---------------- Life Settings ---------------- */
+/* ---------------- Goal Load Learning History (NEW V2) ---------------- */
+
+const GoalLoadHistorySchema = new Schema(
+  {
+    date: String,
+
+    outcome: String,
+    confidence: Number,
+
+    before: {
+      cadence: Number,
+      energy: Number,
+      stress: Number,
+      phaseMismatch: Number,
+    },
+
+    after: {
+      cadence: Number,
+      energy: Number,
+      stress: Number,
+      phaseMismatch: Number,
+    },
+
+    reason: String,
+  },
+  { _id: false }
+);
+
+/* ---------------- Life Settings Main Schema ---------------- */
 
 const LifeSettingsSchema = new Schema(
   {
     userId: { type: Schema.Types.ObjectId, index: true },
+
+    /* -------- Baselines -------- */
 
     baselines: {
       sleep: Number,
@@ -49,6 +81,8 @@ const LifeSettingsSchema = new Schema(
       energy: Number,
       deepWork: Number,
     },
+
+    /* -------- Learned Phase Sensitivity -------- */
 
     learnedSensitivity: {
       type: PhaseSensitivitySchema,
@@ -60,6 +94,8 @@ const LifeSettingsSchema = new Schema(
       }),
     },
 
+    /* -------- Learned Goal Pressure Weights -------- */
+
     goalPressureWeights: {
       type: GoalPressureWeightsSchema,
       default: () => ({
@@ -70,8 +106,17 @@ const LifeSettingsSchema = new Schema(
       }),
     },
 
+    /* -------- Phase Learning History -------- */
+
     sensitivityHistory: {
-      type: [SensitivityHistorySchema],
+      type: [PhaseLearningHistorySchema],
+      default: [],
+    },
+
+    /* -------- Goal Load Learning History (NEW) -------- */
+
+    goalLoadHistory: {
+      type: [GoalLoadHistorySchema],
       default: [],
     },
   },
