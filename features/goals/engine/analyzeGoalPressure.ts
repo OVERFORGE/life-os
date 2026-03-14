@@ -1,8 +1,13 @@
 // features/goals/engine/analyzeGoalPressure.ts
 
-import { Goal } from "../models/Goal";
-import { GoalStats } from "../models/GoalStats";
 import { PhaseExplanation } from "@/features/insights/engine/explainLifePhase";
+
+export type GoalPressureWeights = {
+  cadence: number;
+  energy: number;
+  stress: number;
+  phaseMismatch: number;
+};
 
 export type GoalPressureStatus =
   | "aligned"
@@ -12,7 +17,7 @@ export type GoalPressureStatus =
 
 export type GoalPressureReport = {
   goalId: string;
-  pressureScore: number; // 0 → 1
+  pressureScore: number;
   status: GoalPressureStatus;
 
   breakdown: {
@@ -26,31 +31,72 @@ export type GoalPressureReport = {
   adaptations: string[];
 };
 
-/**
- * Clamp helper
- */
+/* -------------------------------------------------- */
+/* Default Weights (Fallback Safety)                  */
+/* -------------------------------------------------- */
+
+const DEFAULT_WEIGHTS: GoalPressureWeights = {
+  cadence: 0.25,
+  energy: 0.25,
+  stress: 0.25,
+  phaseMismatch: 0.25,
+};
+
+/* -------------------------------------------------- */
+/* Clamp Helper                                       */
+/* -------------------------------------------------- */
+
 function clamp01(n: number) {
   return Math.max(0, Math.min(1, n));
 }
 
-/**
- * Main analyzer
- */
+/* -------------------------------------------------- */
+/* Normalize Weights                                  */
+/* -------------------------------------------------- */
+
+function normalizeWeights(w?: GoalPressureWeights): GoalPressureWeights {
+  const weights = w ?? DEFAULT_WEIGHTS;
+
+  const total =
+    weights.cadence +
+    weights.energy +
+    weights.stress +
+    weights.phaseMismatch;
+
+  if (total <= 0.0001) {
+    return DEFAULT_WEIGHTS;
+  }
+
+  return {
+    cadence: weights.cadence / total,
+    energy: weights.energy / total,
+    stress: weights.stress / total,
+    phaseMismatch: weights.phaseMismatch / total,
+  };
+}
+
+/* -------------------------------------------------- */
+/* Main Analyzer                                      */
+/* -------------------------------------------------- */
+
 export function analyzeGoalPressure({
   goal,
   stats,
   phase,
+  weights,
 }: {
   goal: any;
   stats: any | null;
   phase: PhaseExplanation & { phase?: string };
+  weights?: GoalPressureWeights;
 }): GoalPressureReport {
   const reasons: string[] = [];
   const adaptations: string[] = [];
 
-  // -----------------------------
-  // 1️⃣ Cadence Pressure
-  // -----------------------------
+  const w = normalizeWeights(weights);
+
+  /* ---------------- Cadence Pressure ---------------- */
+
   let cadencePressure = 0;
 
   if (goal.cadence === "daily") {
@@ -62,7 +108,6 @@ export function analyzeGoalPressure({
     cadencePressure = 0.1;
   }
 
-  // Slump / recovery amplify cadence pressure
   if (phase.phase === "slump" || phase.phase === "recovery") {
     cadencePressure += 0.2;
     reasons.push(
@@ -72,9 +117,8 @@ export function analyzeGoalPressure({
 
   cadencePressure = clamp01(cadencePressure);
 
-  // -----------------------------
-  // 2️⃣ Energy Pressure
-  // -----------------------------
+  /* ---------------- Energy Pressure ---------------- */
+
   let energyPressure = 0;
 
   if (phase.scores.energy < 0.4) {
@@ -94,9 +138,8 @@ export function analyzeGoalPressure({
 
   energyPressure = clamp01(energyPressure);
 
-  // -----------------------------
-  // 3️⃣ Stress / Load Pressure
-  // -----------------------------
+  /* ---------------- Stress Pressure ---------------- */
+
   let stressPressure = 0;
 
   if (phase.scores.load > 0.6) {
@@ -116,9 +159,8 @@ export function analyzeGoalPressure({
 
   stressPressure = clamp01(stressPressure);
 
-  // -----------------------------
-  // 4️⃣ Phase Mismatch (structural)
-  // -----------------------------
+  /* ---------------- Phase Mismatch ---------------- */
+
   let phaseMismatch = 0;
 
   if (
@@ -126,43 +168,41 @@ export function analyzeGoalPressure({
     (phase.phase === "recovery" || phase.phase === "slump")
   ) {
     phaseMismatch = 0.6;
+
     reasons.push(
       "Performance goals conflict with recovery-oriented life phase."
     );
   }
 
-  if (
-    goal.type === "identity" &&
-    phase.phase === "burnout"
-  ) {
+  if (goal.type === "identity" && phase.phase === "burnout") {
     phaseMismatch = 0.5;
-    reasons.push("Identity change is costly during burnout.");
+
+    reasons.push(
+      "Identity change is costly during burnout."
+    );
   }
 
   phaseMismatch = clamp01(phaseMismatch);
 
-  // -----------------------------
-  // 5️⃣ Final Pressure Score
-  // -----------------------------
+  /* ---------------- Final Score ---------------- */
+
   const pressureScore = clamp01(
-    cadencePressure * 0.25 +
-      energyPressure * 0.25 +
-      stressPressure * 0.25 +
-      phaseMismatch * 0.25
+    cadencePressure * w.cadence +
+      energyPressure * w.energy +
+      stressPressure * w.stress +
+      phaseMismatch * w.phaseMismatch
   );
 
-  // -----------------------------
-  // 6️⃣ Status Mapping
-  // -----------------------------
+  /* ---------------- Status ---------------- */
+
   let status: GoalPressureStatus = "aligned";
 
   if (pressureScore > 0.7) status = "toxic";
   else if (pressureScore > 0.45) status = "conflicting";
   else if (pressureScore > 0.25) status = "strained";
 
-  // -----------------------------
-  // 7️⃣ Adaptation Suggestions
-  // -----------------------------
+  /* ---------------- Adaptations ---------------- */
+
   if (status === "toxic" || status === "conflicting") {
     if (goal.cadence === "daily") {
       adaptations.push("Reduce cadence to weekly or flexible.");

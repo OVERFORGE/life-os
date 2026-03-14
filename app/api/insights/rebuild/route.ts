@@ -17,7 +17,9 @@ import { analyzeGlobalGoalLoad } from "@/features/goals/engine/analyzeGlobalGoal
 import { detectGoalLoadOutcome } from "@/features/goals/engine/detectGoalLoadOutcome";
 import { updateGoalLoadWeightsFromFeedback } from "@/features/goals/engine/updateGoalLoadWeightsFromFeedback";
 
-/* ---------------- Default Sensitivity ---------------- */
+import { LearningEvent } from "@/features/learning/models/LearningEvent";
+
+/* ---------------- Defaults ---------------- */
 
 const DEFAULT_SENSITIVITY = {
   sleepImpact: 1,
@@ -44,15 +46,24 @@ export async function POST() {
 
   await connectDB();
 
-  /* ---------------- Load Logs ---------------- */
+  /* ===================================================== */
+  /* 1️⃣ Load Logs                                          */
+  /* ===================================================== */
 
-  const logs = await DailyLog.find({ userId }).sort({ date: 1 }).lean();
+  const logs = await DailyLog.find({ userId })
+    .sort({ date: 1 })
+    .lean();
 
   if (!logs.length) {
-    return Response.json({ ok: true, message: "No logs found" });
+    return Response.json({
+      ok: true,
+      message: "No logs found",
+    });
   }
 
-  /* ---------------- Load or Init Settings ---------------- */
+  /* ===================================================== */
+  /* 2️⃣ Load Settings                                      */
+  /* ===================================================== */
 
   let settings = await LifeSettings.findOne({ userId });
 
@@ -69,103 +80,143 @@ export async function POST() {
     });
   }
 
-  /* ---------------- Phase Rebuild + Phase Learning ---------------- */
+  /* ===================================================== */
+  /* 3️⃣ Reset PhaseHistory                                 */
+  /* ===================================================== */
+
+  await PhaseHistory.deleteMany({ userId });
+
+  /* ===================================================== */
+  /* 4️⃣ Compute Daily States                               */
+  /* ===================================================== */
 
   let previousPhase: string | null = null;
   let previousSnapshot: any = null;
 
   for (let i = 0; i < logs.length; i++) {
     const slice = logs.slice(0, i + 1);
-    const today = slice[slice.length - 1];
 
-    const state = await computeDailyState({
-      userId,
-      date: today.date,
-      logsUpToDate: [...slice].reverse(),
+    const state = computeDailyState({
+      logs: slice,
       baselines: settings.baselines,
       sensitivity: settings.learnedSensitivity,
     });
 
-    if (previousPhase && previousSnapshot) {
-      const feedback = applyPhaseFeedback({
-        previousPhase,
-        currentPhase: state.candidatePhase,
-        snapshot: state.snapshot,
-        currentSensitivity: settings.learnedSensitivity,
+    /* ---------------- Phase Learning ---------------- */
+
+    const feedback = applyPhaseFeedback({
+      previousPhase,
+      previousSnapshot,
+      currentPhase: state.phase,
+      snapshot: state.snapshot,
+      sensitivity: settings.learnedSensitivity,
+    });
+
+    if (feedback.changed) {
+      const previousSensitivity = settings.learnedSensitivity;
+
+      settings.learnedSensitivity = feedback.nextSensitivity;
+
+      settings.sensitivityHistory.push({
+        date: logs[i].date,
+        before: previousSensitivity,
+        after: feedback.nextSensitivity,
+        reason: feedback.reason,
       });
 
-      if (feedback.changed) {
-        settings.sensitivityHistory.push({
-          date: today.date,
-          before: settings.learnedSensitivity,
-          after: feedback.nextSensitivity,
-          reason: feedback.reason,
-        });
-
-        settings.learnedSensitivity = feedback.nextSensitivity;
-        await settings.save();
-      }
+      await LearningEvent.create({
+        userId,
+        type: "phase_sensitivity_update",
+        before: previousSensitivity,
+        after: feedback.nextSensitivity,
+        reason: feedback.reason,
+        confidence: 0.6,
+        driverSignal: previousPhase ?? "unknown",
+      });
     }
 
-    previousPhase = state.candidatePhase;
+    previousPhase = state.phase;
     previousSnapshot = state.snapshot;
   }
 
-  /* ---------------- Goal Load Feedback Learning V2 ---------------- */
+  /* ===================================================== */
+  /* 5️⃣ Compress Phases                                    */
+  /* ===================================================== */
 
-  const goalLoad = await analyzeGlobalGoalLoad({
+  const phases = await compressDailyStatesToPhases(userId);
+
+  if (phases.length) {
+    const docs = phases.map((p: any) => ({
+      userId,
+      ...p,
+    }));
+
+    await PhaseHistory.insertMany(docs);
+  }
+
+  /* ===================================================== */
+  /* 6️⃣ Compute Global Goal Load                           */
+  /* ===================================================== */
+
+  const globalLoad = await analyzeGlobalGoalLoad({
     userId,
     weights: settings.goalPressureWeights,
   });
 
-  const confidence = Math.min(1, goalLoad.global.score);
+  /* ===================================================== */
+  /* 7️⃣ Detect Outcome                                     */
+  /* ===================================================== */
 
-  const outcome = detectGoalLoadOutcome({
-    globalScore: goalLoad.global.score,
-    phase: previousPhase || "balanced",
-  });
+  const outcome = detectGoalLoadOutcome(globalLoad);
 
-  const feedback = updateGoalLoadWeightsFromFeedback({
+  /* ===================================================== */
+  /* 8️⃣ Goal Load Learning                                 */
+  /* ===================================================== */
+
+  const previousWeights = settings.goalPressureWeights;
+
+  const learning = updateGoalLoadWeightsFromFeedback({
     outcome,
-    currentWeights: settings.goalPressureWeights,
-    confidence,
+    currentWeights: previousWeights,
+    confidence: globalLoad.global.score,
   });
 
-  if (feedback.changed) {
+  if (learning.changed) {
+    settings.goalPressureWeights = learning.nextWeights;
+
     settings.goalLoadHistory.push({
-      date: logs[logs.length - 1].date,
+      date: new Date(),
       outcome,
-      confidence,
-      before: settings.goalPressureWeights,
-      after: feedback.nextWeights,
-      reason: feedback.reason,
+      before: previousWeights,
+      after: learning.nextWeights,
+      reason: learning.reason,
     });
 
-    settings.goalPressureWeights = feedback.nextWeights;
-    await settings.save();
+    await LearningEvent.create({
+      userId,
+      type: "goal_load_weight_update",
+      before: previousWeights,
+      after: learning.nextWeights,
+      reason: learning.reason,
+      confidence: globalLoad.global.score,
+      driverSignal: outcome,
+    });
   }
 
-  /* ---------------- Phase History Compression ---------------- */
+  /* ===================================================== */
+  /* 9️⃣ Save Settings                                      */
+  /* ===================================================== */
 
-  const phases = await compressDailyStatesToPhases(userId);
+  await settings.save();
 
-  await PhaseHistory.deleteMany({ userId });
-
-  if (phases.length) {
-    await PhaseHistory.insertMany(
-      phases.map((p) => ({
-        userId,
-        phase: p.phase,
-        startDate: p.startDate,
-        endDate: p.endDate,
-        snapshot: p.snapshot,
-        reason: p.reason,
-      }))
-    );
-  }
+  /* ===================================================== */
+  /* 🔟 Response                                           */
+  /* ===================================================== */
 
   return Response.json({
     ok: true,
-    message: "Insights rebuilt successfully (Phase + Goal Load Learning V2)",
+    logsProcessed: logs.length,
+    phasesCreated: phases.length,
+    goalLoadMode: globalLoad.global.mode,
   });
 }

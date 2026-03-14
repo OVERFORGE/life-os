@@ -13,6 +13,10 @@ import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
 import { analyzeGoalPressure } from "@/features/goals/engine/analyzeGoalPressure";
 import { analyzeGlobalGoalLoad } from "@/features/goals/engine/analyzeGlobalGoalLoad";
 
+/* ===================================================== */
+/* GET — Dashboard Goal Load                             */
+/* ===================================================== */
+
 export async function GET() {
   const session = await getServerSession(authOptions);
 
@@ -20,19 +24,26 @@ export async function GET() {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const userId = session.user.id;
+
   await connectDB();
 
-  /* ---------------- Load Current Phase ---------------- */
+  /* ===================================================== */
+  /* 1️⃣ Load Current Phase                                */
+  /* ===================================================== */
 
   const phase = await PhaseHistory.findOne({
-    userId: session.user.id,
+    userId,
     endDate: null,
   })
     .sort({ startDate: -1 })
     .lean();
 
   if (!phase) {
-    return Response.json({ error: "No phase found" }, { status: 404 });
+    return Response.json(
+      { error: "No active phase found" },
+      { status: 404 }
+    );
   }
 
   const phaseExplanation = {
@@ -40,11 +51,11 @@ export async function GET() {
     phase: phase.phase,
   };
 
-  /* ---------------- Load Goal Weights ---------------- */
+  /* ===================================================== */
+  /* 2️⃣ Load Goal Pressure Weights                        */
+  /* ===================================================== */
 
-  const settings = await LifeSettings.findOne({
-    userId: session.user.id,
-  }).lean();
+  const settings = await LifeSettings.findOne({ userId }).lean();
 
   const weights =
     settings?.goalPressureWeights ?? {
@@ -54,30 +65,68 @@ export async function GET() {
       phaseMismatch: 0.25,
     };
 
-  /* ---------------- Per Goal Pressure ---------------- */
+  /* ===================================================== */
+  /* 3️⃣ Load Goals + Stats                                */
+  /* ===================================================== */
 
-  const goals = await Goal.find({ userId: session.user.id }).lean();
-  const stats = await GoalStats.find({}).lean();
+  const goals = await Goal.find({ userId }).lean();
+
+  if (!goals.length) {
+    return Response.json({
+      ok: true,
+      goalLoad: {
+        global: {
+          mode: "empty",
+          score: 0,
+          distribution: {
+            aligned: 0,
+            strained: 0,
+            conflicting: 0,
+            toxic: 0,
+          },
+        },
+        perGoal: [],
+      },
+    });
+  }
+
+  const goalIds = goals.map((g) => g._id);
+
+  const stats = await GoalStats.find({
+    goalId: { $in: goalIds },
+  }).lean();
 
   const statMap = new Map(stats.map((s) => [String(s.goalId), s]));
 
-  const pressures = goals.map((g) =>
+  /* ===================================================== */
+  /* 4️⃣ Compute Per Goal Pressure                         */
+  /* ===================================================== */
+
+  const pressures = goals.map((goal) =>
     analyzeGoalPressure({
-      goal: g,
-      stats: statMap.get(String(g._id)) || null,
+      goal,
+      stats: statMap.get(String(goal._id)) || null,
       phase: phaseExplanation,
+      weights, // ✅ IMPORTANT: actually pass weights in
     })
   );
 
-  /* ---------------- Global Goal Load ---------------- */
+  /* ===================================================== */
+  /* 5️⃣ Compute Global Load                               */
+  /* ===================================================== */
 
-  const globalLoad = await analyzeGlobalGoalLoad({
-    userId: session.user.id,
-    weights,
-  });
+  const globalLoad = analyzeGlobalGoalLoad(pressures);
+
+  /* ===================================================== */
+  /* ✅ Final Response Shape (Stable Contract)             */
+  /* ===================================================== */
 
   return Response.json({
-    global: globalLoad.global,
-    perGoal: pressures,
+    ok: true,
+    goalLoad: {
+      global: globalLoad.global,
+      perGoal: pressures,
+      topDrivers: globalLoad.topDrivers,
+    },
   });
 }

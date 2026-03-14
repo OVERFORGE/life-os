@@ -1,11 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
+
 import { Card } from "@/features/daily-log/ui/Card";
 import { InputField } from "@/features/daily-log/ui/InputField";
 import { CheckboxField } from "@/features/daily-log/ui/CheckboxField";
 import { SliderField } from "@/features/daily-log/ui/SliderField";
 import { TextareaField } from "@/features/daily-log/ui/TextareaField";
+
+/* ---------------- Types ---------------- */
 
 type Category = {
   key: string;
@@ -25,30 +28,56 @@ type Signal = {
   min?: number | null;
   max?: number | null;
   step?: number | null;
+
+  isCore?: boolean;
+
+  /* ✅ Dependency Fields */
+  dependsOn?: string | null;
+  showIf?: number | null;
 };
+
+/* ---------------- Component ---------------- */
 
 export function DynamicCategorySections({ date }: { date: string }) {
   const [categories, setCategories] = useState<Category[]>([]);
   const [signals, setSignals] = useState<Signal[]>([]);
   const [values, setValues] = useState<Record<string, any>>({});
 
-  /* ---------------- Load Schema ---------------- */
+  /* ===================================================== */
+  /* Load Schema + Today's Saved Signal Values              */
+  /* ===================================================== */
 
   useEffect(() => {
-    async function loadSchema() {
+    async function loadAll() {
+      /* Categories */
       const catRes = await fetch("/api/categories");
       const catData = await catRes.json();
       setCategories(catData.categories || []);
 
+      /* Signals */
       const sigRes = await fetch("/api/signals");
       const sigData = await sigRes.json();
-      setSignals(sigData.signals || []);
+
+      /* Only NON-core signals here */
+      const nonCore = (sigData.signals || []).filter(
+        (s: Signal) => !s.isCore
+      );
+
+      setSignals(nonCore);
+
+      /* ✅ Load today's saved signal values */
+      const logRes = await fetch("/api/daily-log/today");
+      const logData = await logRes.json();
+
+      setValues(logData.signals || {});
     }
 
-    loadSchema();
+    loadAll();
   }, []);
 
-  /* ---------------- Save Signal Value ---------------- */
+  /* ===================================================== */
+  /* Save Signal Value                                     */
+  /* ===================================================== */
 
   async function updateSignal(key: string, value: any) {
     setValues((prev) => ({ ...prev, [key]: value }));
@@ -60,12 +89,12 @@ export function DynamicCategorySections({ date }: { date: string }) {
     });
   }
 
-  /* ---------------- UI ---------------- */
+  /* ===================================================== */
+  /* UI                                                    */
+  /* ===================================================== */
 
   return (
     <div className="space-y-8 pt-8">
-      <h2 className="text-xl font-semibold">Custom Signals</h2>
-
       {categories.map((cat) => {
         const catSignals = signals.filter(
           (s) => s.categoryKey === cat.key
@@ -74,16 +103,22 @@ export function DynamicCategorySections({ date }: { date: string }) {
         if (!catSignals.length) return null;
 
         return (
-          <Card
-            key={cat.key}
-            title={cat.label}
-            subtitle="Dynamic daily fields"
-          >
+          <Card key={cat.key} title={cat.label} subtitle="Custom daily fields">
             <div className="space-y-5">
               {catSignals.map((s) => {
+                /* ✅ Dependency Logic */
+                if (s.dependsOn) {
+                  const parentValue = values[s.dependsOn];
+                  const requiredValue = s.showIf ?? 1;
+
+                  if (Number(parentValue) !== Number(requiredValue)) {
+                    return null;
+                  }
+                }
+
                 const current = values[s.key];
 
-                /* -------- Checkbox -------- */
+                /* Checkbox */
                 if (s.inputType === "checkbox") {
                   return (
                     <CheckboxField
@@ -95,19 +130,12 @@ export function DynamicCategorySections({ date }: { date: string }) {
                   );
                 }
 
-                /* -------- Number -------- */
+                /* Number */
                 if (s.inputType === "number") {
                   return (
                     <InputField
                       key={s.key}
                       label={s.label}
-                      description={
-                        s.target
-                          ? `Target: ${s.target} ${s.unit || ""}`
-                          : s.unit
-                          ? `Unit: ${s.unit}`
-                          : undefined
-                      }
                       type="number"
                       value={current ?? ""}
                       onChange={(v) => updateSignal(s.key, Number(v))}
@@ -115,21 +143,21 @@ export function DynamicCategorySections({ date }: { date: string }) {
                   );
                 }
 
-                /* -------- Slider -------- */
+                /* Slider */
                 if (s.inputType === "slider") {
                   return (
                     <SliderField
                       key={s.key}
                       label={s.label}
-                      leftLabel={`${s.min ?? 0}`}
+                      leftLabel={`${s.min ?? 1}`}
                       rightLabel={`${s.max ?? 10}`}
-                      value={current ?? s.min ?? 0}
+                      value={current ?? s.min ?? 1}
                       onChange={(v) => updateSignal(s.key, v)}
                     />
                   );
                 }
 
-                /* -------- Text -------- */
+                /* Text */
                 if (s.inputType === "text") {
                   return (
                     <InputField
@@ -141,7 +169,7 @@ export function DynamicCategorySections({ date }: { date: string }) {
                   );
                 }
 
-                /* -------- Textarea -------- */
+                /* Textarea */
                 if (s.inputType === "textarea") {
                   return (
                     <TextareaField

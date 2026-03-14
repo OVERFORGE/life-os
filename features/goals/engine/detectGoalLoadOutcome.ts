@@ -1,3 +1,5 @@
+// features/goals/engine/detectGoalLoadOutcome.ts
+
 export function detectGoalLoadOutcome({
   globalScore,
   phase,
@@ -5,13 +7,12 @@ export function detectGoalLoadOutcome({
   globalScore: number;
   phase: string;
 }): "stable" | "overloaded" | "underutilized" {
-  if (globalScore > 0.6) {
-    return "overloaded";
-  }
+  // Overload
+  if (globalScore > 0.65) return "overloaded";
 
-  if (globalScore < 0.25 && phase === "recovery") {
-    return "underutilized";
-  }
+  // Underload
+  if (globalScore < 0.25) return "underutilized";
 
+  // Stable zone
   return "stable";
 }

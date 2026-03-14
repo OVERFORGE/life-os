@@ -1,84 +1,65 @@
 import { z } from "zod";
 
 export const DailyLogSchema = z.object({
-  mental: z.object({
-    mood: z.number().min(1).max(10),
-    energy: z.number().min(1).max(10),
-    stress: z.number().min(1).max(10),
-    anxiety: z.number().min(1).max(10),
-    focus: z.number().min(1).max(10),
-  }),
+  mental: z
+    .object({
+      mood: z.number().optional(),
+      energy: z.number().optional(),
+      stress: z.number().optional(),
+    })
+    .optional(),
 
-  sleep: z.object({
-    hours: z.number().min(0).max(24),
-    quality: z.number().min(1).max(10),
-    sleepTime: z.string(),
-    wakeTime: z.string(),
-  }),
+  sleep: z
+    .object({
+      hours: z.number().optional(),
+      sleepTime: z.string().optional(),
+      wakeTime: z.string().optional(),
+    })
+    .optional(),
 
-  physical: z.object({
-    gym: z.boolean(),
-    workoutType: z.string(),
-    calories: z.number(),
-    dietNote: z.string(),
-    steps: z.number(),
-    bodyFeeling: z.string(),
-    painNote: z.string(),
-  }),
+  work: z
+    .object({
+      deepWorkHours: z.number().optional(),
+      coded: z.boolean().optional(),
+      executioners: z.boolean().optional(),
+      studied: z.boolean().optional(),
+      mainWork: z.string().optional(),
+    })
+    .optional(),
 
-  work: z.object({
-    deepWorkHours: z.number(),
-    coded: z.boolean(),
-    executioners: z.boolean(),
-    studied: z.boolean(),
-    mainWork: z.string(),
-  }),
+  physical: z
+    .object({
+      gym: z.boolean().optional(),
+      steps: z.number().optional(),
+      calories: z.number().optional(),
+      meals: z.number().optional(),
+      dietNote: z.string().optional(),
+      painNote: z.string().optional(),
+    })
+    .optional(),
 
-  habits: z.object({
-    gym: z.boolean(),
-    reading: z.boolean(),
-    meditation: z.boolean(),
-    coding: z.boolean(),
-    content: z.boolean(),
-    learning: z.boolean(),
-    noFap: z.boolean(),
-
-    junkFood: z.object({
-      had: z.boolean(),
-      times: z.number(),
-      what: z.string(),
-    }),
-
-    socialMediaOveruse: z.boolean(),
-  }),
+  habits: z
+    .object({
+      junkFood: z
+        .object({
+          had: z.boolean().optional(),
+          times: z.number().optional(),
+          what: z.string().optional(),
+        })
+        .optional(),
+    })
+    .optional(),
 
   planning: z.object({
-    plannedTasks: z.number(),
-    completedTasks: z.number(),
-    reasonNotCompleted: z.string(),
+    plannedTasks: z.number().optional(),
+    completedTasks: z.number().optional(),
+    reasonNotCompleted: z.string().optional(),
   }),
 
   reflection: z.object({
-    win: z.string(),
-    mistake: z.string(),
-    learned: z.string(),
-    bothering: z.string(),
+    win: z.string().optional(),
+    mistake: z.string().optional(),
+    learned: z.string().optional(),
+    bothering: z.string().optional(),
   }),
-
-  emotions: z
-    .object({
-      bestMoment: z.string(),
-      worstMoment: z.string(),
-      stressTrigger: z.string(),
-      happyMoment: z.string(),
-    })
-    .optional(),
-
-  social: z
-    .object({
-      interactionLevel: z.enum(["none", "low", "good"]),
-      talkedToFamily: z.boolean(),
-      networked: z.boolean(),
-    })
-    .optional(),
-}).partial();
+});

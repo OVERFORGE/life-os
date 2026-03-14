@@ -6,7 +6,7 @@ import { analyzeGoalPressure } from "@/features/goals/engine/analyzeGoalPressure
 import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-
+import { LifeSettings } from "@/features/insights/models/LifeSettings";
 export async function GET() {
   const session = await getServerSession(authOptions);
   if (!session?.user) return Response.json([], { status: 401 });
@@ -14,7 +14,11 @@ export async function GET() {
   await connectDB();
 
   const goals = await Goal.find({ userId: session.user.id }).lean();
-  const stats = await GoalStats.find({}).lean();
+  const goalIds = goals.map((g) => g._id);
+
+  const stats = await GoalStats.find({
+    goalId: { $in: goalIds },
+  }).lean();
 
   const statMap = new Map(stats.map((s) => [String(s.goalId), s]));
 
@@ -32,16 +36,29 @@ export async function GET() {
       }
     : null;
 
-  const result = goals.map((g) => {
+  const result = goals.map(async (g) => {
     const goalStats = statMap.get(String(g._id));
 
-    const pressure = phaseExplanation
-      ? analyzeGoalPressure({
-          goal: g,
-          stats: goalStats,
-          phase: phaseExplanation,
-        })
-      : null;
+    const settings = await LifeSettings.findOne({
+  userId: session.user.id,
+}).lean();
+
+const weights =
+  settings?.goalPressureWeights ?? {
+    cadence: 0.25,
+    energy: 0.25,
+    stress: 0.25,
+    phaseMismatch: 0.25,
+  };
+
+const pressure = phaseExplanation
+  ? analyzeGoalPressure({
+      goal: g,
+      stats: goalStats,
+      phase: phaseExplanation,
+      weights,
+    })
+  : null;
 
     return {
       ...g,

@@ -85,7 +85,7 @@ const DailyLogSchema = new Schema(
      */
     signals: {
       type: Map,
-      of: Number,
+      of: mongoose.Schema.Types.Mixed,
       default: {},
     },
   },

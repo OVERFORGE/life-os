@@ -1,91 +1,46 @@
-// app/checkin/page.tsx
-
 "use client";
 
 import { useEffect, useState } from "react";
 
 import { DailyLogForm } from "@/features/daily-log/types";
 
-import { MentalCard } from "@/features/daily-log/components/MentalCard";
-import { SleepCard } from "@/features/daily-log/components/SleepCard";
-import { PhysicalCard } from "@/features/daily-log/components/PhysicalCard";
-import { HabitsCard } from "@/features/daily-log/components/HabitsCard";
-import { WorkCard } from "@/features/daily-log/components/WorkCard";
 import { PlanningCard } from "@/features/daily-log/components/PlanningCard";
 import { ReflectionCard } from "@/features/daily-log/components/ReflectionCard";
 
-import { DynamicCategorySections } from "@/features/schema/ui/DynamicCategorySections";
-
+import { CoreCategorySections } from "@/features/schema/ui/CoreCategorySections";
+import { CategorySignalCard } from "@/features/schema/ui/CategorySignalCard";
 
 import { getTodayDateString } from "@/utils/date";
 
-/* ----------------------------- */
-/* Default Form                  */
-/* ----------------------------- */
+/* ---------------- Default Form ---------------- */
 
 const defaultForm: DailyLogForm = {
-  mental: { mood: 5, energy: 5, stress: 5, anxiety: 5, focus: 5 },
-
-  sleep: { hours: 0, quality: 5, sleepTime: "", wakeTime: "" },
-
-  physical: {
-    gym: false,
-    workoutType: "rest",
-    calories: 0,
-    meals: 0,
-    dietNote: "",
-    steps: 0,
-    bodyFeeling: "normal",
-    painNote: "",
-  },
-
-  work: {
-    deepWorkHours: 0,
-    coded: false,
-    executioners: false,
-    studied: false,
-    mainWork: "",
-  },
-
-  habits: {
-    gym: false,
-    reading: false,
-    meditation: false,
-    coding: false,
-    content: false,
-    learning: false,
-    noFap: true,
-    junkFood: { had: false, times: 0, what: "" },
-    socialMediaOveruse: false,
-  },
-
   planning: {
     plannedTasks: 0,
     completedTasks: 0,
     reasonNotCompleted: "",
   },
 
-  reflection: { win: "", mistake: "", learned: "", bothering: "" },
+  reflection: {
+    win: "",
+    mistake: "",
+    learned: "",
+    bothering: "",
+  },
 };
 
-/* ----------------------------- */
-/* Page Component                */
-/* ----------------------------- */
+/* ---------------- Page ---------------- */
 
 export default function CheckinPage() {
   const [form, setForm] = useState<DailyLogForm>(defaultForm);
 
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
-
   const [status, setStatus] = useState("");
 
-  // Needed for DynamicSignalFields
   const todayDate = getTodayDateString();
 
-  /* ----------------------------- */
-  /* Load Today's Log              */
-  /* ----------------------------- */
+  /* ---------------- Load Today's Log ---------------- */
 
   useEffect(() => {
     fetch("/api/daily-log/today")
@@ -101,9 +56,7 @@ export default function CheckinPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  /* ----------------------------- */
-  /* Save Log                      */
-  /* ----------------------------- */
+  /* ---------------- Save Core Form ---------------- */
 
   async function save() {
     setSaving(true);
@@ -121,29 +74,42 @@ export default function CheckinPage() {
     setSaving(false);
   }
 
-  /* ----------------------------- */
-  /* UI                            */
-  /* ----------------------------- */
-
   if (loading) return <div className="p-8">Loading...</div>;
 
   return (
     <div className="min-h-screen bg-[#0f1115] text-gray-100">
-      <div className="max-w-xl mx-auto p-4 space-y-6 pb-24">
-        {/* Core Daily Check-in */}
-        <MentalCard form={form} setForm={setForm} />
-        <SleepCard form={form} setForm={setForm} />
-        <PhysicalCard form={form} setForm={setForm} />
-        <WorkCard form={form} setForm={setForm} />
-        <HabitsCard form={form} setForm={setForm} />
+      <div className="max-w-xl mx-auto p-4 space-y-6 pb-28">
+        {/* ✅ Core System Signals */}
+        <CoreCategorySections date={todayDate} />
+
+        {/* ✅ Dynamic Category Cards */}
+        <CategorySignalCard
+          categoryKey="physical"
+          title="Physical Health"
+          subtitle="Body, movement, food, pain"
+          date={todayDate}
+        />
+
+        <CategorySignalCard
+          categoryKey="habits"
+          title="Habits & Discipline"
+          subtitle="Daily discipline signals"
+          date={todayDate}
+        />
+
+        <CategorySignalCard
+          categoryKey="work"
+          title="Work & Execution"
+          subtitle="Deep work + progress"
+          date={todayDate}
+        />
+
+        {/* Static Cards */}
         <PlanningCard form={form} setForm={setForm} />
         <ReflectionCard form={form} setForm={setForm} />
 
-        {/* ✅ Dynamic Custom Signals */}
-        <DynamicCategorySections date={todayDate} />
-
-        {/* Save Button */}
-        <div className="pt-6">
+        {/* ✅ Save Button */}
+        <div className="pt-4">
           <button
             onClick={save}
             disabled={saving}

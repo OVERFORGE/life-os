@@ -1,7 +1,8 @@
 import { Schema, model, models } from "mongoose";
 
 /**
- * LifeSignal = Dynamic field in Daily Log
+ * LifeSignal = Dynamic daily field
+ * Core signals are required for phase engine stability.
  */
 
 const LifeSignalSchema = new Schema(
@@ -11,14 +12,7 @@ const LifeSignalSchema = new Schema(
     key: { type: String, required: true },
     label: { type: String, required: true },
 
-    categoryKey: {
-      type: String,
-      required: true,
-    },
-
-    /* ===================================================== */
-    /* INPUT TYPE                                            */
-    /* ===================================================== */
+    categoryKey: { type: String, required: true },
 
     inputType: {
       type: String,
@@ -26,24 +20,13 @@ const LifeSignalSchema = new Schema(
       default: "number",
     },
 
-    /* ===================================================== */
-    /* OPTIONAL NUMERIC CONFIG                               */
-    /* ===================================================== */
-
     unit: { type: String, default: "" },
 
-    target: {
-      type: Number,
-      default: null, // ✅ optional always
-    },
+    target: { type: Number, default: null },
 
     min: { type: Number, default: null },
     max: { type: Number, default: null },
     step: { type: Number, default: null },
-
-    /* ===================================================== */
-    /* SIGNAL META                                           */
-    /* ===================================================== */
 
     direction: {
       type: String,
@@ -53,6 +36,12 @@ const LifeSignalSchema = new Schema(
 
     weight: { type: Number, default: 1 },
     enabled: { type: Boolean, default: true },
+
+    /** ✅ NEW */
+    isCore: { type: Boolean, default: false },
+
+    dependsOn: { type: String, default: null },
+    showIf: { type: Number, default: null },
   },
   { timestamps: true }
 );

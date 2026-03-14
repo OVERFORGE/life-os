@@ -1,87 +1,50 @@
-import { Goal } from "@/features/goals/models/Goal";
-import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
+// features/goals/engine/analyzeGlobalGoalLoad.ts
 
-type GoalPressure = {
-  goalId: string;
-  pressureScore: number;
-  status: "aligned" | "strained" | "conflicting" | "toxic";
-  reasons: string[];
-};
+import { GoalPressureReport } from "./analyzeGoalPressure";
 
-type GoalPressureWeights = {
-  cadence: number;
-  energy: number;
-  stress: number;
-  phaseMismatch: number;
-};
+/* ============================== */
+/* Helpers                        */
+/* ============================== */
 
-function clamp(n: number) {
+function clamp01(n: number) {
   if (Number.isNaN(n)) return 0;
   return Math.max(0, Math.min(1, n));
 }
 
-export async function analyzeGlobalGoalLoad({
-  userId,
-  weights,
-}: {
-  userId: string;
-  weights: GoalPressureWeights;
-}) {
-  /* ---------------- Load data ---------------- */
+/* ============================== */
+/* Global Load Analyzer (V2)      */
+/* ============================== */
 
-  const goals = await Goal.find({ userId, archived: false }).lean();
-  const currentPhase = await PhaseHistory.findOne({ userId })
-    .sort({ createdAt: -1 })
-    .lean();
+/**
+ * This function takes already-computed goal pressures
+ * and produces a system-wide global load summary.
+ *
+ * ✅ No DB logic
+ * ✅ No duplicate scoring
+ * ✅ Learning-ready output
+ */
+export function analyzeGlobalGoalLoad(
+  pressures: GoalPressureReport[]
+) {
+  /* ---------------- Empty Case ---------------- */
 
-  /* ---------------- Per-goal pressure ---------------- */
-
-  const perGoal: GoalPressure[] = goals.map((goal) => {
-    let score = 0;
-    const reasons: string[] = [];
-
-    // cadence
-    if (goal.cadence === "daily") {
-      score += weights.cadence;
-      reasons.push("High cadence");
-    }
-
-    // energy
-    if (goal.energyCost === "high") {
-      score += weights.energy;
-      reasons.push("High energy cost");
-    }
-
-    // stress
-    if (goal.stressImpact === "high") {
-      score += weights.stress;
-      reasons.push("Stressful goal");
-    }
-
-    // phase mismatch
-    if (currentPhase && goal.recommendedPhase) {
-      if (goal.recommendedPhase !== currentPhase.phase) {
-        score += weights.phaseMismatch;
-        reasons.push("Phase mismatch");
-      }
-    }
-
-    score = clamp(score);
-
-    let status: GoalPressure["status"] = "aligned";
-    if (score > 0.7) status = "toxic";
-    else if (score > 0.45) status = "conflicting";
-    else if (score > 0.25) status = "strained";
-
+  if (!pressures.length) {
     return {
-      goalId: goal._id.toString(),
-      pressureScore: score,
-      status,
-      reasons,
+      global: {
+        score: 0,
+        mode: "underutilized" as const,
+        distribution: {
+          aligned: 0,
+          strained: 0,
+          conflicting: 0,
+          toxic: 0,
+        },
+      },
+      topDrivers: [],
     };
-  });
+  }
 
-  /* ---------------- Global aggregation ---------------- */
+  /* ---------------- Distribution ---------------- */
 
   const distribution = {
     aligned: 0,
@@ -90,39 +53,49 @@ export async function analyzeGlobalGoalLoad({
     toxic: 0,
   };
 
-  let totalScore = 0;
-  const dominantPressures: string[] = [];
+  let total = 0;
+  let totalConfidence = 0;
 
-  for (const p of perGoal) {
-    distribution[p.status]++;
-    totalScore += p.pressureScore;
+  for (const g of pressures) {
+    distribution[g.status]++;
+    total += g.pressureScore;
 
-    if (p.pressureScore > 0.45) {
-      dominantPressures.push(...p.reasons);
-    }
+    // Confidence-weighted aggregation
+    totalConfidence += g.confidence ?? 0.5;
   }
 
-  const avgScore = perGoal.length
-    ? totalScore / perGoal.length
-    : 0;
+  /* ---------------- Global Score ---------------- */
 
-  let mode = "balanced";
-  if (avgScore > 0.6) mode = "overloaded";
-  else if (avgScore > 0.35) mode = "constrained";
+  const avgScore = clamp01(total / pressures.length);
+
+  /* ---------------- Mode Detection ---------------- */
+
+  let mode: "stable" | "underutilized" | "overloaded" =
+    "stable";
+
+  if (avgScore > 0.68) mode = "overloaded";
+  else if (avgScore < 0.22) mode = "underutilized";
+
+  /* ---------------- Top Drivers ---------------- */
+
+  const topDrivers = [...pressures]
+    .sort((a, b) => b.pressureScore - a.pressureScore)
+    .slice(0, 3)
+    .map((g) => ({
+      goalId: g.goalId,
+      score: g.pressureScore,
+      status: g.status,
+      mainReason: g.reasons?.[0] || "High pressure goal",
+    }));
+
+  /* ---------------- Return ---------------- */
 
   return {
     global: {
-      score: clamp(avgScore),
+      score: avgScore,
       mode,
       distribution,
-      dominantPressures: [...new Set(dominantPressures)],
-      recommendation:
-        mode === "overloaded"
-          ? "Reduce goal intensity or cadence."
-          : mode === "constrained"
-          ? "Goals are demanding but manageable."
-          : "Goal load is healthy.",
     },
-    perGoal,
+    topDrivers,
   };
 }

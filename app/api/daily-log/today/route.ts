@@ -1,5 +1,3 @@
-// app/api/daily-log/today/route.ts
-
 import { connectDB } from "@/server/db/connect";
 import { DailyLog } from "@/server/db/models/DailyLog";
 import { getTodayDateString } from "@/utils/date";
@@ -17,11 +15,11 @@ import { NextResponse } from "next/server";
 export async function GET() {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user || !(session.user as any).id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = (session.user as any).id;
+  const userId = session.user.id;
 
   await connectDB();
 
@@ -29,27 +27,24 @@ export async function GET() {
 
   const log = await DailyLog.findOne({ userId, date: today }).lean();
 
-  return NextResponse.json(log);
+  return NextResponse.json(log || {});
 }
 
 /* ===================================================== */
-/* POST — Save Today's Log (Preserve Signals)             */
+/* POST — Save Today's Log                               */
 /* ===================================================== */
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
 
-  if (!session?.user || !(session.user as any).id) {
+  if (!session?.user?.id) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = (session.user as any).id;
-
+  const userId = session.user.id;
   const body = await req.json();
 
-  /* ----------------------------- */
-  /* Validate Core Form            */
-  /* ----------------------------- */
+  /* ---------------- Validate ---------------- */
 
   const parsed = DailyLogSchema.safeParse(body);
 
@@ -64,34 +59,28 @@ export async function POST(req: Request) {
 
   const today = getTodayDateString();
 
-  /* ----------------------------- */
-  /* Preserve Existing Signals     */
-  /* ----------------------------- */
+  /* ---------------- Preserve Signals ---------------- */
 
-  const existing = await DailyLog.findOne({
-    userId,
-    date: today,
-  }).lean();
-
+  const existing = await DailyLog.findOne({ userId, date: today }).lean();
   const existingSignals = existing?.signals || {};
 
-  /* ----------------------------- */
-  /* Merge Signals + Core Form     */
-  /* ----------------------------- */
+  /* ---------------- Merge Core + Signals ---------------- */
 
-  const mergedData = {
+  const merged = {
     ...parsed.data,
-    signals: existingSignals, // ✅ keep custom signals safe
+    signals: existingSignals,
   };
 
-  /* ----------------------------- */
-  /* Save Document                 */
-  /* ----------------------------- */
+  // ✅ CRITICAL FIX: Remove forbidden fields
+  delete (merged as any).userId;
+  delete (merged as any).date;
+
+  /* ---------------- Save ---------------- */
 
   const log = await DailyLog.findOneAndUpdate(
     { userId, date: today },
     {
-      $set: mergedData,
+      $set: merged,
       $setOnInsert: {
         userId,
         date: today,

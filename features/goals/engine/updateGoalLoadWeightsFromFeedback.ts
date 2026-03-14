@@ -1,11 +1,24 @@
 // features/goals/engine/updateGoalLoadWeightsFromFeedback.ts
 
-type GoalPressureWeights = {
+/* ===================================================== */
+/* Types                                                 */
+/* ===================================================== */
+
+export type GoalPressureWeights = {
   cadence: number;
   energy: number;
   stress: number;
   phaseMismatch: number;
 };
+
+export type GoalLoadOutcome =
+  | "stable"
+  | "overloaded"
+  | "underutilized";
+
+/* ===================================================== */
+/* Helpers                                               */
+/* ===================================================== */
 
 /**
  * Clamp weights into safe range
@@ -16,90 +29,211 @@ function clamp(n: number, min = 0.05, max = 0.6) {
 }
 
 /**
- * Smooth Goal Load Feedback Learning V2
+ * Normalize weights so they always sum to 1
+ */
+function normalize(w: GoalPressureWeights): GoalPressureWeights {
+  const sum =
+    w.cadence + w.energy + w.stress + w.phaseMismatch;
+
+  return {
+    cadence: w.cadence / sum,
+    energy: w.energy / sum,
+    stress: w.stress / sum,
+    phaseMismatch: w.phaseMismatch / sum,
+  };
+}
+
+/**
+ * Smooth EMA update
+ */
+function emaUpdate(current: number, target: number, lr: number) {
+  return current * (1 - lr) + target * lr;
+}
+
+/* ===================================================== */
+/* Goal Load Feedback Learning Engine V2                 */
+/* ===================================================== */
+
+/**
+ * Goal Load Weight Learner (V2)
  *
- * - Overload → increase cadence + stress sensitivity
- * - Underload → relax energy + mismatch sensitivity
- * - Stable → no change
+ * Learns slowly + safely from overload patterns.
  *
- * Uses confidence-scaled EMA smoothing to prevent oscillation.
+ * Key Features:
+ * ✅ persistence gating
+ * ✅ confidence-weight scaling
+ * ✅ oscillation-safe EMA
+ * ✅ normalization
+ * ✅ learning event output
  */
 export function updateGoalLoadWeightsFromFeedback({
   outcome,
   currentWeights,
   confidence,
+  persistenceDays,
+  topDriver,
 }: {
-  outcome: "stable" | "overloaded" | "underutilized";
+  outcome: GoalLoadOutcome;
+
   currentWeights: GoalPressureWeights;
-  confidence: number; // 0 → 1
+
+  /** Phase confidence (0–1) */
+  confidence: number;
+
+  /** How many days overload/underload has persisted */
+  persistenceDays: number;
+
+  /** Main pressure source ("cadence" | "stress" | etc.) */
+  topDriver?: keyof GoalPressureWeights;
 }): {
   changed: boolean;
   nextWeights: GoalPressureWeights;
-  reason: string;
+  learningEvent: null | {
+    outcome: GoalLoadOutcome;
+    persistenceDays: number;
+    driver: string;
+    delta: GoalPressureWeights;
+    reason: string;
+  };
 } {
-  /* ---------------- Stable → No Learning ---------------- */
+  /* ===================================================== */
+  /* 0️⃣ Stable → No Learning                               */
+  /* ===================================================== */
 
   if (outcome === "stable") {
     return {
       changed: false,
       nextWeights: currentWeights,
-      reason: "System stable → no goal load adjustment",
+      learningEvent: null,
     };
   }
 
-  /* ---------------- Learning Rate ---------------- */
+  /* ===================================================== */
+  /* 1️⃣ Persistence Gate (Anti-Oscillation)                */
+  /* ===================================================== */
 
-  // Confidence controls how strong updates are
-  const lr = 0.05 * Math.max(0.2, confidence);
+  if (persistenceDays < 3) {
+    return {
+      changed: false,
+      nextWeights: currentWeights,
+      learningEvent: {
+        outcome,
+        persistenceDays,
+        driver: "none",
+        delta: {
+          cadence: 0,
+          energy: 0,
+          stress: 0,
+          phaseMismatch: 0,
+        },
+        reason:
+          "Outcome not persistent enough (<3 days) → no weight update",
+      },
+    };
+  }
 
-  /* ---------------- Target Shift ---------------- */
+  /* ===================================================== */
+  /* 2️⃣ Learning Rate Scaling                              */
+  /* ===================================================== */
 
-  const target =
-    outcome === "overloaded"
-      ? {
-          cadence: currentWeights.cadence + 0.05,
-          stress: currentWeights.stress + 0.05,
-          energy: currentWeights.energy,
-          phaseMismatch: currentWeights.phaseMismatch,
-        }
-      : {
-          cadence: currentWeights.cadence,
-          stress: currentWeights.stress,
-          energy: currentWeights.energy - 0.05,
-          phaseMismatch: currentWeights.phaseMismatch - 0.05,
-        };
+  /**
+   * Base LR is tiny (Jarvis learns slowly)
+   * Confidence + persistence amplify slightly
+   */
+  const lr =
+    0.02 *
+    Math.max(0.25, confidence) *
+    Math.min(2, persistenceDays / 5);
 
-  /* ---------------- EMA Update ---------------- */
+  /* ===================================================== */
+  /* 3️⃣ Target Weight Shift                                */
+  /* ===================================================== */
 
-  const next: GoalPressureWeights = {
+  let target: GoalPressureWeights = { ...currentWeights };
+
+  if (outcome === "overloaded") {
+    // Overload → become more sensitive to cadence + stress
+    target.cadence += 0.06;
+    target.stress += 0.06;
+
+    // Reduce weaker contributors slightly
+    target.energy -= 0.03;
+    target.phaseMismatch -= 0.03;
+  }
+
+  if (outcome === "underutilized") {
+    // Underload → relax cadence + stress sensitivity
+    target.cadence -= 0.05;
+    target.stress -= 0.05;
+
+    // Encourage challenge signals
+    target.energy += 0.03;
+    target.phaseMismatch += 0.03;
+  }
+
+  /* ===================================================== */
+  /* 4️⃣ Driver Boost (Jarvis Explanation Learning)         */
+  /* ===================================================== */
+
+  if (topDriver) {
+    target[topDriver] += 0.05;
+  }
+
+  /* ===================================================== */
+  /* 5️⃣ EMA Smooth Update                                 */
+  /* ===================================================== */
+
+  const updated: GoalPressureWeights = {
     cadence: clamp(
-      currentWeights.cadence * (1 - lr) + target.cadence * lr
+      emaUpdate(currentWeights.cadence, target.cadence, lr)
     ),
-
-    stress: clamp(
-      currentWeights.stress * (1 - lr) + target.stress * lr
-    ),
-
     energy: clamp(
-      currentWeights.energy * (1 - lr) + target.energy * lr
+      emaUpdate(currentWeights.energy, target.energy, lr)
     ),
-
+    stress: clamp(
+      emaUpdate(currentWeights.stress, target.stress, lr)
+    ),
     phaseMismatch: clamp(
-      currentWeights.phaseMismatch * (1 - lr) +
-        target.phaseMismatch * lr
+      emaUpdate(
+        currentWeights.phaseMismatch,
+        target.phaseMismatch,
+        lr
+      )
     ),
   };
 
-  /* ---------------- Reason ---------------- */
+  /* ===================================================== */
+  /* 6️⃣ Normalize Always                                  */
+  /* ===================================================== */
+
+  const nextWeights = normalize(updated);
+
+  /* ===================================================== */
+  /* 7️⃣ Learning Event Output                             */
+  /* ===================================================== */
+
+  const delta: GoalPressureWeights = {
+    cadence: nextWeights.cadence - currentWeights.cadence,
+    energy: nextWeights.energy - currentWeights.energy,
+    stress: nextWeights.stress - currentWeights.stress,
+    phaseMismatch:
+      nextWeights.phaseMismatch - currentWeights.phaseMismatch,
+  };
 
   const reason =
     outcome === "overloaded"
-      ? "Overload detected → increased cadence & stress sensitivity smoothly"
-      : "Underutilization detected → relaxed energy & mismatch pressure smoothly";
+      ? "Persistent overload → Jarvis increased cadence/stress sensitivity"
+      : "Persistent underutilization → Jarvis relaxed load sensitivity";
 
   return {
     changed: true,
-    nextWeights: next,
-    reason,
+    nextWeights,
+    learningEvent: {
+      outcome,
+      persistenceDays,
+      driver: topDriver ?? "none",
+      delta,
+      reason,
+    },
   };
 }

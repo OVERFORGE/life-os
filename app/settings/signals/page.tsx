@@ -42,6 +42,10 @@ export default function SignalsPage() {
     min: string;
     max: string;
     step: string;
+
+    /* ✅ NEW: Conditional Fields */
+    dependsOn: string;
+    showIf: string;
   }>({
     key: "",
     label: "",
@@ -56,6 +60,9 @@ export default function SignalsPage() {
     min: "",
     max: "",
     step: "",
+
+    dependsOn: "",
+    showIf: "",
   });
 
   /* ---------------- Load Categories + Signals ---------------- */
@@ -98,6 +105,10 @@ export default function SignalsPage() {
         min: form.min ? Number(form.min) : null,
         max: form.max ? Number(form.max) : null,
         step: form.step ? Number(form.step) : null,
+
+        /* ✅ NEW */
+        dependsOn: form.dependsOn || null,
+        showIf: form.showIf ? Number(form.showIf) : null,
       }),
     });
 
@@ -123,6 +134,9 @@ export default function SignalsPage() {
       min: "",
       max: "",
       step: "",
+
+      dependsOn: "",
+      showIf: "",
     });
 
     loadAll();
@@ -263,6 +277,29 @@ export default function SignalsPage() {
             </div>
           )}
 
+          {/* ✅ Conditional Config */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4 pt-6">
+            <SelectField
+              label="Depends On (optional)"
+              value={form.dependsOn}
+              options={[
+                { value: "", label: "None" },
+                ...signals.map((s) => ({
+                  value: s.key,
+                  label: s.label,
+                })),
+              ]}
+              onChange={(v) => setForm({ ...form, dependsOn: v })}
+            />
+
+            <InputField
+              label="Show If Value (optional)"
+              description="Usually 1 for checkbox"
+              value={form.showIf}
+              onChange={(v) => setForm({ ...form, showIf: v })}
+            />
+          </div>
+
           {/* Submit */}
           <button
             onClick={addSignal}
@@ -289,8 +326,13 @@ export default function SignalsPage() {
                 <div>
                   <div className="font-medium">{s.label}</div>
                   <div className="text-xs text-gray-500">
-                    {s.key} · {s.inputType} · {s.categoryKey} ·{" "}
-                    {s.direction}
+                    {s.key} · {s.inputType} · {s.categoryKey} · {s.direction}
+                    {s.dependsOn && (
+                      <span className="text-purple-400">
+                        {" "}
+                        · depends on {s.dependsOn}
+                      </span>
+                    )}
                   </div>
                 </div>
 

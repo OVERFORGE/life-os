@@ -1,94 +1,96 @@
 "use client";
 
-type GoalPressure = {
-  status: "aligned" | "strained" | "conflicting" | "toxic";
-  pressureScore: number;
-};
+import { Card } from "@/features/daily-log/ui/Card";
 
-type GoalLoad = {
-  global?: {
-    mode?: string;
-    score?: number;
-    recommendation?: string;
-    systemRules?: string[];
-    distribution?: {
-      aligned?: number;
-      strained?: number;
-      conflicting?: number;
-      toxic?: number;
-    };
-  };
-  perGoal?: GoalPressure[];
-};
+function percent(n: number) {
+  return Math.round(n * 100);
+}
 
-export function GoalLoadCard({ goalLoad }: { goalLoad: GoalLoad | null }) {
+export function GoalLoadCard({ goalLoad }: { goalLoad: any }) {
   if (!goalLoad) return null;
 
-  /* ---------------- Derive distribution safely ---------------- */
+  console.log("FINAL GOAL LOAD CARD DATA:", goalLoad);
 
+  // ✅ API gives perGoal, not global
   const perGoal = goalLoad.perGoal ?? [];
 
-  const derivedDistribution = {
-    aligned: 0,
-    strained: 0,
-    conflicting: 0,
-    toxic: 0,
-  };
-
-  for (const g of perGoal) {
-    derivedDistribution[g.status]++;
+  if (perGoal.length === 0) {
+    return (
+      <Card title="Goal Load" subtitle="Jarvis system-wide goal pressure">
+        <p className="text-sm text-gray-500">No goals yet.</p>
+      </Card>
+    );
   }
 
-  const global = goalLoad.global ?? {};
+  // ✅ Compute global score
+  const avgScore =
+    perGoal.reduce((sum: number, g: any) => sum + g.pressureScore, 0) /
+    perGoal.length;
 
-  const distribution =
-    global.distribution && Object.keys(global.distribution).length
-      ? global.distribution
-      : derivedDistribution;
+  // ✅ Count distribution
+  const distribution = {
+    aligned: perGoal.filter((g: any) => g.status === "aligned").length,
+    strained: perGoal.filter((g: any) => g.status === "strained").length,
+    conflicting: perGoal.filter((g: any) => g.status === "conflicting").length,
+    toxic: perGoal.filter((g: any) => g.status === "toxic").length,
+  };
 
-  const score =
-    global.score ??
-    (perGoal.length
-      ? perGoal.reduce((a, g) => a + g.pressureScore, 0) / perGoal.length
-      : 0);
+  // ✅ Mode logic
+  let modeLabel = "Stable System Load ✅";
+  let explanation = "Your goals are balanced with your life capacity.";
 
-  const mode =
-    global.mode ??
-    (score > 0.6 ? "overloaded" : score > 0.35 ? "constrained" : "balanced");
+  if (avgScore > 0.75) {
+    modeLabel = "Overloaded ⚠️";
+    explanation = "Too much pressure. Reduce cadence or recover.";
+  } else if (avgScore < 0.35) {
+    modeLabel = "Underutilized 💤";
+    explanation = "You have unused capacity. Add challenge.";
+  }
 
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 space-y-3">
-      <div className="flex items-center justify-between">
-        <div className="text-sm text-gray-400">Goal Load</div>
-        <span className="px-2 py-0.5 rounded text-xs bg-gray-700/40 capitalize">
-          {mode}
-        </span>
-      </div>
-
-      <div className="text-2xl font-semibold">
-        {(score * 100).toFixed(0)}%
-      </div>
-
-      {global.recommendation && (
-        <div className="text-sm text-gray-400">
-          {global.recommendation}
+    <Card title="Goal Load" subtitle="Jarvis system-wide goal pressure">
+      <div className="space-y-4">
+        {/* Meter */}
+        <div className="flex justify-between text-sm">
+          <span className="text-gray-400">Load Score</span>
+          <span className="font-semibold">{percent(avgScore)}%</span>
         </div>
-      )}
 
-      <div className="flex gap-4 text-xs text-gray-500 pt-2">
-        <span>Aligned: {distribution.aligned}</span>
-        <span>Strained: {distribution.strained}</span>
-        <span>Conflicting: {distribution.conflicting}</span>
-        <span>Toxic: {distribution.toxic}</span>
+        <div className="w-full h-3 rounded-full bg-[#1c1f2a] overflow-hidden">
+          <div
+            className="h-full bg-white transition-all"
+            style={{ width: `${percent(avgScore)}%` }}
+          />
+        </div>
+
+        {/* Mode */}
+        <div className="text-sm font-medium">{modeLabel}</div>
+
+        <p className="text-xs text-gray-500 leading-relaxed">{explanation}</p>
+
+        {/* Distribution */}
+        <div className="grid grid-cols-2 gap-3 pt-2 text-sm">
+          <div className="flex justify-between">
+            <span className="text-gray-400">Aligned</span>
+            <span>{distribution.aligned}</span>
+          </div>
+
+          <div className="flex justify-between">
+            <span className="text-gray-400">Strained</span>
+            <span>{distribution.strained}</span>
+          </div>
+
+          <div className="flex justify-between">
+            <span className="text-gray-400">Conflicting</span>
+            <span>{distribution.conflicting}</span>
+          </div>
+
+          <div className="flex justify-between">
+            <span className="text-gray-400">Toxic</span>
+            <span>{distribution.toxic}</span>
+          </div>
+        </div>
       </div>
-
-      {global.systemRules?.length ? (
-        <ul className="text-xs text-gray-500 list-disc pl-4 pt-2">
-          {global.systemRules.map((rule, i) => (
-            <li key={i}>{rule}</li>
-          ))}
-        </ul>
-      ) : null}
-    </div>
+    </Card>
   );
 }

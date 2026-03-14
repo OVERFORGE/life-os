@@ -12,6 +12,8 @@ import { TrajectoryCard } from "@/features/dashboard/components/TrajectoryCard";
 import { CurrentEraCard } from "@/features/insights/eras/components/CurrentEraCard";
 import { GoalLoadCard } from "@/features/dashboard/components/GoalLoadCard";
 import { useRouter } from "next/navigation";
+import { SystemInsightCard } from "@/features/dashboard/components/SystemInsightCard";
+
 export default function DashboardPage() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
@@ -71,7 +73,12 @@ export default function DashboardPage() {
           <TrajectoryCard />
           <CurrentEraCard />
         </div>
-        <GoalLoadCard goalLoad={goalLoad}/>
+        <GoalLoadCard goalLoad={goalLoad?.goalLoad ?? goalLoad} />
+        <div>
+          <SystemInsightCard />
+        </div>
+        
+        
         
         <SummaryGrid logs={logs} />
         <StreakGrid logs={logs} />

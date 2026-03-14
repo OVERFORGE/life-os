@@ -16,19 +16,16 @@ export async function GET() {
 
   await connectDB();
 
-  const rawSignals = await LifeSignal.find({
+  const signals = await LifeSignal.find({
     userId: session.user.id,
     enabled: true,
-  }).lean();
-
-  // Normalize old signals
-  const signals = rawSignals.map((s: any) => ({
-    ...s,
-    categoryKey: s.categoryKey || s.category || "custom",
-  }));
+  })
+    .sort({ isCore: -1, createdAt: 1 })
+    .lean();
 
   return Response.json({ signals });
 }
+
 
 /* ======================= */
 /* CREATE Signal           */
@@ -76,6 +73,9 @@ export async function POST(req: Request) {
     weight: body.weight ?? 1,
 
     enabled: true,
+
+    dependsOn: body.dependsOn ?? null,
+    showIf: body.showIf ?? null,
   });
 
   return Response.json({ ok: true, signal: created });
@@ -99,6 +99,18 @@ export async function DELETE(req: Request) {
 
   await connectDB();
 
+  const signal = await LifeSignal.findOne({
+    userId: session.user.id,
+    key,
+  });
+
+  if (signal?.isCore) {
+    return Response.json(
+      { error: "Core signals cannot be deleted" },
+      { status: 400 }
+    );
+  }
+
   await LifeSignal.deleteOne({
     userId: session.user.id,
     key,
@@ -106,3 +118,4 @@ export async function DELETE(req: Request) {
 
   return Response.json({ ok: true });
 }
+

@@ -1,15 +1,15 @@
-// features/goals/engine/evaluateGoal.ts
-
-import { Goal } from "../models/Goal";
 import { GoalStats } from "../models/GoalStats";
 import { analyzeGoalPressure } from "./analyzeGoalPressure";
 import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
+import { LifeSettings } from "@/features/insights/models/LifeSettings";
 
 export async function evaluateGoal(goal: any) {
-  // -----------------------------
-  // 1️⃣ Load or init stats
-  // -----------------------------
+
+  /* ----------------------------- */
+  /* 1️⃣ Load / Init Stats         */
+  /* ----------------------------- */
+
   let stats = await GoalStats.findOne({ goalId: goal._id });
 
   if (!stats) {
@@ -25,9 +25,10 @@ export async function evaluateGoal(goal: any) {
     });
   }
 
-  // -----------------------------
-  // 2️⃣ Get latest life phase
-  // -----------------------------
+  /* ----------------------------- */
+  /* 2️⃣ Load Phase                */
+  /* ----------------------------- */
+
   const latestPhase = await PhaseHistory.findOne({
     userId: goal.userId,
   })
@@ -41,20 +42,39 @@ export async function evaluateGoal(goal: any) {
       }
     : null;
 
-  // -----------------------------
-  // 3️⃣ Goal Pressure Analysis
-  // -----------------------------
+  /* ----------------------------- */
+  /* 3️⃣ Load Weights              */
+  /* ----------------------------- */
+
+  const settings = await LifeSettings.findOne({
+    userId: goal.userId,
+  }).lean();
+
+  const weights =
+    settings?.goalPressureWeights ?? {
+      cadence: 0.25,
+      energy: 0.25,
+      stress: 0.25,
+      phaseMismatch: 0.25,
+    };
+
+  /* ----------------------------- */
+  /* 4️⃣ Pressure Analysis         */
+  /* ----------------------------- */
+
   const pressure = phaseExplanation
     ? analyzeGoalPressure({
         goal,
         stats,
         phase: phaseExplanation,
+        weights,
       })
     : null;
 
-  // -----------------------------
-  // 4️⃣ Return enriched result
-  // -----------------------------
+  /* ----------------------------- */
+  /* 5️⃣ Return Enriched Goal      */
+  /* ----------------------------- */
+
   return {
     ...goal,
     stats,

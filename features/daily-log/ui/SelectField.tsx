@@ -25,7 +25,9 @@ export function SelectField({
         onChange={(e) => onChange(e.target.value)}
         className="w-full bg-[#0f1115] border border-[#232632] rounded-lg px-3 py-2 text-gray-100"
       >
-        <option value="">Select...</option>
+        <option key="__default" value="">
+          Select...
+        </option>
 
         {options.map((opt) => (
           <option key={opt.value} value={opt.value}>
