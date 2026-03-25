@@ -77,18 +77,20 @@ export default function GoalsPage() {
     {goals.map((g) => {
       const score = g.stats?.currentScore ?? 0;
       const state = g.stats?.state ?? "unknown";
+      const id = g.id;
 
+      
       return (
-        <Link key={g._id} href={`/goals/${g._id}`}>
+        <Link key={id} href={`/goals/${id}`}>
           <div className="bg-[#161922] border border-[#232632] rounded-xl p-5 space-y-4 hover:border-gray-600 transition cursor-pointer">
             <div className="flex justify-between items-start">
-  <div className="space-y-1">
-    <div className="font-semibold text-lg">{g.title}</div>
+              <div className="space-y-1">
+                <div className="font-semibold text-lg">{g.title}</div>
 
-    {g.pressure?.status && g.pressure.status !== "aligned" && (
-      <div className="text-xs text-gray-400">
-        {pressureLabel(g.pressure.status)}
-      </div>
+                {g.pressure?.status && g.pressure.status !== "aligned" && (
+                <div className="text-xs text-gray-400">
+                {pressureLabel(g.pressure.status)}
+                </div>
     )}
   </div>
 
