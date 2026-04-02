@@ -3,9 +3,20 @@
 import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { MobileTopbar } from "./MobileTopbar";
+import { usePathname } from "next/navigation";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  // On the landing page, we don't want the authenticated layout
+  if (pathname === "/") {
+    return (
+      <div className="min-h-screen bg-black text-gray-100 flex flex-col">
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0f1115] text-gray-100 flex">

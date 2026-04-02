@@ -5,8 +5,6 @@ import { ConversationMessage } from "@/server/db/models/ConversationMessage";
 
 import { loadSystemContext } from "@/features/systemContext/loadSystemContext";
 import { buildPrompt } from "@/features/conversation/buildPrompt";
-
-// ✅ NEW
 import { runAssistantBrain } from "@/features/assistant/brain";
 
 export async function POST(req: Request) {
@@ -21,79 +19,83 @@ export async function POST(req: Request) {
 
   await connectDB();
 
-  /* ---------------- LOAD HISTORY ---------------- */
+  /* ---------------- HISTORY ---------------- */
 
-  const history = await ConversationMessage.find({
-    userId,
-  })
+  const history = await ConversationMessage.find({ userId })
     .sort({ createdAt: -1 })
     .limit(20)
     .lean();
 
-  /* ---------------- LOAD CONTEXT ---------------- */
+  /* ---------------- CONTEXT ---------------- */
 
   const context = await loadSystemContext(userId);
 
-  /* ===================================================== */
-  /* 🧠 RUN ASSISTANT BRAIN                               */
-  /* ===================================================== */
+  /* ---------------- BRAIN ---------------- */
 
   const brainResult = await runAssistantBrain({
     message,
     context,
     userId,
   });
-
+  console.log("BRAIN RESULT:", brainResult);
   /* ===================================================== */
-  /* 🧠 BUILD FINAL PROMPT                                */
+  /* 🧠 PROMPT BUILDING                                   */
   /* ===================================================== */
 
-  let finalPrompt = `
-    You are LifeOS, an intelligent personal operating system.
+  let finalPrompt = "";
 
-    The user said:
-    "${message}"
-
-    You executed this action:
-    ${brainResult.tool}
-
-    Execution result:
-    ${JSON.stringify(brainResult.result)}
-
-    IMPORTANT RULES:
-    - ONLY describe what actually happened based on the result above
-    - DO NOT assume failure if success=true
-    - DO NOT hallucinate missing data
-    - Be confident and clear
-
-    Then:
-    - confirm action
-    - explain briefly
-    - ask a useful follow-up
-
-    Keep tone natural and human.
-    `;
+  /* 🟢 TOOL EXECUTED */
 
   if (brainResult.type === "tool_executed") {
     finalPrompt = `
-You are LifeOS, an intelligent personal operating system.
+You are LifeOS, a human-like intelligent assistant.
 
 The user said:
 "${message}"
 
-You executed the action:
-${brainResult.tool}
-
-Result:
+System action result:
 ${JSON.stringify(brainResult.result)}
 
-Now respond naturally:
-- confirm what you did
-- explain briefly
-- keep tone human and intelligent
-- suggest next step if relevant
-    `;
-  } else {
+IMPORTANT:
+- Only confirm success if success=true
+- If failed, explain honestly
+- Do NOT assume anything
+- Do NOT mention JSON or tools
+
+Respond naturally like a human.
+`;
+  }
+
+  /* 🟡 CONFIRMATION STEP */
+
+  else if (brainResult.type === "confirmation_required") {
+    finalPrompt = `
+The user said:
+"${message}"
+
+They want to create a goal.
+
+Your job:
+- Understand the intent
+- Rephrase it clearly
+- Explain what will happen
+- Ask for confirmation
+
+DO NOT create the goal yet.
+
+Example tone:
+
+"That sounds like a strong habit to build.
+
+I can set this up as a daily goal where your consistency gets tracked over time. This will help improve your discipline and energy levels.
+
+Do you want me to create this goal for you?"
+`;
+  }
+
+  /* 🔵 NORMAL CHAT */
+
+  else {
     finalPrompt = buildPrompt(
       context,
       history.reverse(),
@@ -102,25 +104,22 @@ Now respond naturally:
   }
 
   /* ===================================================== */
-  /* 🤖 CALL LLM (STREAMING)                              */
+  /* 🤖 LLM CALL                                          */
   /* ===================================================== */
 
-  const ollamaRes = await fetch(
-    "http://localhost:11434/api/generate",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        model: "llama3.1:8b",
-        prompt: finalPrompt,
-        stream: true,
-        options: {
-          temperature: 0.8,
-          num_predict: 350,
-          top_p: 0.9,
-        },
-      }),
-    }
-  );
+  const ollamaRes = await fetch("http://localhost:11434/api/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "llama3.1:8b",
+      prompt: finalPrompt,
+      stream: true,
+      options: {
+        temperature: 0.8,
+        num_predict: 350,
+        top_p: 0.9,
+      },
+    }),
+  });
 
   if (!ollamaRes.body) {
     return Response.json({ error: "No response" });
@@ -135,7 +134,6 @@ Now respond naturally:
     async start(controller) {
       while (true) {
         const { done, value } = await reader.read();
-
         if (done) break;
 
         const chunk = decoder.decode(value);
@@ -150,14 +148,12 @@ Now respond naturally:
               new TextEncoder().encode(parsed.response)
             );
           }
-        } catch {
-          // ignore bad chunk
-        }
+        } catch { }
       }
 
       controller.close();
 
-      /* ---------------- SAVE ---------------- */
+      /* SAVE */
 
       await ConversationMessage.create({
         userId,

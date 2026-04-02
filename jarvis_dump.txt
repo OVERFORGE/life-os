@@ -29,7 +29,9 @@ export default nextConfig;
       "name": "life-os",
       "version": "0.1.0",
       "dependencies": {
+        "@gsap/react": "^2.1.2",
         "dotenv": "^17.2.3",
+        "gsap": "^3.14.2",
         "lucide-react": "^0.563.0",
         "mongoose": "^9.1.5",
         "next": "16.1.4",
@@ -931,6 +933,16 @@ export default nextConfig;
       },
       "engines": {
         "node": "^18.18.0 || ^20.9.0 || >=21.1.0"
+      }
+    },
+    "node_modules/@gsap/react": {
+      "version": "2.1.2",
+      "resolved": "https://registry.npmjs.org/@gsap/react/-/react-2.1.2.tgz",
+      "integrity": "sha512-JqliybO1837UcgH2hVOM4VO+38APk3ECNrsuSM4MuXp+rbf+/2IG2K1YJiqfTcXQHH7XlA0m3ykniFYstfq0Iw==",
+      "license": "SEE LICENSE AT https://gsap.com/standard-license",
+      "peerDependencies": {
+        "gsap": "^3.12.5",
+        "react": ">=17"
       }
     },
     "node_modules/@humanfs/core": {
@@ -4818,6 +4830,12 @@ export default nextConfig;
       "integrity": "sha512-RbJ5/jmFcNNCcDV5o9eTnBLJ/HszWV0P73bc+Ff4nS/rJj+YaS6IGyiOL0VoBYX+l1Wrl3k63h/KrH+nhJ0XvQ==",
       "dev": true,
       "license": "ISC"
+    },
+    "node_modules/gsap": {
+      "version": "3.14.2",
+      "resolved": "https://registry.npmjs.org/gsap/-/gsap-3.14.2.tgz",
+      "integrity": "sha512-P8/mMxVLU7o4+55+1TCnQrPmgjPKnwkzkXOK1asnR9Jg2lna4tEY5qBJjMmAaOBDDZWtlRjBXjLa0w53G/uBLA==",
+      "license": "Standard 'no charge' license: https://gsap.com/standard-license."
     },
     "node_modules/has-bigints": {
       "version": "1.1.0",
@@ -9042,7 +9060,9 @@ export default nextConfig;
     "seed:life": "tsx scripts/seedLife.ts"
   },
   "dependencies": {
+    "@gsap/react": "^2.1.2",
     "dotenv": "^17.2.3",
+    "gsap": "^3.14.2",
     "lucide-react": "^0.563.0",
     "mongoose": "^9.1.5",
     "next": "16.1.4",
@@ -9213,66 +9233,368 @@ export default function RootLayout({
 
 
 ===== FILE: .\app\page.tsx =====
-import Image from "next/image";
+"use client";
 
-export default function Home() {
-  return (
-    <div className="flex min-h-screen items-center justify-center bg-zinc-50 font-sans dark:bg-black">
-      <main className="flex min-h-screen w-full max-w-3xl flex-col items-center justify-between py-32 px-16 bg-white dark:bg-black sm:items-start">
-        <Image
-          className="dark:invert"
-          src="/next.svg"
-          alt="Next.js logo"
-          width={100}
-          height={20}
-          priority
-        />
-        <div className="flex flex-col items-center gap-6 text-center sm:items-start sm:text-left">
-          <h1 className="max-w-xs text-3xl font-semibold leading-10 tracking-tight text-black dark:text-zinc-50">
-            To get started, edit the page.tsx file.
-          </h1>
-          <p className="max-w-md text-lg leading-8 text-zinc-600 dark:text-zinc-400">
-            Looking for a starting point or more instructions? Head over to{" "}
-            <a
-              href="https://vercel.com/templates?framework=next.js&utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Templates
-            </a>{" "}
-            or the{" "}
-            <a
-              href="https://nextjs.org/learn?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-              className="font-medium text-zinc-950 dark:text-zinc-50"
-            >
-              Learning
-            </a>{" "}
-            center.
-          </p>
+import { useEffect, useRef } from "react";
+import { useSession, signIn } from "next-auth/react";
+import { useRouter } from "next/navigation";
+import gsap from "gsap";
+import { useGSAP } from "@gsap/react";
+import { ScrollTrigger } from "gsap/ScrollTrigger";
+import { Activity, Brain, Target } from "lucide-react";
+
+gsap.registerPlugin(useGSAP, ScrollTrigger);
+
+export default function Homepage() {
+  const { data: session, status } = useSession();
+  const router = useRouter();
+  const container = useRef<HTMLDivElement>(null);
+  const cursorRef = useRef<HTMLDivElement>(null);
+  const cursorDotRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (status === "authenticated") {
+      router.push("/dashboard");
+    }
+  }, [status, router]);
+
+  useGSAP(
+    () => {
+      if (status !== "unauthenticated") return;
+
+      // Custom Cursor Logic - Optimized for 60fps
+      let requestRef: number;
+      let targetX = 0;
+      let targetY = 0;
+
+      const cursorX = gsap.quickTo(cursorRef.current, "x", { duration: 0.8, ease: "power3" });
+      const cursorY = gsap.quickTo(cursorRef.current, "y", { duration: 0.8, ease: "power3" });
+      const dotX = gsap.quickTo(cursorDotRef.current, "x", { duration: 0.1, ease: "power3" });
+      const dotY = gsap.quickTo(cursorDotRef.current, "y", { duration: 0.1, ease: "power3" });
+
+      const onMouseMove = (e: MouseEvent) => {
+        targetX = e.clientX;
+        targetY = e.clientY;
+        
+        cursorX(targetX - 16);
+        cursorY(targetY - 16);
+        dotX(targetX - 4);
+        dotY(targetY - 4);
+        
+        // 3D Parallax on mouse move for the floating cards container
+        const cardsContainer = document.querySelector(".cards-container");
+        if (cardsContainer) {
+          const x = (targetX / window.innerWidth - 0.5) * 15;
+          const y = (targetY / window.innerHeight - 0.5) * 15;
+          
+          gsap.to(".floating-card", {
+            x: x,
+            y: y,
+            rotationY: x * 0.5,
+            rotationX: -y * 0.5,
+            duration: 1,
+            ease: "power2.out",
+            stagger: 0.05,
+            overwrite: "auto"
+          });
+        }
+      };
+
+      const onMouseHover = () => gsap.to(cursorRef.current, { scale: 2.5, backgroundColor: "rgba(0, 240, 255, 0.1)", duration: 0.3 });
+      const onMouseLeave = () => gsap.to(cursorRef.current, { scale: 1, backgroundColor: "transparent", duration: 0.3 });
+
+      window.addEventListener("mousemove", onMouseMove);
+      
+      const links = document.querySelectorAll("button, .hover-target");
+      links.forEach((link) => {
+        link.addEventListener("mouseenter", onMouseHover);
+        link.addEventListener("mouseleave", onMouseLeave);
+      });
+
+      // Split text for hero (manual split by word)
+      const titleWords = document.querySelectorAll(".title-word");
+      
+      // Main Timeline
+      const tl = gsap.timeline();
+
+      // Intro Boot Sequence
+      tl.to(".boot-screen", {
+        opacity: 0,
+        duration: 0.8,
+        delay: 1.5,
+        display: "none",
+        ease: "power2.inOut"
+      })
+      .from(".nav-anim", {
+        y: -30,
+        opacity: 0,
+        stagger: 0.1,
+        duration: 1,
+        ease: "power3.out"
+      }, "-=0.2")
+      .from(titleWords, {
+        y: 80,
+        opacity: 0,
+        rotateX: -60,
+        stagger: 0.05,
+        duration: 1.2,
+        ease: "back.out(1.4)",
+        transformOrigin: "50% 100%"
+      }, "-=0.8")
+      .from(".hero-sub", {
+        y: 20,
+        opacity: 0,
+        duration: 1,
+        ease: "power2.out"
+      }, "-=0.6")
+      .from(".hero-btn", {
+        scale: 0.8,
+        opacity: 0,
+        duration: 0.8,
+        ease: "elastic.out(1, 0.5)"
+      }, "-=0.4")
+      .from(".floating-card", {
+        y: 50,
+        opacity: 0,
+        duration: 1,
+        stagger: 0.1,
+        ease: "power2.out"
+      }, "-=0.8");
+
+      // Continuous Animations (Optimized)
+      gsap.to(".glow-orb-1", {
+        x: 100,
+        y: 50,
+        scale: 1.1,
+        duration: 8,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut"
+      });
+      
+      gsap.to(".glow-orb-2", {
+        x: -150,
+        y: 100,
+        scale: 1.2,
+        duration: 10,
+        repeat: -1,
+        yoyo: true,
+        ease: "sine.inOut"
+      });
+
+      // Scroll animations
+      gsap.to(".hero-section", {
+        scrollTrigger: {
+          trigger: ".hero-section",
+          start: "top top",
+          end: "bottom top",
+          scrub: 1
+        },
+        y: 150,
+        opacity: 0
+      });
+
+      return () => {
+        window.removeEventListener("mousemove", onMouseMove);
+        links.forEach((link) => {
+          link.removeEventListener("mouseenter", onMouseHover);
+          link.removeEventListener("mouseleave", onMouseLeave);
+        });
+      };
+    },
+    { scope: container, dependencies: [status] }
+  );
+
+  if (status === "loading" || status === "authenticated") {
+    return (
+      <div className="flex h-screen w-full items-center justify-center bg-[#050505]">
+        <div className="flex flex-col items-center gap-6">
+          <div className="relative flex h-16 w-16 items-center justify-center">
+             <div className="absolute h-full w-full animate-[spin_3s_linear_infinite] rounded-full border-[1px] border-dashed border-[#00f0ff]/40"></div>
+             <div className="absolute h-12 w-12 animate-[spin_2s_linear_infinite_reverse] rounded-full border-[2px] border-solid border-t-[#00f0ff] border-r-transparent border-b-[#00f0ff] border-l-transparent"></div>
+             <div className="h-2 w-2 rounded-full bg-white shadow-[0_0_15px_#00f0ff]"></div>
+          </div>
+          <div className="font-mono text-xs tracking-[0.3em] text-[#00f0ff] animate-pulse">INITIATING DATA STREAM...</div>
         </div>
-        <div className="flex flex-col gap-4 text-base font-medium sm:flex-row">
-          <a
-            className="flex h-12 w-full items-center justify-center gap-2 rounded-full bg-foreground px-5 text-background transition-colors hover:bg-[#383838] dark:hover:bg-[#ccc] md:w-[158px]"
-            href="https://vercel.com/new?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            <Image
-              className="dark:invert"
-              src="/vercel.svg"
-              alt="Vercel logomark"
-              width={16}
-              height={16}
-            />
-            Deploy Now
-          </a>
-          <a
-            className="flex h-12 w-full items-center justify-center rounded-full border border-solid border-black/[.08] px-5 transition-colors hover:border-transparent hover:bg-black/[.04] dark:border-white/[.145] dark:hover:bg-[#1a1a1a] md:w-[158px]"
-            href="https://nextjs.org/docs?utm_source=create-next-app&utm_medium=appdir-template-tw&utm_campaign=create-next-app"
-            target="_blank"
-            rel="noopener noreferrer"
-          >
-            Documentation
-          </a>
+      </div>
+    );
+  }
+
+  const titleText = "THE OPERATING SYSTEM FOR YOUR LIFE";
+  const words = titleText.split(" ");
+
+  return (
+    <div ref={container} className="relative min-h-[150vh] bg-[#030303] overflow-hidden font-sans text-white cursor-none selection:bg-[#00f0ff]/30 selection:text-white">
+      
+      <style>{`
+        @keyframes bootprogress {
+          0% { transform: scaleX(0); }
+          50% { transform: scaleX(0.7); }
+          100% { transform: scaleX(1); }
+        }
+        @keyframes scrollUp {
+          0% { transform: translateY(0); }
+          100% { transform: translateY(-50%); }
+        }
+        .transform-style-3d {
+          transform-style: preserve-3d;
+        }
+      `}</style>
+      
+      {/* Boot Screen Overlay */}
+      <div className="boot-screen fixed inset-0 z-[100] flex flex-col items-center justify-center bg-[#030303]">
+         <div className="w-64 space-y-4">
+           <div className="flex justify-between font-mono text-xs text-[#00f0ff]/70">
+             <span>SYSTEM_BOOT</span>
+             <span className="animate-pulse">v2.0.4</span>
+           </div>
+           <div className="h-[1px] w-full bg-white/10 relative overflow-hidden">
+             <div className="absolute top-0 left-0 h-full w-full bg-[#00f0ff] animate-[bootprogress_1.5s_ease-in-out_forwards]" style={{ transformOrigin: "left", transform: "scaleX(0)" }}></div>
+           </div>
+           
+           <div className="font-mono text-[10px] text-white/30 h-10 overflow-hidden opacity-50 relative">
+             <div className="absolute w-full animate-[scrollUp_1.5s_linear_forwards]">
+               &gt; Loading core modules... <br/>
+               &gt; Syncing realities matrix... <br/>
+               &gt; Initializing neural bridge... <br/>
+               &gt; Calibrating life state... <br/>
+               &gt; Operational Phase 1. <br/>
+               &gt; System Ready.
+             </div>
+           </div>
+         </div>
+      </div>
+
+      {/* Custom Cursor */}
+      <div ref={cursorRef} className="fixed top-0 left-0 z-[9999] h-8 w-8 rounded-full border border-[#00f0ff]/50 pointer-events-none mix-blend-screen backdrop-blur-[2px]"></div>
+      <div ref={cursorDotRef} className="fixed top-0 left-0 z-[9999] h-2 w-2 rounded-full bg-[#00f0ff] shadow-[0_0_10px_#00f0ff] pointer-events-none cursor-dot"></div>
+
+      {/* Ambient Background Glows - OPTIMIZED FOR 60FPS */}
+      <div className="fixed inset-0 z-0 pointer-events-none overflow-hidden">
+        <div className="glow-orb-1 absolute top-[-10%] left-[-10%] h-[80vh] w-[80vw] bg-[radial-gradient(ellipse_at_center,rgba(0,180,255,0.08)_0,transparent_60%)]"></div>
+        <div className="glow-orb-2 absolute bottom-[-10%] right-[-10%] h-[80vh] w-[80vw] bg-[radial-gradient(ellipse_at_center,rgba(255,255,255,0.05)_0,transparent_60%)]"></div>
+        {/* Removed mix-blend and heavy SVG noise for performance */}
+        <div className="absolute inset-0" style={{ backgroundImage: 'radial-gradient(circle at 50% 50%, transparent 20%, #030303 100%), linear-gradient(rgba(255, 255, 255, 0.02) 1px, transparent 1px), linear-gradient(90deg, rgba(255, 255, 255, 0.02) 1px, transparent 1px)', backgroundSize: '100% 100%, 60px 60px, 60px 60px' }}></div>
+      </div>
+
+      {/* Modern Top-tier Navbar */}
+      <nav className="relative z-50 w-full px-4 py-8 md:px-12 md:py-8 lg:py-10">
+        <div className="max-w-7xl mx-auto flex items-center justify-between">
+          <div className="nav-anim flex items-center gap-2 cursor-pointer hover-target group">
+            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" xmlns="http://www.w3.org/2000/svg" className="text-[#00f0ff] group-hover:rotate-180 transition-transform duration-700">
+              <rect x="3" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2"/>
+              <rect x="14" y="3" width="7" height="7" stroke="currentColor" strokeWidth="2"/>
+              <rect x="14" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2"/>
+              <rect x="3" y="14" width="7" height="7" stroke="currentColor" strokeWidth="2"/>
+              <circle cx="17.5" cy="17.5" r="1.5" fill="currentColor"/>
+            </svg>
+            <span className="text-2xl font-black tracking-tighter">LIFE<span className="text-[#00f0ff]">OS</span><span className="animate-pulse">_</span></span>
+          </div>
+          
+          <div className="nav-anim flex gap-8 items-center">
+            <span className="hover-target text-[10px] font-mono uppercase tracking-[0.2em] text-white/40 hover:text-white transition-colors hidden md:block cursor-pointer px-2">
+              The Architecture
+            </span>
+            <span className="hover-target text-[10px] font-mono uppercase tracking-[0.2em] text-white/40 hover:text-white transition-colors hidden md:block cursor-pointer px-2">
+              Telemetry
+            </span>
+            <button
+              onClick={() => signIn("google")}
+              className="hover-target group relative overflow-hidden rounded-full border border-white/20 bg-[#060606] px-6 py-3 backdrop-blur-md transition-all hover:bg-white/10 hover:border-[#00f0ff]/50 hover:shadow-[0_0_20px_rgba(0,240,255,0.2)]"
+            >
+              <div className="absolute inset-0 w-0 bg-gradient-to-r from-[#00f0ff]/20 to-transparent transition-all duration-300 ease-out group-hover:w-full opacity-50"></div>
+              <span className="relative z-10 text-[11px] font-mono font-bold uppercase tracking-[0.1em] text-white">LOGIN SEQUENCE</span>
+            </button>
+          </div>
+        </div>
+      </nav>
+
+      {/* Main Hero Section - Reconfigured padding and spacing to prevent squishing */}
+      <main className="hero-section relative z-10 flex flex-col items-center pt-16 md:pt-24 lg:pt-32 pb-40 px-4 w-full max-w-7xl mx-auto">
+        {/* Diagnostic Label */}
+        <div className="nav-anim mb-16 flex items-center gap-4 hover-target">
+           <div className="h-[1px] w-8 md:w-16 bg-gradient-to-r from-transparent to-[#00f0ff]/50"></div>
+           <div className="font-mono text-[10px] uppercase tracking-[0.3em] text-[#00f0ff] border border-[#00f0ff]/30 px-3 py-1 bg-[#00f0ff]/5 backdrop-blur-sm rounded-sm whitespace-nowrap">Status: Ready To Track</div>
+           <div className="h-[1px] w-8 md:w-16 bg-gradient-to-l from-transparent to-[#00f0ff]/50"></div>
+        </div>
+
+        {/* Dynamic Split Title - Adjusted sizing and line-heights */}
+        <h1 className="flex flex-wrap justify-center text-center gap-x-4 md:gap-x-6 gap-y-2 md:gap-y-6 w-full max-w-[95vw] lg:max-w-[1200px] mb-8">
+          {words.map((word, i) => (
+            <span key={i} className="title-word perspective-[1000px] inline-block">
+              <span className="inline-block text-[3.5rem] sm:text-[5rem] md:text-[6.5rem] lg:text-[8rem] font-black tracking-tighter leading-[1.05] text-transparent bg-clip-text bg-gradient-to-b from-white via-white to-white/40 drop-shadow-2xl" 
+                style={{ WebkitTextStroke: word === "LIFE" || word === "SYSTEM" ? "1px rgba(0,240,255,0.7)" : "none", color: word === "LIFE" || word === "SYSTEM" ? "transparent" : ""}}>
+                {word}
+              </span>
+            </span>
+          ))}
+        </h1>
+
+        <p className="hero-sub mt-6 md:mt-10 mb-16 max-w-3xl text-center text-base md:text-xl text-white/50 font-light leading-relaxed tracking-wider px-2">
+          A hyper-personalized analytics engine for your existence. <br className="hidden md:block" />
+          Quantify your habits, optimize your deep work, and monitor your physical state.
+        </p>
+
+        {/* Start Button & Call to Action */}
+        <div className="hero-btn mb-32 flex items-center justify-center relative">
+            <div className="absolute inset-0 rounded-full border border-[#00f0ff]/20 scale-[1.3] animate-ping opacity-20 hover-target"></div>
+            <button
+              onClick={() => signIn("google")}
+              className="hover-target group relative flex h-28 w-28 md:h-36 md:w-36 items-center justify-center rounded-full border border-white/10 bg-[#050505] backdrop-blur-xl transition-all duration-500 hover:scale-[1.05] shadow-[0_0_30px_rgba(0,0,0,0.5)] hover:shadow-[0_0_50px_rgba(0,240,255,0.4)]"
+            >
+              <div className="absolute inset-0 rounded-full border-[1px] border-dashed border-[#00f0ff]/40 animate-[spin_10s_linear_infinite]"></div>
+              <div className="absolute inset-2 rounded-full border border-white/5 group-hover:bg-[#00f0ff]/10 bg-[#00f0ff]/0 transition-colors duration-500"></div>
+              
+              <div className="relative z-10 flex flex-col items-center text-white/80 group-hover:text-white transition-colors duration-500">
+                 <span className="font-mono text-[10px] md:text-sm tracking-[0.2em] font-bold text-[#00f0ff]">ENGAGE</span>
+                 <svg xmlns="http://www.w3.org/2000/svg" width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" className="mt-2 transition-transform duration-500 group-hover:translate-y-1"><path d="M12 5v14"/><path d="m19 12-7 7-7-7"/></svg>
+              </div>
+            </button>
+        </div>
+
+        {/* 3D Magnetic Parallax Cards - Improved padding and layout */}
+        <div className="cards-container grid w-full grid-cols-1 lg:grid-cols-3 gap-8 md:gap-10 pb-20 mt-10 z-20" style={{ perspective: "1500px" }}>
+          
+          <div className="floating-card relative group rounded-2xl border border-white/10 bg-[#080808] p-8 md:p-10 transition-all duration-300 hover:bg-[#0a0a0a] hover:border-[#00f0ff]/40 shadow-xl" style={{ transformStyle: "preserve-3d" }}>
+             <div className="absolute top-0 right-0 p-6 opacity-30 group-hover:opacity-100 group-hover:text-[#00f0ff] transition-all transform group-hover:scale-110 group-hover:rotate-12 duration-500">
+               <Activity size={32} />
+             </div>
+             <div className="mb-8 h-12 w-12 flex text-sm font-mono items-center justify-center rounded-lg bg-[#00f0ff]/10 text-[#00f0ff] border border-[#00f0ff]/30 shadow-[0_0_20px_rgba(0,240,255,0)] group-hover:shadow-[0_0_20px_rgba(0,240,255,0.3)] transition-all">01</div>
+             <h3 className="text-2xl font-bold tracking-tight mb-4 group-hover:text-[#00f0ff] transition-colors leading-tight">Physiological Telemetry</h3>
+             <p className="text-sm md:text-base text-white/40 leading-relaxed font-light group-hover:text-white/60 transition-colors">Monitor sleep patterns, caloric intake, and workout intensity. Your body is a machine; track its metrics.</p>
+             <div className="mt-10 h-1.5 w-full bg-white/5 overflow-hidden rounded-full">
+               <div className="h-full w-2/3 bg-gradient-to-r from-[#00f0ff]/20 to-[#00f0ff] opacity-50 group-hover:opacity-100 transition-opacity"></div>
+             </div>
+          </div>
+
+          <div className="floating-card relative group rounded-2xl border border-white/10 bg-[#080808] p-8 md:p-10 transition-all duration-300 hover:bg-[#0a0a0a] hover:border-blue-500/40 shadow-xl" style={{ transformStyle: "preserve-3d" }}>
+             <div className="absolute top-0 right-0 p-6 opacity-30 group-hover:opacity-100 group-hover:text-blue-400 transition-all transform group-hover:scale-110 group-hover:-rotate-12 duration-500">
+               <Brain size={32} />
+             </div>
+             <div className="mb-8 h-12 w-12 flex text-sm font-mono items-center justify-center rounded-lg bg-blue-500/10 text-blue-400 border border-blue-500/30 shadow-[0_0_20px_rgba(0,0,0,0)] group-hover:shadow-[0_0_20px_rgba(59,130,246,0.3)] transition-all">02</div>
+             <h3 className="text-2xl font-bold tracking-tight mb-4 group-hover:text-blue-400 transition-colors leading-tight">Cognitive Load</h3>
+             <p className="text-sm md:text-base text-white/40 leading-relaxed font-light group-hover:text-white/60 transition-colors">Quantify deep work sessions, focus levels, and mental state. Understand exactly what fuels your mind.</p>
+             <div className="mt-10 flex items-end gap-1.5 h-12 opacity-30 group-hover:opacity-100 transition-opacity w-full">
+                {[40,70,30,90,50,80].map((h,i) => (
+                  <div key={i} className="flex-1 bg-gradient-to-t from-blue-600/20 to-blue-400 rounded-t-sm hover:h-full transition-all duration-300" style={{ height: `${h}%` }}></div>
+                ))}
+             </div>
+          </div>
+
+          <div className="floating-card relative group rounded-2xl border border-white/10 bg-[#080808] p-8 md:p-10 transition-all duration-300 hover:bg-[#0a0a0a] hover:border-purple-400/40 shadow-xl" style={{ transformStyle: "preserve-3d" }}>
+             <div className="absolute top-0 right-0 p-6 opacity-30 group-hover:opacity-100 group-hover:text-purple-400 transition-all transform group-hover:scale-110 group-hover:rotate-12 duration-500">
+               <Target size={32} />
+             </div>
+             <div className="mb-8 h-12 w-12 flex text-sm font-mono items-center justify-center rounded-lg bg-purple-500/10 text-purple-400 border border-purple-500/30 shadow-[0_0_20px_rgba(0,0,0,0)] group-hover:shadow-[0_0_20px_rgba(168,85,247,0.3)] transition-all">03</div>
+             <h3 className="text-2xl font-bold tracking-tight mb-4 group-hover:text-purple-400 transition-colors leading-tight">Goal Alignment</h3>
+             <p className="text-sm md:text-base text-white/40 leading-relaxed font-light group-hover:text-white/60 transition-colors">Phased-based detection adjusts your goals dynamically based on whether you are grinding or recovering.</p>
+             <div className="mt-10 relative h-12 w-full flex items-center justify-center border border-white/5 rounded-lg bg-white/5 overflow-hidden group-hover:border-purple-500/30 transition-colors">
+               <div className="absolute top-1/2 left-1/2 -translate-x-1/2 -translate-y-1/2 h-2 w-full bg-purple-500/20 flex items-center shadow-[0_0_15px_rgba(168,85,247,0.5)]">
+                  <div className="h-full w-4 bg-purple-400 rounded-full group-hover:animate-[progress_2s_infinite_ease-in-out_alternate]"></div>
+               </div>
+             </div>
+          </div>
+
         </div>
       </main>
     </div>
@@ -9453,6 +9775,7 @@ import { ConversationMessage } from "@/server/db/models/ConversationMessage";
 
 import { loadSystemContext } from "@/features/systemContext/loadSystemContext";
 import { buildPrompt } from "@/features/conversation/buildPrompt";
+import { runAssistantBrain } from "@/features/assistant/brain";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -9461,41 +9784,112 @@ export async function POST(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const userId = session.user.id;
   const { message } = await req.json();
 
   await connectDB();
 
-  const history = await ConversationMessage.find({
-    userId: session.user.id,
-  })
+  /* ---------------- HISTORY ---------------- */
+
+  const history = await ConversationMessage.find({ userId })
     .sort({ createdAt: -1 })
-    .limit(10)
+    .limit(20)
     .lean();
 
-  const context = await loadSystemContext(session.user.id);
+  /* ---------------- CONTEXT ---------------- */
 
-  const prompt = buildPrompt(
+  const context = await loadSystemContext(userId);
+
+  /* ---------------- BRAIN ---------------- */
+
+  const brainResult = await runAssistantBrain({
+    message,
     context,
-    history.reverse(),
-    message
-  );
+    userId,
+  });
+  console.log("BRAIN RESULT:", brainResult);
+  /* ===================================================== */
+  /* 🧠 PROMPT BUILDING                                   */
+  /* ===================================================== */
 
-  const ollamaRes = await fetch(
-    "http://localhost:11434/api/generate",
-    {
-      method: "POST",
-      body: JSON.stringify({
-        model: "llama3",
-        prompt,
-        stream: true,
-        options: {
-          temperature: 0.8,
-          num_predict: 350,
-          top_p: 0.9,
-        }
-      }),
-    }
-  );
+  let finalPrompt = "";
+
+  /* 🟢 TOOL EXECUTED */
+
+  if (brainResult.type === "tool_executed") {
+    finalPrompt = `
+You are LifeOS, a human-like intelligent assistant.
+
+The user said:
+"${message}"
+
+System action result:
+${JSON.stringify(brainResult.result)}
+
+IMPORTANT:
+- Only confirm success if success=true
+- If failed, explain honestly
+- Do NOT assume anything
+- Do NOT mention JSON or tools
+
+Respond naturally like a human.
+`;
+  }
+
+  /* 🟡 CONFIRMATION STEP */
+
+  else if (brainResult.type === "confirmation_required") {
+    finalPrompt = `
+The user said:
+"${message}"
+
+They want to create a goal.
+
+Your job:
+- Understand the intent
+- Rephrase it clearly
+- Explain what will happen
+- Ask for confirmation
+
+DO NOT create the goal yet.
+
+Example tone:
+
+"That sounds like a strong habit to build.
+
+I can set this up as a daily goal where your consistency gets tracked over time. This will help improve your discipline and energy levels.
+
+Do you want me to create this goal for you?"
+`;
+  }
+
+  /* 🔵 NORMAL CHAT */
+
+  else {
+    finalPrompt = buildPrompt(
+      context,
+      history.reverse(),
+      message
+    );
+  }
+
+  /* ===================================================== */
+  /* 🤖 LLM CALL                                          */
+  /* ===================================================== */
+
+  const ollamaRes = await fetch("http://localhost:11434/api/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "llama3.1:8b",
+      prompt: finalPrompt,
+      stream: true,
+      options: {
+        temperature: 0.8,
+        num_predict: 350,
+        top_p: 0.9,
+      },
+    }),
+  });
 
   if (!ollamaRes.body) {
     return Response.json({ error: "No response" });
@@ -9510,7 +9904,6 @@ export async function POST(req: Request) {
     async start(controller) {
       while (true) {
         const { done, value } = await reader.read();
-
         if (done) break;
 
         const chunk = decoder.decode(value);
@@ -9520,26 +9913,26 @@ export async function POST(req: Request) {
 
           if (parsed.response) {
             fullResponse += parsed.response;
+
             controller.enqueue(
               new TextEncoder().encode(parsed.response)
             );
           }
-        } catch {
-          // ignore malformed chunk
-        }
+        } catch { }
       }
 
       controller.close();
 
-      // Save conversation after stream finishes
+      /* SAVE */
+
       await ConversationMessage.create({
-        userId: session.user.id,
+        userId,
         role: "user",
         content: message,
       });
 
       await ConversationMessage.create({
-        userId: session.user.id,
+        userId,
         role: "assistant",
         content: fullResponse,
       });
@@ -9551,6 +9944,31 @@ export async function POST(req: Request) {
       "Content-Type": "text/plain",
     },
   });
+}
+
+
+===== FILE: .\app\api\conversation\history\route.ts =====
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { connectDB } from "@/server/db/connect";
+import { ConversationMessage } from "@/server/db/models/ConversationMessage";
+
+export async function GET() {
+  const session = await getServerSession(authOptions);
+
+  if (!session?.user?.id) {
+    return Response.json([], { status: 401 });
+  }
+
+  await connectDB();
+
+  const messages = await ConversationMessage.find({
+    userId: session.user.id,
+  })
+    .sort({ createdAt: 1 })
+    .lean();
+
+  return Response.json(messages);
 }
 
 
@@ -9954,13 +10372,18 @@ import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { LifeSettings } from "@/features/insights/models/LifeSettings";
+
 export async function GET() {
   const session = await getServerSession(authOptions);
-  if (!session?.user) return Response.json([], { status: 401 });
+
+  if (!session?.user) {
+    return Response.json([], { status: 401 });
+  }
 
   await connectDB();
 
   const goals = await Goal.find({ userId: session.user.id }).lean();
+
   const goalIds = goals.map((g) => g._id);
 
   const stats = await GoalStats.find({
@@ -9969,7 +10392,18 @@ export async function GET() {
 
   const statMap = new Map(stats.map((s) => [String(s.goalId), s]));
 
-  // Get latest phase
+  const settings = await LifeSettings.findOne({
+    userId: session.user.id,
+  }).lean();
+
+  const weights =
+    settings?.goalPressureWeights ?? {
+      cadence: 0.25,
+      energy: 0.25,
+      stress: 0.25,
+      phaseMismatch: 0.25,
+    };
+
   const currentPhase = await PhaseHistory.findOne({
     userId: session.user.id,
   })
@@ -9983,33 +10417,22 @@ export async function GET() {
       }
     : null;
 
-  const result = goals.map(async (g) => {
+  const result = goals.map((g) => {
     const goalStats = statMap.get(String(g._id));
 
-    const settings = await LifeSettings.findOne({
-  userId: session.user.id,
-}).lean();
-
-const weights =
-  settings?.goalPressureWeights ?? {
-    cadence: 0.25,
-    energy: 0.25,
-    stress: 0.25,
-    phaseMismatch: 0.25,
-  };
-
-const pressure = phaseExplanation
-  ? analyzeGoalPressure({
-      goal: g,
-      stats: goalStats,
-      phase: phaseExplanation,
-      weights,
-    })
-  : null;
+    const pressure = phaseExplanation
+      ? analyzeGoalPressure({
+          goal: g,
+          stats: goalStats,
+          phase: phaseExplanation,
+          weights,
+        })
+      : null;
 
     return {
       ...g,
-      stats: goalStats,
+      id: g._id.toString(),
+      stats: goalStats ?? null,
       pressure: pressure
         ? {
             status: pressure.status,
@@ -12370,7 +12793,7 @@ export default function GoalsPage() {
     {goals.map((g) => {
       const score = g.stats?.currentScore ?? 0;
       const state = g.stats?.state ?? "unknown";
-      const id = g?._id?.toString?.() || g?.id;
+      const id = g.id;
 
       
       return (
@@ -14406,9 +14829,20 @@ export default function SignalsPage() {
 import { useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { MobileTopbar } from "./MobileTopbar";
+import { usePathname } from "next/navigation";
 
 export function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
+  const pathname = usePathname();
+
+  // On the landing page, we don't want the authenticated layout
+  if (pathname === "/") {
+    return (
+      <div className="min-h-screen bg-black text-gray-100 flex flex-col">
+        {children}
+      </div>
+    );
+  }
 
   return (
     <div className="min-h-screen bg-[#0f1115] text-gray-100 flex">
@@ -14600,6 +15034,703 @@ export function Providers({ children }: { children: React.ReactNode }) {
 ===== FILE: .\config\site.ts =====
 
 
+===== FILE: .\features\assistant\brain.ts =====
+import { detectIntent } from "./intent";
+import { decideAction } from "./decision";
+import { executeTool } from "./executor";
+import { ConversationMessage } from "@/server/db/models/ConversationMessage";
+import { LifeSignal } from "@/features/signals/models/LifeSignal";
+
+/* ===================================================== */
+/* 🧠 HELPERS                                            */
+/* ===================================================== */
+
+async function getPendingAction(userId: string) {
+  return ConversationMessage.findOne({
+    userId,
+    role: "system",
+    content: { $regex: "PENDING_ACTION:" },
+  })
+    .sort({ createdAt: -1 })
+    .lean();
+}
+
+async function setPendingAction(userId: string, data: any) {
+  await ConversationMessage.create({
+    userId,
+    role: "system",
+    content: `PENDING_ACTION:${JSON.stringify(data)}`,
+  });
+}
+
+async function clearPendingAction(userId: string) {
+  await ConversationMessage.deleteMany({
+    userId,
+    role: "system",
+    content: { $regex: "PENDING_ACTION:" },
+  });
+}
+
+/* ===================================================== */
+/* 🧠 HARD OVERRIDE (NEW - CRITICAL FIX)                 */
+/* ===================================================== */
+
+async function shouldForceLog(
+  message: string,
+  userId: string
+) {
+  const lower = message.toLowerCase();
+
+  /* 🔥 sleep / wake ALWAYS */
+  if (
+    lower.includes("sleep") ||
+    lower.includes("slept") ||
+    lower.includes("wake") ||
+    lower.includes("woke")
+  ) {
+    return true;
+  }
+
+  /* 🔥 duration ALWAYS */
+  if (lower.match(/\d+\s*(hour|hr|hrs)/)) {
+    return true;
+  }
+
+  /* 🔥 signal match ALWAYS */
+  const signals = await LifeSignal.find({
+    userId,
+    enabled: true,
+  }).lean();
+
+  for (const sig of signals) {
+    const key = sig.key.toLowerCase();
+    const label = sig.label.toLowerCase();
+
+    const spacedKey = key.replace(/([A-Z])/g, " $1").toLowerCase();
+
+    if (
+      lower.includes(key) ||
+      lower.includes(label) ||
+      lower.includes(spacedKey)
+    ) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/* ===================================================== */
+/* 🧠 SMART ACTIVITY DETECTION (YOUR ORIGINAL)           */
+/* ===================================================== */
+
+async function shouldLogActivity(
+  message: string,
+  userId: string
+) {
+  const lower = message.toLowerCase();
+
+  const pastIndicators = [
+    "i did",
+    "i went",
+    "i worked",
+    "i studied",
+    "i coded",
+    "i ran",
+    "i exercised",
+    "i slept",
+    "i didn't",
+    "i did not",
+    "today",
+    "yesterday",
+    "this morning",
+    "earlier",
+  ];
+
+  const hasPastContext = pastIndicators.some((p) =>
+    lower.includes(p)
+  );
+
+  if (!hasPastContext) return false;
+
+  const signals = await LifeSignal.find({
+    userId,
+    enabled: true,
+  }).lean();
+
+  for (const sig of signals) {
+    const key = sig.key.toLowerCase();
+    const label = sig.label.toLowerCase();
+
+    if (lower.includes(key) || lower.includes(label)) {
+      return true;
+    }
+
+    const spacedKey = key.replace(/([A-Z])/g, " $1").toLowerCase();
+    if (lower.includes(spacedKey)) {
+      return true;
+    }
+  }
+
+  return false;
+}
+
+/* ===================================================== */
+/* 🧠 MAIN                                               */
+/* ===================================================== */
+
+export async function runAssistantBrain({
+  message,
+  context,
+  userId,
+}: {
+  message: string;
+  context: any;
+  userId: string;
+}) {
+  const lower = message.toLowerCase();
+
+  /* ===================================================== */
+  /* 🟢 STEP 1: CONFIRMATION                             */
+  /* ===================================================== */
+
+  const isConfirmation =
+    lower.includes("yes") ||
+    lower.includes("confirm") ||
+    lower.includes("do it") ||
+    lower.includes("sure") ||
+    lower.includes("ok") ||
+    lower.includes("okay") ||
+    lower.includes("indeed");
+
+  const pendingDoc = await getPendingAction(userId);
+
+  if (pendingDoc && isConfirmation) {
+    const pending = JSON.parse(
+      pendingDoc.content.replace("PENDING_ACTION:", "")
+    );
+
+    await clearPendingAction(userId);
+
+    console.log("✅ Executing confirmed action:", pending);
+
+    const result = await executeTool({
+      tool: pending.tool,
+      message: pending.message,
+      context,
+      userId,
+    });
+
+    return {
+      type: "tool_executed",
+      intent: pending.intent,
+      tool: pending.tool,
+      result,
+    };
+  }
+
+  /* ===================================================== */
+  /* 🔥 STEP 2: FORCE LOG (NEW - FIXES YOUR BUG)          */
+  /* ===================================================== */
+
+  const forceLog = await shouldForceLog(message, userId);
+
+  if (forceLog) {
+    console.log("🔥 FORCE LOG TRIGGERED");
+
+    const result = await executeTool({
+      tool: "log_activity",
+      message,
+      context,
+      userId,
+    });
+
+    return {
+      type: "tool_executed",
+      intent: "log_activity",
+      tool: "log_activity",
+      result,
+    };
+  }
+
+  /* ===================================================== */
+  /* 🔥 STEP 3: AUTO LOG (YOUR ORIGINAL SYSTEM)           */
+  /* ===================================================== */
+
+  const shouldLog = await shouldLogActivity(message, userId);
+
+  if (shouldLog) {
+    console.log("🔥 AUTO LOG TRIGGERED");
+
+    const result = await executeTool({
+      tool: "log_activity",
+      message,
+      context,
+      userId,
+    });
+
+    return {
+      type: "tool_executed",
+      intent: "log_activity",
+      tool: "log_activity",
+      result,
+    };
+  }
+
+  /* ===================================================== */
+  /* 🟢 STEP 4: NORMAL INTENT FLOW                       */
+  /* ===================================================== */
+
+  const intent = await detectIntent(message, context);
+  const decision = decideAction(intent);
+
+  console.log("Intent:", intent);
+  console.log("Decision:", decision);
+
+  if (!decision.requiresTool) {
+    return {
+      type: "response_only",
+      intent,
+      tool: null,
+      result: null,
+    };
+  }
+
+  /* ===================================================== */
+  /* 🟡 STEP 5: GOAL CONFIRMATION                         */
+  /* ===================================================== */
+
+  if (decision.tool === "create_goal") {
+    await setPendingAction(userId, {
+      tool: "create_goal",
+      message,
+      intent,
+    });
+
+    console.log("🟡 Stored pending action");
+
+    return {
+      type: "confirmation_required",
+      intent,
+      tool: "create_goal",
+      preview: message,
+    };
+  }
+
+  /* ===================================================== */
+  /* 🟢 STEP 6: DIRECT EXECUTION                          */
+  /* ===================================================== */
+
+  const result = await executeTool({
+    tool: decision.tool,
+    message,
+    context,
+    userId,
+  });
+
+  return {
+    type: "tool_executed",
+    intent,
+    tool: decision.tool,
+    result,
+  };
+}
+
+
+===== FILE: .\features\assistant\decision.ts =====
+export function decideAction(intent: string) {
+  switch (intent) {
+    case "create_goal":
+      return {
+        requiresTool: true,
+        tool: "create_goal",
+      };
+
+    case "log_activity":
+      return {
+        requiresTool: true,
+        tool: "log_activity",
+      };
+
+    case "analyze_system":
+      return {
+        requiresTool: true,
+        tool: "analyze_system",
+      };
+
+    case "planning":
+    case "ask_question":
+    case "casual_chat":
+    default:
+      return {
+        requiresTool: false,
+        tool: null,
+      };
+  }
+}
+
+
+===== FILE: .\features\assistant\executor.ts =====
+import { LifeSignal } from "@/features/signals/models/LifeSignal";
+import { DailyLog } from "@/server/db/models/DailyLog";
+import { DailySession } from "@/features/dailySession/models/DailySession";
+import { computeDayInsights } from "@/features/insights/computeDayInsights";
+/* ===================================================== */
+/* 🧠 HELPERS                                            */
+/* ===================================================== */
+
+function resolveExplicitDate(message: string) {
+  const lower = message.toLowerCase();
+
+  if (lower.includes("yesterday")) {
+    const d = new Date();
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().split("T")[0];
+  }
+
+  return null;
+}
+
+function extractSleepTime(message: string) {
+  const match = message.match(/(sleep|slept).*?(\d{1,2})(:\d{2})?\s?(am|pm)/i);
+  if (!match) return null;
+
+  return `${match[2]}${match[3] || ""}${match[4].toUpperCase()}`;
+}
+
+function extractWakeTime(message: string) {
+  const match = message.match(/(wake|woke).*?(\d{1,2})(:\d{2})?\s?(am|pm)/i);
+  if (!match) return null;
+
+  return `${match[2]}${match[3] || ""}${match[4].toUpperCase()}`;
+}
+
+function extractDuration(message: string) {
+  const match = message.match(/(\d+)\s*(hour|hr|hrs)/i);
+  return match ? Number(match[1]) : 1;
+}
+
+function normalize(text: string) {
+  return text.toLowerCase().replace(/\s+/g, "");
+}
+
+/* ===================================================== */
+/* 🧠 MAIN EXECUTOR                                      */
+/* ===================================================== */
+
+export async function executeTool({
+  tool,
+  message,
+  context,
+  userId,
+}: {
+  tool: string | null;
+  message: string;
+  context: any;
+  userId: string;
+}) {
+  if (tool !== "log_activity") return null;
+
+  try {
+    const lower = message.toLowerCase();
+
+    /* ===================================================== */
+    /* 🟢 SESSION (ACTIVE SESSION MODE)                     */
+    /* ===================================================== */
+
+    let session = await DailySession.findOne({
+      userId,
+      isComplete: false,
+    }).sort({ createdAt: -1 });
+
+    const explicitDate = resolveExplicitDate(message);
+
+    if (!session) {
+      session = await DailySession.create({
+        userId,
+        date:
+          explicitDate ||
+          new Date().toISOString().split("T")[0],
+        isComplete: false,
+      });
+
+      console.log("🆕 New session created:", session.date);
+    }
+
+    const finalDate = session.date;
+
+    /* ===================================================== */
+    /* 🧠 TIME HANDLING                                     */
+    /* ===================================================== */
+
+    const sleepTime = extractSleepTime(message);
+    const wakeTime = extractWakeTime(message);
+
+    if (wakeTime) {
+      session.wakeTime = wakeTime;
+      console.log("🌅 Wake time set:", wakeTime);
+    }
+
+
+
+    if (sleepTime) {
+      session.sleepTime = sleepTime;
+      session.isComplete = true;
+
+      console.log("🛑 Session completed:", finalDate, sleepTime);
+
+      await session.save();
+
+      /* 🔥 NEW: COMPUTE INSIGHTS */
+      await computeDayInsights({
+        userId,
+        date: finalDate,
+        session,
+      });
+    }
+
+    await session.save();
+
+    /* ===================================================== */
+    /* 🧠 FETCH SIGNALS                                    */
+    /* ===================================================== */
+
+    const signals = await LifeSignal.find({
+      userId,
+      enabled: true,
+    }).lean();
+
+    /* ===================================================== */
+    /* 🧠 GET OR CREATE LOG                                 */
+    /* ===================================================== */
+
+    let log = await DailyLog.findOne({ userId, date: finalDate });
+
+    if (!log) {
+      log = await DailyLog.create({
+        userId,
+        date: finalDate,
+        signals: {},
+      });
+
+      console.log("🆕 New log created:", finalDate);
+    }
+
+    /* ensure Map */
+    if (!(log.signals instanceof Map)) {
+      log.signals = new Map(Object.entries(log.signals || {}));
+    }
+
+    /* ===================================================== */
+    /* 🧠 MATCH ENGINE                                      */
+    /* ===================================================== */
+
+    let matchedSomething = false;
+
+    for (const sig of signals) {
+      const key = sig.key;
+      const keyLower = key.toLowerCase();
+      const labelLower = sig.label.toLowerCase();
+
+      const normalizedMessage = normalize(lower);
+      const normalizedKey = normalize(keyLower);
+      const normalizedLabel = normalize(labelLower);
+
+      const match =
+        normalizedMessage.includes(normalizedKey) ||
+        normalizedMessage.includes(normalizedLabel);
+
+      const noFapMatch =
+        keyLower.includes("nofap") &&
+        (lower.includes("didnt fap") ||
+          lower.includes("didn't fap") ||
+          lower.includes("no fap"));
+
+      if (!match && !noFapMatch) continue;
+
+      matchedSomething = true;
+
+      let value = 1;
+
+      if (sig.inputType !== "checkbox") {
+        value = extractDuration(lower);
+      }
+
+      const prev = Number(log.signals.get(key) || 0);
+
+      const finalValue =
+        sig.inputType === "checkbox"
+          ? 1
+          : prev + value;
+
+      log.signals.set(key, finalValue);
+
+      /* structured mapping */
+      const parts = key.split(".");
+
+      if (parts.length === 2) {
+        const [group, sub] = parts;
+
+        log[group] = log[group] || {};
+
+        log[group][sub] =
+          sig.inputType === "checkbox"
+            ? true
+            : finalValue;
+      }
+
+      console.log("✅ SAVED:", key, finalValue);
+    }
+
+    /* ===================================================== */
+    /* 🧠 FALLBACK (IMPORTANT FIX)                          */
+    /* ===================================================== */
+
+    if (!matchedSomething) {
+      console.log("⚠️ No signals matched (but session continues)");
+
+      /* still keep session alive */
+      log.meta = log.meta || {};
+      log.meta.notes = log.meta.notes || [];
+      log.meta.notes.push(message);
+    }
+
+    await log.save();
+
+    return {
+      success: true,
+      signals: Object.fromEntries(log.signals),
+      session,
+    };
+  } catch (err) {
+    console.error("EXECUTOR ERROR:", err);
+    return { success: false };
+  }
+}
+
+
+===== FILE: .\features\assistant\intent.ts =====
+export async function detectIntent(message: string, context: any) {
+  const res = await fetch("http://localhost:11434/api/generate", {
+    method: "POST",
+    body: JSON.stringify({
+      model: "llama3.1:8b",
+      prompt: `
+You are an intent classifier for an AI agent system.
+
+Your ONLY job is to classify the user's intent correctly.
+
+MESSAGE:
+"${message}"
+
+AVAILABLE INTENTS:
+- create_goal → user wants to start or commit to something regularly
+- log_activity → user is describing something they already did
+- analyze_system → user asking about progress, performance, phase
+- planning → user wants help planning tasks/day
+- ask_question → general knowledge question
+- casual_chat → greetings, random talk
+
+STRICT RULES:
+
+1. If user DID something → log_activity
+2. Past tense → log_activity
+3. Mentions time/duration → log_activity
+4. Mentions actions like gym, study, coding → log_activity
+5. If user WANTS to do something regularly → create_goal
+6. If user asks about progress/phase → analyze_system
+7. DO NOT default to casual_chat unless clearly casual
+
+EXAMPLES:
+
+"I will go gym daily" → create_goal
+"create goal to code daily" → create_goal
+"I went to gym" → log_activity
+"I worked out today" → log_activity
+"I studied for 3 hours" → log_activity
+"I coded for 2 hours" → log_activity
+"I slept 6 hours" → log_activity
+"I just finished a workout" → log_activity
+"I went to gym" → log_activity
+"worked on executioners today" → log_activity
+"how is my progress" → analyze_system
+"what phase am I in" → analyze_system
+"plan my tomorrow" → planning
+"what is dopamine" → ask_question
+"hey what's up" → casual_chat
+
+EDGE CASES:
+
+"I think I should start gym" → create_goal
+"I coded today for 2 hours" → log_activity
+"I just went for a run" → log_activity
+"I completed my workout" → log_activity
+
+Return ONLY JSON:
+{ "intent": "intent_name" }
+      `,
+      stream: false,
+    }),
+  });
+
+  const data = await res.json();
+
+  try {
+    const parsed = JSON.parse(data.response);
+
+    if (!parsed.intent) return "casual_chat";
+
+    return parsed.intent;
+  } catch {
+    return "casual_chat";
+  }
+}
+
+
+===== FILE: .\features\assistant\toolRouter.ts =====
+export function routeTool(intent: string) {
+  switch (intent) {
+    case "create_goal":
+      return "create_goal";
+
+    case "log_activity":
+      return "log_activity";
+
+    case "analyze_system":
+      return "analyze_system";
+
+    default:
+      return null;
+  }
+}
+
+
+===== FILE: .\features\assistant\tools.ts =====
+export const assistantTools = [
+  {
+    name: "create_goal",
+    description: "Create a new life goal for the user",
+    parameters: {
+      title: "string",
+      type: "skill | health | productivity | lifestyle",
+      signals: "string[]"
+    }
+  },
+  {
+    name: "log_daily_activity",
+    description: "Log a daily life activity",
+    parameters: {
+      activity: "string",
+      duration: "number"
+    }
+  },
+  {
+    name: "analyze_system_state",
+    description: "Analyze user's productivity system"
+  }
+];
+
+
 ===== FILE: .\features\chat\ChatContainer.tsx =====
 "use client";
 
@@ -14746,7 +15877,7 @@ export default function ChatMessage({ role, content }: Props) {
 ===== FILE: .\features\chat\useChat.tsx =====
 "use client";
 
-import { useState } from "react";
+import { useState ,useEffect } from "react";
 
 type Message = {
   role: "user" | "assistant";
@@ -14756,7 +15887,21 @@ type Message = {
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  useEffect(() => {
+  async function loadHistory() {
+    const res = await fetch("/api/conversation/history");
+    const data = await res.json();
 
+    setMessages(
+      data.map((m:any)=>({
+        role:m.role,
+        content:m.content
+      }))
+    );
+  }
+
+  loadHistory();
+}, []);
   async function sendMessage(text: string) {
     if (!text.trim()) return;
 
@@ -14820,57 +15965,50 @@ export function useChat() {
 
 ===== FILE: .\features\conversation\buildPrompt.ts =====
 export function buildPrompt(context: any, history: any[], message: string) {
-const systemInstruction = `
-You are a thoughtful personal life assistant.
+  const systemInstruction = `
+You are LifeOS, a thoughtful and intelligent personal life assistant.
 
-Your goal is to help the user understand their life system and make better decisions.
+Your role:
+- Help the user understand their life system
+- Guide them to make better decisions
+- Speak like a real human, not an AI tool
 
-Tone guidelines:
+Tone:
 - natural
 - conversational
 - reflective
+- insightful
+- slightly philosophical
 - supportive but honest
 
-Response rules:
+CRITICAL RULES:
 
-1. Always write responses as natural human text.
-2. Never output JSON or structured objects inside the explanation.
-3. If you need structure, use bullet points instead.
-4. Use short paragraphs for readability.
-5. End with a thoughtful follow-up question when appropriate.
-6. When describing plans or schedules, use bullet lists instead of structured objects.
-7. Use clear spacing and always use a line break after every bullet point.
+1. You DO NOT execute actions.
+2. The system handles all actions automatically.
+3. NEVER return JSON.
+4. NEVER mention tools or system internals.
+5. ALWAYS respond like a human conversation.
 
-Action rule:
+Response style:
+- short paragraphs
+- clean spacing
+- no robotic phrasing
+- no structured JSON
+- use bullets only if needed
 
-If you want to trigger a system action, append it at the END using:
+When helping:
+- be thoughtful, not generic
+- adapt to user's system state
+- vary tone (sometimes analytical, sometimes simple)
 
-ACTION_JSON:
-{ action }
+Example tone:
 
-Never include JSON anywhere else.
+"Your system looks slightly overloaded right now. That usually happens when multiple goals demand attention at the same time.
 
-Example good format:
+Instead of pushing harder, it might help to simplify your focus today.
 
-Your system is currently in a recovery phase.
+What’s one thing you feel is most important to move forward right now?"
 
-That usually means your brain is stabilizing after a period of heavy output. I can also see that your deep work hours have dipped slightly, which is common when mental fatigue builds up.
-
-Instead of pushing for a full productivity day tomorrow, a better structure might be:
-
-• one light deep-work block  
-• some physical movement  
-• time to recharge mentally
-
-This keeps momentum without overwhelming your system.
-
-How has your energy felt today?
-
-Example BAD format (never do this):
-
-{
-  "morning": ...
-}
 `;
 
   const systemContext = `
@@ -14946,21 +16084,31 @@ export const systemPrompt = `
 You are a thoughtful personal life assistant.
 
 You help the user understand their system state and make better decisions.
+You speak naturally like a thoughtful human,
+not like a corporate AI assistant.
 
 Your tone should be:
-- natural
-- human
-- reflective
-- supportive but honest
+• calm
+• insightful
+• intelligent
+• slightly philosophical
+• supportive but honest
+• curious about the user
 
 Never respond like a machine.
 
 Always explain reasoning using the user's system context.
 
+You adapt to the user's life state and goals.
+
 Responses should:
 - be 3–6 sentences
 - feel conversational
-- include a short follow-up question when useful
+- include a short reflective follow-up question when useful
+- You avoid generic advice.
+
+Think step-by-step about the user's system state and intent.
+Then produce the most helpful and insightful response you can.
 
 Example tone:
 
@@ -16064,6 +17212,27 @@ export function TimePickerField({
     </div>
   );
 }
+
+
+===== FILE: .\features\dailySession\models\DailySession.ts =====
+import mongoose from "mongoose";
+
+const DailySessionSchema = new mongoose.Schema(
+    {
+        userId: { type: mongoose.Schema.Types.ObjectId, required: true },
+        date: { type: String, required: true },
+
+        wakeTime: { type: String },
+        sleepTime: { type: String },
+
+        isComplete: { type: Boolean, default: false },
+    },
+    { timestamps: true }
+);
+
+export const DailySession =
+    mongoose.models.DailySession ||
+    mongoose.model("DailySession", DailySessionSchema);
 
 
 ===== FILE: .\features\dashboard\components\GoalLoadCard.tsx =====
@@ -18682,6 +19851,157 @@ export async function loadGoalSystemState(userId: string) {
     pressures,
     globalLoad,
   };
+}
+
+
+===== FILE: .\features\insights\computeDayInsights.ts =====
+import { ConversationMessage } from "@/server/db/models/ConversationMessage";
+import { DailyLog } from "@/server/db/models/DailyLog";
+
+/* ===================================================== */
+/* 🧠 HELPER: EXTRACT HOURS                              */
+/* ===================================================== */
+
+function parseTime(time: string) {
+    if (!time) return null;
+
+    const match = time.match(/(\d{1,2})(:\d{2})?(AM|PM)/i);
+    if (!match) return null;
+
+    let hour = Number(match[1]);
+    const minute = match[2] ? Number(match[2].replace(":", "")) : 0;
+    const period = match[3].toUpperCase();
+
+    if (period === "PM" && hour !== 12) hour += 12;
+    if (period === "AM" && hour === 12) hour = 0;
+
+    return hour + minute / 60;
+}
+
+/* ===================================================== */
+/* 🧠 SLEEP CALCULATION                                  */
+/* ===================================================== */
+
+function calculateSleepHours(wake: string, sleep: string) {
+    const wakeH = parseTime(wake);
+    const sleepH = parseTime(sleep);
+
+    if (wakeH === null || sleepH === null) return null;
+
+    let diff = wakeH - sleepH;
+
+    if (diff < 0) diff += 24;
+
+    return Math.round(diff);
+}
+
+/* ===================================================== */
+/* 🧠 SIMPLE HEURISTIC SCORING                           */
+/* ===================================================== */
+
+function analyzeMessages(messages: string[]) {
+    let mood = 5;
+    let energy = 5;
+    let stress = 5;
+
+    const text = messages.join(" ").toLowerCase();
+
+    /* ===== mood ===== */
+    if (text.includes("good") || text.includes("productive")) mood += 2;
+    if (text.includes("bad") || text.includes("tired")) mood -= 2;
+
+    /* ===== energy ===== */
+    if (text.includes("gym") || text.includes("worked")) energy += 2;
+    if (text.includes("lazy") || text.includes("sleepy")) energy -= 2;
+
+    /* ===== stress ===== */
+    if (text.includes("stress") || text.includes("pressure")) stress += 2;
+    if (text.includes("calm") || text.includes("relaxed")) stress -= 2;
+
+    return {
+        mood: Math.max(1, Math.min(10, mood)),
+        energy: Math.max(1, Math.min(10, energy)),
+        stress: Math.max(1, Math.min(10, stress)),
+    };
+}
+
+/* ===================================================== */
+/* 🧠 MAIN FUNCTION                                      */
+/* ===================================================== */
+
+export async function computeDayInsights({
+    userId,
+    date,
+    session,
+}: {
+    userId: string;
+    date: string;
+    session: any;
+}) {
+    try {
+        /* ================= GET MESSAGES ================= */
+
+        const messages = await ConversationMessage.find({
+            userId,
+            createdAt: {
+                $gte: new Date(date),
+                $lte: new Date(date + "T23:59:59"),
+            },
+        }).lean();
+
+        const texts = messages.map((m) => m.content || "");
+
+        /* ================= ANALYSIS ================= */
+
+        const mental = analyzeMessages(texts);
+
+        /* ================= SLEEP ================= */
+
+        let sleepHours = null;
+
+        if (session?.wakeTime && session?.sleepTime) {
+            sleepHours = calculateSleepHours(
+                session.wakeTime,
+                session.sleepTime
+            );
+        }
+
+        /* ================= UPDATE LOG ================= */
+
+        const log = await DailyLog.findOne({ userId, date });
+
+        if (!log) return;
+
+        log.mental = mental;
+
+        log.sleep = log.sleep || {};
+        log.sleep.hours = sleepHours;
+
+        /* also update signals */
+
+        if (!(log.signals instanceof Map)) {
+            log.signals = new Map(Object.entries(log.signals || {}));
+        }
+
+        log.signals.set("mood", mental.mood);
+        log.signals.set("energy", mental.energy);
+        log.signals.set("stress", mental.stress);
+
+        if (sleepHours !== null) {
+            log.signals.set("sleepHours", sleepHours);
+        }
+
+        await log.save();
+
+        console.log("🧠 Insights computed:", mental, sleepHours);
+
+        return {
+            mental,
+            sleepHours,
+        };
+    } catch (err) {
+        console.error("INSIGHT ERROR:", err);
+    }
 }
 
 

@@ -1,11 +1,30 @@
 export function decideAction(intent: string) {
-  const toolIntents = [
-    "create_goal",
-    "log_activity",
-    "analyze_system",
-  ];
+  switch (intent) {
+    case "create_goal":
+      return {
+        requiresTool: true,
+        tool: "create_goal",
+      };
 
-  return {
-    requiresTool: toolIntents.includes(intent),
-  };
+    case "log_activity":
+      return {
+        requiresTool: true,
+        tool: "log_activity",
+      };
+
+    case "analyze_system":
+      return {
+        requiresTool: true,
+        tool: "analyze_system",
+      };
+
+    case "planning":
+    case "ask_question":
+    case "casual_chat":
+    default:
+      return {
+        requiresTool: false,
+        tool: null,
+      };
+  }
 }
