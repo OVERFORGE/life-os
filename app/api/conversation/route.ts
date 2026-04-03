@@ -1,20 +1,19 @@
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { connectDB } from "@/server/db/connect";
 import { ConversationMessage } from "@/server/db/models/ConversationMessage";
+import { getAuthSession } from "@/lib/auth";
 
 import { loadSystemContext } from "@/features/systemContext/loadSystemContext";
 import { buildPrompt } from "@/features/conversation/buildPrompt";
 import { runAssistantBrain } from "@/features/assistant/brain";
 
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
 
-  if (!session?.user?.id) {
+  if (!(session?.user as any)?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const userId = session.user.id;
+  const userId = (session!.user as any).id;
   const { message } = await req.json();
 
   await connectDB();
