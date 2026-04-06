@@ -47,9 +47,9 @@ export async function GET() {
 
   const phaseExplanation = currentPhase
     ? {
-        ...explainLifePhase(currentPhase),
-        phase: currentPhase.phase,
-      }
+      ...explainLifePhase(currentPhase),
+      phase: currentPhase.phase,
+    }
     : null;
 
   const result = goals.map((g) => {
@@ -57,11 +57,11 @@ export async function GET() {
 
     const pressure = phaseExplanation
       ? analyzeGoalPressure({
-          goal: g,
-          stats: goalStats,
-          phase: phaseExplanation,
-          weights,
-        })
+        goal: g,
+        stats: goalStats,
+        phase: phaseExplanation,
+        weights,
+      })
       : null;
 
     return {
@@ -70,9 +70,9 @@ export async function GET() {
       stats: goalStats ?? null,
       pressure: pressure
         ? {
-            status: pressure.status,
-            score: pressure.pressureScore,
-          }
+          status: pressure.status,
+          score: pressure.pressureScore,
+        }
         : null,
     };
   });

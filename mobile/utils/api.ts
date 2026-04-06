@@ -4,25 +4,18 @@ import Constants from 'expo-constants';
 
 // Automatically attempt to resolve the local Next.js instance IP if running locally via Expo Go
 function getBaseUrl() {
-  if (process.env.EXPO_PUBLIC_API_URL) {
-    return process.env.EXPO_PUBLIC_API_URL;
-  }
-  
-  const debuggerHost = Constants.expoConfig?.hostUri;
-  if (debuggerHost) {
-    const localhost = debuggerHost.split(':')[0];
-    return `http://${localhost}:3000/api`;
-  }
+  // if (process.env.EXPO_PUBLIC_API_URL) {
+  //   return process.env.EXPO_PUBLIC_API_URL;
+  // }
 
-  // Fallback to explicit LAN IP
-  return 'http://192.168.1.64:3000/api';
+  return 'http://10.65.49.168:3000/api'; // 🔥 PUT YOUR IP HERE
 }
 
 export const API_URL = getBaseUrl();
 
 export async function fetchWithAuth(endpoint: string, options: RequestInit = {}) {
   const token = await AsyncStorage.getItem('user_token');
-  
+
   const headers = new Headers(options.headers || {});
   if (token) {
     headers.set('Authorization', `Bearer ${token}`);

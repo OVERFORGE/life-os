@@ -24,7 +24,7 @@ export async function PATCH(req: Request, { params }: { params: Promise<{ id: st
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const { id } = await params;
-    const body = await req.json();
+    const body: any = await req.json();
     const { name, customEquipment, selectedPreSeeded } = body;
 
     const gym = await Gym.findOneAndUpdate(

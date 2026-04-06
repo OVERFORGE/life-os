@@ -32,6 +32,11 @@ export type PhaseShape =
   | "overextension"
   | "recovery_arc"
   | "crash"
+  | "chaos"
+  | "burnout"
+  | "recovery"
+  | "ascent"
+  | "decline"
   | "unknown";
 
 export type ShapedPhaseSegment = {
@@ -39,6 +44,7 @@ export type ShapedPhaseSegment = {
   to: string;
   phases: Phase[];
   shape: PhaseShape;
+  shapeScore: number;
   explanation: string;
 };
 

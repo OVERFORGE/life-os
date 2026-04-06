@@ -4,7 +4,7 @@ export function simulatePhaseIntervention({
   phase,
   deltas,
   baselines,
-  thresholds,
+  sensitivity,
 }: {
   phase: any;
   deltas: {
@@ -14,7 +14,7 @@ export function simulatePhaseIntervention({
     energy?: number;
   };
   baselines: any;
-  thresholds: any;
+  sensitivity: any;
 }) {
   const s = phase.snapshot;
 
@@ -33,7 +33,7 @@ export function simulatePhaseIntervention({
   const result = analyzeLifeState({
     recentLogs: fakeLogs,
     baselines,
-    thresholds,
+    sensitivity,
   });
 
   return result;

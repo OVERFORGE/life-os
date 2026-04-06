@@ -17,11 +17,11 @@ export type GoalAdaptationSuggestion = {
   goalId: string;
 
   type:
-    | "reduce_cadence"
-    | "pause_goal"
-    | "delay_goal"
-    | "reduce_intensity"
-    | "increase_focus";
+  | "reduce_cadence"
+  | "pause_goal"
+  | "delay_goal"
+  | "reduce_intensity"
+  | "increase_focus";
 
   reason: string;
 

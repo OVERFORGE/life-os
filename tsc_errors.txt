@@ -1,0 +1,76 @@
+﻿app/api/goals/create/route.ts(25,28): error TS2554: Expected 1 arguments, but got 2.
+app/api/insights/goal-adaptations/route.ts(101,7): error TS2322: Type '{ phase: any; summary: string; signals: string[]; causes: string[]; risks: string[]; leverage: string[]; predictedNext: string | null; scores: { stress: number; energy: number; mood: number; sleep: number; stability: number; load: number; }; } | null' is not assignable to type 'PhaseExplanation & { phase?: string | undefined; }'.
+  Type 'null' is not assignable to type 'PhaseExplanation & { phase?: string | undefined; }'.
+    Type 'null' is not assignable to type 'PhaseExplanation'.
+app/api/insights/rebuild/route.ts(100,7): error TS2353: Object literal may only specify known properties, and 'logs' does not exist in type '{ userId: string; date: string; logsUpToDate: any[]; baselines: any; sensitivity?: { sleepImpact: number; stressImpact: number; energyImpact: number; moodImpact: number; } | undefined; }'.
+app/api/insights/rebuild/route.ts(108,7): error TS2322: Type 'string | null' is not assignable to type 'string'.
+  Type 'null' is not assignable to type 'string'.
+app/api/insights/rebuild/route.ts(110,27): error TS2339: Property 'phase' does not exist on type 'Promise<{ candidatePhase: string; confidence: number; isWarning: boolean; reason: string; snapshot: { avgSleep?: undefined; avgMood?: undefined; avgStress?: undefined; avgEnergy?: undefined; avgDeepWork?: undefined; delta?: undefined; system?: undefined; scores?: undefined; }; insights: never[]; } | { ...; }>'.
+app/api/insights/rebuild/route.ts(111,23): error TS2339: Property 'snapshot' does not exist on type 'Promise<{ candidatePhase: string; confidence: number; isWarning: boolean; reason: string; snapshot: { avgSleep?: undefined; avgMood?: undefined; avgStress?: undefined; avgEnergy?: undefined; avgDeepWork?: undefined; delta?: undefined; system?: undefined; scores?: undefined; }; insights: never[]; } | { ...; }>'.
+app/api/insights/rebuild/route.ts(138,27): error TS2339: Property 'phase' does not exist on type 'Promise<{ candidatePhase: string; confidence: number; isWarning: boolean; reason: string; snapshot: { avgSleep?: undefined; avgMood?: undefined; avgStress?: undefined; avgEnergy?: undefined; avgDeepWork?: undefined; delta?: undefined; system?: undefined; scores?: undefined; }; insights: never[]; } | { ...; }>'.
+app/api/insights/rebuild/route.ts(139,30): error TS2339: Property 'snapshot' does not exist on type 'Promise<{ candidatePhase: string; confidence: number; isWarning: boolean; reason: string; snapshot: { avgSleep?: undefined; avgMood?: undefined; avgStress?: undefined; avgEnergy?: undefined; avgDeepWork?: undefined; delta?: undefined; system?: undefined; scores?: undefined; }; insights: never[]; } | { ...; }>'.
+app/api/insights/rebuild/route.ts(162,5): error TS2353: Object literal may only specify known properties, and 'userId' does not exist in type 'GoalPressureReport[]'.
+app/api/insights/rebuild/route.ts(170,41): error TS2345: Argument of type '{ global: { score: number; mode: "underutilized" | "stable" | "overloaded"; distribution: { aligned: number; strained: number; conflicting: number; toxic: number; }; }; topDrivers: { goalId: string; score: number; status: GoalPressureStatus; mainReason: string; }[]; }' is not assignable to parameter of type '{ globalScore: number; phase: string; }'.
+  Type '{ global: { score: number; mode: "underutilized" | "stable" | "overloaded"; distribution: { aligned: number; strained: number; conflicting: number; toxic: number; }; }; topDrivers: { goalId: string; score: number; status: GoalPressureStatus; mainReason: string; }[]; }' is missing the following properties from type '{ globalScore: number; phase: string; }': globalScore, phase
+app/api/insights/rebuild/route.ts(193,24): error TS2339: Property 'reason' does not exist on type '{ changed: boolean; nextWeights: GoalPressureWeights; learningEvent: { outcome: GoalLoadOutcome; persistenceDays: number; driver: string; delta: GoalPressureWeights; reason: string; } | null; }'.
+app/api/insights/rebuild/route.ts(201,24): error TS2339: Property 'reason' does not exist on type '{ changed: boolean; nextWeights: GoalPressureWeights; learningEvent: { outcome: GoalLoadOutcome; persistenceDays: number; driver: string; delta: GoalPressureWeights; reason: string; } | null; }'.
+app/api/insights/system/route.ts(75,5): error TS2353: Object literal may only specify known properties, and 'userId' does not exist in type 'GoalPressureReport[]'.
+app/api/insights/trajectory/route.ts(69,5): error TS2353: Object literal may only specify known properties, and 'thresholds' does not exist in type '{ recentLogs: any[]; baselines: { sleep: number; mood: number; stress: number; energy: number; deepWork: number; }; sensitivity?: { sleepImpact: number; stressImpact: number; energyImpact: number; moodImpact: number; } | undefined; }'.
+app/checkin/page.tsx(17,7): error TS2739: Type '{ planning: { plannedTasks: number; completedTasks: number; reasonNotCompleted: string; }; reflection: { win: string; mistake: string; learned: string; bothering: string; }; }' is missing the following properties from type 'DailyLogForm': mental, sleep, physical, work, habits
+app/goals/page.tsx(80,20): error TS2339: Property 'id' does not exist on type 'Goal'.
+app/goals/page.tsx(90,20): error TS2339: Property 'pressure' does not exist on type 'Goal'.
+app/goals/page.tsx(90,42): error TS2339: Property 'pressure' does not exist on type 'Goal'.
+app/goals/page.tsx(92,34): error TS2339: Property 'pressure' does not exist on type 'Goal'.
+features/goals/components/GoalAdaptationCard.tsx(28,37): error TS2339: Property 'suggestedChange' does not exist on type 'GoalAdaptationSuggestion'.
+features/goals/engine/adaptGoalToSystemState.ts(4,10): error TS2305: Module '"./analyzeGlobalGoalLoad"' has no exported member 'GlobalGoalLoadReport'.
+features/goals/engine/analyzeGlobalGoalLoad.ts(64,26): error TS2339: Property 'confidence' does not exist on type 'GoalPressureReport'.
+features/goals/utils/loadGoalSystemState.ts(59,7): error TS2322: Type '{ phase: any; summary: string; signals: string[]; causes: string[]; risks: string[]; leverage: string[]; predictedNext: string | null; scores: { stress: number; energy: number; mood: number; sleep: number; stability: number; load: number; }; } | { ...; }' is not assignable to type 'PhaseExplanation & { phase?: string | undefined; }'.
+  Type '{ phase: string; }' is not assignable to type 'PhaseExplanation & { phase?: string | undefined; }'.
+    Type '{ phase: string; }' is missing the following properties from type 'PhaseExplanation': summary, signals, causes, risks, and 3 more.
+features/insights/engine/backfillPhaseHistory.ts(41,37): error TS2345: Argument of type 'any[]' is not assignable to parameter of type '{ recentLogs: any[]; baselines: { sleep: number; mood: number; stress: number; energy: number; deepWork: number; }; sensitivity?: { sleepImpact: number; stressImpact: number; energyImpact: number; moodImpact: number; } | undefined; }'.
+  Type 'any[]' is missing the following properties from type '{ recentLogs: any[]; baselines: { sleep: number; mood: number; stress: number; energy: number; deepWork: number; }; sensitivity?: { sleepImpact: number; stressImpact: number; energyImpact: number; moodImpact: number; } | undefined; }': recentLogs, baselines
+features/insights/engine/backfillPhaseHistory.ts(45,13): error TS2339: Property 'phase' does not exist on type '{ candidatePhase: string; confidence: number; isWarning: boolean; reason: string; snapshot: { avgSleep?: undefined; avgMood?: undefined; avgStress?: undefined; avgEnergy?: undefined; avgDeepWork?: undefined; delta?: undefined; system?: undefined; scores?: undefined; }; insights: never[]; } | { ...; }'.
+features/insights/engine/shapePhaseTimeline.ts(56,7): error TS2322: Type '"chaos"' is not assignable to type 'PhaseShape'.
+features/insights/engine/shapePhaseTimeline.ts(65,7): error TS2322: Type '"burnout"' is not assignable to type 'PhaseShape'.
+features/insights/engine/shapePhaseTimeline.ts(74,7): error TS2322: Type '"recovery"' is not assignable to type 'PhaseShape'.
+features/insights/engine/shapePhaseTimeline.ts(83,7): error TS2322: Type '"ascent"' is not assignable to type 'PhaseShape'.
+features/insights/engine/shapePhaseTimeline.ts(92,7): error TS2322: Type '"decline"' is not assignable to type 'PhaseShape'.
+features/insights/engine/shapePhaseTimeline.ts(140,7): error TS2353: Object literal may only specify known properties, and 'shapeScore' does not exist in type 'ShapedPhaseSegment'.
+features/insights/engine/shapePhaseTimeline.ts(150,18): error TS2367: This comparison appears to be unintentional because the types 'PhaseShape' and '"burnout"' have no overlap.
+features/insights/engine/shapePhaseTimeline.ts(150,43): error TS2367: This comparison appears to be unintentional because the types 'PhaseShape' and '"decline"' have no overlap.
+features/insights/engine/shapePhaseTimeline.ts(150,68): error TS2367: This comparison appears to be unintentional because the types 'PhaseShape' and '"chaos"' have no overlap.
+features/insights/engine/simulateCompoundInterventions.ts(114,7): error TS2353: Object literal may only specify known properties, and 'thresholds' does not exist in type '{ recentLogs: any[]; baselines: { sleep: number; mood: number; stress: number; energy: number; deepWork: number; }; sensitivity?: { sleepImpact: number; stressImpact: number; energyImpact: number; moodImpact: number; } | undefined; }'.
+features/insights/engine/simulatePhaseInterventions.ts(36,5): error TS2353: Object literal may only specify known properties, and 'thresholds' does not exist in type '{ recentLogs: any[]; baselines: { sleep: number; mood: number; stress: number; energy: number; deepWork: number; }; sensitivity?: { sleepImpact: number; stressImpact: number; energyImpact: number; moodImpact: number; } | undefined; }'.
+features/insights/phases/components/PhaseInterventionPlans.tsx(54,55): error TS7053: Element implicitly has an 'any' type because expression of type 'string' can't be used to index type '{ low: string; medium: string; high: string; }'.
+  No index signature with a parameter of type 'string' was found on type '{ low: string; medium: string; high: string; }'.
+features/insights/phases/components/PhaseTimeline.tsx(19,33): error TS2339: Property 'phase' does not exist on type '{ widthPercent: number; durationDays: number; }'.
+features/insights/phases/components/PhaseTimeline.tsx(19,44): error TS2339: Property 'startDate' does not exist on type '{ widthPercent: number; durationDays: number; }'.
+mobile/app/(tabs)/_layout.tsx(4,27): error TS2307: Cannot find module '@/components/haptic-tab' or its corresponding type declarations.
+mobile/app/(tabs)/_layout.tsx(5,28): error TS2307: Cannot find module '@/components/ui/icon-symbol' or its corresponding type declarations.
+mobile/app/(tabs)/_layout.tsx(6,24): error TS2307: Cannot find module '@/constants/theme' or its corresponding type declarations.
+mobile/app/(tabs)/_layout.tsx(7,32): error TS2307: Cannot find module '@/hooks/use-color-scheme' or its corresponding type declarations.
+mobile/app/(tabs)/explore.tsx(4,29): error TS2307: Cannot find module '@/components/ui/collapsible' or its corresponding type declarations.
+mobile/app/(tabs)/explore.tsx(5,30): error TS2307: Cannot find module '@/components/external-link' or its corresponding type declarations.
+mobile/app/(tabs)/explore.tsx(6,32): error TS2307: Cannot find module '@/components/parallax-scroll-view' or its corresponding type declarations.
+mobile/app/(tabs)/explore.tsx(7,28): error TS2307: Cannot find module '@/components/themed-text' or its corresponding type declarations.
+mobile/app/(tabs)/explore.tsx(8,28): error TS2307: Cannot find module '@/components/themed-view' or its corresponding type declarations.
+mobile/app/(tabs)/explore.tsx(9,28): error TS2307: Cannot find module '@/components/ui/icon-symbol' or its corresponding type declarations.
+mobile/app/(tabs)/explore.tsx(10,23): error TS2307: Cannot find module '@/constants/theme' or its corresponding type declarations.
+mobile/app/(tabs)/index.tsx(4,27): error TS2307: Cannot find module '@/components/hello-wave' or its corresponding type declarations.
+mobile/app/(tabs)/index.tsx(5,32): error TS2307: Cannot find module '@/components/parallax-scroll-view' or its corresponding type declarations.
+mobile/app/(tabs)/index.tsx(6,28): error TS2307: Cannot find module '@/components/themed-text' or its corresponding type declarations.
+mobile/app/(tabs)/index.tsx(7,28): error TS2307: Cannot find module '@/components/themed-view' or its corresponding type declarations.
+mobile/components/parallax-scroll-view.tsx(10,28): error TS2307: Cannot find module '@/components/themed-view' or its corresponding type declarations.
+mobile/components/parallax-scroll-view.tsx(11,32): error TS2307: Cannot find module '@/hooks/use-color-scheme' or its corresponding type declarations.
+mobile/components/parallax-scroll-view.tsx(12,31): error TS2307: Cannot find module '@/hooks/use-theme-color' or its corresponding type declarations.
+mobile/components/parallax-scroll-view.tsx(55,30): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{ dark: string; light: string; }'.
+mobile/components/themed-text.tsx(3,31): error TS2307: Cannot find module '@/hooks/use-theme-color' or its corresponding type declarations.
+mobile/components/themed-view.tsx(3,31): error TS2307: Cannot find module '@/hooks/use-theme-color' or its corresponding type declarations.
+mobile/components/ui/collapsible.tsx(4,28): error TS2307: Cannot find module '@/components/themed-text' or its corresponding type declarations.
+mobile/components/ui/collapsible.tsx(5,28): error TS2307: Cannot find module '@/components/themed-view' or its corresponding type declarations.
+mobile/components/ui/collapsible.tsx(6,28): error TS2307: Cannot find module '@/components/ui/icon-symbol' or its corresponding type declarations.
+mobile/components/ui/collapsible.tsx(7,24): error TS2307: Cannot find module '@/constants/theme' or its corresponding type declarations.
+mobile/components/ui/collapsible.tsx(8,32): error TS2307: Cannot find module '@/hooks/use-color-scheme' or its corresponding type declarations.
+mobile/hooks/use-theme-color.ts(6,24): error TS2307: Cannot find module '@/constants/theme' or its corresponding type declarations.
+mobile/hooks/use-theme-color.ts(7,32): error TS2307: Cannot find module '@/hooks/use-color-scheme' or its corresponding type declarations.
+mobile/hooks/use-theme-color.ts(14,26): error TS7053: Element implicitly has an 'any' type because expression of type 'any' can't be used to index type '{ light?: string | undefined; dark?: string | undefined; }'.

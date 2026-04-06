@@ -38,11 +38,20 @@ export async function backfillPhaseHistory({
     const windowLogs = sorted.slice(start, i + 1);
 
 
-    const result = analyzeLifeState(windowLogs);
+    const result = analyzeLifeState({
+      recentLogs: windowLogs,
+      baselines: {
+        sleep: 7,
+        mood: 5,
+        stress: 5,
+        energy: 5,
+        deepWork: 2,
+      },
+    });
 
     if (!result) continue;
 
-    const { phase, snapshot, reason } = result;
+    const { candidatePhase: phase, snapshot, reason } = result;
     const day = sorted[i].date;
 
     // First phase ever

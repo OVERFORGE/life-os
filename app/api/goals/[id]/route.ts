@@ -109,7 +109,7 @@ export async function PUT(
   }
 
   const { id } = await context.params;
-  const body = await req.json();
+  const body: any = await req.json();
   await connectDB();
 
   const goal = await Goal.findOneAndUpdate(

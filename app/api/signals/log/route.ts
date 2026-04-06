@@ -26,7 +26,7 @@ const CORE_SIGNAL_MAP: Record<string, { path: string }> = {
   studied: { path: "work.studied" },
   mainWork: { path: "work.mainWork" },
 
-  
+
   reading: { path: "habits.reading" },
   meditationHabit: { path: "habits.meditation" },
   codingHabit: { path: "habits.coding" },
@@ -61,7 +61,7 @@ export async function POST(req: Request) {
 
   const userId = session.user.id;
 
-  const body = await req.json();
+  const body: any = await req.json();
   const { date, key, value } = body;
 
   if (!date || !key) {
@@ -89,9 +89,9 @@ export async function POST(req: Request) {
     const legacyPath = CORE_SIGNAL_MAP[key].path;
 
     if (typeof value === "number" && (value === 0 || value === 1)) {
-    setPayload[legacyPath] = value === 1;
+      setPayload[legacyPath] = value === 1;
     } else {
-        setPayload[legacyPath] = value;
+      setPayload[legacyPath] = value;
     }
   }
 

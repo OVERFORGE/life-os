@@ -59,11 +59,11 @@ function applyIntervention(
 export function simulateCompoundInterventions({
   phase,
   baselines,
-  thresholds,
+  sensitivity,
 }: {
   phase: any;
   baselines: any;
-  thresholds: any;
+  sensitivity: any;
 }) {
   const snapshot: Snapshot = phase.snapshot;
 
@@ -111,7 +111,7 @@ export function simulateCompoundInterventions({
     const analysis = analyzeLifeState({
       recentLogs: fakeLogs,
       baselines,
-      thresholds,
+      sensitivity,
     });
 
     results.push({

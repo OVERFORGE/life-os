@@ -36,7 +36,7 @@ export default function LoginScreen() {
       });
       const userInfo = await userInfoResponse.json();
 
-      const backendResponse = await fetch(`${API_URL}/auth/mobile`, {
+      const backendResponse = await fetch(`${API_URL}/mobile-auth`, {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
@@ -61,30 +61,52 @@ export default function LoginScreen() {
   };
 
   const handleDemobypass = async () => {
-    if (!devEmail) {
-      alert("Please enter your account email to test actual data.");
+  if (!devEmail) {
+    alert("Please enter your account email to test actual data.");
+    return;
+  }
+
+  setLoading(true);
+
+  try {
+    console.log("🚀 API URL:", API_URL);
+    console.log("🚀 FULL URL:", `${API_URL}/mobile-auth`);
+    const backendResponse = await fetch(`${API_URL}/mobile-auth`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json' },
+      body: JSON.stringify({
+        email: devEmail.toLowerCase().trim(),
+        name: "Local Dev Overwrite",
+      }),
+    });
+
+    const text = await backendResponse.text();
+
+    let data;
+
+    try {
+      data = JSON.parse(text);
+    } catch (err) {
+      console.log("❌ RAW RESPONSE FROM BACKEND:", text);
+      alert("Server returned invalid response. Check terminal.");
+      setLoading(false);
       return;
     }
-    setLoading(true);
-    try {
-      const backendResponse = await fetch(`${API_URL}/auth/mobile`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({
-          email: devEmail.toLowerCase().trim(),
-          name: "Local Dev Overwrite",
-        }),
-      });
-      const data = await backendResponse.json();
-      if (data.token) {
-        await AsyncStorage.setItem('user_token', data.token);
-        router.replace('/(dashboard)');
-      }
-    } catch (err) {
-      console.log("Bypass err", err);
+
+    if (data.token) {
+      await AsyncStorage.setItem('user_token', data.token);
+      router.replace('/(dashboard)');
+    } else {
+      console.log("❌ API ERROR:", data);
+      alert(data.error || "Login failed");
+      setLoading(false);
     }
+
+  } catch (error) {
+    console.error("Bypass err:", error);
     setLoading(false);
   }
+};
 
   return (
     <View className="flex-1 bg-[#0f1115] items-center justify-center px-6">

@@ -22,7 +22,7 @@ export async function POST(req: Request) {
     const session = await getAuthSession();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
-    const body = await req.json();
+    const body: any = await req.json();
     const routine = await WorkoutRoutine.create({
       userId: session.user.id,
       ...body

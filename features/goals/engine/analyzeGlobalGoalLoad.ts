@@ -23,6 +23,8 @@ function clamp01(n: number) {
  * ✅ No duplicate scoring
  * ✅ Learning-ready output
  */
+export type GlobalGoalLoadReport = ReturnType<typeof analyzeGlobalGoalLoad>;
+
 export function analyzeGlobalGoalLoad(
   pressures: GoalPressureReport[]
 ) {
@@ -54,14 +56,10 @@ export function analyzeGlobalGoalLoad(
   };
 
   let total = 0;
-  let totalConfidence = 0;
 
   for (const g of pressures) {
     distribution[g.status]++;
     total += g.pressureScore;
-
-    // Confidence-weighted aggregation
-    totalConfidence += g.confidence ?? 0.5;
   }
 
   /* ---------------- Global Score ---------------- */

@@ -36,7 +36,7 @@ export async function POST(req: Request) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
-  const body = await req.json();
+  const body: any = await req.json();
 
   // 🔥 Debug log (temporary)
   console.log("SIGNAL CREATE BODY:", body);

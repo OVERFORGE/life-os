@@ -27,7 +27,7 @@ export function adaptGoalToSystemState({
   // 1️⃣ Global overrides (SYSTEM FIRST)
   // -----------------------------
 
-  if (globalLoad.mode === "overloaded") {
+  if (globalLoad.global.mode === "overloaded") {
     rationale.push(
       "System-wide goal load is over capacity.",
       "Preserving stability takes priority over progress."
@@ -37,20 +37,6 @@ export function adaptGoalToSystemState({
       mode: "paused",
       cadenceOverride: "flexible",
       intensityNote: "Temporarily pause progress-oriented demands.",
-      rationale,
-    };
-  }
-
-  if (globalLoad.mode === "protective") {
-    rationale.push(
-      "System is under sustained pressure.",
-      "Goals must reduce intensity to prevent burnout."
-    );
-
-    return {
-      mode: "protective",
-      cadenceOverride: "flexible",
-      intensityNote: "Stability first, progress second.",
       rationale,
     };
   }

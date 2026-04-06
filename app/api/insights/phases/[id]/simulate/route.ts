@@ -46,7 +46,7 @@ export async function POST(
     phase,
     deltas,
     baselines: settings?.baselines,
-    thresholds: settings?.thresholds,
+    sensitivity: settings?.learnedSensitivity,
   });
 
   return Response.json({

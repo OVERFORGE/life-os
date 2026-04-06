@@ -35,10 +35,13 @@ export async function loadGoalSystemState(userId: string) {
 
   const phaseExplanation = phaseDoc
     ? {
-        ...explainLifePhase(phaseDoc),
-        phase: phaseDoc.phase,
-      }
-    : { phase: "balanced" };
+      ...explainLifePhase(phaseDoc),
+      phase: phaseDoc.phase,
+    }
+    : {
+      ...explainLifePhase({ phase: "balanced", snapshot: {} }),
+      phase: "balanced",
+    };
 
   const settings = await LifeSettings.findOne({
     userId,

@@ -9,7 +9,7 @@ export async function POST(req: Request) {
   if (!session?.user)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
+  const body: any = await req.json();
 
   await connectDB();
 

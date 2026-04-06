@@ -36,7 +36,7 @@ export async function PUT(req: Request) {
   if (!session?.user?.id)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
 
-  const body = await req.json();
+  const body: any = await req.json();
 
   await connectDB();
 
