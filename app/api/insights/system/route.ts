@@ -71,10 +71,7 @@ export async function GET() {
   /* 4️⃣ Compute Goal Load                             */
   /* ------------------------------------------------ */
 
-  const globalLoad = await analyzeGlobalGoalLoad({
-    userId,
-    weights,
-  });
+  const globalLoad = await analyzeGlobalGoalLoad([]);
 
   /* ------------------------------------------------ */
   /* 5️⃣ Convert Signals                               */

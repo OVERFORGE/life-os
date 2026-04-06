@@ -51,7 +51,7 @@ function RiskBadge({ level }: { level: string }) {
   };
 
   return (
-    <div className={`text-xs px-2 py-1 rounded-full ${map[level]}`}>
+    <div className={`text-xs px-2 py-1 rounded-full ${map[level as keyof typeof map]}`}>
       {level.toUpperCase()}
     </div>
   );

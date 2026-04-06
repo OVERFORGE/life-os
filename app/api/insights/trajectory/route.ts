@@ -66,7 +66,7 @@ export async function GET() {
   const analysis = analyzeLifeState({
     recentLogs: logs,
     baselines: settings.baselines,
-    thresholds,
+    sensitivity: settings.learnedSensitivity,
   });
 
 

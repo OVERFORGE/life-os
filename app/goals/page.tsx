@@ -10,6 +10,16 @@ type Goal = {
     currentScore?: number;
     state?: string;
   };
+  pressure?: {
+    status: string;
+  };
+};
+
+type GoalPressure = {
+  goalId: string;
+  pressure?: {
+    status: string;
+  };
 };
 
 export default function GoalsPage() {
@@ -18,12 +28,36 @@ export default function GoalsPage() {
   const [bootstrapping, setBootstrapping] = useState(false);
 
   async function loadGoals() {
-    setLoading(true);
-    const res = await fetch("/api/goals/list");
-    const data = await res.json();
-    setGoals(data);
-    setLoading(false);
+  setLoading(true);
+
+  try {
+    const [goalsRes, pressureRes] = await Promise.all([
+      fetch("/api/goals/list"),
+      fetch("/api/insights/goal-adaptations"),
+    ]);
+
+    const goalsData = await goalsRes.json();
+    const pressureData = await pressureRes.json();
+
+    const suggestions = pressureData?.suggestions || [];
+
+    // Map pressure by goalId
+    const pressureMap = new Map<string, GoalPressure>(
+      suggestions.map((s: GoalPressure) => [s.goalId, s])
+    );
+
+    const merged = goalsData.map((g: any) => ({
+      ...g,
+      pressure: pressureMap.get(g._id as string)?.pressure || null,
+    }));
+
+    setGoals(merged);
+  } catch (err) {
+    console.error("Failed to load goals", err);
   }
+
+  setLoading(false);
+}
 
   useEffect(() => {
     loadGoals();
@@ -77,7 +111,7 @@ export default function GoalsPage() {
     {goals.map((g) => {
       const score = g.stats?.currentScore ?? 0;
       const state = g.stats?.state ?? "unknown";
-      const id = g.id;
+      const id = g._id?.toString();
 
       
       return (

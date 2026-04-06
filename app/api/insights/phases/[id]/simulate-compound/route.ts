@@ -7,9 +7,11 @@ import { LifeSettings } from "@/features/insights/models/LifeSettings";
 
 import { simulateCompoundInterventions } from "@/features/insights/engine/simulateCompoundInterventions";
 
+import { NextRequest } from "next/server";
+
 export async function GET(
-  req: Request,
-  { params }: { params: { id: string } }
+  req: NextRequest,
+  context: { params: Promise<{ id: string }> } // ✅ FIX
 ) {
   const session = await getServerSession(authOptions);
 
@@ -21,7 +23,13 @@ export async function GET(
 
   await connectDB();
 
-  const phase = await PhaseHistory.findById(params.id).lean();
+  /* ================================================= */
+  /* ✅ FIX: await params                              */
+  /* ================================================= */
+
+  const { id } = await context.params;
+
+  const phase = await PhaseHistory.findById(id).lean();
 
   if (!phase) {
     return Response.json({ error: "Phase not found" }, { status: 404 });
@@ -33,14 +41,10 @@ export async function GET(
     return Response.json({ error: "Settings not found" }, { status: 404 });
   }
 
-  /* ================================================= */
-  /* ✅ FIX: REMOVE thresholds → USE sensitivity       */
-  /* ================================================= */
-
   const result = simulateCompoundInterventions({
     phase,
     baselines: settings.baselines,
-    sensitivity: settings.learnedSensitivity, // ✅ correct field
+    sensitivity: settings.learnedSensitivity,
   });
 
   return Response.json({

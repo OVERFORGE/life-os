@@ -75,7 +75,9 @@ export async function POST() {
       sensitivity: settings.learnedSensitivity,
     });
 
-    const currentPhase = state.phase ?? state.candidatePhase;
+    const currentPhase = (
+      "phase" in state ? state.phase : state.candidatePhase
+    ) as string;
 
     const feedback = applyPhaseFeedback({
       previousPhase,
@@ -92,7 +94,7 @@ export async function POST() {
         type: "phase_sensitivity_update",
         before: {},
         after: feedback.nextSensitivity,
-        reason: feedback.learningEvent?.reason || "auto",
+        reason: feedback.reason || "auto",
         confidence: 0.6,
         driverSignal: previousPhase,
       });
