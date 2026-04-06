@@ -4,9 +4,9 @@ import Constants from 'expo-constants';
 
 // Automatically attempt to resolve the local Next.js instance IP if running locally via Expo Go
 function getBaseUrl() {
-  // if (process.env.EXPO_PUBLIC_API_URL) {
-  //   return process.env.EXPO_PUBLIC_API_URL;
-  // }
+  if (process.env.EXPO_PUBLIC_API_URL) {
+    return process.env.EXPO_PUBLIC_API_URL;
+  }
 
   return 'http://10.65.49.168:3000/api'; // 🔥 PUT YOUR IP HERE
 }
