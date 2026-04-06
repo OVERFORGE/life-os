@@ -1,56 +1,50 @@
 import { connectDB } from "@/server/db/connect";
+import { getServerSession } from "next-auth";
+import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 import { LifeSettings } from "@/features/insights/models/LifeSettings";
-import { getAuthSession } from "@/lib/auth";
+
 import { simulateCompoundInterventions } from "@/features/insights/engine/simulateCompoundInterventions";
 
-import mongoose from "mongoose";
-import { NextRequest } from "next/server";
-
 export async function GET(
-  req: NextRequest,
-  context: { params: Promise<{ id: string }> }
+  req: Request,
+  { params }: { params: { id: string } }
 ) {
-  const session = await getAuthSession();
+  const session = await getServerSession(authOptions);
+
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  const userId = session.user.id;
+
   await connectDB();
 
-  const { id } = await context.params;
-
-  if (!mongoose.Types.ObjectId.isValid(id)) {
-    return Response.json({ error: "Invalid ID" }, { status: 400 });
-  }
-
-  const _id = new mongoose.Types.ObjectId(id);
-
-  const phase = await PhaseHistory.findOne({
-    _id,
-    userId: session.user.id,
-  }).lean();
+  const phase = await PhaseHistory.findById(params.id).lean();
 
   if (!phase) {
-    return Response.json({ error: "Not found" }, { status: 404 });
+    return Response.json({ error: "Phase not found" }, { status: 404 });
   }
 
-  const settings = await LifeSettings.findOne({
-    userId: session.user.id,
-  }).lean();
+  const settings = await LifeSettings.findOne({ userId }).lean();
 
   if (!settings) {
-    return Response.json({ error: "No settings found" }, { status: 400 });
+    return Response.json({ error: "Settings not found" }, { status: 404 });
   }
 
-  const simulations = simulateCompoundInterventions({
+  /* ================================================= */
+  /* ✅ FIX: REMOVE thresholds → USE sensitivity       */
+  /* ================================================= */
+
+  const result = simulateCompoundInterventions({
     phase,
     baselines: settings.baselines,
-    thresholds: settings.thresholds,
+    sensitivity: settings.learnedSensitivity, // ✅ correct field
   });
 
   return Response.json({
-    phaseId: id,
-    simulations,
+    ok: true,
+    result,
   });
 }
