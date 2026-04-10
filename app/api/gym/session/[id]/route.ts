@@ -17,6 +17,22 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
   }
 }
 
+export async function GET(req: Request, { params }: { params: Promise<{ id: string }> }) {
+  try {
+    await connectDB();
+    const session = await getAuthSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const { id } = await params;
+    const workout = await WorkoutSession.findOne({ _id: id, userId: (session.user as any).id }).lean();
+    if (!workout) return NextResponse.json({ error: "Not found" }, { status: 404 });
+
+    return NextResponse.json(workout);
+  } catch (e: any) {
+    return NextResponse.json({ error: e.message }, { status: 500 });
+  }
+}
+
 export async function PATCH(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
     await connectDB();

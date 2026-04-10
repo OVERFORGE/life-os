@@ -1,7 +1,7 @@
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Home, Dumbbell, Bot } from 'lucide-react-native';
+import { Home, Dumbbell, Bot, Settings } from 'lucide-react-native';
 
 export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   return (
@@ -11,7 +11,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
           const options = descriptors[route.key].options as any;
           
           // Only show these three specific routes
-          const allowedRoutes = ['index', 'gym', 'brain'];
+          const allowedRoutes = ['index', 'gym', 'brain', 'settings'];
           if (!allowedRoutes.includes(route.name) || options.href === null) {
              return null;
           }
@@ -34,6 +34,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
           if (route.name === 'index') Icon = Home;
           if (route.name === 'gym') Icon = Dumbbell;
           if (route.name === 'brain') Icon = Bot;
+          if (route.name === 'settings') Icon = Settings;
 
           return (
             <TouchableOpacity

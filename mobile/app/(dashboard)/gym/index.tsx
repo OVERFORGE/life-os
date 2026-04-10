@@ -60,8 +60,6 @@ export default function GymHub() {
   const [routines, setRoutines] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [showAllSessions, setShowAllSessions] = useState(false);
-  const [expandedWeeks, setExpandedWeeks] = useState<Set<string>>(new Set());
 
   const loadGymData = useCallback(async () => {
     setLoading(true);
@@ -138,12 +136,7 @@ export default function GymHub() {
     ]);
   };
 
-  const toggleWeek = (key: string) => {
-    const next = new Set(expandedWeeks);
-    if (next.has(key)) next.delete(key);
-    else next.add(key);
-    setExpandedWeeks(next);
-  };
+
 
   const weeklyGroups = groupSessionsByWeek(sessions);
   const currentWeekSessions = weeklyGroups.find(w => isCurrentWeek(w.monday))?.sessions || [];
@@ -158,18 +151,28 @@ export default function GymHub() {
       </View>
 
       {/* Start Live Session */}
-      <TouchableOpacity
-        onPress={() => router.push('/(dashboard)/gym/live-session')}
-        className="bg-amber-500 rounded-2xl p-5 mb-8 flex-row items-center justify-between shadow-xl shadow-amber-500/20"
-      >
-        <View>
-          <Text className="font-bold text-black text-xl mb-1">Start Workout</Text>
-          <Text className="text-amber-900 font-medium">Log your active session</Text>
-        </View>
-        <View className="bg-black/10 rounded-full p-2">
-          <Play size={24} color="#000" fill="#000" />
-        </View>
-      </TouchableOpacity>
+      <View className="mb-8">
+        <TouchableOpacity
+          onPress={() => router.push('/(dashboard)/gym/live-session')}
+          className="bg-amber-500 rounded-2xl p-5 mb-3 flex-row items-center justify-between shadow-xl shadow-amber-500/20"
+        >
+          <View>
+            <Text className="font-bold text-black text-xl mb-1">Start Workout</Text>
+            <Text className="text-amber-900 font-medium">Log your active session</Text>
+          </View>
+          <View className="bg-black/10 rounded-full p-2">
+            <Play size={24} color="#000" fill="#000" />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.push('/(dashboard)/gym/log-past')}
+          className="bg-[#1b1f2a] border border-[#232632] rounded-xl p-4 flex-row items-center justify-center"
+        >
+          <Calendar size={18} color="#9ca3af" />
+          <Text className="text-gray-300 font-medium ml-2">Log Past Workout</Text>
+        </TouchableOpacity>
+      </View>
 
       {/* This Week */}
       <View className="mb-8">
@@ -210,71 +213,16 @@ export default function GymHub() {
         )}
       </View>
 
-      {/* All Sessions (Collapsible by Week) */}
-      <View className="mb-8">
+      {/* All Sessions History Link */}
+      <View className="mb-8 items-center">
         <TouchableOpacity
-          onPress={() => setShowAllSessions(!showAllSessions)}
-          className="flex-row items-center justify-between mb-4"
+          onPress={() => router.push('/(dashboard)/gym/history')}
+          className="flex-row items-center justify-center py-3 px-6 rounded-full bg-[#161922] border border-[#232632]"
         >
-          <View className="flex-row items-center">
-            <Calendar size={18} color="#6b7280" />
-            <Text className="text-lg font-semibold text-gray-100 ml-2">All Sessions</Text>
-          </View>
-          {showAllSessions ? <ChevronUp size={20} color="#6b7280" /> : <ChevronDown size={20} color="#6b7280" />}
+          <Clock size={16} color="#9ca3af" />
+          <Text className="text-gray-300 font-medium ml-2">View Full History</Text>
+          <ChevronRight size={16} color="#9ca3af" className="ml-1" />
         </TouchableOpacity>
-
-        {showAllSessions && (
-          <View>
-            {weeklyGroups.length === 0 ? (
-              <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 items-center">
-                <Text className="text-gray-500">No sessions recorded yet.</Text>
-              </View>
-            ) : (
-              weeklyGroups.map(week => {
-                const weekKey = week.monday.toISOString();
-                const isExpanded = expandedWeeks.has(weekKey);
-                return (
-                  <View key={weekKey} className="mb-3">
-                    <TouchableOpacity
-                      onPress={() => toggleWeek(weekKey)}
-                      className="bg-[#1b1f2a] border border-[#232632] rounded-xl p-4 flex-row items-center justify-between"
-                    >
-                      <View>
-                        <Text className="text-gray-200 font-semibold">{week.label}</Text>
-                        <Text className="text-gray-500 text-xs mt-0.5">{week.sessions.length} session{week.sessions.length !== 1 ? 's' : ''}</Text>
-                      </View>
-                      {isExpanded ? <ChevronUp size={18} color="#4b5563" /> : <ChevronDown size={18} color="#4b5563" />}
-                    </TouchableOpacity>
-
-                    {isExpanded && (
-                      <View className="mt-2 pl-3">
-                        {week.sessions.map(s => (
-                          <View key={s._id} className="bg-[#161922] border border-[#232632] rounded-xl p-4 mb-2">
-                            <View className="flex-row justify-between items-start">
-                              <View className="flex-1">
-                                <Text className="text-gray-100 font-semibold">{s.splitDayName || 'Freestyle Session'}</Text>
-                                <View className="flex-row items-center mt-1">
-                                  <Text className="text-gray-500 text-xs">
-                                    {new Date(s.date || s.createdAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                                  </Text>
-                                  <Text className="text-gray-600 text-xs ml-3">{formatDuration(s.durationSeconds)}</Text>
-                                  <Text className="text-gray-600 text-xs ml-3">{s.exercises?.length || 0} exercises</Text>
-                                </View>
-                              </View>
-                              <TouchableOpacity onPress={() => deleteSession(s._id)} className="p-2">
-                                <Trash2 size={14} color="#ef4444" />
-                              </TouchableOpacity>
-                            </View>
-                          </View>
-                        ))}
-                      </View>
-                    )}
-                  </View>
-                );
-              })
-            )}
-          </View>
-        )}
       </View>
 
       {/* Routines */}

@@ -40,7 +40,8 @@
           }
         }
       ],
-      "expo-web-browser"
+      "expo-web-browser",
+      "@react-native-google-signin/google-signin"
     ],
     "experiments": {
       "typedRoutes": true,
@@ -51,6 +52,7 @@
       "eas": {
         "projectId": "9d9de235-65a3-439c-9067-683438dea6be"
       }
-    }
+    },
+    "owner": "overforge"
   }
 }

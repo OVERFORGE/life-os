@@ -7,6 +7,9 @@ export default function GymLayout() {
       <Stack.Screen name="create-gym" />
       <Stack.Screen name="create-routine" />
       <Stack.Screen name="live-session" />
+      <Stack.Screen name="history" />
+      <Stack.Screen name="log-past" />
+      <Stack.Screen name="edit-session" />
     </Stack>
   );
 }

@@ -12,10 +12,23 @@
       "distribution": "internal",
       "android": {
         "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "125119096284-3cjsdjm622dcv8bh2vbhkoaotrkqgn12.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "125119096284-41gvkicuh83387eef99dn8g99la6fu1s.apps.googleusercontent.com",
+        "EXPO_PUBLIC_API_URL": "https://life-os-gamma-ten.vercel.app/api"
       }
     },
     "production": {
-      "autoIncrement": true
+      "autoIncrement": true,
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID": "125119096284-3cjsdjm622dcv8bh2vbhkoaotrkqgn12.apps.googleusercontent.com",
+        "EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID": "125119096284-41gvkicuh83387eef99dn8g99la6fu1s.apps.googleusercontent.com",
+        "EXPO_PUBLIC_API_URL": "https://life-os-gamma-ten.vercel.app/api"
+      }
     }
   },
   "submit": {

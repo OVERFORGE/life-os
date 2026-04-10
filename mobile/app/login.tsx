@@ -1,32 +1,47 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
 import { useRouter } from 'expo-router';
-import * as WebBrowser from 'expo-web-browser';
-import * as Google from 'expo-auth-session/providers/google';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from '../utils/api';
-import Animated, { FadeInDown } from 'react-native-reanimated';
-
-WebBrowser.maybeCompleteAuthSession();
 
 export default function LoginScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(false);
   const [devEmail, setDevEmail] = useState('');
 
-  const [request, response, promptAsync] = Google.useAuthRequest({
-    androidClientId: process.env.EXPO_PUBLIC_GOOGLE_ANDROID_CLIENT_ID,
-    webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
-  });
-
-  useEffect(() => {
-    if (response?.type === 'success') {
-      const { params } = response;
-      if (params?.access_token) {
-        handleBackendLogin(params.access_token);
+  const handleNativeGoogleLogin = async () => {
+    try {
+      setLoading(true);
+      let GoogleSignin, statusCodes;
+      try {
+        const GM = require('@react-native-google-signin/google-signin');
+        GoogleSignin = GM.GoogleSignin;
+        statusCodes = GM.statusCodes;
+      } catch (e) {
+        alert("Native Google Sign-In is incompatible with standard Expo Go. Please build an APK or use the Developer Auth Bypass below!");
+        setLoading(false);
+        return;
       }
+      
+      GoogleSignin.configure({
+        webClientId: process.env.EXPO_PUBLIC_GOOGLE_WEB_CLIENT_ID,
+      });
+
+      await GoogleSignin.hasPlayServices();
+      await GoogleSignin.signIn();
+      const { accessToken } = await GoogleSignin.getTokens();
+      
+      handleBackendLogin(accessToken);
+    } catch (error: any) {
+      if (error?.code) {
+        // We only show these if the error actually originated from Google Sign in
+        console.log("Google error:", error);
+      }
+      alert("Google Sign-In failed.");
+      setLoading(false);
     }
-  }, [response]);
+  };
 
   const handleBackendLogin = async (accessToken: string) => {
     try {
@@ -111,16 +126,17 @@ export default function LoginScreen() {
   return (
     <View className="flex-1 bg-[#0f1115] items-center justify-center px-6">
       <Animated.View entering={FadeInDown.duration(800)} className="w-full max-w-sm items-center">
-        <Text className="text-4xl font-bold tracking-widest text-gray-100 uppercase mb-2">
-          Life<Text className="text-gray-500">OS</Text>
-        </Text>
+        <View className="flex-row items-baseline justify-center mb-2">
+          <Text className="text-4xl font-bold tracking-widest text-gray-100 uppercase">Life</Text>
+          <Text className="text-4xl font-bold tracking-widest text-gray-500 uppercase">OS</Text>
+        </View>
         <Text className="text-sm text-gray-500 text-center mb-16">
           Personal Analytics Engine
         </Text>
 
         <TouchableOpacity 
-          disabled={!request || loading}
-          onPress={() => promptAsync()}
+          disabled={loading}
+          onPress={handleNativeGoogleLogin}
           className="w-full h-14 items-center justify-center rounded-xl bg-gray-100 flex-row mb-6 active:opacity-70"
         >
           <Text className="text-[#0f1115] font-semibold text-sm">
