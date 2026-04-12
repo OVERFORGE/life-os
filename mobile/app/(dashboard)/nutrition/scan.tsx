@@ -5,7 +5,7 @@ import { Camera, RefreshCcw, Check, ImageIcon } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { useRouter } from 'expo-router';
 
-const API_URL = process.env.EXPO_PUBLIC_API_URL || 'http://localhost:3000';
+import { fetchWithAuth } from '../../../utils/api';
 
 export default function NutritionScanScreen() {
   const router = useRouter();
@@ -58,9 +58,8 @@ export default function NutritionScanScreen() {
 
     setIsAnalyzing(true);
     try {
-      const response = await fetch(`${API_URL}/nutrition/ai-analyze`, {
+      const response = await fetchWithAuth('/nutrition/ai-analyze', {
         method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({ base64Image, description }),
       });
 

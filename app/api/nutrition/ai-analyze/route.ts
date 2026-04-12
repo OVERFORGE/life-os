@@ -1,12 +1,10 @@
-
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getAuthSession } from "@/lib/auth";
 import { uploadImageToCloudinary } from "@/server/utils/cloudinary";
 import { analyzeFoodWithGemini } from "@/server/utils/gemini";
 
 export async function POST(req: Request) {
   try {
-    const session = await getServerSession(authOptions);
+    const session = await getAuthSession();
     if (!session?.user?.id) {
       return Response.json({ error: "Unauthorized" }, { status: 401 });
     }
