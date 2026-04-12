@@ -72,12 +72,18 @@ export const analyzeFoodWithGemini = async (base64Image: string, userDescription
       },
     });
 
-    const responseText = response.text();
+    const responseText = typeof response.text === "function" ? response.text() : response.text;
     if (!responseText) {
       throw new Error("Empty response from Gemini");
     }
 
-    return JSON.parse(responseText);
+    // Safely clean any potential markdown formatting from JSON output just in case
+    let cleanText = responseText;
+    if (typeof cleanText === "string") {
+      cleanText = cleanText.replace(/```json/g, "").replace(/```/g, "").trim();
+    }
+
+    return JSON.parse(cleanText);
   } catch (error) {
     console.error("Gemini Analysis Error:", error);
     throw new Error("Failed to analyze food with Gemini AI");
