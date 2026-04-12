@@ -146,7 +146,7 @@ export default function LoginScreen() {
 
         {loading && <ActivityIndicator size="small" color="#fff" />}
 
-        {/* <View className="mt-12 w-full pt-6 border-t border-gray-800 items-center">
+        <View className="mt-12 w-full pt-6 border-t border-gray-800 items-center">
           <Text className="text-gray-500 text-xs mb-3 font-semibold uppercase tracking-wider">Developer Auth Bypass</Text>
           <View className="w-full flex-row space-x-2">
             <TextInput 
@@ -167,7 +167,7 @@ export default function LoginScreen() {
           <Text className="text-gray-600 text-[10px] mt-3 text-center">
             Instantly generates a local session for your profile. Data will perfectly mirror your PC Dashboard.
           </Text>
-        </View> */}
+        </View>
       </Animated.View>
     </View>
   );
