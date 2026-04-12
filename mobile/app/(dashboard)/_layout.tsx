@@ -24,6 +24,12 @@ export default function DashboardLayout() {
           }}
         />
         <Tabs.Screen
+          name="nutrition"
+          options={{
+            title: 'Nutrition Tracker',
+          }}
+        />
+        <Tabs.Screen
           name="brain"
           options={{
             title: 'Brain',

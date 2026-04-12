@@ -1,7 +1,7 @@
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Home, Dumbbell, Bot, Settings } from 'lucide-react-native';
+import { Home, Dumbbell, Bot, Settings, Apple } from 'lucide-react-native';
 
 export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   return (
@@ -10,8 +10,8 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
         {state.routes.map((route, index) => {
           const options = descriptors[route.key].options as any;
           
-          // Only show these three specific routes
-          const allowedRoutes = ['index', 'gym', 'brain', 'settings'];
+          // Only show these specific routes
+          const allowedRoutes = ['index', 'gym', 'nutrition', 'brain', 'settings'];
           if (!allowedRoutes.includes(route.name) || options.href === null) {
              return null;
           }
@@ -20,9 +20,9 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
 
           const onPress = () => {
             const event = navigation.emit({
-              type: 'tabPress',
-              target: route.key,
-              canPreventDefault: true,
+               type: 'tabPress',
+               target: route.key,
+               canPreventDefault: true,
             });
 
             if (!isFocused && !event.defaultPrevented) {
@@ -33,6 +33,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
           let Icon = Home;
           if (route.name === 'index') Icon = Home;
           if (route.name === 'gym') Icon = Dumbbell;
+          if (route.name === 'nutrition') Icon = Apple;
           if (route.name === 'brain') Icon = Bot;
           if (route.name === 'settings') Icon = Settings;
 
