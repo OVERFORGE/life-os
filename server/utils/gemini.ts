@@ -83,8 +83,8 @@ export const analyzeFoodWithGemini = async (base64Image: string, userDescription
     }
 
     return JSON.parse(cleanText);
-  } catch (error) {
+  } catch (error: any) {
     console.error("Gemini Analysis Error:", error);
-    throw new Error("Failed to analyze food with Gemini AI");
+    throw new Error(`Gemini Error: ${error?.message || "Unknown Failure"}`);
   }
 };
