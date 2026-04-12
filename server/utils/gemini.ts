@@ -1,6 +1,6 @@
 import { GoogleGenAI } from "@google/genai";
 
-const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
+const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY as string });
 
 const NUTRITION_SYSTEM_PROMPT = `
 You are an expert nutritionist AI. Your task is to analyze the provided image of food, taking the user's description into account.
@@ -72,12 +72,11 @@ export const analyzeFoodWithGemini = async (base64Image: string, userDescription
       },
     });
 
-    const responseText = typeof response.text === "function" ? response.text() : response.text;
+    const responseText = response.text;
     if (!responseText) {
       throw new Error("Empty response from Gemini");
     }
 
-    // Safely clean any potential markdown formatting from JSON output just in case
     let cleanText = responseText;
     if (typeof cleanText === "string") {
       cleanText = cleanText.replace(/```json/g, "").replace(/```/g, "").trim();

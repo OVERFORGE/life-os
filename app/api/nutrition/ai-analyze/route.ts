@@ -1,4 +1,4 @@
-import { connectDB } from "@/server/db/connect";
+
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
 import { uploadImageToCloudinary } from "@/server/utils/cloudinary";
