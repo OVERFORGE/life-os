@@ -14,6 +14,18 @@ export default function NutritionLayout() {
           presentation: 'modal'
         }} 
       />
+      <Stack.Screen 
+        name="library" 
+        options={{ headerShown: false }} 
+      />
+      <Stack.Screen 
+        name="create-template" 
+        options={{ headerShown: false, presentation: 'modal' }} 
+      />
+      <Stack.Screen 
+        name="daily-log" 
+        options={{ headerShown: false }} 
+      />
     </Stack>
   );
 }

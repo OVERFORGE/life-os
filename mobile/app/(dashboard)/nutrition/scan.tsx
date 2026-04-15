@@ -1,24 +1,48 @@
-import React, { useState } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, TextInput, ScrollView, Alert } from 'react-native';
+import React, { useState, useEffect } from 'react';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, RefreshCcw, Check, ImageIcon } from 'lucide-react-native';
+import { Camera, RefreshCcw, Check, ImageIcon, Dna, Activity, X } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
-import { useRouter } from 'expo-router';
-
+import { useRouter, useLocalSearchParams } from 'expo-router';
+import { useToast } from '../../../components/ui/Toast';
 import { fetchWithAuth } from '../../../utils/api';
 
 export default function NutritionScanScreen() {
   const router = useRouter();
+  const toast = useToast();
+  const { editFood } = useLocalSearchParams();
+  
   const [imageUri, setImageUri] = useState<string | null>(null);
   const [base64Image, setBase64Image] = useState<string | null>(null);
   const [description, setDescription] = useState('');
   const [isAnalyzing, setIsAnalyzing] = useState(false);
+  const [isSaving, setIsSaving] = useState(false);
+  const [editModeId, setEditModeId] = useState<string | null>(null);
+
   const [results, setResults] = useState<any>(null);
+
+  useEffect(() => {
+    if (editFood && typeof editFood === 'string') {
+      try {
+        const item = JSON.parse(editFood);
+        setEditModeId(item._id);
+        if (item.imageUrl) setImageUri(item.imageUrl);
+        setResults({
+          name: item.name,
+          baseWeight: item.baseWeight || 100,
+          macros: item.macros || { calories: 0, protein: 0, carbs: 0, fats: 0 },
+          micros: item.micros || { zinc: 0, magnesium: 0, vitaminC: 0, vitaminB: 0, iron: 0, calcium: 0 }
+        });
+      } catch (e) {
+        console.error("Failed parsing edit item", e);
+      }
+    }
+  }, [editFood]);
 
   const takePicture = async () => {
     const { status } = await ImagePicker.requestCameraPermissionsAsync();
     if (status !== 'granted') {
-      Alert.alert('Permission needed', 'Camera access is required to scan food.');
+      toast.warning('Permission Needed', 'Camera access is required to scan food.');
       return;
     }
 
@@ -68,71 +92,139 @@ export default function NutritionScanScreen() {
       try {
         data = JSON.parse(textOutput);
       } catch (err) {
-        throw new Error(`Server returned non-JSON. The route might not exist on ${API_URL}`);
+        throw new Error(`Server returned non-JSON.`);
       }
 
       if (!response.ok) throw new Error(data.error || 'Analysis failed');
 
       setResults(data);
     } catch (error: any) {
-      Alert.alert("Analysis Error", error.message);
+      toast.error('Analysis Failed', error.message);
     } finally {
       setIsAnalyzing(false);
     }
   };
 
+  const saveToLibrary = async () => {
+    if (!results) return;
+    setIsSaving(true);
+    try {
+      const payload = {
+        name: results.name,
+        baseWeight: results.baseWeight,
+        imageUrl: imageUri || results.imageUrl,
+        macros: results.macros,
+        micros: results.micros,
+        components: results.components || []
+      };
+
+      const endpoint = editModeId ? `/nutrition/library/${editModeId}` : '/nutrition/library';
+      const method = editModeId ? 'PUT' : 'POST';
+
+      const response = await fetchWithAuth(endpoint, {
+        method,
+        body: JSON.stringify(payload),
+      });
+      
+      if (!response.ok) {
+        const errData = await response.json().catch(() => ({}));
+        throw new Error(errData.error || 'Failed to save — server returned an error');
+      }
+
+      toast.success(
+        editModeId ? 'Food Updated!' : 'Added to Library!',
+        editModeId ? 'Your changes have been saved.' : 'Food added to your personal library.',
+        { label: 'Go Back', onPress: () => router.back() }
+      );
+      setTimeout(() => router.back(), 1800);
+    } catch (e: any) {
+      toast.error('Save Failed', e.message);
+    } finally {
+      setIsSaving(false);
+    }
+  };
+
+  const updateMacro = (key: string, value: string) => {
+    setResults({ ...results, macros: { ...results.macros, [key]: Number(value) || 0 } });
+  };
+  const updateMicro = (key: string, value: string) => {
+    setResults({ ...results, micros: { ...results.micros, [key]: Number(value) || 0 } });
+  };
+
   return (
-    <View style={styles.container}>
-      <ScrollView contentContainerStyle={styles.scroll} showsVerticalScrollIndicator={false}>
+    <KeyboardAvoidingView className="flex-1 bg-[#0f1115]" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 60, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
         
-        <View style={styles.header}>
-          <Text style={styles.title}>AI Scanner</Text>
-          <Text style={styles.subtitle}>Precision macro detection</Text>
+        <View className="mb-8 flex-row items-center justify-between">
+          <View>
+            <Text className="text-3xl font-bold text-gray-100 tracking-tight">{editModeId ? "Edit Food" : "AI Scanner"}</Text>
+            <Text className="text-sm text-gray-500 mt-1 font-medium">{editModeId ? "Modify specific metrics" : "Precision macro detection"}</Text>
+          </View>
+          {editModeId && (
+            <TouchableOpacity onPress={() => router.back()} className="p-2 border border-[#232632] rounded-full bg-[#161922]">
+              <X color="#9ca3af" size={20} />
+            </TouchableOpacity>
+          )}
         </View>
 
         {!imageUri ? (
-          <View style={styles.actionsBox}>
-            <TouchableOpacity style={styles.primaryAction} onPress={takePicture} activeOpacity={0.8}>
-              <View style={styles.iconCircle}>
-                <Camera color="#0a0a0a" size={24} />
-              </View>
-              <Text style={styles.primaryActionText}>Open Camera</Text>
+          <View className="mt-8">
+            <TouchableOpacity 
+              className="bg-gray-100 rounded-3xl p-6 items-center mb-4 flex-row justify-center" 
+              onPress={takePicture} 
+              activeOpacity={0.8}
+            >
+              <Camera color="#0f1115" size={24} style={{ marginRight: 12 }} />
+              <Text className="text-lg font-bold text-[#0f1115]">Open Camera</Text>
             </TouchableOpacity>
 
-            <TouchableOpacity style={styles.secondaryAction} onPress={pickImage} activeOpacity={0.7}>
-              <ImageIcon color="white" size={20} />
-              <Text style={styles.secondaryActionText}>Upload from Image Library</Text>
+            <TouchableOpacity 
+              className="flex-row bg-[#161922] rounded-2xl p-5 items-center justify-center border border-[#232632]" 
+              onPress={pickImage} 
+              activeOpacity={0.7}
+            >
+              <ImageIcon color="#9ca3af" size={20} />
+              <Text className="text-sm font-semibold text-gray-300 ml-3">Upload from Gallery</Text>
             </TouchableOpacity>
           </View>
         ) : (
-          <View style={styles.previewContainer}>
-            <View style={styles.imageWrapper}>
-              <Image source={{ uri: imageUri }} style={styles.previewImage} />
-              <TouchableOpacity style={styles.retakeButton} onPress={() => setImageUri(null)}>
-                <BlurView intensity={40} tint="dark" style={styles.retakeBlur}>
-                  <RefreshCcw color="white" size={14} />
-                  <Text style={styles.retakeText}>Retake</Text>
+          <View className="mt-2">
+            <View className="rounded-3xl overflow-hidden h-[350px] border border-[#232632]">
+              <Image source={{ uri: imageUri }} className="w-full h-full bg-[#161922]" />
+              <TouchableOpacity className="absolute top-4 right-4 rounded-xl overflow-hidden border border-white/10" onPress={() => setImageUri(null)}>
+                <BlurView 
+                  intensity={40} 
+                  tint="dark" 
+                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8 }}
+                >
+                  <RefreshCcw color="white" size={12} />
+                  <Text className="text-white text-xs font-semibold ml-2">Retake</Text>
                 </BlurView>
               </TouchableOpacity>
             </View>
 
             {!results && (
-              <View style={styles.inputSection}>
-                <Text style={styles.inputLabel}>CONTEXT (OPTIONAL)</Text>
+              <View className="mt-6 bg-[#161922] p-5 rounded-3xl border border-[#232632]">
+                <Text className="text-[10px] font-bold text-gray-500 tracking-widest mb-3">CONTEXT (OPTIONAL)</Text>
                 <TextInput
-                  style={styles.input}
+                  className="bg-[#0f1115] text-gray-100 text-sm p-4 rounded-xl border border-[#232632] h-24"
+                  style={{ textAlignVertical: 'top' }}
                   placeholder="e.g. Cooked with 1 tbsp olive oil"
-                  placeholderTextColor="rgba(255,255,255,0.2)"
+                  placeholderTextColor="#4b5563"
                   value={description}
                   onChangeText={setDescription}
                   multiline
                 />
                 
-                <TouchableOpacity style={styles.analyzeButton} onPress={analyzeFood} disabled={isAnalyzing}>
+                <TouchableOpacity 
+                  className={`mt-4 rounded-xl p-4 items-center ${isAnalyzing ? 'bg-[#232632]' : 'bg-gray-100'}`} 
+                  onPress={analyzeFood} 
+                  disabled={isAnalyzing}
+                >
                   {isAnalyzing ? (
-                    <ActivityIndicator color="#0a0a0a" />
+                    <ActivityIndicator color="#0f1115" />
                   ) : (
-                    <Text style={styles.analyzeText}>Analyze Food Data</Text>
+                    <Text className="text-[#0f1115] font-bold text-base">Analyze Food Data</Text>
                   )}
                 </TouchableOpacity>
               </View>
@@ -141,77 +233,86 @@ export default function NutritionScanScreen() {
         )}
 
         {results && (
-          <View style={styles.resultsContainer}>
-            <Text style={styles.resultLabel}>DETECTED ITEM</Text>
-            <Text style={styles.resultTitle}>{results.name || "Unknown Food"}</Text>
+          <View className="mt-8 bg-[#161922] p-6 rounded-3xl border border-[#232632] shadow-xl">
+            <Text className="text-[10px] font-bold text-gray-500 tracking-widest mb-4 text-center">VERIFICATION OVERRIDE</Text>
             
-            <View style={styles.macroGrid}>
-              <View style={styles.macroBox}>
-                <Text style={styles.macroValue}>{results.macros?.calories}</Text>
-                <Text style={styles.macroDesc}>KCAL</Text>
-              </View>
-              <View style={styles.macroBox}>
-                <Text style={styles.macroValue}>{results.macros?.protein}g</Text>
-                <Text style={styles.macroDesc}>Protein</Text>
-              </View>
-              <View style={styles.macroBox}>
-                <Text style={styles.macroValue}>{results.macros?.carbs}g</Text>
-                <Text style={styles.macroDesc}>Carbs</Text>
-              </View>
-              <View style={styles.macroBox}>
-                <Text style={styles.macroValue}>{results.macros?.fats}g</Text>
-                <Text style={styles.macroDesc}>Fats</Text>
-              </View>
+            <TextInput 
+              className="bg-[#0f1115] text-gray-100 text-xl font-bold p-4 rounded-xl text-center mb-6 border border-[#232632] focus:border-[#4b5563]"
+              value={results.name}
+              onChangeText={(text) => setResults({...results, name: text})}
+            />
+
+            <View className="flex-row items-center mb-4 ml-1">
+              <Activity size={16} color="#9ca3af" />
+              <Text className="text-gray-300 text-sm font-bold tracking-wide ml-2">MACROS</Text>
+            </View>
+            
+            <View className="flex-row flex-wrap justify-between mb-2">
+              {[
+                { label: 'Calories', key: 'calories', suffix: 'KCAL' },
+                { label: 'Protein', key: 'protein', suffix: 'g' },
+                { label: 'Carbs', key: 'carbs', suffix: 'g' },
+                { label: 'Fats', key: 'fats', suffix: 'g' }
+              ].map((item) => (
+                <View className="w-[48%] bg-[#0f1115] p-4 rounded-2xl mb-4 border border-[#232632]" key={item.key}>
+                  <Text className="text-[10px] text-gray-500 font-bold tracking-wider mb-2 uppercase">{item.label}</Text>
+                  <View className="flex-row items-end">
+                    <TextInput 
+                      className="text-gray-100 text-2xl font-bold p-0 min-w-[40px] border-b border-[#232632] focus:border-[#4b5563] pb-0.5"
+                      keyboardType="numeric"
+                      value={String(results.macros?.[item.key] || 0)}
+                      onChangeText={(val) => updateMacro(item.key, val)}
+                    />
+                    <Text className="text-gray-500 text-xs font-bold ml-1 mb-1">{item.suffix}</Text>
+                  </View>
+                </View>
+              ))}
             </View>
 
-            <TouchableOpacity style={styles.saveButton} onPress={() => router.back()}>
-              <Text style={styles.saveText}>Looks Correct</Text>
+            <View className="flex-row items-center mb-4 ml-1 mt-2">
+              <Dna size={16} color="#9ca3af" />
+              <Text className="text-gray-300 text-sm font-bold tracking-wide ml-2">MICROS</Text>
+            </View>
+
+            <View className="flex-row flex-wrap justify-between">
+              {[
+                { label: 'Zinc', key: 'zinc' },
+                { label: 'Magnesium', key: 'magnesium' },
+                { label: 'Vitamin C', key: 'vitaminC' },
+                { label: 'Vitamin B', key: 'vitaminB' },
+                { label: 'Iron', key: 'iron' },
+                { label: 'Calcium', key: 'calcium' }
+              ].map((item) => (
+                <View className="w-[48%] bg-[#0f1115] p-3 rounded-xl mb-3 border border-[#232632]" key={item.key}>
+                  <Text className="text-[10px] text-gray-500 font-bold tracking-wider mb-2 uppercase">{item.label}</Text>
+                  <View className="flex-row items-end">
+                    <TextInput 
+                      className="text-gray-100 text-lg font-bold p-0 min-w-[30px] border-b border-[#232632] focus:border-[#4b5563] pb-0.5"
+                      keyboardType="numeric"
+                      value={String(results.micros?.[item.key] || 0)}
+                      onChangeText={(val) => updateMicro(item.key, val)}
+                    />
+                    <Text className="text-gray-500 text-xs font-bold ml-1 mb-1">mg</Text>
+                  </View>
+                </View>
+              ))}
+            </View>
+
+            <TouchableOpacity 
+              className={`mt-6 rounded-xl p-4 items-center ${isSaving ? 'bg-[#232632]' : 'bg-gray-100'}`} 
+              onPress={saveToLibrary} 
+              disabled={isSaving}
+            >
+              {isSaving ? (
+                <ActivityIndicator color="#0f1115" />
+              ) : (
+                <Text className="text-[#0f1115] font-bold text-base">Save to Library</Text>
+              )}
             </TouchableOpacity>
           </View>
         )}
 
       </ScrollView>
-    </View>
+    </KeyboardAvoidingView>
   );
 }
-
-const styles = StyleSheet.create({
-  container: { flex: 1, backgroundColor: '#0a0a0a' },
-  scroll: { padding: 24, paddingTop: 60, paddingBottom: 100 },
-  header: { marginBottom: 32 },
-  title: { fontSize: 34, fontWeight: '700', color: 'white', letterSpacing: -1 },
-  subtitle: { fontSize: 15, color: 'rgba(255,255,255,0.4)', marginTop: 4 },
-  
-  actionsBox: { marginTop: 40 },
-  primaryAction: { backgroundColor: 'white', borderRadius: 20, padding: 24, alignItems: 'center', marginBottom: 16 },
-  iconCircle: { width: 56, height: 56, borderRadius: 28, backgroundColor: 'rgba(0,0,0,0.05)', justifyContent: 'center', alignItems: 'center', marginBottom: 16 },
-  primaryActionText: { fontSize: 18, fontWeight: '600', color: '#0a0a0a' },
-  
-  secondaryAction: { flexDirection: 'row', backgroundColor: 'rgba(255,255,255,0.03)', borderRadius: 20, padding: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  secondaryActionText: { fontSize: 15, fontWeight: '500', color: 'white', marginLeft: 12 },
-
-  previewContainer: { marginTop: 10 },
-  imageWrapper: { borderRadius: 24, overflow: 'hidden', height: 350, borderCurve: 'continuous' },
-  previewImage: { width: '100%', height: '100%' },
-  retakeButton: { position: 'absolute', top: 16, right: 16, borderRadius: 20, overflow: 'hidden' },
-  retakeBlur: { flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8 },
-  retakeText: { color: 'white', fontSize: 13, fontWeight: '500', marginLeft: 6 },
-
-  inputSection: { marginTop: 24 },
-  inputLabel: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.4)', letterSpacing: 2, marginBottom: 12 },
-  input: { backgroundColor: 'rgba(255,255,255,0.03)', color: 'white', fontSize: 15, padding: 20, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)', height: 100, textAlignVertical: 'top' },
-  analyzeButton: { backgroundColor: 'white', padding: 20, borderRadius: 16, marginTop: 16, alignItems: 'center' },
-  analyzeText: { color: '#0a0a0a', fontSize: 16, fontWeight: '600' },
-
-  resultsContainer: { marginTop: 24, backgroundColor: 'rgba(255,255,255,0.02)', padding: 24, borderRadius: 24, borderWidth: 1, borderColor: 'rgba(255,255,255,0.05)' },
-  resultLabel: { fontSize: 11, fontWeight: '600', color: 'rgba(255,255,255,0.4)', letterSpacing: 2, textAlign: 'center', marginBottom: 8 },
-  resultTitle: { fontSize: 22, fontWeight: '700', color: 'white', textAlign: 'center', marginBottom: 32 },
-  
-  macroGrid: { flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' },
-  macroBox: { width: '47%', backgroundColor: 'rgba(255,255,255,0.03)', padding: 20, borderRadius: 16, marginBottom: 12, alignItems: 'center' },
-  macroValue: { fontSize: 24, fontWeight: '700', color: 'white', marginBottom: 4 },
-  macroDesc: { fontSize: 12, color: 'rgba(255,255,255,0.4)', fontWeight: '500' },
-  
-  saveButton: { backgroundColor: 'white', padding: 18, borderRadius: 16, marginTop: 20, alignItems: 'center' },
-  saveText: { color: '#0a0a0a', fontSize: 16, fontWeight: '600' }
-});

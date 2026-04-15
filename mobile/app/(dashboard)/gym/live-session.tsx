@@ -1,8 +1,9 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert, Image, Dimensions } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Image, Dimensions } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Play, Timer, Save, ChevronRight, ChevronLeft, Zap, Info } from 'lucide-react-native';
 import { fetchWithAuth } from '../../../utils/api';
+import { useToast } from '../../../components/ui/Toast';
 import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutLeft } from 'react-native-reanimated';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
@@ -29,6 +30,7 @@ function getMuscleImage(equipmentName: string) {
 
 export default function LiveSessionScreen() {
   const router = useRouter();
+  const toast = useToast();
   const [routines, setRoutines] = useState<any[]>([]);
   const [selectedRoutine, setSelectedRoutine] = useState<any>(null);
   const [selectedDay, setSelectedDay] = useState<any>(null);
@@ -43,6 +45,25 @@ export default function LiveSessionScreen() {
   // Payload for logged sets
   const [logs, setLogs] = useState<any>({}); 
   const [saving, setSaving] = useState(false);
+
+  // Raw text states for weight inputs keyed by "exIdx-setIdx"
+  const [weightTexts, setWeightTexts] = useState<Record<string, string>>({});
+
+  const getWeightText = (exIdx: number, setIdx: number) => {
+    const key = `${exIdx}-${setIdx}`;
+    if (weightTexts[key] !== undefined) return weightTexts[key];
+    const val = logs[exIdx]?.[setIdx]?.weightUsed;
+    return val ? String(val) : '';
+  };
+
+  const handleWeightChange = (exIdx: number, setIdx: number, raw: string) => {
+    const key = `${exIdx}-${setIdx}`;
+    // Allow digits and at most one decimal point
+    const cleaned = raw.replace(/[^0-9.]/g, '').replace(/(\..*)\./g, '$1');
+    setWeightTexts(prev => ({ ...prev, [key]: cleaned }));
+    const num = cleaned === '' || cleaned === '.' ? 0 : parseFloat(cleaned) || 0;
+    handleSaveSet(exIdx, setIdx, 'weightUsed', num);
+  };
 
   useEffect(() => {
     fetchWithAuth('/gym/routines')
@@ -92,13 +113,13 @@ export default function LiveSessionScreen() {
       });
 
       if (res.ok) {
-        Alert.alert("Workout Saved", "Fantastic job!");
-        router.replace('/(dashboard)/gym');
+        toast.success('Workout Saved! 💪', 'Fantastic session — keep it up!');
+        setTimeout(() => router.replace('/(dashboard)/gym'), 1200);
       } else {
-        Alert.alert("Error", "Failed to sync workout to server.");
+        toast.error('Save Failed', 'Failed to sync workout to server.');
       }
     } catch (e) {
-      Alert.alert("Error", "Network error.");
+      toast.error('Network Error', 'Could not reach the server.');
     } finally {
       setSaving(false);
     }
@@ -251,11 +272,8 @@ export default function LiveSessionScreen() {
                                         keyboardType="decimal-pad"
                                         placeholder="0"
                                         placeholderTextColor="#4b5563"
-                                        value={setData.weightUsed ? String(setData.weightUsed) : ''}
-                                        onChangeText={(v) => {
-                                          const cleaned = v.replace(/[^0-9.]/g, '');
-                                          handleSaveSet(exIdx, setIdx, 'weightUsed', cleaned === '' ? 0 : parseFloat(cleaned) || 0);
-                                        }}
+                                        value={getWeightText(exIdx, setIdx)}
+                                        onChangeText={(v) => handleWeightChange(exIdx, setIdx, v)}
                                         className="text-white font-bold text-lg"
                                       />
                                     </View>
