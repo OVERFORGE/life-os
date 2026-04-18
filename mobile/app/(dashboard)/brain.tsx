@@ -1,7 +1,8 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
 import { Bot, ArrowUp, User } from 'lucide-react-native';
-import { fetchWithAuth } from '../../utils/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { fetchWithAuth, API_URL } from '../../utils/api';
 
 type Message = {
   role: 'user' | 'assistant';
@@ -14,6 +15,9 @@ export default function BrainScreen() {
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
   const flatListRef = useRef<FlatList>(null);
+  
+  // Track if user is scrolling up to prevent auto-scroll jumps
+  const isUserScrolling = useRef(false);
 
   useEffect(() => {
     loadHistory();
@@ -31,6 +35,10 @@ export default function BrainScreen() {
       console.error('Failed to load chat history:', e);
     } finally {
       setHistoryLoading(false);
+      // Wait a tick then scroll to bottom initially
+      setTimeout(() => {
+        flatListRef.current?.scrollToEnd({ animated: false });
+      }, 100);
     }
   };
 
@@ -39,26 +47,53 @@ export default function BrainScreen() {
     if (!text || loading) return;
 
     const userMessage: Message = { role: 'user', content: text };
-    setMessages(prev => [...prev, userMessage]);
+    
+    // Add user message and empty placeholder for assistant
+    setMessages(prev => [...prev, userMessage, { role: 'assistant', content: '' }]);
     setInput('');
     setLoading(true);
+    isUserScrolling.current = false; // Force scroll down for new message
 
     try {
-      const res = await fetchWithAuth('/conversation', {
-        method: 'POST',
-        body: JSON.stringify({ message: text }),
-      });
-
-      if (res.ok) {
-        const responseText = await res.text();
-        setMessages(prev => [...prev, { role: 'assistant', content: responseText }]);
-      } else {
-        setMessages(prev => [...prev, { role: 'assistant', content: 'Sorry, I encountered an error. Please try again.' }]);
+      const token = await AsyncStorage.getItem('user_token');
+      const xhr = new XMLHttpRequest();
+      xhr.open('POST', `${API_URL}/conversation`);
+      xhr.setRequestHeader('Content-Type', 'application/json');
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
       }
+
+      xhr.onreadystatechange = () => {
+        if (xhr.readyState === 3 || xhr.readyState === 4) {
+          if (xhr.responseText) {
+            setMessages(prev => {
+              const updated = [...prev];
+              // Update only the last message
+              updated[updated.length - 1].content = xhr.responseText;
+              return updated;
+            });
+          }
+        }
+      };
+
+      xhr.onload = () => {
+        setLoading(false);
+      };
+
+      xhr.onerror = () => {
+        setLoading(false);
+        setMessages(prev => {
+          const updated = [...prev];
+          updated[updated.length - 1].content = 'Network error. Make sure the server is running.';
+          return updated;
+        });
+      };
+
+      xhr.send(JSON.stringify({ message: text }));
+
     } catch (e) {
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Network error. Make sure the server is running.' }]);
-    } finally {
       setLoading(false);
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Network error. Make sure the server is running.' }]);
     }
   };
 
@@ -66,31 +101,22 @@ export default function BrainScreen() {
     const isUser = item.role === 'user';
 
     return (
-      <View className={`mb-4 ${isUser ? 'items-end' : 'items-start'}`}>
-        {/* Role indicator */}
-        <View className={`flex-row items-center mb-1.5 ${isUser ? 'flex-row-reverse' : ''}`}>
-          <View className={`w-6 h-6 rounded-full items-center justify-center ${isUser ? 'bg-white/10 ml-2' : 'bg-amber-500/20 mr-2'}`}>
-            {isUser ? (
-              <User size={12} color="#9ca3af" />
-            ) : (
-              <Bot size={12} color="#fbbf24" />
-            )}
+      <View className={`mb-6 flex-row ${isUser ? 'justify-end' : 'justify-start'}`}>
+        {!isUser && (
+          <View className="w-8 h-8 rounded-full border border-[#232632] bg-[#161922] items-center justify-center mr-3 mt-1">
+            <Bot size={16} color="#fbbf24" />
           </View>
-          <Text className={`text-[10px] font-bold uppercase tracking-widest ${isUser ? 'text-gray-600' : 'text-amber-600'}`}>
-            {isUser ? 'You' : 'LifeOS'}
-          </Text>
-        </View>
-
-        {/* Message bubble */}
+        )}
+        
         <View
-          className={`max-w-[85%] px-4 py-3 rounded-2xl ${
+          className={`max-w-[75%] px-4 py-3 rounded-2xl ${
             isUser
-              ? 'bg-[#1b1f2a] rounded-tr-sm'
-              : 'bg-transparent'
+              ? 'bg-[#232632] rounded-tr-sm'
+              : 'bg-transparent border border-[#232632] rounded-tl-sm'
           }`}
         >
-          <Text className={`text-[15px] leading-6 ${isUser ? 'text-gray-200' : 'text-gray-400'}`}>
-            {item.content}
+          <Text className={`text-[16px] leading-[24px] ${isUser ? 'text-gray-100' : 'text-gray-300'}`}>
+            {item.content || (loading && !isUser && item.content === '' ? '...' : item.content)}
           </Text>
         </View>
       </View>
@@ -104,22 +130,6 @@ export default function BrainScreen() {
       keyboardVerticalOffset={0}
     >
       <View className="flex-1">
-        {/* Header */}
-        <View className="px-6 pt-4 pb-4">
-          <View className="flex-row items-center">
-            <View className="w-10 h-10 rounded-full bg-amber-500/20 items-center justify-center mr-3">
-              <Bot size={20} color="#fbbf24" />
-            </View>
-            <View>
-              <Text className="text-gray-100 font-bold text-lg">LifeOS Brain</Text>
-              <Text className="text-gray-500 text-xs">Your intelligent assistant</Text>
-            </View>
-          </View>
-        </View>
-
-        {/* Divider */}
-        <View className="h-px bg-[#232632]" />
-
         {/* Messages */}
         {historyLoading ? (
           <View className="flex-1 items-center justify-center">
@@ -142,43 +152,48 @@ export default function BrainScreen() {
             data={messages}
             keyExtractor={(_, i) => String(i)}
             renderItem={renderMessage}
-            contentContainerStyle={{ padding: 20, paddingBottom: 20 }}
+            contentContainerStyle={{ padding: 20, paddingTop: 40 }}
             showsVerticalScrollIndicator={false}
-            onContentSizeChange={() => flatListRef.current?.scrollToEnd({ animated: true })}
-            onLayout={() => flatListRef.current?.scrollToEnd({ animated: false })}
+            onScroll={(e) => {
+              const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+              const paddingToBottom = 50;
+              const isAtBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
+              isUserScrolling.current = !isAtBottom;
+            }}
+            scrollEventThrottle={16}
+            onContentSizeChange={() => {
+              if (!isUserScrolling.current) {
+                flatListRef.current?.scrollToEnd({ animated: true });
+              }
+            }}
           />
         )}
 
-        {/* Loading indicator */}
-        {loading && (
-          <View className="px-6 pb-2 flex-row items-center">
-            <ActivityIndicator color="#fbbf24" size="small" />
-            <Text className="text-amber-500/60 text-xs ml-2 font-medium">Thinking...</Text>
-          </View>
-        )}
-
         {/* Input Bar */}
-        <View className="px-4 pb-28 pt-3 border-t border-[#232632]">
-          <View className="flex-row items-center bg-[#161922] rounded-full border border-[#232632] pl-5 pr-2 py-1">
+        <View className="px-4 pb-[110px] pt-3 bg-[#0f1115]">
+          <View className="flex-row items-end bg-[#1a1d24] rounded-[24px] border border-[#2a2d36] pl-5 pr-2 py-2">
             <TextInput
               value={input}
               onChangeText={setInput}
-              placeholder="Talk to your assistant..."
-              placeholderTextColor="#4b5563"
-              className="flex-1 text-white text-[15px] py-2.5"
-              multiline={false}
-              returnKeyType="send"
+              placeholder="Message LifeOS..."
+              placeholderTextColor="#6b7280"
+              className="flex-1 text-white text-[16px] py-1.5 max-h-32 min-h-[30px]"
+              multiline={true}
               onSubmitEditing={sendMessage}
               editable={!loading}
             />
             <TouchableOpacity
               onPress={sendMessage}
               disabled={loading || !input.trim()}
-              className={`w-10 h-10 rounded-full items-center justify-center ml-2 ${
+              className={`w-[36px] h-[36px] rounded-full items-center justify-center ml-2 mb-0.5 ${
                 input.trim() ? 'bg-white' : 'bg-gray-800'
               }`}
             >
-              <ArrowUp size={18} color={input.trim() ? '#0f1115' : '#4b5563'} strokeWidth={2.5} />
+              {loading && !input.trim() ? (
+                 <ActivityIndicator size="small" color="#0f1115" />
+              ) : (
+                 <ArrowUp size={18} color={input.trim() ? '#0f1115' : '#4b5563'} strokeWidth={3} />
+              )}
             </TouchableOpacity>
           </View>
         </View>

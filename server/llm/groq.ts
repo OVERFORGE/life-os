@@ -12,10 +12,25 @@ export async function groqChat({
     temperature?: number;
 }) {
     const response = await client.chat.completions.create({
-        model: "llama3-70b-8192",
+        model: "llama-3.3-70b-versatile",
         messages,
         temperature,
     });
 
     return response.choices[0]?.message?.content || "";
+}
+
+export async function groqChatStream({
+    messages,
+    temperature = 0.7,
+}: {
+    messages: { role: "system" | "user" | "assistant"; content: string }[];
+    temperature?: number;
+}) {
+    return await client.chat.completions.create({
+        model: "llama-3.3-70b-versatile",
+        messages,
+        temperature,
+        stream: true,
+    });
 }

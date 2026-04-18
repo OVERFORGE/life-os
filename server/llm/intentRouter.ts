@@ -34,7 +34,8 @@ Return:
     });
 
     try {
-        return JSON.parse(res);
+        const cleanRes = res.replace(/```json/g, "").replace(/```/g, "").trim();
+        return JSON.parse(cleanRes);
     } catch {
         return { intent: "casual_chat", confidence: 0.5 };
     }

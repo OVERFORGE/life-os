@@ -2,9 +2,12 @@ import { connectDB } from "@/server/db/connect";
 import { ConversationMessage } from "@/server/db/models/ConversationMessage";
 import { getAuthSession } from "@/lib/auth";
 
+import { detectIntent } from "@/server/llm/intentRouter";
+import { buildContext } from "@/server/llm/contextBuilder";
+import { shouldCallTool } from "@/server/llm/toolRouter";
+import { generateResponse } from "@/server/llm/reasoningModel";
+import { executeTool } from "@/features/assistant/executor";
 import { loadSystemContext } from "@/features/systemContext/loadSystemContext";
-import { buildPrompt } from "@/features/conversation/buildPrompt";
-import { runAssistantBrain } from "@/features/assistant/brain";
 
 export async function POST(req: Request) {
   const session = await getAuthSession();
@@ -18,142 +21,66 @@ export async function POST(req: Request) {
 
   await connectDB();
 
-  /* ---------------- HISTORY ---------------- */
+  /* ===================================================== */
+  /* 1. INTENT DETECTION                                  */
+  /* ===================================================== */
+  
+  const intentResult = await detectIntent(message);
+  const intent = intentResult.intent || "casual_chat";
+  
+  /* ===================================================== */
+  /* 2. CONTEXT BUILDING (INTELLIGENCE LAYER)             */
+  /* ===================================================== */
 
-  const history = await ConversationMessage.find({ userId })
-    .sort({ createdAt: -1 })
-    .limit(20)
-    .lean();
+  const intelContext = await buildContext({ intent, userId, input: message });
 
-  /* ---------------- CONTEXT ---------------- */
+  /* ===================================================== */
+  /* 3. TOOL ROUTING & EXECUTION                          */
+  /* ===================================================== */
 
-  const context = await loadSystemContext(userId);
+  let toolResult = null;
+  if (shouldCallTool(intent)) {
+    // Preserve existing system context for tools
+    const systemContext = await loadSystemContext(userId);
+    toolResult = await executeTool({
+      tool: intent,
+      message,
+      context: systemContext,
+      userId,
+    });
+  }
 
-  /* ---------------- BRAIN ---------------- */
+  /* ===================================================== */
+  /* 4. REASONING MODEL (STREAMING)                       */
+  /* ===================================================== */
 
-  const brainResult = await runAssistantBrain({
-    message,
-    context,
-    userId,
+  const groqStream = await generateResponse({ 
+      input: message, 
+      context: intelContext, 
+      toolResult 
   });
-  console.log("BRAIN RESULT:", brainResult);
-  /* ===================================================== */
-  /* 🧠 PROMPT BUILDING                                   */
-  /* ===================================================== */
-
-  let finalPrompt = "";
-
-  /* 🟢 TOOL EXECUTED */
-
-  if (brainResult.type === "tool_executed") {
-    finalPrompt = `
-You are LifeOS, a human-like intelligent assistant.
-
-The user said:
-"${message}"
-
-System action result:
-${JSON.stringify(brainResult.result)}
-
-IMPORTANT:
-- Only confirm success if success=true
-- If failed, explain honestly
-- Do NOT assume anything
-- Do NOT mention JSON or tools
-
-Respond naturally like a human.
-`;
-  }
-
-  /* 🟡 CONFIRMATION STEP */
-
-  else if (brainResult.type === "confirmation_required") {
-    finalPrompt = `
-The user said:
-"${message}"
-
-They want to create a goal.
-
-Your job:
-- Understand the intent
-- Rephrase it clearly
-- Explain what will happen
-- Ask for confirmation
-
-DO NOT create the goal yet.
-
-Example tone:
-
-"That sounds like a strong habit to build.
-
-I can set this up as a daily goal where your consistency gets tracked over time. This will help improve your discipline and energy levels.
-
-Do you want me to create this goal for you?"
-`;
-  }
-
-  /* 🔵 NORMAL CHAT */
-
-  else {
-    finalPrompt = buildPrompt(
-      context,
-      history.reverse(),
-      message
-    );
-  }
-
-  /* ===================================================== */
-  /* 🤖 LLM CALL                                          */
-  /* ===================================================== */
-
-  const ollamaRes = await fetch("http://localhost:11434/api/generate", {
-    method: "POST",
-    body: JSON.stringify({
-      model: "llama3.1:8b",
-      prompt: finalPrompt,
-      stream: true,
-      options: {
-        temperature: 0.8,
-        num_predict: 350,
-        top_p: 0.9,
-      },
-    }),
-  });
-
-  if (!ollamaRes.body) {
-    return Response.json({ error: "No response" });
-  }
-
-  const reader = ollamaRes.body.getReader();
-  const decoder = new TextDecoder();
-
-  let fullResponse = "";
 
   const stream = new ReadableStream({
     async start(controller) {
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
+      let fullResponse = "";
 
-        const chunk = decoder.decode(value);
-
-        try {
-          const parsed = JSON.parse(chunk);
-
-          if (parsed.response) {
-            fullResponse += parsed.response;
-
+      try {
+        for await (const chunk of groqStream) {
+          const content = chunk.choices[0]?.delta?.content || "";
+          if (content) {
+            fullResponse += content;
             controller.enqueue(
-              new TextEncoder().encode(parsed.response)
+              new TextEncoder().encode(content)
             );
           }
-        } catch { }
+        }
+      } catch (err) {
+        console.error("Groq Stream Error:", err);
       }
 
       controller.close();
 
-      /* SAVE */
-
+      /* SAVE TO HISTORY */
       await ConversationMessage.create({
         userId,
         role: "user",
