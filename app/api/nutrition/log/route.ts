@@ -9,12 +9,22 @@ export async function GET(req: Request) {
 
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date");
+    const history = searchParams.get("history");
+
+    await connectDB();
+
+    if (history) {
+      const logs = await NutritionLog.find({ userId: session.user.id })
+        .sort({ date: -1 })
+        .limit(30)
+        .populate("meals.foodItemId");
+      return Response.json({ success: true, logs });
+    }
 
     if (!date) {
       return Response.json({ error: "Date is required (YYYY-MM-DD)" }, { status: 400 });
     }
 
-    await connectDB();
     const log = await NutritionLog.findOne({ userId: session.user.id, date })
       .populate("meals.foodItemId");
 
@@ -42,6 +52,18 @@ export async function POST(req: Request) {
       { meals, dailyTotals },
       { new: true, upsert: true }
     );
+
+    // Cross-module sync: Update DailyLog
+    import("@/server/db/models/DailyLog").then(async ({ DailyLog }) => {
+      await DailyLog.findOneAndUpdate(
+        { userId: session.user.id, date },
+        { 
+          $set: { "physical.calories": dailyTotals?.calories || 0 },
+          $setOnInsert: { signals: {}, sleep: {}, mental: {}, work: {} }
+        },
+        { upsert: true }
+      );
+    });
 
     return Response.json({ success: true, log: updatedLog });
   } catch (error: any) {

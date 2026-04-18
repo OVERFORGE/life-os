@@ -13,6 +13,7 @@ import {
   LogOut,
   LogIn,
   ChartBarIcon,
+  Bell
 } from "lucide-react";
 import { signIn, signOut, useSession } from "next-auth/react";
 
@@ -23,8 +24,8 @@ const nav = [
   { href: "/history", label: "History", icon: Calendar },
   { href: "/analytics", label: "Analytics", icon: BarChart3 },
   { href: "/dashboard/assistant", label: "Chat with AI", icon: ChartBarIcon },
+  { href: "/notifications", label: "Notifications", icon: Bell },
   { href: "/settings", label: "Settings", icon: Settings },
-  
 ];
 
 export function Sidebar({

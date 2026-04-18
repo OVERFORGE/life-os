@@ -29,13 +29,7 @@ export async function POST(req: Request) {
   const intent = intentResult.intent || "casual_chat";
   
   /* ===================================================== */
-  /* 2. CONTEXT BUILDING (INTELLIGENCE LAYER)             */
-  /* ===================================================== */
-
-  const intelContext = await buildContext({ intent, userId, input: message });
-
-  /* ===================================================== */
-  /* 3. TOOL ROUTING & EXECUTION                          */
+  /* 2. TOOL ROUTING & EXECUTION                          */
   /* ===================================================== */
 
   let toolResult = null;
@@ -49,6 +43,12 @@ export async function POST(req: Request) {
       userId,
     });
   }
+
+  /* ===================================================== */
+  /* 3. CONTEXT BUILDING (INTELLIGENCE LAYER)             */
+  /* ===================================================== */
+
+  const intelContext = await buildContext({ intent, userId, input: message });
 
   /* ===================================================== */
   /* 4. REASONING MODEL (STREAMING)                       */

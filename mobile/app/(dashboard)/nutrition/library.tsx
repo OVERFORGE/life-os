@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Modal, TextInput } from 'react-native';
 import { BlurView } from 'expo-blur';
-import { ArrowLeft, Plus, Dna, Layers, Leaf, Camera, Edit2, Trash2, X, Check, Coffee, Sun, Moon, Apple } from 'lucide-react-native';
+import { ArrowLeft, Plus, Dna, Layers, Leaf, Camera, Edit2, Trash2, X, Check, Coffee, Sun, Moon, Apple, Clock } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useToast } from '../../../components/ui/Toast';
@@ -42,8 +42,9 @@ export default function FoodLibraryScreen() {
   const toast = useToast();
   const [foods, setFoods] = useState<any[]>([]);
   const [templates, setTemplates] = useState<any[]>([]);
+  const [historyLogs, setHistoryLogs] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
-  const [activeTab, setActiveTab] = useState<'foods' | 'templates'>('foods');
+  const [activeTab, setActiveTab] = useState<'foods' | 'templates' | 'history'>('foods');
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
   // Edit template modal state
@@ -55,12 +56,14 @@ export default function FoodLibraryScreen() {
   const loadLibrary = useCallback(async () => {
     setLoading(true);
     try {
-      const [foodsRes, templatesRes] = await Promise.all([
+      const [foodsRes, templatesRes, historyRes] = await Promise.all([
         fetchWithAuth('/nutrition/library'),
         fetchWithAuth('/nutrition/templates'),
+        fetchWithAuth('/nutrition/log?history=true'),
       ]);
       if (foodsRes.ok) { const d = await foodsRes.json(); setFoods(d.foods || []); }
       if (templatesRes.ok) { const d = await templatesRes.json(); setTemplates(d.templates || []); }
+      if (historyRes.ok) { const d = await historyRes.json(); setHistoryLogs(d.logs || []); }
     } catch {
       toast.error('Load Failed', 'Could not load library data.');
     } finally {
@@ -173,7 +176,13 @@ export default function FoodLibraryScreen() {
 
       {/* Tab Toggle */}
       <View style={{ flexDirection: 'row', backgroundColor: COLORS.card, marginHorizontal: 24, marginVertical: 20, borderRadius: 16, padding: 4, borderWidth: 1, borderColor: COLORS.border }}>
-        {([['foods', 'Custom Foods', Dna], ['templates', 'Day Templates', Layers]] as const).map(([key, label, Icon]) => (
+        {(
+          [
+            ['foods', 'Custom Foods', Dna],
+            ['templates', 'Day Templates', Layers],
+            ['history', 'History', Clock]
+          ] as const
+        ).map(([key, label, Icon]) => (
           <TouchableOpacity
             key={key}
             onPress={() => setActiveTab(key)}
@@ -305,6 +314,33 @@ export default function FoodLibraryScreen() {
                 <Text style={{ color: COLORS.muted, fontWeight: '700', fontSize: 14 }}>Create Another Template</Text>
               </TouchableOpacity>
             </>
+          )
+        ) : (
+          historyLogs.length === 0 ? (
+             <View style={{ alignItems: 'center', marginTop: 48, backgroundColor: COLORS.card, padding: 32, borderRadius: 24, borderWidth: 1, borderColor: COLORS.border }}>
+               <Clock color={COLORS.border2} size={48} style={{ marginBottom: 16 }} />
+               <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '700', marginBottom: 8 }}>No history yet.</Text>
+               <Text style={{ color: COLORS.muted, textAlign: 'center', fontSize: 14, lineHeight: 20 }}>Log your meals daily to build a history of your nutrition.</Text>
+             </View>
+          ) : (
+            historyLogs.map(h => (
+              <View key={h._id || h.date} style={{ backgroundColor: COLORS.card, borderRadius: 18, marginBottom: 12, borderWidth: 1, borderColor: COLORS.border, padding: 18 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: COLORS.text, fontSize: 15, fontWeight: '700', marginBottom: 2 }}>{h.date}</Text>
+                    <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '500' }}>{h.meals?.length || 0} meals logged</Text>
+                  </View>
+                  <View style={{ backgroundColor: COLORS.border, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, borderWidth: 1, borderColor: COLORS.border2 }}>
+                    <Text style={{ color: COLORS.emerald, fontSize: 13, fontWeight: '700' }}>{Math.round(h.dailyTotals?.calories || 0)} kcal</Text>
+                  </View>
+                </View>
+                <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 4 }}>
+                   <Text style={{ color: COLORS.subtext, fontSize: 12, marginRight: 12 }}>P: {Math.round(h.dailyTotals?.protein || 0)}g</Text>
+                   <Text style={{ color: COLORS.subtext, fontSize: 12, marginRight: 12 }}>C: {Math.round(h.dailyTotals?.carbs || 0)}g</Text>
+                   <Text style={{ color: COLORS.subtext, fontSize: 12 }}>F: {Math.round(h.dailyTotals?.fats || 0)}g</Text>
+                </View>
+              </View>
+            ))
           )
         )}
       </ScrollView>

@@ -24,10 +24,24 @@ export async function POST(req: Request) {
     const session = await getAuthSession();
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
+    const userId = (session.user as any).id;
     const body: any = await req.json();
     const log = await WorkoutSession.create({
-      userId: (session.user as any).id,
+      userId,
       ...body
+    });
+
+    // Cross-module sync: Update DailyLog
+    import("@/server/db/models/DailyLog").then(async ({ DailyLog }) => {
+      const dateStr = new Date(body.date || Date.now()).toISOString().split('T')[0];
+      await DailyLog.findOneAndUpdate(
+        { userId, date: dateStr },
+        { 
+          $set: { "physical.gym": true },
+          $setOnInsert: { signals: {}, sleep: {}, mental: {}, work: {} }
+        },
+        { upsert: true }
+      );
     });
 
     return NextResponse.json(log);
@@ -35,3 +49,4 @@ export async function POST(req: Request) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }
 }
+
