@@ -1,10 +1,17 @@
 import { Schema, model, models } from "mongoose";
+import bcrypt from "bcryptjs";
 
 const UserSchema = new Schema(
   {
     name: String,
     email: { type: String, unique: true },
+    password: { type: String, select: false }, // Don't return by default
     avatar: String,
+    gender: String,
+    age: Number,
+    weight: Number, // Stored in unified KGs
+    height: Number,
+    heightUnit: { type: String, default: 'cm', enum: ['cm', 'ft'] },
     settings: {
       timezone: String,
       weekStartsOn: Number,
@@ -16,5 +23,19 @@ const UserSchema = new Schema(
   },
   { timestamps: true }
 );
+
+// Pre-save hook to hash passwords automatically when they're modified
+UserSchema.pre("save", async function (next) {
+  if (!this.isModified("password") || !this.password) {
+    return next();
+  }
+  try {
+    const salt = await bcrypt.genSalt(10);
+    this.password = await bcrypt.hash(this.password, salt);
+    next();
+  } catch (err: any) {
+    next(err);
+  }
+});
 
 export const User = models.User || model("User", UserSchema);

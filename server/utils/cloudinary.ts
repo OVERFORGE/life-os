@@ -6,7 +6,7 @@ cloudinary.config({
   api_secret: process.env.CLOUDINARY_API_SECRET as string,
 });
 
-export const uploadImageToCloudinary = async (base64Image: string): Promise<string> => {
+export const uploadImageToCloudinary = async (base64Image: string, folderName: string = "lifeos_nutrition"): Promise<string> => {
   try {
     // If we have a pure base64 string without data URI, we format it for Cloudinary
     let imagePayload = base64Image;
@@ -15,7 +15,7 @@ export const uploadImageToCloudinary = async (base64Image: string): Promise<stri
     }
 
     const result = await cloudinary.uploader.upload(imagePayload, {
-      folder: "lifeos_nutrition",
+      folder: folderName,
       resource_type: "image",
     });
     

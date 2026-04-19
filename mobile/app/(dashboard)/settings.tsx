@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput } from 'react-native';
-import { Power, Settings as SettingsIcon, Save, RefreshCw } from 'lucide-react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, Image } from 'react-native';
+import { Power, Settings as SettingsIcon, Save, RefreshCw, ChevronRight, User as UserIcon } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -9,6 +9,7 @@ export default function SettingsScreen() {
   
   const [data, setData] = useState<any>(null);
   const [derived, setDerived] = useState<any>(null);
+  const [userProfile, setUserProfile] = useState<any>(null);
   const [overrides, setOverrides] = useState<any>({});
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
@@ -20,9 +21,10 @@ export default function SettingsScreen() {
   const loadSettings = async () => {
     setLoading(true);
     try {
-      const [resData, resDerived] = await Promise.all([
+      const [resData, resDerived, resUser] = await Promise.all([
         fetchWithAuth('/settings'),
-        fetchWithAuth('/settings/derived')
+        fetchWithAuth('/settings/derived'),
+        fetchWithAuth('/user')
       ]);
 
       if (resData.ok) {
@@ -34,6 +36,15 @@ export default function SettingsScreen() {
       if (resDerived.ok) {
         const d = await resDerived.json();
         setDerived(d.derived || null);
+      }
+      
+      if (resUser.ok) {
+        const d = await resUser.json();
+        setUserProfile(d);
+      } else {
+        const errText = await resUser.text();
+        console.log("FAILED TO FETCH USER PROFILE:", errText);
+        setUserProfile({ name: "Error Loading Profile", email: "Check Console Logs", avatar: "" });
       }
     } catch (e) {
       console.error(e);
@@ -149,6 +160,34 @@ export default function SettingsScreen() {
 
       <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 150 }}>
         
+        {/* USER PROFILE CARD */}
+        {userProfile && (
+          <TouchableOpacity 
+            onPress={() => router.push('/profile')}
+            className="bg-[#161922] border border-[#232632] rounded-2xl p-4 mb-6 flex-row items-center active:opacity-70"
+          >
+            {userProfile.avatar ? (
+              <Image 
+                source={{ uri: userProfile.avatar }} 
+                className="w-14 h-14 rounded-full border-2 border-amber-500/50 mr-4"
+              />
+            ) : (
+              <View className="w-14 h-14 rounded-full border-2 border-amber-500/50 mr-4 bg-[#1a1d24] items-center justify-center">
+                <UserIcon size={24} color="#fbbf24" />
+              </View>
+            )}
+            
+            <View className="flex-1 justify-center">
+              <Text className="text-gray-100 font-bold text-lg leading-tight mb-0.5">{userProfile.name}</Text>
+              <Text className="text-gray-500 text-xs">{userProfile.email}</Text>
+            </View>
+            
+            <View className="w-8 h-8 rounded-full bg-white/5 items-center justify-center">
+              <ChevronRight size={18} color="#9ca3af" />
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* V2 - SYSTEM LEARNED OPTIMIZATION */}
         {derived && typeof derived === 'object' && Object.keys(derived).length > 0 && (
           <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-6">

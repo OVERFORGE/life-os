@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { User } from "@/server/db/models/User";
 import jwt from "jsonwebtoken";
+import bcrypt from "bcryptjs";
 
 export const runtime = "nodejs"; // ✅ VERY IMPORTANT (fixes Vercel issues)
 
@@ -9,6 +10,7 @@ type Body = {
   email?: string;
   name?: string;
   image?: string;
+  password?: string;
 };
 
 export async function POST(req: Request) {
@@ -24,14 +26,31 @@ export async function POST(req: Request) {
 
     await connectDB();
 
-    let dbUser = await User.findOne({ email: body.email });
+    let dbUser = await User.findOne({ email: body.email }).select('+password');
 
-    if (!dbUser) {
-      dbUser = await User.create({
-        name: body.name || body.email.split("@")[0],
-        email: body.email,
-        avatar: body.image || "",
-      });
+    // Classic Credential Sign-in
+    if (body.password) {
+      if (!dbUser) {
+        return NextResponse.json({ error: "No account found with this email" }, { status: 401 });
+      }
+      
+      if (!dbUser.password) {
+        return NextResponse.json({ error: "This account was created via Google. Please sign in with Google or set a password in Settings." }, { status: 401 });
+      }
+
+      const isMatch = await bcrypt.compare(body.password, dbUser.password);
+      if (!isMatch) {
+        return NextResponse.json({ error: "Invalid password" }, { status: 401 });
+      }
+    } else {
+      // Standard Google/Bypass Sign-In or Creation flow
+      if (!dbUser) {
+        dbUser = await User.create({
+          name: body.name || body.email.split("@")[0],
+          email: body.email,
+          avatar: body.image || "",
+        });
+      }
     }
 
     const secret = process.env.NEXTAUTH_SECRET;
