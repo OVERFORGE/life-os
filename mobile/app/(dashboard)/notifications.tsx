@@ -57,9 +57,10 @@ export default function NotificationsScreen() {
         ) : (
           <View className="space-y-4">
             {notifications.map((n) => (
-              <View 
+              <TouchableOpacity 
                 key={n._id}
-                className={`flex-row p-4 rounded-2xl border ${!n.read ? 'bg-[#1c202a] border-amber-500/30' : 'bg-[#161922] border-[#232632]'}`}
+                onPress={() => router.push('/brain')}
+                className={`flex-row p-4 mb-4 rounded-2xl border ${!n.read ? 'bg-[#1c202a] border-amber-500/30' : 'bg-[#161922] border-[#232632]'}`}
               >
                 <View className="mt-1 mr-4">
                   {n.type === 'alert' ? <AlertCircle color="#ef4444" size={20} /> : <Bell color="#fbbf24" size={20} />}
@@ -71,7 +72,7 @@ export default function NotificationsScreen() {
                     {new Date(n.createdAt).toLocaleDateString()} at {new Date(n.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </Text>
                 </View>
-              </View>
+              </TouchableOpacity>
             ))}
           </View>
         )}

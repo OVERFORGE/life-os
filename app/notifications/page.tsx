@@ -3,6 +3,7 @@
 import { useEffect, useState } from "react";
 import { AppShell } from "@/components/layout/AppShell";
 import { Bell, CheckCircle2, AlertCircle } from "lucide-react";
+import Link from "next/link";
 
 export default function NotificationsPage() {
   const [notifications, setNotifications] = useState<any[]>([]);
@@ -45,9 +46,10 @@ export default function NotificationsPage() {
         ) : (
           <div className="space-y-4">
             {notifications.map((n) => (
-              <div
+              <Link
                 key={n._id}
-                className={`flex gap-4 p-5 rounded-2xl border transition-colors ${
+                href="/dashboard/assistant"
+                className={`flex gap-4 p-5 rounded-2xl border transition-colors cursor-pointer hover:border-amber-500/50 ${
                   !n.read
                     ? "bg-[#1c202a] border-amber-500/30"
                     : "bg-[#161922] border-[#232632]"
@@ -75,7 +77,7 @@ export default function NotificationsPage() {
                     })}
                   </p>
                 </div>
-              </div>
+              </Link>
             ))}
           </div>
         )}

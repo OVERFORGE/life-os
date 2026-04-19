@@ -2,12 +2,13 @@ import { connectDB } from "@/server/db/connect";
 import { ConversationMessage } from "@/server/db/models/ConversationMessage";
 import { getAuthSession } from "@/lib/auth";
 
-import { detectIntent } from "@/server/llm/intentRouter";
+import { detectIntent } from "@/server/llm/intentModel";
+import { extractActions } from "@/server/llm/actionExtractor";
+import { executeActions } from "@/server/llm/executionEngine";
+import { runAutomation } from "@/server/automation/automationEngine";
 import { buildContext } from "@/server/llm/contextBuilder";
-import { shouldCallTool } from "@/server/llm/toolRouter";
 import { generateResponse } from "@/server/llm/reasoningModel";
-import { executeTool } from "@/features/assistant/executor";
-import { loadSystemContext } from "@/features/systemContext/loadSystemContext";
+import { Goal } from "@/features/goals/models/Goal";
 
 export async function POST(req: Request) {
   const session = await getAuthSession();
@@ -22,7 +23,7 @@ export async function POST(req: Request) {
   await connectDB();
 
   /* ===================================================== */
-  /* 1. INTENT DETECTION                                  */
+  /* 1. INTENT LAYER (LLM #1)                             */
   /* ===================================================== */
   
   const recentMessages = await ConversationMessage.find({ userId })
@@ -32,44 +33,46 @@ export async function POST(req: Request) {
   recentMessages.reverse();
   const historyText = recentMessages.map((m: any) => `${m.role}: ${m.content}`).join("\n");
 
-  const intentResult = await detectIntent(message, historyText, model);
-  const intents = intentResult.intents || ["casual_chat"];
+  const { intent } = detectIntent(message, historyText, model);
+  console.log(`\n🎯 [PIPELINE] Intent: "${intent}" | Input: "${message.slice(0, 80)}"`);
   
   /* ===================================================== */
-  /* 2. TOOL ROUTING & EXECUTION                          */
+  /* 2. ACTION LAYER (LLM #2)                             */
   /* ===================================================== */
 
-  let toolResults: any[] = [];
-  
-  // Preserve existing system context for tools
-  const systemContext = await loadSystemContext(userId);
+  const activeGoals = await Goal.find({ userId }).select("title").lean();
+  const goalTitles = activeGoals.map(g => g.title).join(", ");
 
-  for (const intent of intents) {
-    if (shouldCallTool(intent)) {
-      const result = await executeTool({
-        tool: intent,
-        message,
-        context: systemContext,
-        userId,
-      });
-      toolResults.push({ intent, result });
-    }
+  const actions = await extractActions(message, intent, goalTitles, model);
+  console.log(`⚡ [PIPELINE] Extracted Actions (${actions.length}):`, JSON.stringify(actions, null, 2));
+
+  /* ===================================================== */
+  /* 3. EXECUTION LAYER (NO LLM)                          */
+  /* ===================================================== */
+
+  let executionResults: any[] = [];
+  if (actions.length > 0) {
+      executionResults = await executeActions(actions, userId, model);
+      console.log(`✅ [PIPELINE] Execution Results:`, JSON.stringify(executionResults, null, 2));
+  } else {
+      console.log(`⚠️  [PIPELINE] No actions extracted — skipping execution layer.`);
   }
 
   /* ===================================================== */
-  /* 3. CONTEXT BUILDING (INTELLIGENCE LAYER)             */
+  /* 4. CONTEXT BUILDING (INTELLIGENCE LAYER)             */
   /* ===================================================== */
 
-  const intelContext = await buildContext({ intents, userId, input: message });
+  // Keep compatibility with old context string arrays but only map the single core intent
+  const intelContext = await buildContext({ intents: [intent], userId, input: message });
 
   /* ===================================================== */
-  /* 4. REASONING MODEL (STREAMING)                       */
+  /* 5. RESPONSE LAYER (LLM #3)                           */
   /* ===================================================== */
 
   const groqStream = await generateResponse({ 
       input: message, 
       context: intelContext, 
-      toolResults,
+      toolResults: executionResults, // Pass executed results mapping
       model 
   });
 
@@ -105,6 +108,16 @@ export async function POST(req: Request) {
         role: "assistant",
         content: fullResponse,
       });
+
+      /* ===================================================== */
+      /* 5. DETERMINISTIC AUTOMATION ENGINE (BACKGROUND SYNC)  */
+      /* ===================================================== */
+      // Runs fully asynchronously after response closes
+      try {
+        await runAutomation(userId);
+      } catch (e) {
+        console.error("Background Automation Error:", e);
+      }
     },
   });
 
