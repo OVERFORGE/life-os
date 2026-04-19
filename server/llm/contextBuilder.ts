@@ -3,21 +3,21 @@ import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 import { Goal } from "@/features/goals/models/Goal";
 
 export async function buildContext({
-  intent,
+  intents,
   userId,
   input,
 }: {
-  intent: string;
+  intents: string[];
   userId: string;
   input: string;
 }) {
-  if (intent === "casual_chat" || intent === "log_activity" || intent === "create_goal") {
+  if (intents.includes("casual_chat") && intents.length === 1) {
     return { type: "minimal" };
   }
 
   const todayDate = new Date();
   
-  if (intent === "ask_advice") {
+  if (intents.includes("ask_advice")) {
     // 1. Last 7 days logs
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(todayDate.getDate() - 7);
@@ -44,7 +44,7 @@ export async function buildContext({
     };
   }
 
-  if (intent === "get_insights") {
+  if (intents.includes("get_insights")) {
     // 1. Last 30 days logs
     const thirtyDaysAgo = new Date();
     thirtyDaysAgo.setDate(todayDate.getDate() - 30);

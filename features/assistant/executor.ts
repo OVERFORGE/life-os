@@ -37,6 +37,11 @@ function extractDuration(message: string) {
   return match ? parseFloat(match[1]) : 1;
 }
 
+function extractDeepWork(message: string) {
+  const match = message.match(/(?:deep|focus|work).*?(\d+(?:\.\d+)?)\s*(hour|hr|hrs)/i);
+  return match ? parseFloat(match[1]) : null;
+}
+
 function normalize(text: string) {
   return text.toLowerCase().replace(/\s+/g, "");
 }
@@ -105,13 +110,29 @@ export async function executeTool({
   /* ===================================================== */
   if (tool === "create_goal") {
     try {
-      const prompt = `Extract goal details returning strict JSON ONLY. 
-User input: "${message}"
+      // Fetch recent history to understand context behind "yes create it"
+      const { ConversationMessage } = await import("@/server/db/models/ConversationMessage");
+      const recent = await ConversationMessage.find({ userId }).sort({ createdAt: -1 }).limit(4);
+      recent.reverse();
+      
+      const historyText = recent.map((m: any) => `${m.role}: ${m.content}`).join("\n");
+
+      const prompt = `Based on the following conversation history, extract the finalized goal details the user wants to create.
+Return strict JSON ONLY.
+
+Conversation History:
+${historyText}
+Current User Message: "${message}"
+
 Return format:
 {
   "title": "string (actionable goal title)",
   "type": "performance" | "identity" | "maintenance",
-  "cadence": "daily" | "weekly" | "flexible"
+  "cadence": "daily" | "weekly" | "flexible",
+  "signals": ["array of existing signal keys mentioned (e.g. 'gym', 'meditation')"],
+  "newSignals": [
+    { "label": "string", "inputType": "number" | "checkbox" | "time" }
+  ]
 }`;
       
       const groqRes = await groqChat({
@@ -122,8 +143,38 @@ Return format:
       const cleanRes = groqRes.replace(/```json/g, "").replace(/```/g, "").trim();
       const goalData = JSON.parse(cleanRes);
 
+      // Create any newly proposed signals
+      const finalSignals = [...(goalData.signals || [])];
+      
+      if (goalData.newSignals && goalData.newSignals.length > 0) {
+        for (const ns of goalData.newSignals) {
+          const key = ns.label.toLowerCase().replace(/[^a-z0-9]/g, "_");
+          await LifeSignal.findOneAndUpdate(
+            { userId, key },
+            { 
+              label: ns.label, 
+              inputType: ns.inputType || "number",
+              enabled: true 
+            },
+            { upsert: true }
+          );
+          if (!finalSignals.includes(key)) {
+            finalSignals.push(key);
+          }
+        }
+      }
+
+      const formattedSignals = finalSignals.map(key => ({
+        key,
+        weight: 1,
+        direction: "higher_better"
+      }));
+
       const goal = await Goal.create({
-        ...goalData,
+        title: goalData.title,
+        type: goalData.type,
+        cadence: goalData.cadence,
+        signals: formattedSignals,
         userId,
       });
 
@@ -133,6 +184,99 @@ Return format:
     } catch (e) {
       console.error("CREATE GOAL ERROR:", e);
       return { success: false, error: "Failed to parse or create goal." };
+    }
+  }
+
+  /* ===================================================== */
+  /* 🗑️ DELETE GOAL LOGIC                                 */
+  /* ===================================================== */
+  if (tool === "delete_goal") {
+    try {
+      const activeGoals = await Goal.find({ userId }).select("title").lean();
+      const goalTitles = activeGoals.map(g => g.title).join(", ");
+
+      const prompt = `You are a semantic deletion engine. You need to map the user's slang/request to the EXACT proper database title from the provided Active Goals.
+
+For example, if they say "parsing languages" and the list has "Japanese Learning", you MUST infer that they mean Japanese Learning and output the exact title "Japanese Learning". Do not be rigid; use heavy linguistic inference. 
+
+Active Goals: [${goalTitles}]
+
+User Message: "${message}"
+
+Return strict JSON ONLY matching the EXACT title string from the array provided, or null if absolutely no semantic jump can be made.
+Return format:
+{
+  "titleToMatch": "string or null"
+}`;
+      const groqRes = await groqChat({
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0
+      });
+      const cleanRes = groqRes.replace(/```json/g, "").replace(/```/g, "").trim();
+      const delData = JSON.parse(cleanRes);
+
+      if (!delData.titleToMatch) {
+         return { success: false, notFound: true, message: "Could not decisively find which goal to delete. Please specify the exact name." };
+      }
+
+      const toDelete = await Goal.findOne({ 
+        userId, 
+        title: delData.titleToMatch 
+      });
+
+      if (toDelete) {
+        await Goal.deleteOne({ _id: toDelete._id });
+        return { success: true, deletedTitle: toDelete.title };
+      } else {
+        return { success: false, notFound: true, searchedFor: delData.titleToMatch };
+      }
+    } catch (e) {
+      console.error("DELETE GOAL ERROR:", e);
+      return { success: false, error: "Failed to parse or delete goal." };
+    }
+  }
+
+  /* ===================================================== */
+  /* ✏️ OVERRIDE MENTAL SCORE LOGIC                        */
+  /* ===================================================== */
+  if (tool === "override_mental_score") {
+    try {
+      const prompt = `Extract the mental score overrides from the user's message.
+Return strict JSON ONLY.
+User Message: "${message}"
+
+Return format (only include fields the user explicitly wants to change, values 1-10):
+{
+  "mood"?: number,
+  "energy"?: number,
+  "stress"?: number,
+  "anxiety"?: number,
+  "focus"?: number
+}`;
+      const groqRes = await groqChat({
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0
+      });
+      const cleanRes = groqRes.replace(/```json/g, "").replace(/```/g, "").trim();
+      const overrides = JSON.parse(cleanRes);
+
+      // Find the most recently completed log, or today's log
+      const recentLog = await DailyLog.findOne({ userId }).sort({ date: -1 });
+
+      if (recentLog && Object.keys(overrides).length > 0) {
+        if (!recentLog.mental) recentLog.mental = {};
+        for (const [key, value] of Object.entries(overrides)) {
+          (recentLog.mental as any)[key] = value;
+        }
+        recentLog.markModified('mental');
+        await recentLog.save();
+        return { success: true, newScores: recentLog.mental, date: recentLog.date };
+      }
+
+      return { success: false, error: "No overrides found or no recent log." };
+    } catch (e) {
+      console.error("OVERRIDE ERROR:", e);
+      return { success: false, error: "Failed to parse override." };
     }
   }
 
@@ -152,6 +296,12 @@ Return format:
 
     const explicitDate = resolveExplicitDate(message);
     const dateUsed = explicitDate || new Date().toISOString().split("T")[0];
+
+    if (session && session.date !== dateUsed) {
+      session.isComplete = true; // Auto-close stale session
+      await session.save();
+      session = null;
+    }
 
     if (!session) {
       session = await DailySession.create({
@@ -185,6 +335,12 @@ Return format:
     /* 🕒 TIME HANDLING (WAKE & SLEEP) */
     const sleepTime = extractSleepTime(message);
     const wakeTime = extractWakeTime(message);
+    const deepWorkHrs = extractDeepWork(message);
+
+    if (deepWorkHrs !== null) {
+      log.work.deepWorkHours = deepWorkHrs;
+      log.markModified('work');
+    }
 
     if (wakeTime) {
       session.wakeTime = wakeTime;
@@ -208,15 +364,28 @@ Return format:
       }
 
       // MENTAL SCORING (on day close)
-      log.mental = calculateMentalScore({
+      const mentalOutput = calculateMentalScore({
         sleepHours: log.sleep?.hours || 0,
         gym: log.physical?.gym || false,
         deepWorkHours: log.work?.deepWorkHours || 0
       });
+      log.mental = mentalOutput;
 
       console.log("🛑 Session completed & Scored:", finalDate);
       await session.save();
       await computeDayInsights({ userId, date: finalDate, session });
+
+      const { NotificationLog } = await import("@/server/db/models/Notification");
+      await NotificationLog.create({
+        userId,
+        title: "Day Complete 🌙",
+        body: `We auto-scored your day (Mood: ${mentalOutput.mood}, Energy: ${mentalOutput.energy}, Stress: ${mentalOutput.stress}). Let the AI know if you'd like to override these scores!`,
+        type: "system"
+      });
+
+      // Pass the explanation into the LLM stream so it can converse properly
+      log.meta = log.meta || {};
+      log.meta.ai_instruction = `Day just closed. Auto-calculated mental scores: ${JSON.stringify(mentalOutput)}. Explicitly show these scores to the user, explain why they received those numbers based on their sleep/gym/work input today, and ask if they would like to OVERRIDE them using the override tool.`;
     }
 
     await session.save();
@@ -243,6 +412,18 @@ Return format:
       let value = 1;
       if (sig.inputType !== "checkbox") {
         value = extractDuration(lower);
+      }
+
+      if (keyLower === 'gym' || keyLower === 'workout' || labelLower === 'gym') {
+        log.physical.gym = true;
+        // Don't add to log.signals, just intercept to physical.gym
+        continue;
+      }
+
+      if (['mood', 'stress', 'anxiety', 'focus', 'energy'].includes(keyLower) || ['mood', 'stress', 'anxiety', 'focus', 'energy'].includes(labelLower)) {
+        // Completely skip these. Let 'override_mental_score' securely handle setting these metrics 
+        // using LLM intelligence instead of blind regex value grabbing!
+        continue;
       }
 
       const prev = Number(log.signals.get(key) || 0);
@@ -275,7 +456,8 @@ Return format:
       success: true,
       signals: Object.fromEntries(log.signals),
       session,
-      sleepCalculated: log.sleep?.hours || null
+      sleepCalculated: log.sleep?.hours || null,
+      ai_instruction: log.meta?.ai_instruction || undefined
     };
 
   } catch (err) {

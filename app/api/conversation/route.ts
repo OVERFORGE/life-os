@@ -17,7 +17,7 @@ export async function POST(req: Request) {
   }
 
   const userId = (session!.user as any).id;
-  const { message } = await req.json();
+  const { message, model } = await req.json();
 
   await connectDB();
 
@@ -25,30 +25,42 @@ export async function POST(req: Request) {
   /* 1. INTENT DETECTION                                  */
   /* ===================================================== */
   
-  const intentResult = await detectIntent(message);
-  const intent = intentResult.intent || "casual_chat";
+  const recentMessages = await ConversationMessage.find({ userId })
+    .sort({ createdAt: -1 })
+    .limit(4)
+    .lean();
+  recentMessages.reverse();
+  const historyText = recentMessages.map((m: any) => `${m.role}: ${m.content}`).join("\n");
+
+  const intentResult = await detectIntent(message, historyText, model);
+  const intents = intentResult.intents || ["casual_chat"];
   
   /* ===================================================== */
   /* 2. TOOL ROUTING & EXECUTION                          */
   /* ===================================================== */
 
-  let toolResult = null;
-  if (shouldCallTool(intent)) {
-    // Preserve existing system context for tools
-    const systemContext = await loadSystemContext(userId);
-    toolResult = await executeTool({
-      tool: intent,
-      message,
-      context: systemContext,
-      userId,
-    });
+  let toolResults: any[] = [];
+  
+  // Preserve existing system context for tools
+  const systemContext = await loadSystemContext(userId);
+
+  for (const intent of intents) {
+    if (shouldCallTool(intent)) {
+      const result = await executeTool({
+        tool: intent,
+        message,
+        context: systemContext,
+        userId,
+      });
+      toolResults.push({ intent, result });
+    }
   }
 
   /* ===================================================== */
   /* 3. CONTEXT BUILDING (INTELLIGENCE LAYER)             */
   /* ===================================================== */
 
-  const intelContext = await buildContext({ intent, userId, input: message });
+  const intelContext = await buildContext({ intents, userId, input: message });
 
   /* ===================================================== */
   /* 4. REASONING MODEL (STREAMING)                       */
@@ -57,7 +69,8 @@ export async function POST(req: Request) {
   const groqStream = await generateResponse({ 
       input: message, 
       context: intelContext, 
-      toolResult 
+      toolResults,
+      model 
   });
 
   const stream = new ReadableStream({

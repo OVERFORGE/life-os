@@ -10,6 +10,8 @@ type Message = {
 export function useChat() {
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
+  const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
+
   useEffect(() => {
   async function loadHistory() {
     const res = await fetch("/api/conversation/history");
@@ -41,7 +43,7 @@ export function useChat() {
       headers: {
         "Content-Type": "application/json",
       },
-      body: JSON.stringify({ message: text }),
+      body: JSON.stringify({ message: text, model: selectedModel }),
     });
 
     if (!res.body) {
@@ -64,7 +66,7 @@ export function useChat() {
 
       if (done) break;
 
-      const chunk = decoder.decode(value);
+      const chunk = decoder.decode(value, { stream: true });
 
       assistantText += chunk;
 
@@ -82,5 +84,7 @@ export function useChat() {
     messages,
     loading,
     sendMessage,
+    selectedModel,
+    setSelectedModel
   };
 }

@@ -1,8 +1,9 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform } from 'react-native';
-import { Bot, ArrowUp, User } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
+import { Bot, ArrowUp, Copy, Check, ArrowDown } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithAuth, API_URL } from '../../utils/api';
+import * as Clipboard from 'expo-clipboard';
 
 type Message = {
   role: 'user' | 'assistant';
@@ -14,10 +15,20 @@ export default function BrainScreen() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
+  const [showScrollButton, setShowScrollButton] = useState(false);
   const flatListRef = useRef<FlatList>(null);
   
   // Track if user is scrolling up to prevent auto-scroll jumps
   const isUserScrolling = useRef(false);
+
+  const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
+
+  const GROQ_MODELS = [
+    { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B (Best)" },
+    { id: "qwen/qwen3-32b", name: "Qwen3 32B (Great)" },
+    { id: "meta-llama/llama-4-scout-17b-16e-instruct", name: "Llama 4 Scout 17B" },
+    { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B (Fastest)" },
+  ];
 
   useEffect(() => {
     loadHistory();
@@ -89,7 +100,7 @@ export default function BrainScreen() {
         });
       };
 
-      xhr.send(JSON.stringify({ message: text }));
+      xhr.send(JSON.stringify({ message: text, model: selectedModel }));
 
     } catch (e) {
       setLoading(false);
@@ -97,8 +108,21 @@ export default function BrainScreen() {
     }
   };
 
-  const renderMessage = ({ item, index }: { item: Message; index: number }) => {
+  const MessageItem = ({ item, loading }: { item: Message; loading: boolean }) => {
     const isUser = item.role === 'user';
+    const [copied, setCopied] = useState(false);
+    
+    // Clean up <think> tags from model reasoning
+    const displayContent = (item.content || '').replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+    const hasContent = displayContent.length > 0;
+
+    const handleCopy = async () => {
+      if (hasContent) {
+        await Clipboard.setStringAsync(displayContent);
+        setCopied(true);
+        setTimeout(() => setCopied(false), 2000);
+      }
+    };
 
     return (
       <View className={`mb-6 flex-row ${isUser ? 'justify-end' : 'justify-start'}`}>
@@ -108,16 +132,29 @@ export default function BrainScreen() {
           </View>
         )}
         
-        <View
-          className={`max-w-[75%] px-4 py-3 rounded-2xl ${
-            isUser
-              ? 'bg-[#232632] rounded-tr-sm'
-              : 'bg-transparent border border-[#232632] rounded-tl-sm'
-          }`}
-        >
-          <Text className={`text-[16px] leading-[24px] ${isUser ? 'text-gray-100' : 'text-gray-300'}`}>
-            {item.content || (loading && !isUser && item.content === '' ? '...' : item.content)}
-          </Text>
+        <View className="flex-col max-w-[80%]">
+          <View
+            className={`px-4 py-3 ${
+              isUser
+                ? 'bg-[#232632] rounded-2xl rounded-tr-sm'
+                : 'bg-transparent'
+            }`}
+          >
+            <Text className={`text-[16px] leading-[24px] ${isUser ? 'text-gray-100' : 'text-gray-300'}`}>
+              {displayContent || (loading && !isUser && item.content === '' ? '...' : displayContent)}
+            </Text>
+          </View>
+
+          {/* Copy Icon */}
+          {hasContent && (
+            <TouchableOpacity 
+              onPress={handleCopy} 
+              className={`mt-2 flex-row items-center gap-1.5 ${isUser ? 'self-end mr-2' : 'ml-2'}`}
+            >
+              {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} color="#6b7280" />}
+              <Text className={`${copied ? 'text-emerald-500' : 'text-gray-500'} text-xs font-medium`}>{copied ? 'Copied' : 'Copy'}</Text>
+            </TouchableOpacity>
+          )}
         </View>
       </View>
     );
@@ -125,9 +162,9 @@ export default function BrainScreen() {
 
   return (
     <KeyboardAvoidingView
-      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      behavior="padding"
       className="flex-1 bg-[#0f1115]"
-      keyboardVerticalOffset={0}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 80}
     >
       <View className="flex-1">
         {/* Messages */}
@@ -147,30 +184,67 @@ export default function BrainScreen() {
             </Text>
           </View>
         ) : (
-          <FlatList
-            ref={flatListRef}
-            data={messages}
-            keyExtractor={(_, i) => String(i)}
-            renderItem={renderMessage}
-            contentContainerStyle={{ padding: 20, paddingTop: 40 }}
-            showsVerticalScrollIndicator={false}
-            onScroll={(e) => {
-              const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
-              const paddingToBottom = 50;
-              const isAtBottom = layoutMeasurement.height + contentOffset.y >= contentSize.height - paddingToBottom;
-              isUserScrolling.current = !isAtBottom;
-            }}
-            scrollEventThrottle={16}
-            onContentSizeChange={() => {
-              if (!isUserScrolling.current) {
-                flatListRef.current?.scrollToEnd({ animated: true });
-              }
-            }}
-          />
+          <View className="flex-1 relative">
+            <FlatList
+              ref={flatListRef}
+              data={messages}
+              keyExtractor={(_, i) => String(i)}
+              renderItem={({ item }) => <MessageItem item={item} loading={loading} />}
+              contentContainerStyle={{ padding: 20, paddingTop: 40 }}
+              showsVerticalScrollIndicator={false}
+              onScroll={(e) => {
+                const { layoutMeasurement, contentOffset, contentSize } = e.nativeEvent;
+                const isScrolledUp = contentSize.height - layoutMeasurement.height - contentOffset.y > 150;
+                isUserScrolling.current = isScrolledUp;
+                setShowScrollButton(isScrolledUp);
+              }}
+              scrollEventThrottle={16}
+              onContentSizeChange={() => {
+                if (!isUserScrolling.current) {
+                  flatListRef.current?.scrollToEnd({ animated: true });
+                }
+              }}
+            />
+            {showScrollButton && (
+              <TouchableOpacity
+                onPress={() => {
+                  flatListRef.current?.scrollToEnd({ animated: true });
+                  setShowScrollButton(false);
+                  isUserScrolling.current = false;
+                }}
+                className="absolute bottom-4 right-4 w-10 h-10 bg-[#232632]/90 rounded-full items-center justify-center border border-white/10 shadow-lg"
+              >
+                <ArrowDown size={20} color="#fbbf24" style={{ transform: [{ translateY: 1 }] }} />
+              </TouchableOpacity>
+            )}
+          </View>
         )}
 
         {/* Input Bar */}
-        <View className="px-4 pb-[110px] pt-3 bg-[#0f1115]">
+        <View className="px-4 pb-6 pt-3 bg-[#0f1115]">
+          <View className="mb-3">
+              <FlatList
+                horizontal
+                showsHorizontalScrollIndicator={false}
+                data={GROQ_MODELS}
+                keyExtractor={(item) => item.id}
+                renderItem={({ item }) => {
+                  const isSelected = selectedModel === item.id;
+                  return (
+                    <TouchableOpacity
+                      onPress={() => setSelectedModel(item.id)}
+                      className={`mr-2 px-3 py-1.5 rounded-full border ${
+                        isSelected ? 'bg-amber-500/20 border-amber-500/50' : 'bg-[#1a1d24] border-[#2a2d36]'
+                      }`}
+                    >
+                      <Text className={`text-xs ${isSelected ? 'text-amber-400 font-medium' : 'text-gray-400'}`}>
+                        {item.name}
+                      </Text>
+                    </TouchableOpacity>
+                  );
+                }}
+              />
+          </View>
           <View className="flex-row items-end bg-[#1a1d24] rounded-[24px] border border-[#2a2d36] pl-5 pr-2 py-2">
             <TextInput
               value={input}

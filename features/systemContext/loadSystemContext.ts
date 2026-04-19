@@ -31,6 +31,12 @@ export type SystemContext = {
   } | null;
 
   recentSignals: RecentSignals;
+
+  activeSignals?: {
+    key: string;
+    label: string;
+    inputType: string;
+  }[];
 };
 
 function average(arr: number[]) {
@@ -112,5 +118,10 @@ export async function loadSystemContext(
       : null,
 
     recentSignals,
+    activeSignals: (await import("@/features/signals/models/LifeSignal").then(m => m.LifeSignal.find({ userId, enabled: true }).lean())).map((s: any) => ({
+      key: s.key,
+      label: s.label,
+      inputType: s.inputType
+    }))
   };
 }

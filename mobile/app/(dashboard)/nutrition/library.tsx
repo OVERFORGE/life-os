@@ -254,7 +254,7 @@ export default function FoodLibraryScreen() {
               </View>
             ))
           )
-        ) : (
+        ) : activeTab === 'templates' ? (
           templates.length === 0 ? (
             <View style={{ alignItems: 'center', marginTop: 48, backgroundColor: COLORS.card, padding: 32, borderRadius: 24, borderWidth: 1, borderColor: COLORS.border }}>
               <Layers color={COLORS.border2} size={48} style={{ marginBottom: 16 }} />
