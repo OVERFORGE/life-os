@@ -60,6 +60,7 @@ export async function GET(req: Request) {
       height: user.height,
       heightUnit: user.heightUnit,
       hasPassword: !!user.password,
+      preferences: (user as any).preferences || {},
     });
   } catch (error: any) {
     console.error("User fetch error:", error);
@@ -86,38 +87,29 @@ export async function PUT(req: Request) {
     if (body.heightUnit !== undefined) updatePayload.heightUnit = body.heightUnit;
     if (body.targetCalories !== undefined) updatePayload.targetCalories = Number(body.targetCalories);
     if (body.maintenanceCalories !== undefined) updatePayload.maintenanceCalories = Number(body.maintenanceCalories);
+    // Preferences
+    if (body.preferences !== undefined) {
+      const p = body.preferences;
+      if (p.weightReminderEnabled !== undefined) updatePayload['preferences.weightReminderEnabled'] = Boolean(p.weightReminderEnabled);
+      if (p.weightReminderDay !== undefined) updatePayload['preferences.weightReminderDay'] = Number(p.weightReminderDay);
+      if (p.weightReminderHour !== undefined) updatePayload['preferences.weightReminderHour'] = Number(p.weightReminderHour);
+      if (p.dayRolloverHour !== undefined) updatePayload['preferences.dayRolloverHour'] = Number(p.dayRolloverHour);
+    }
     
-    const user = await User.findById(userId).select('+password');
+    const user = await User.findByIdAndUpdate(userId, { $set: updatePayload }, { new: true });
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
-    // Handle password updating separately if provided
-    let needsSave = false;
-    for (const key in updatePayload) {
-      if (user[key] !== updatePayload[key]) {
-        user[key] = updatePayload[key];
-        needsSave = true;
-      }
-    }
-
+    // Handle password updating separately (requires fetching with password)
     if (body.password && body.password.length >= 6) {
-      // If the user already has a password, we must strictly verify it first
-      if (user.password) {
-        if (!body.oldPassword) {
-          return NextResponse.json({ error: "Missing old password for validation" }, { status: 400 });
-        }
-        
-        const isMatch = await bcrypt.compare(body.oldPassword, user.password);
-        if (!isMatch) {
-          return NextResponse.json({ error: "Incorrect old password" }, { status: 401 });
-        }
+      const userWithPw = await User.findById(userId).select('+password');
+      if (!userWithPw) return NextResponse.json({ error: "User not found" }, { status: 404 });
+      if (userWithPw.password) {
+        if (!body.oldPassword) return NextResponse.json({ error: "Missing old password for validation" }, { status: 400 });
+        const isMatch = await bcrypt.compare(body.oldPassword, userWithPw.password);
+        if (!isMatch) return NextResponse.json({ error: "Incorrect old password" }, { status: 401 });
       }
-      
-      user.password = body.password;
-      needsSave = true;
-    }
-
-    if (needsSave) {
-      await user.save();
+      userWithPw.password = body.password;
+      await userWithPw.save();
     }
 
     return NextResponse.json({ success: true });

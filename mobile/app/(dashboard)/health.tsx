@@ -185,12 +185,19 @@ export default function HealthScreen() {
         </View>
 
         {/* ─── Today's Calories ─── */}
-        <View className="bg-[#161922] rounded-2xl border border-[#232632] p-5 mb-4">
+        <TouchableOpacity
+          onPress={() => router.push('/(dashboard)/nutrition/calories-chart')}
+          activeOpacity={0.85}
+          className="bg-[#161922] rounded-2xl border border-[#232632] p-5 mb-4"
+        >
           <View className="flex-row items-center justify-between mb-3">
             <Text className="text-gray-400 text-xs uppercase tracking-widest">Today's Calories</Text>
-            <Flame color="#f59e0b" size={16} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Flame color="#f59e0b" size={16} />
+              <ChevronRight color="#374151" size={14} />
+            </View>
           </View>
-          <Text className="text-white text-3xl font-bold mb-1">{data?.calories.today ?? 0}</Text>
+          <Text className="text-white text-3xl font-bold mb-1">{Math.round(data?.calories.today ?? 0)}</Text>
           <View className="flex-row items-center gap-2 mt-1">
             <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: calorieStatusColor(data?.calories.status || 'on_track') + '25' }}>
               <Text style={{ color: calorieStatusColor(data?.calories.status || 'on_track') }} className="text-xs font-semibold capitalize">
@@ -201,13 +208,20 @@ export default function HealthScreen() {
               {(data?.calories.variance ?? 0) > 0 ? '+' : ''}{data?.calories.variance ?? 0} vs target ({data?.biometrics.targetCalories ?? 2000} kcal)
             </Text>
           </View>
-        </View>
+        </TouchableOpacity>
 
         {/* ─── Weight Trend ─── */}
-        <View className="bg-[#161922] rounded-2xl border border-[#232632] p-5 mb-4">
+        <TouchableOpacity
+          onPress={() => router.push('/(dashboard)/health/weight-trend')}
+          activeOpacity={0.85}
+          className="bg-[#161922] rounded-2xl border border-[#232632] p-5 mb-4"
+        >
           <View className="flex-row items-center justify-between mb-4">
             <Text className="text-gray-400 text-xs uppercase tracking-widest">Weight Trend</Text>
-            <TrendIcon trend={data?.weight.trend || 'stable'} />
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <TrendIcon trend={data?.weight.trend || 'stable'} />
+              <ChevronRight color="#374151" size={14} />
+            </View>
           </View>
           <View className="flex-row gap-4 mb-4">
             <View>
@@ -221,17 +235,18 @@ export default function HealthScreen() {
           </View>
           {weightHistory.length > 0 ? (
             <View className="mt-2">
-              {weightHistory.slice(0, 5).map((log: any, i: number) => (
+              {weightHistory.slice(0, 3).map((log: any, i: number) => (
                 <View key={i} className="flex-row justify-between items-center py-2.5 border-b border-[#1e2130]">
                   <Text className="text-gray-400 text-sm">{log.date}</Text>
                   <Text className="text-emerald-400 font-semibold">{log.weight} kg</Text>
                 </View>
               ))}
+              <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 8 }}>Tap to see full trend & maintenance →</Text>
             </View>
           ) : (
             <Text className="text-gray-600 text-xs mt-1">No weight history yet. Tell Health AI "I weigh Xkg" to add an entry.</Text>
           )}
-        </View>
+        </TouchableOpacity>
 
         {/* ─── Gym Stats ─── */}
         <View className="bg-[#161922] rounded-2xl border border-[#232632] p-5 mb-4">

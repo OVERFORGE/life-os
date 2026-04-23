@@ -4,20 +4,19 @@
  */
 
 /**
- * Returns today's active date (YYYY-MM-DD), considering a 4 AM cutoff rule.
- * Meaning if it's 2:00 AM on Oct 2nd, the "active date" is still Oct 1st.
+ * Returns today's active date (YYYY-MM-DD), considering a configurable rollover hour.
+ * If rolloverHour=4, any time before 4 AM is still considered "yesterday".
  */
-export function getActiveDate(timezone?: string): string {
+export function getActiveDate(timezone?: string, rolloverHour: number = 4): string {
     const now = new Date();
     
-    // We use Intl.DateTimeFormat to respect user timezone, falling back to local server if undefined
     const formatterOptions: Intl.DateTimeFormatOptions = { 
         timeZone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,
         year: 'numeric', month: '2-digit', day: '2-digit',
         hour: 'numeric', hour12: false
     };
 
-    const formatter = new Intl.DateTimeFormat('en-CA', formatterOptions); // en-CA gives YYYY-MM-DD format usually, but let's parse parts safely
+    const formatter = new Intl.DateTimeFormat('en-CA', formatterOptions);
     const parts = formatter.formatToParts(now);
     
     let year = "1970", month = "01", day = "01", hour = 0;
@@ -28,10 +27,10 @@ export function getActiveDate(timezone?: string): string {
         if (part.type === 'hour') hour = parseInt(part.value, 10);
     }
 
-    // Apply 4 AM cutoff logic (hours 0, 1, 2, 3 belong to yesterday)
+    // Apply configurable rollover cutoff (hours before rolloverHour belong to yesterday)
     let activeDateStr = `${year}-${month}-${day}`;
-    if (hour < 4) {
-        const offsetDate = new Date(`${activeDateStr}T12:00:00Z`); // use noon to avoid further timezone shift
+    if (hour < rolloverHour) {
+        const offsetDate = new Date(`${activeDateStr}T12:00:00Z`);
         offsetDate.setUTCDate(offsetDate.getUTCDate() - 1);
         activeDateStr = offsetDate.toISOString().split("T")[0];
     }

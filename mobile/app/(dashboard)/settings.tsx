@@ -188,6 +188,24 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         )}
 
+        {/* PERSONALIZATION CARD */}
+        <TouchableOpacity
+          onPress={() => router.push('/(dashboard)/personalization')}
+          className="bg-[#161922] border border-[#232632] rounded-2xl p-4 mb-6 flex-row items-center active:opacity-70"
+        >
+          <View className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/30 mr-4 items-center justify-center">
+            <SettingsIcon size={22} color="#10b981" />
+          </View>
+          <View className="flex-1 justify-center">
+            <Text className="text-gray-100 font-bold text-base leading-tight mb-0.5">Personalization</Text>
+            <Text className="text-gray-500 text-xs">Reminders, rollover hour & preferences</Text>
+          </View>
+          <View className="w-8 h-8 rounded-full bg-white/5 items-center justify-center">
+            <ChevronRight size={18} color="#9ca3af" />
+          </View>
+        </TouchableOpacity>
+
+
         {/* V2 - SYSTEM LEARNED OPTIMIZATION */}
         {derived && typeof derived === 'object' && Object.keys(derived).length > 0 && (
           <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-6">

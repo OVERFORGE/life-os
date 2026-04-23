@@ -16,14 +16,16 @@ export async function runAutomation(userId: string) {
 
     try {
         // 1. Context Gather
-        const user = await User.findById(userId).select("settings").lean();
-        const timezone = user?.settings?.timezone; // Might be undefined, which falls back to server time safely
+        const user = await User.findById(userId).select("settings preferences").lean();
+        const timezone = (user as any)?.settings?.timezone;
+        const preferences = (user as any)?.preferences || {};
+        const rolloverHour: number = preferences.dayRolloverHour ?? 4;
         
-        const activeDateStr = getActiveDate(timezone);
+        const activeDateStr = getActiveDate(timezone, rolloverHour);
         const past9PM = isPastHour(timezone, 21.0);
 
         // 2. Execute Modules Sequentially
-        const loopActions = await dailyLoop(userId, activeDateStr, past9PM);
+        const loopActions = await dailyLoop(userId, activeDateStr, past9PM, preferences, timezone);
         actions.push(...loopActions);
 
         const syncActions = await syncEngine(userId, activeDateStr);

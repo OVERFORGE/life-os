@@ -30,6 +30,10 @@ export default function NutritionLayout() {
         name="history" 
         options={{ headerShown: false }} 
       />
+      <Stack.Screen 
+        name="calories-chart" 
+        options={{ headerShown: false }} 
+      />
     </Stack>
   );
 }

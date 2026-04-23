@@ -146,26 +146,26 @@ export async function handleLogMeal(payload: { description: string; date?: strin
             continue;
         }
 
-        // The food library stores macros for ONE unit (baseWeight).
-        // "4 bananas" = 4 units, so total macros = quantity × stored macros.
-        // The amount logged in grams = quantity × baseWeight (e.g., 4 × 120g = 480g)
+        // Push N individual entries of baseWeight each (e.g. "3 bananas" → 3 × 120g entries)
         const multiplier = ing.quantity;
+        for (let i = 0; i < multiplier; i++) {
+            mealsToAdd.push({
+                mealType: "snack",
+                foodItemId: match._id,
+                amount: match.baseWeight, // one unit
+                macros: {
+                    calories: Math.round(match.macros.calories),
+                    protein: parseFloat(match.macros.protein.toFixed(1)),
+                    carbs: parseFloat(match.macros.carbs.toFixed(1)),
+                    fats: parseFloat(match.macros.fats.toFixed(1)),
+                }
+            });
+        }
+
         const cals = match.macros.calories * multiplier;
         const protein = match.macros.protein * multiplier;
         const carbs = match.macros.carbs * multiplier;
         const fats = match.macros.fats * multiplier;
-
-        mealsToAdd.push({
-            mealType: "snack",
-            foodItemId: match._id,
-            amount: match.baseWeight * multiplier, // total grams (e.g., 4 bananas = 480g)
-            macros: {
-                calories: Math.round(cals),
-                protein: parseFloat(protein.toFixed(1)),
-                carbs: parseFloat(carbs.toFixed(1)),
-                fats: parseFloat(fats.toFixed(1)),
-            }
-        });
 
         totalCals += cals;
         totalProtein += protein;

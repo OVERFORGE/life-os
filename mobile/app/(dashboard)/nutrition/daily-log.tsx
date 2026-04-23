@@ -53,6 +53,7 @@ export default function DailyLogScreen() {
   const [sheetMode, setSheetMode] = useState<SheetMode>(null);
   const [selectedFood, setSelectedFood] = useState<any | null>(null);
   const [logAmount, setLogAmount] = useState('100');
+  const [logQuantity, setLogQuantity] = useState(1);
   const [isLogging, setIsLogging] = useState(false);
 
   const now = new Date();
@@ -129,7 +130,7 @@ export default function DailyLogScreen() {
     }
   };
 
-  const logFoodItem = async (food: any, amount: number, mealType = 'snack') => {
+  const logFoodItem = async (food: any, amount: number, mealType = 'snack', quantity: number = 1) => {
     const m = scaledMacros(food.macros, food.baseWeight, amount);
     const existingMeals: any[] = (log?.meals || []).map((ml: any) => ({
       mealType: ml.mealType || 'snack',
@@ -137,8 +138,9 @@ export default function DailyLogScreen() {
       amount: ml.amount || 100,
       macros: ml.macros,
     }));
-    const newMeals = [...existingMeals, { mealType, foodItemId: food._id, amount, macros: m }];
-    const dailyTotals = newMeals.reduce((acc: any, ml: any) => ({
+    const newMeals = Array.from({ length: quantity }, () => ({ mealType, foodItemId: food._id, amount, macros: m }));
+    const meals = [...existingMeals, ...newMeals];
+    const dailyTotals = meals.reduce((acc: any, ml: any) => ({
       calories: acc.calories + (ml.macros?.calories || 0),
       protein: acc.protein + (ml.macros?.protein || 0),
       carbs: acc.carbs + (ml.macros?.carbs || 0),
@@ -146,7 +148,7 @@ export default function DailyLogScreen() {
     }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
 
     const res = await fetchWithAuth('/nutrition/log', {
-      method: 'POST', body: JSON.stringify({ date: targetDate, meals: newMeals, dailyTotals }),
+      method: 'POST', body: JSON.stringify({ date: targetDate, meals, dailyTotals }),
     });
     if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to log food'); }
   };
@@ -156,9 +158,9 @@ export default function DailyLogScreen() {
     const amt = parseInt(logAmount) || 100;
     setIsLogging(true);
     try {
-      await logFoodItem(selectedFood, amt);
-      toast.success('Food Logged!', `${selectedFood.name} (${amt}g) added to ${targetDate}.`);
-      setSheetMode(null); setSelectedFood(null);
+      await logFoodItem(selectedFood, amt, 'snack', logQuantity);
+      toast.success('Food Logged!', `${logQuantity}x ${selectedFood.name} (${amt}g) added to ${targetDate}.`);
+      setSheetMode(null); setSelectedFood(null); setLogQuantity(1);
       await loadLog();
     } catch (e: any) { toast.error('Log Failed', e.message); }
     finally { setIsLogging(false); }
@@ -339,7 +341,7 @@ export default function DailyLogScreen() {
                   library.map(food => (
                     <TouchableOpacity
                       key={food._id}
-                      onPress={() => { setSelectedFood(food); setLogAmount(String(food.baseWeight || 100)); }}
+                      onPress={() => { setSelectedFood(food); setLogAmount(String(food.baseWeight || 100)); setLogQuantity(1); }}
                       style={{ backgroundColor: COLORS.bg, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: COLORS.border, flexDirection: 'row', alignItems: 'center' }}
                     >
                       <View style={{ flex: 1 }}>
@@ -361,9 +363,15 @@ export default function DailyLogScreen() {
                 <Text style={{ color: COLORS.muted, fontSize: 13, marginBottom: 24 }}>Set the amount to log</Text>
                 {(() => {
                   const m = scaledMacros(selectedFood.macros, selectedFood.baseWeight, parseInt(logAmount) || 100);
+                  const totalM = {
+                    calories: m.calories * logQuantity,
+                    protein: Math.round(m.protein * logQuantity * 10) / 10,
+                    carbs: Math.round(m.carbs * logQuantity * 10) / 10,
+                    fats: Math.round(m.fats * logQuantity * 10) / 10,
+                  };
                   return (
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: COLORS.bg, borderRadius: 14, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: COLORS.border }}>
-                      {[{ v: m.calories, l: 'KCAL' }, { v: m.protein, l: 'P' }, { v: m.carbs, l: 'C' }, { v: m.fats, l: 'F' }].map(({ v, l }) => (
+                      {[{ v: totalM.calories, l: 'KCAL' }, { v: totalM.protein, l: 'P' }, { v: totalM.carbs, l: 'C' }, { v: totalM.fats, l: 'F' }].map(({ v, l }) => (
                         <View key={l} style={{ alignItems: 'center' }}>
                           <Text style={{ color: COLORS.text, fontSize: 18, fontWeight: '800' }}>{Math.round(v || 0)}{l !== 'KCAL' ? 'g' : ''}</Text>
                           <Text style={{ color: COLORS.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' }}>{l}</Text>
@@ -372,17 +380,38 @@ export default function DailyLogScreen() {
                     </View>
                   );
                 })()}
-                <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12 }}>Amount (grams)</Text>
-                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 24 }}>
-                  <TouchableOpacity onPress={() => setLogAmount(String(Math.max(10, parseInt(logAmount) - 10)))} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
-                    <Minus color={COLORS.subtext} size={18} />
-                  </TouchableOpacity>
-                  <View style={{ flex: 1, backgroundColor: COLORS.bg, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', paddingVertical: 10 }}>
-                    <TextInput style={{ color: COLORS.text, fontSize: 22, fontWeight: '800', textAlign: 'center', padding: 0 }} keyboardType="numeric" value={logAmount} onChangeText={setLogAmount} />
+                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
+                  {/* Grams */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, textAlign: 'center' }}>Grams</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <TouchableOpacity onPress={() => setLogAmount(String(Math.max(10, parseInt(logAmount) - 10)))} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
+                        <Minus color={COLORS.subtext} size={18} />
+                      </TouchableOpacity>
+                      <View style={{ flex: 1, backgroundColor: COLORS.bg, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', paddingVertical: 10 }}>
+                        <TextInput style={{ color: COLORS.text, fontSize: 20, fontWeight: '800', textAlign: 'center', padding: 0 }} keyboardType="numeric" value={logAmount} onChangeText={setLogAmount} />
+                      </View>
+                      <TouchableOpacity onPress={() => setLogAmount(String((parseInt(logAmount) || 0) + 10))} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
+                        <Plus color={COLORS.subtext} size={18} />
+                      </TouchableOpacity>
+                    </View>
                   </View>
-                  <TouchableOpacity onPress={() => setLogAmount(String((parseInt(logAmount) || 0) + 10))} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
-                    <Plus color={COLORS.subtext} size={18} />
-                  </TouchableOpacity>
+                  
+                  {/* Quantity */}
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: COLORS.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, textAlign: 'center' }}>Quantity</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                      <TouchableOpacity onPress={() => setLogQuantity(q => Math.max(1, q - 1))} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
+                        <Minus color={COLORS.subtext} size={18} />
+                      </TouchableOpacity>
+                      <View style={{ flex: 1, backgroundColor: COLORS.bg, borderRadius: 14, borderWidth: 1, borderColor: COLORS.border, alignItems: 'center', paddingVertical: 10 }}>
+                        <Text style={{ color: COLORS.text, fontSize: 20, fontWeight: '800', textAlign: 'center' }}>{logQuantity}</Text>
+                      </View>
+                      <TouchableOpacity onPress={() => setLogQuantity(q => q + 1)} style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: COLORS.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: COLORS.border }}>
+                        <Plus color={COLORS.subtext} size={18} />
+                      </TouchableOpacity>
+                    </View>
+                  </View>
                 </View>
                 <TouchableOpacity onPress={confirmLogFood} disabled={isLogging} style={{ paddingVertical: 16, borderRadius: 16, alignItems: 'center', backgroundColor: isLogging ? COLORS.border : '#f3f4f6' }}>
                   {isLogging ? <ActivityIndicator color="#0f1115" /> : <Text style={{ color: '#0f1115', fontWeight: '800', fontSize: 15 }}>Log to {targetDate}</Text>}
