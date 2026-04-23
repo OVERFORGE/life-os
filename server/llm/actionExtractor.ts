@@ -1,11 +1,12 @@
 import { groqChat, cleanLLMResponse } from "./groq";
+import { getActiveDate } from "@/server/automation/timeUtils";
 
 export type ExtractedAction = {
   type: "log_activity" | "propose_goal" | "confirm_goal" | "delete_goal" | "update_weight" | "log_meal" | "log_workout";
   payload: any;
 };
 
-export async function extractActions(input: string, intent: string, activeGoalsList: string = "", model?: string, mode: string = "general"): Promise<ExtractedAction[]> {
+export async function extractActions(input: string, intent: string, activeGoalsList: string = "", model?: string, mode: string = "general", timezone?: string): Promise<ExtractedAction[]> {
     // These intents specifically query logs or ask generic advice, skip extraction
     if (["get_insights", "ask_advice"].includes(intent)) {
         return [];
@@ -57,7 +58,8 @@ Use when user mentions eating specific food items, tracking a meal, consuming ca
 Triggers: "ate", "just ate", "had", "eating", "ate X and Y", "log my [template name] meal plan", "apply [template] template".
 Payload:
 {
-  "description": "exact phrase of what they ate or the template name, e.g. '4 bananas and 2 eggs' or 'bulk day'"
+  "description": "exact phrase of what they ate or the template name, e.g. '4 bananas and 2 eggs' or 'bulk day'",
+  "date": "YYYY-MM-DD" // ONLY include if they explicitly mention a past date (e.g. yesterday, on monday). Use current date context to calculate it.
 }
 
 #### 4. log_workout
@@ -102,7 +104,8 @@ Payload:
 Use when user mentions eating specific food items, tracking a meal, consuming calories, or applying a 'meal template' (e.g. 'log bulk day').
 Payload:
 {
-  "description": "exact phrase of what they ate or the template they want to use, e.g. '4 bananas and 2 eggs' or 'bulk day'"
+  "description": "exact phrase of what they ate or the template they want to use, e.g. '4 bananas and 2 eggs' or 'bulk day'",
+  "date": "YYYY-MM-DD" // ONLY include if they explicitly mention a past date (e.g. yesterday, on monday). Use current date context to calculate it.
 }
 
 #### 3. log_workout
@@ -125,6 +128,7 @@ User Message: "${input}"
 Detected Intent: "${intent}"
 User's Active Goals (for delete matching): [${activeGoalsList}]
 Operating Mode: "${mode}"
+Current Local Date Context: "${getActiveDate(timezone)}"
 
 ### ACTION SCHEMAS:
 ${schemas}
@@ -132,6 +136,16 @@ ${schemas}
 ### MULTI-ACTION SUPPORT
 A single message can contain multiple actions. Extract ALL of them.
 Example: "I went to gym and delete my abs goal" → two actions: log_activity + delete_goal
+
+### DATE RESOLUTION (for log_meal only)
+The current local date is provided above. Use it to resolve relative date references:
+- "today" → do NOT include date (let system use default)
+- "yesterday" → subtract 1 day from current date
+- "day before yesterday" → subtract 2 days
+- "on Monday" / "last Monday" → calculate the most recent past Monday relative to current date
+- "on Tuesday" (if today is Friday) → subtract 3 days (most recent past Tuesday)
+- If no date is mentioned → do NOT include the date field at all
+CRITICAL: Always output date as "YYYY-MM-DD" format only.
 
 ### OUTPUT FORMAT
 Return ONLY valid JSON, nothing else:

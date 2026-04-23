@@ -10,6 +10,7 @@ import { buildContext } from "@/server/llm/contextBuilder";
 import { generateResponse } from "@/server/llm/reasoningModel";
 import { Goal } from "@/features/goals/models/Goal";
 import { GoalProposal } from "@/server/db/models/GoalProposal";
+import { User } from "@/server/db/models/User";
 
 export async function POST(req: Request) {
   const session = await getAuthSession();
@@ -45,10 +46,13 @@ export async function POST(req: Request) {
   /* 2. ACTION LAYER (LLM #2)                             */
   /* ===================================================== */
 
+  const user = await User.findById(userId).select("settings").lean();
+  const timezone = user?.settings?.timezone;
+
   const activeGoals = await Goal.find({ userId }).select("title").lean();
   const goalTitles = activeGoals.map(g => g.title).join(", ");
 
-  const actions = await extractActions(message, intent, goalTitles, model, mode);
+  const actions = await extractActions(message, intent, goalTitles, model, mode, timezone);
   console.log(`⚡ [PIPELINE] Extracted Actions (${actions.length}):`, JSON.stringify(actions, null, 2));
 
   /* ===================================================== */

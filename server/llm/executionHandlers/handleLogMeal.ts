@@ -19,9 +19,13 @@ function parseIngredients(description: string): { name: string; quantity: number
     return results;
 }
 
-export async function handleLogMeal(payload: { description: string }, userId: string) {
+export async function handleLogMeal(payload: { description: string; date?: string }, userId: string) {
     const user = await User.findById(userId).select("settings").lean();
-    const today = getActiveDate(user?.settings?.timezone);
+    const today = payload.date || getActiveDate(user?.settings?.timezone);
+    const isHistoricalLog = !!payload.date;
+    if (isHistoricalLog) {
+        console.log(`📅 [handleLogMeal] Logging to historical date: ${today}`);
+    }
 
     const desc = payload.description?.toLowerCase() || "";
 

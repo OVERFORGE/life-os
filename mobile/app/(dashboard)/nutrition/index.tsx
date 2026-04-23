@@ -233,14 +233,14 @@ export default function NutritionDashboard() {
             <ChevronRight color={C.border2} size={16} />
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 20 }}>
-            <Text style={{ fontSize: 52, fontWeight: '900', color: C.text, letterSpacing: -2 }}>{intake.calories}</Text>
+            <Text style={{ fontSize: 52, fontWeight: '900', color: C.text, letterSpacing: -2 }}>{Math.round(intake.calories || 0)}</Text>
             <Text style={{ fontSize: 13, fontWeight: '800', color: C.emerald, marginLeft: 8 }}>KCAL</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 20, borderTopWidth: 1, borderTopColor: C.border }}>
             {[
-              { label: 'Protein', value: intake.protein },
-              { label: 'Carbs', value: intake.carbs },
-              { label: 'Fats', value: intake.fats },
+              { label: 'Protein', value: Math.round(intake.protein || 0) },
+              { label: 'Carbs', value: Math.round(intake.carbs || 0) },
+              { label: 'Fats', value: Math.round(intake.fats || 0) },
             ].map(item => (
               <View key={item.label} style={{ alignItems: 'flex-start' }}>
                 <Text style={{ fontSize: 22, fontWeight: '800', color: C.text }}>{item.value}g</Text>

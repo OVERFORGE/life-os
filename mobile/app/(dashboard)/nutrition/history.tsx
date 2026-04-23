@@ -157,14 +157,14 @@ export default function NutritionHistoryScreen() {
                   <View>
                     <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 12 }}>
                       <Text style={{ color: COLORS.text, fontSize: 28, fontWeight: '900', letterSpacing: -1 }}>
-                        {logEntry.dailyTotals?.calories || 0}
+                        {Math.round(logEntry.dailyTotals?.calories || 0)}
                       </Text>
                       <Text style={{ color: COLORS.emerald, fontSize: 12, fontWeight: '800', marginLeft: 6 }}>KCAL</Text>
                     </View>
                     <View style={{ flexDirection: 'row', justifyContent: 'space-between', borderTopWidth: 1, borderTopColor: COLORS.border, paddingTop: 12 }}>
-                      <View><Text style={{ color: COLORS.text, fontSize: 14, fontWeight: '700' }}>{logEntry.dailyTotals?.protein || 0}g</Text><Text style={{ color: COLORS.muted, fontSize: 10, textTransform: 'uppercase' }}>Protein</Text></View>
-                      <View><Text style={{ color: COLORS.text, fontSize: 14, fontWeight: '700' }}>{logEntry.dailyTotals?.carbs || 0}g</Text><Text style={{ color: COLORS.muted, fontSize: 10, textTransform: 'uppercase' }}>Carbs</Text></View>
-                      <View><Text style={{ color: COLORS.text, fontSize: 14, fontWeight: '700' }}>{logEntry.dailyTotals?.fats || 0}g</Text><Text style={{ color: COLORS.muted, fontSize: 10, textTransform: 'uppercase' }}>Fats</Text></View>
+                      <View><Text style={{ color: COLORS.text, fontSize: 14, fontWeight: '700' }}>{Math.round(logEntry.dailyTotals?.protein || 0)}g</Text><Text style={{ color: COLORS.muted, fontSize: 10, textTransform: 'uppercase' }}>Protein</Text></View>
+                      <View><Text style={{ color: COLORS.text, fontSize: 14, fontWeight: '700' }}>{Math.round(logEntry.dailyTotals?.carbs || 0)}g</Text><Text style={{ color: COLORS.muted, fontSize: 10, textTransform: 'uppercase' }}>Carbs</Text></View>
+                      <View><Text style={{ color: COLORS.text, fontSize: 14, fontWeight: '700' }}>{Math.round(logEntry.dailyTotals?.fats || 0)}g</Text><Text style={{ color: COLORS.muted, fontSize: 10, textTransform: 'uppercase' }}>Fats</Text></View>
                     </View>
                   </View>
                 ) : (
