@@ -12,6 +12,8 @@ const UserSchema = new Schema(
     weight: Number, // Stored in unified KGs
     height: Number,
     heightUnit: { type: String, default: 'cm', enum: ['cm', 'ft'] },
+    targetCalories: { type: Number, default: 2000 },
+    maintenanceCalories: { type: Number, default: 2200 },
     settings: {
       timezone: String,
       weekStartsOn: Number,

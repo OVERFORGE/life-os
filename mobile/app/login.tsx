@@ -180,15 +180,15 @@ export default function LoginScreen() {
             value={password}
             onChangeText={setPassword}
             secureTextEntry
-            className="w-full bg-[#161922] border border-[#232632] rounded-xl px-4 py-3.5 text-gray-200 text-sm mb-4 focus:border-[#4b5563]"
+            className="w-full bg-[#161922]  border border-[#232632] rounded-xl px-4 py-3.5 text-gray-200  text-sm mb-4 focus:border-[#4b5563]"
             autoCapitalize="none"
           />
           <TouchableOpacity 
             disabled={loading}
             onPress={handleCredentialsLogin}
-            className="w-full h-12 items-center justify-center rounded-xl bg-[#1a1d24] border border-[#2a2d36] active:opacity-70 mb-4"
+            className="w-full h-12 items-center justify-center rounded-xl bg-gray-100 border border-[#2a2d36] active:opacity-70 mb-4"
           >
-            {loading ? <ActivityIndicator size="small" color="#fcd34d" /> : <Text className="text-gray-300 font-bold text-sm">Sign In</Text>}
+            {loading ? <ActivityIndicator size="small" color="#fcd34d" /> : <Text className="text-[#0f1115] font-bold text-sm">Sign In</Text>}
           </TouchableOpacity>
         </View>
 

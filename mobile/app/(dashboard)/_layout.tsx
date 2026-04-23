@@ -18,15 +18,9 @@ export default function DashboardLayout() {
           }}
         />
         <Tabs.Screen
-          name="gym"
+          name="health"
           options={{
-            title: 'Gym Session',
-          }}
-        />
-        <Tabs.Screen
-          name="nutrition"
-          options={{
-            title: 'Nutrition Tracker',
+            title: 'Health',
           }}
         />
         <Tabs.Screen
@@ -48,6 +42,15 @@ export default function DashboardLayout() {
             href: null,
             title: 'Era Details',
           }}
+        />
+        {/* Hidden tabs — still navigable but not shown in bar */}
+        <Tabs.Screen
+          name="gym"
+          options={{ href: null, title: 'Gym Session' }}
+        />
+        <Tabs.Screen
+          name="nutrition"
+          options={{ href: null, title: 'Nutrition Tracker' }}
         />
       </Tabs>
     </SafeAreaView>

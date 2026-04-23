@@ -84,6 +84,8 @@ export async function PUT(req: Request) {
     if (body.weight !== undefined) updatePayload.weight = Number(body.weight);
     if (body.height !== undefined) updatePayload.height = Number(body.height);
     if (body.heightUnit !== undefined) updatePayload.heightUnit = body.heightUnit;
+    if (body.targetCalories !== undefined) updatePayload.targetCalories = Number(body.targetCalories);
+    if (body.maintenanceCalories !== undefined) updatePayload.maintenanceCalories = Number(body.maintenanceCalories);
     
     const user = await User.findById(userId).select('+password');
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
@@ -124,3 +126,6 @@ export async function PUT(req: Request) {
     return NextResponse.json({ error: error.message || "Internal Server Error" }, { status: 500 });
   }
 }
+
+// PATCH is an alias for PUT so mobile PATCH /user works identically
+export { PUT as PATCH };

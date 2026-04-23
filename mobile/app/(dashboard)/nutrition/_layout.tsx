@@ -26,6 +26,10 @@ export default function NutritionLayout() {
         name="daily-log" 
         options={{ headerShown: false }} 
       />
+      <Stack.Screen 
+        name="history" 
+        options={{ headerShown: false }} 
+      />
     </Stack>
   );
 }

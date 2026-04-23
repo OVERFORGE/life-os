@@ -1,16 +1,24 @@
 import { DailyLog } from "../db/models/DailyLog";
+import { NutritionLog } from "../db/models/NutritionLog";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 import { Goal } from "@/features/goals/models/Goal";
+import { buildHealthContext } from "@/server/health/healthContextBuilder";
 
 export async function buildContext({
   intents,
   userId,
   input,
+  mode = "general",
 }: {
   intents: string[];
   userId: string;
   input: string;
+  mode?: string;
 }) {
+  if (mode === "health") {
+    return buildHealthContext(userId);
+  }
+
   if (intents.includes("casual_chat") && intents.length === 1) {
     return { type: "minimal" };
   }
@@ -21,18 +29,22 @@ export async function buildContext({
     // 1. Last 7 days logs
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(todayDate.getDate() - 7);
+    const todayStr = todayDate.toISOString().split("T")[0];
     
     const logs = await DailyLog.find({
       userId,
       date: { $gte: sevenDaysAgo.toISOString().split("T")[0] },
     }).sort({ date: 1 }).lean();
 
-    // 2. Current Phase
+    // 2. Today's NutritionLog for calorie/diet queries
+    const todayNutrition = await NutritionLog.findOne({ userId, date: todayStr }).lean();
+
+    // 3. Current Phase
     const currentPhase = await PhaseHistory.findOne({
       userId,
     }).sort({ startDate: -1 }).lean();
 
-    // 3. Active Goals
+    // 4. Active Goals
     const activeGoals = await Goal.find({ userId }).lean();
 
     return {
@@ -41,6 +53,13 @@ export async function buildContext({
       phase: currentPhase ? currentPhase.phase : "stable",
       goals: activeGoals.map((g) => ({ title: g.title, type: g.type, cadence: g.cadence })),
       habits: logs.map(l => ({ date: l.date, signals: l.signals })),
+      todayNutrition: todayNutrition ? {
+        calories: todayNutrition.dailyTotals?.calories || 0,
+        protein: todayNutrition.dailyTotals?.protein || 0,
+        carbs: todayNutrition.dailyTotals?.carbs || 0,
+        fats: todayNutrition.dailyTotals?.fats || 0,
+        mealCount: todayNutrition.meals?.length || 0,
+      } : { calories: 0, protein: 0, carbs: 0, fats: 0, mealCount: 0, note: "No meals logged today" },
     };
   }
 

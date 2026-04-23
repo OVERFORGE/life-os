@@ -19,8 +19,14 @@ export async function generateResponse({
     ? toolResults.filter(tr => tr.data?.ai_instruction).map(tr => tr.data.ai_instruction).join("\n")
     : "";
 
+  const now = new Date();
+  const currentHour = now.getUTCHours();
+  const isMidDay = currentHour < 20; // Before 8pm UTC — day likely not complete
+
   const prompt = `
 You are LifeOS, a strict behavioral intelligence assistant.
+Today's date: ${now.toISOString().split("T")[0]}. Current hour (UTC): ${currentHour}:00.
+${isMidDay ? "⚠️  NOTE: It is currently mid-day or early. Any calorie/diet data shown may be INCOMPLETE — the user has not finished eating for the day. When answering deficit/surplus questions mid-day, explicitly note that the day isn't over yet." : ""}
 
 User Input: "${input}"
 

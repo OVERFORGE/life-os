@@ -4,6 +4,9 @@ import { handleCreateGoal } from "./executionHandlers/handleCreateGoal";
 import { handleDeleteGoal } from "./executionHandlers/handleDeleteGoal";
 import { handleProposeGoal } from "./executionHandlers/handleProposeGoal";
 import { handleConfirmGoal } from "./executionHandlers/handleConfirmGoal";
+import { handleUpdateWeight } from "./executionHandlers/handleUpdateWeight";
+import { handleLogMeal } from "./executionHandlers/handleLogMeal";
+import { handleLogWorkout } from "./executionHandlers/handleLogWorkout";
 
 /* ===================================================== */
 /* 🚀 SYSTEM KERNEL (DETERMINISTIC ROUTING)              */
@@ -32,6 +35,18 @@ export async function executeActions(actions: ExtractedAction[], userId: string,
                 case "delete_goal":
                     const deleteResult = await handleDeleteGoal(payload, userId);
                     results.push(deleteResult);
+                    break;
+                case "update_weight":
+                    const weightResult = await handleUpdateWeight(payload, userId);
+                    results.push(weightResult);
+                    break;
+                case "log_meal":
+                    const mealResult = await handleLogMeal(payload, userId);
+                    results.push(mealResult);
+                    break;
+                case "log_workout":
+                    const workoutResult = await handleLogWorkout(payload, userId);
+                    results.push(workoutResult);
                     break;
                 default:
                     console.warn("Unknown action type extracted:", type);

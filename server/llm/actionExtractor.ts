@@ -1,11 +1,11 @@
 import { groqChat, cleanLLMResponse } from "./groq";
 
 export type ExtractedAction = {
-  type: "log_activity" | "propose_goal" | "confirm_goal" | "delete_goal";
+  type: "log_activity" | "propose_goal" | "confirm_goal" | "delete_goal" | "update_weight" | "log_meal" | "log_workout";
   payload: any;
 };
 
-export async function extractActions(input: string, intent: string, activeGoalsList: string = "", model?: string): Promise<ExtractedAction[]> {
+export async function extractActions(input: string, intent: string, activeGoalsList: string = "", model?: string, mode: string = "general"): Promise<ExtractedAction[]> {
     // These intents specifically query logs or ask generic advice, skip extraction
     if (["get_insights", "ask_advice"].includes(intent)) {
         return [];
@@ -21,22 +21,13 @@ export async function extractActions(input: string, intent: string, activeGoalsL
         return [{ type: "propose_goal", payload: { userMessage: input } }];
     }
 
-    const prompt = `
-You are a deterministic action extraction engine for LifeOS.
-Extract ALL executable actions from the user's message and return them as a strict JSON array.
-DO NOT hallucinate. If a value is not explicitly mentioned, do not include it.
-
-User Message: "${input}"
-Detected Intent: "${intent}"
-User's Active Goals (for delete matching): [${activeGoalsList}]
-
-### ACTION SCHEMAS:
-
+const generalSchemas = `
 #### 1. log_activity
 Use when user explicitly reports doing something — exercising, sleeping, reading, working, or overriding mental stats.
+NEVER use this for weight logging, meal logging, or workout-as-meal context. Those have dedicated actions below.
 Payload (only include fields that are EXPLICITLY mentioned):
 {
-  "gym": true,                          // Only if they mention workout/gym
+  "gym": true,                          // Only if they mention workout/gym (and NOT specifically a food/meal context)
   "wakeTime": "7:00am",                 // Only if wake time stated
   "sleepTime": "11:30pm",               // Only if sleep time stated
   "deepWorkHours": 4,                   // Only if work/focus hours stated
@@ -54,7 +45,30 @@ Payload (only include fields that are EXPLICITLY mentioned):
   }
 }
 
-#### 2. create_goal
+#### 2. update_weight
+Use when user explicitly mentions their body weight (e.g. "I weigh X", "my weight is X", "today I'm Xkg", "weighed myself at X").
+Payload:
+{
+  "weight": 70 // Numeric value in kg
+}
+
+#### 3. log_meal
+Use when user mentions eating specific food items, tracking a meal, consuming calories, or applying a meal template.
+Triggers: "ate", "just ate", "had", "eating", "ate X and Y", "log my [template name] meal plan", "apply [template] template".
+Payload:
+{
+  "description": "exact phrase of what they ate or the template name, e.g. '4 bananas and 2 eggs' or 'bulk day'"
+}
+
+#### 4. log_workout
+Use when user mentions going to the gym, a workout session, or completing training (but NOT just logging that they exercised as a signal).
+Use log_activity for gym=true signals unless the user is specifically asking to create a workout record.
+Payload:
+{
+  "description": "exact phrase of the workout context, e.g. '1 hour of weightlifting' or 'hit the gym for 45 min'"
+}
+
+#### 5. create_goal
 ONLY create this action if the user gives an EXPLICIT command to create a goal RIGHT NOW.
 Trigger words: "create", "set up", "make a goal", "don't ask", "just do it", "set it up".
 DO NOT create this action for vague exploratory inputs like "thinking of trying X" or "what should I track?".
@@ -67,13 +81,53 @@ Payload:
   "newSignals": [ { "label": "signal name", "inputType": "number" | "checkbox" | "time" } ]
 }
 
-#### 3. delete_goal
+#### 6. delete_goal
 Use when user explicitly asks to delete, remove, drop, or kill a goal.
 Match their description semantically against the Active Goals list.
 Payload:
 {
   "title": "Exact matching title from active goals list"
 }
+`;
+
+const healthSchemas = `
+#### 1. update_weight
+Use when user explicitly mentions logging or updating their physical body weight.
+Payload:
+{
+  "weight": 70 // Numeric value
+}
+
+#### 2. log_meal
+Use when user mentions eating specific food items, tracking a meal, consuming calories, or applying a 'meal template' (e.g. 'log bulk day').
+Payload:
+{
+  "description": "exact phrase of what they ate or the template they want to use, e.g. '4 bananas and 2 eggs' or 'bulk day'"
+}
+
+#### 3. log_workout
+Use when user mentions going to the gym, exercising, training, or completing a workout session.
+Payload:
+{
+  "description": "exact phrase of the workout context, e.g. '1 hour of weightlifting' or 'hit the gym'"
+}
+`;
+
+    // Health mode: restrict to health-only tools (no goal management)
+    const schemas = mode === "health" ? healthSchemas : generalSchemas;
+
+    const prompt = `
+You are a deterministic action extraction engine for LifeOS.
+Extract ALL executable actions from the user's message and return them as a strict JSON array.
+DO NOT hallucinate. If a value is not explicitly mentioned, do not include it.
+
+User Message: "${input}"
+Detected Intent: "${intent}"
+User's Active Goals (for delete matching): [${activeGoalsList}]
+Operating Mode: "${mode}"
+
+### ACTION SCHEMAS:
+${schemas}
 
 ### MULTI-ACTION SUPPORT
 A single message can contain multiple actions. Extract ALL of them.

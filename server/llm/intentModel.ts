@@ -3,7 +3,7 @@
 // Rules-based engine. Zero token cost, zero hallucination risk.
 // ============================================================
 
-export function detectIntent(input: string, _history: string = "", _model?: string): { intent: string, confidence: number } {
+export function detectIntent(input: string, _history: string = "", _model?: string, hasPendingProposal: boolean = false): { intent: string, confidence: number } {
     const msg = input.toLowerCase();
 
     // ── DELETE GOAL ──────────────────────────────────────────
@@ -24,17 +24,52 @@ export function detectIntent(input: string, _history: string = "", _model?: stri
     }
 
     // ── CONFIRM GOAL ─────────────────────────────────────────
-    // Fires when user is responding to a pending proposal
-    const hasPendingProposals = _history.includes("pending goal proposals");
-    if (hasPendingProposals) {
-        const confirmKeywords = ["yes", "yeah", "yep", "looks good", "go ahead", "do it", "create it", "make it", "sure", "ok do it", "perfect", "that works", "confirmed", "approve"];
+    // Fires when there is a real pending GoalProposal in the DB
+    if (hasPendingProposal) {
+        const confirmKeywords = ["yes", "yeah", "yep", "looks good", "go ahead", "do it", "create it", "make it", "sure", "ok", "perfect", "that works", "confirmed", "approve", "fine", "correct", "sounds good"];
         const modifyKeywords  = ["change", "modify", "update", "instead", "adjust", "make it", "rename", "call it", "different", "use", "add signal", "remove signal"];
         if (confirmKeywords.some(kw => msg.includes(kw)) || modifyKeywords.some(kw => msg.includes(kw))) {
             return { intent: "confirm_goal", confidence: 0.9 };
         }
     }
 
-    // ── LOG ACTIVITY ─────────────────────────────────────────
+    // ── ASK ADVICE / HEALTH QUERY ────────────────────────────
+    // MUST run before log_meal/log_activity so question phrases beat action keywords
+    const adviceKeywords = [
+        "what should i", "how should i", "what do you recommend", "any advice",
+        "help me improve", "how can i", "what can i do", "tips for",
+        "how to improve", "suggest", "recommendation",
+        // Health/calorie queries that need real data context:
+        "am i in a deficit", "am i eating enough", "how is my diet", "how many calories",
+        "how's my diet", "what did i eat", "my calorie", "deficit", "surplus",
+        "how many cal", "calories have i", "calorie count", "have i had today",
+    ];
+    if (adviceKeywords.some(kw => msg.includes(kw))) {
+        return { intent: "ask_advice", confidence: 1.0 };
+    }
+
+    // ── LOG WEIGHT ───────────────────────────────────────────
+    // Must be before log_activity to prevent "weigh" being grabbed by generic keywords
+    if (
+        msg.match(/\d+\s*(kg|lbs|pounds|kilos)/) ||
+        msg.includes("i weigh") || msg.includes("my weight") || msg.includes("weighed myself") ||
+        msg.includes("today i'm") && msg.match(/\d+(kg|lbs)/)
+    ) {
+        return { intent: "log_activity", confidence: 1.0 }; // Routes to log_activity intent but extractor will create update_weight action
+    }
+
+    // ── LOG MEAL ─────────────────────────────────────────────
+    if (
+        msg.includes("i ate") || msg.includes("just ate") || msg.includes("i had") ||
+        msg.includes("i've eaten") || msg.includes("i'm eating") ||
+        (msg.includes("log") && (msg.includes("meal") || msg.includes("food") || msg.includes("diet") || msg.includes("template"))) ||
+        (msg.includes("apply") && msg.includes("template"))
+    ) {
+        return { intent: "log_activity", confidence: 1.0 }; // Routes to log_activity intent but extractor will create log_meal action
+    }
+
+    // ── ASK ADVICE / HEALTH QUERY (duplicate block removed — moved above) ──
+
     // Physical actions, mental overrides, sleep/wake, numeric habits
     const activityKeywords = [
         "slept", "sleep at", "slept at", "went to bed", "going to bed", "sleep time", "going to sleep",
@@ -45,9 +80,9 @@ export function detectIntent(input: string, _history: string = "", _model?: stri
         "worked", "deep work", "focus hours", "hours of work", "hours of focus",
         "mood", "stress", "energy", "anxiety", "focus is", "set my mood", "change my mood",
         "change my stress", "set my stress", "my energy is", "i feel", "i'm feeling",
-        "calories", "ate", "drank", "water", "steps", "walked",
+        "drank", "water", "steps", "walked",
         "ran", "running", "jogged", "stretch",
-        "i went", "i did", "i completed", "i finished", "i had", "i got",
+        "i went", "i did", "i completed", "i finished", "i got",
     ];
     if (activityKeywords.some(kw => msg.includes(kw))) {
         return { intent: "log_activity", confidence: 1.0 };
@@ -61,16 +96,6 @@ export function detectIntent(input: string, _history: string = "", _model?: stri
     ];
     if (insightKeywords.some(kw => msg.includes(kw))) {
         return { intent: "get_insights", confidence: 1.0 };
-    }
-
-    // ── ASK ADVICE ───────────────────────────────────────────
-    const adviceKeywords = [
-        "what should i", "how should i", "what do you recommend", "any advice",
-        "help me improve", "how can i", "what can i do", "tips for",
-        "how to improve", "suggest", "recommendation",
-    ];
-    if (adviceKeywords.some(kw => msg.includes(kw))) {
-        return { intent: "ask_advice", confidence: 1.0 };
     }
 
     // ── DEFAULT ──────────────────────────────────────────────

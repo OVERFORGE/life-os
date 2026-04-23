@@ -9,6 +9,7 @@ import { runAutomation } from "@/server/automation/automationEngine";
 import { buildContext } from "@/server/llm/contextBuilder";
 import { generateResponse } from "@/server/llm/reasoningModel";
 import { Goal } from "@/features/goals/models/Goal";
+import { GoalProposal } from "@/server/db/models/GoalProposal";
 
 export async function POST(req: Request) {
   const session = await getAuthSession();
@@ -18,7 +19,7 @@ export async function POST(req: Request) {
   }
 
   const userId = (session!.user as any).id;
-  const { message, model } = await req.json();
+  const { message, model, mode = "general" } = await req.json();
 
   await connectDB();
 
@@ -33,7 +34,11 @@ export async function POST(req: Request) {
   recentMessages.reverse();
   const historyText = recentMessages.map((m: any) => `${m.role}: ${m.content}`).join("\n");
 
-  const { intent } = detectIntent(message, historyText, model);
+  // Check DB for a real pending proposal (drives confirm_goal intent)
+  const pendingProposal = await GoalProposal.findOne({ userId, status: "pending" }).lean();
+  const hasPendingProposal = !!pendingProposal;
+
+  const { intent } = detectIntent(message, historyText, model, hasPendingProposal);
   console.log(`\n🎯 [PIPELINE] Intent: "${intent}" | Input: "${message.slice(0, 80)}"`);
   
   /* ===================================================== */
@@ -43,7 +48,7 @@ export async function POST(req: Request) {
   const activeGoals = await Goal.find({ userId }).select("title").lean();
   const goalTitles = activeGoals.map(g => g.title).join(", ");
 
-  const actions = await extractActions(message, intent, goalTitles, model);
+  const actions = await extractActions(message, intent, goalTitles, model, mode);
   console.log(`⚡ [PIPELINE] Extracted Actions (${actions.length}):`, JSON.stringify(actions, null, 2));
 
   /* ===================================================== */
@@ -62,8 +67,8 @@ export async function POST(req: Request) {
   /* 4. CONTEXT BUILDING (INTELLIGENCE LAYER)             */
   /* ===================================================== */
 
-  // Keep compatibility with old context string arrays but only map the single core intent
-  const intelContext = await buildContext({ intents: [intent], userId, input: message });
+  // Keep compatibility with old context string arrays but map the core intent and strictly isolate context mode domains
+  const intelContext = await buildContext({ intents: [intent], userId, input: message, mode });
 
   /* ===================================================== */
   /* 5. RESPONSE LAYER (LLM #3)                           */

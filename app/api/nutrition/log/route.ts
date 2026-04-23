@@ -10,8 +10,23 @@ export async function GET(req: Request) {
     const { searchParams } = new URL(req.url);
     const date = searchParams.get("date");
     const history = searchParams.get("history");
+    const startDate = searchParams.get("startDate");
+    const endDate = searchParams.get("endDate");
 
     await connectDB();
+    
+    console.log(`[NutritionLog GET] User: ${session.user.id}, Date: ${date}, Start: ${startDate}, End: ${endDate}`);
+
+    if (startDate && endDate) {
+      const logs = await NutritionLog.find({ 
+        userId: session.user.id, 
+        date: { $gte: startDate, $lte: endDate } 
+      })
+      .sort({ date: 1 })
+      .populate("meals.foodItemId");
+      console.log(`[NutritionLog GET] Found ${logs.length} logs for range`);
+      return Response.json({ success: true, logs });
+    }
 
     if (history) {
       const logs = await NutritionLog.find({ userId: session.user.id })

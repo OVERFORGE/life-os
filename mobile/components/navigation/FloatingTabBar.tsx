@@ -1,7 +1,7 @@
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Home, Dumbbell, Bot, Settings, Apple } from 'lucide-react-native';
+import { Home, Heart, Bot, Settings } from 'lucide-react-native';
 import { useSegments } from 'expo-router';
 
 // Sub-screens within each module where the tab bar should be hidden.
@@ -36,7 +36,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
 
   const visibleRoutes = state.routes.filter(route => {
     const options = descriptors[route.key].options as any;
-    const allowedRoutes = ['index', 'gym', 'nutrition', 'brain', 'settings'];
+    const allowedRoutes = ['index', 'health', 'brain', 'settings'];
     return allowedRoutes.includes(route.name) && options.href !== null;
   });
 
@@ -60,8 +60,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
 
           let Icon = Home;
           if (route.name === 'index') Icon = Home;
-          if (route.name === 'gym') Icon = Dumbbell;
-          if (route.name === 'nutrition') Icon = Apple;
+          if (route.name === 'health') Icon = Heart;
           if (route.name === 'brain') Icon = Bot;
           if (route.name === 'settings') Icon = Settings;
 

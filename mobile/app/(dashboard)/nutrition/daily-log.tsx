@@ -1,7 +1,7 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView } from 'react-native';
 import { ArrowLeft, Trash2, Coffee, Sun, Moon, Apple, Activity, Dna, Zap } from 'lucide-react-native';
-import { useRouter } from 'expo-router';
+import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { useToast } from '../../../components/ui/Toast';
 import { fetchWithAuth } from '../../../utils/api';
@@ -27,29 +27,33 @@ function MacroChip({ label, value, unit = 'g', color = COLORS.subtext }: any) {
 
 export default function DailyLogScreen() {
   const router = useRouter();
+  const { date } = useLocalSearchParams<{ date?: string }>();
   const toast = useToast();
   const [log, setLog] = useState<any>(null);
   const [loading, setLoading] = useState(true);
   const [deletingId, setDeletingId] = useState<string | null>(null);
 
-  const today = new Date().toISOString().split('T')[0];
+  const now = new Date();
+  const today = `${now.getFullYear()}-${String(now.getMonth() + 1).padStart(2, '0')}-${String(now.getDate()).padStart(2, '0')}`;
+  const targetDate = date || today;
+  const isToday = targetDate === today;
 
   const loadLog = async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAuth(`/nutrition/log?date=${today}`);
+      const res = await fetchWithAuth(`/nutrition/log?date=${targetDate}&_t=${Date.now()}`);
       if (res.ok) {
         const data = await res.json();
         setLog(data.log || null);
       }
     } catch {
-      toast.error('Load Failed', 'Could not load today\'s log.');
+      toast.error('Load Failed', `Could not load log for ${targetDate}.`);
     } finally {
       setLoading(false);
     }
   };
 
-  useFocusEffect(useCallback(() => { loadLog(); }, []));
+  useFocusEffect(useCallback(() => { loadLog(); }, [targetDate]));
 
   const deleteMeal = async (mealIndex: number) => {
     if (!log) return;
@@ -74,10 +78,10 @@ export default function DailyLogScreen() {
 
       const res = await fetchWithAuth('/nutrition/log', {
         method: 'POST',
-        body: JSON.stringify({ date: today, meals: sanitizedMeals, dailyTotals }),
+        body: JSON.stringify({ date: targetDate, meals: sanitizedMeals, dailyTotals }),
       });
       if (res.ok) {
-        toast.success('Entry Removed', 'Meal deleted from today\'s log.');
+        toast.success('Entry Removed', 'Meal deleted from the log.');
         loadLog();
       } else {
         const err = await res.json().catch(() => ({}));
@@ -111,8 +115,8 @@ export default function DailyLogScreen() {
           <ArrowLeft color={COLORS.subtext} size={18} />
         </TouchableOpacity>
         <View style={{ flex: 1 }}>
-          <Text style={{ color: COLORS.text, fontSize: 20, fontWeight: '800' }}>Today's Log</Text>
-          <Text style={{ color: COLORS.muted, fontSize: 12, marginTop: 1 }}>{today}</Text>
+          <Text style={{ color: COLORS.text, fontSize: 20, fontWeight: '800' }}>{isToday ? "Today's Log" : "Daily Log"}</Text>
+          <Text style={{ color: COLORS.muted, fontSize: 12, marginTop: 1 }}>{targetDate}</Text>
         </View>
       </View>
 

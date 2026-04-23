@@ -1,9 +1,10 @@
 import { useState, useEffect, useRef } from 'react';
 import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
-import { Bot, ArrowUp, Copy, Check, ArrowDown } from 'lucide-react-native';
+import { Bot, ArrowUp, Copy, Check, ArrowDown, Leaf } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithAuth, API_URL } from '../../utils/api';
 import * as Clipboard from 'expo-clipboard';
+import { useLocalSearchParams } from 'expo-router';
 
 type Message = {
   role: 'user' | 'assistant';
@@ -11,6 +12,10 @@ type Message = {
 };
 
 export default function BrainScreen() {
+  const { mode } = useLocalSearchParams<{ mode?: string }>();
+  const isHealthMode = mode === 'health';
+  const accentColor = isHealthMode ? '#10b981' : '#fbbf24';
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -100,7 +105,7 @@ export default function BrainScreen() {
         });
       };
 
-      xhr.send(JSON.stringify({ message: text, model: selectedModel }));
+      xhr.send(JSON.stringify({ message: text, model: selectedModel, mode: mode || 'general' }));
 
     } catch (e) {
       setLoading(false);
