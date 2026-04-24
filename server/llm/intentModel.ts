@@ -52,8 +52,9 @@ export function detectIntent(input: string, _history: string = "", _model?: stri
     // Detect confirmation of a pending diet mode proposal
     const dietConfirmKeywords = ["yes", "yeah", "yep", "go ahead", "do it", "confirm", "sure", "ok", "perfect", "that works", "sounds good", "apply it", "use that"];
     const isProbablyDietConfirm = (
-        dietConfirmKeywords.some(kw => msg.includes(kw)) &&
-        (msg.includes("calorie") || msg.includes("kcal") || msg.includes("target") || msg.includes("diet") || msg.includes("bulk") || msg.includes("cut") || msg.length < 40)
+        dietConfirmKeywords.some(kw => new RegExp(`\\b${kw}\\b`, 'i').test(msg)) &&
+        (msg.includes("calorie") || msg.includes("kcal") || msg.includes("target") || msg.includes("diet") || msg.includes("bulk") || msg.includes("cut") || msg.length < 40) &&
+        !msg.includes("why") && !msg.includes("feel") && !msg.includes("terrible") && !msg.includes("how") && !msg.includes("but")
     );
     if (isProbablyDietConfirm) {
         return { intent: "confirm_diet_mode", confidence: 0.8 };

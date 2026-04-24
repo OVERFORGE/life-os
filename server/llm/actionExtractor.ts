@@ -146,6 +146,11 @@ Use when user wants to change their diet plan, switch modes, or set a calorie go
 Triggers: "switch to bulk", "I want to cut", "put me on a deficit", "let's do recomp", "start cutting", "want to lean bulk", "500 calorie surplus", "losing weight mode"
 Payload: {}
 (The system will parse the mode automatically from the intent)
+
+#### 5. confirm_diet_mode
+Use when the user confirms a proposed diet mode or calorie target (e.g. "yes sounds good", "do it", "perfect").
+Payload: {}
+(The system will apply the pending diet mode automatically)
 `;
 
     // Health mode: restrict to health-only tools (no goal management)

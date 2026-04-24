@@ -106,7 +106,8 @@ export async function buildHealthContext(userId: string) {
         },
         summary: `Health context for intelligent fitness coaching. 
 Diet mode: ${biometrics.dietMode.replace('_', ' ')} (${biometrics.dietModeCalorieOffset > 0 ? '+' : ''}${biometrics.dietModeCalorieOffset} kcal vs maintenance).
-Weekly avg calories: ${nutritionAverages.weekly.calories} kcal (target: ${biometrics.targetCalories}).
+Maintenance Calories (calculated): ${biometrics.maintenanceCalories} kcal. Target Calories: ${biometrics.targetCalories} kcal.
+Weekly avg calories: ${nutritionAverages.weekly.calories} kcal.
 Weekly avg protein: ${nutritionAverages.weekly.protein}g. Weekly avg fats: ${nutritionAverages.weekly.fats}g.
 Use this data to evaluate progress, give macro advice, and answer health/fitness questions.`,
     };

@@ -208,7 +208,7 @@ export default function LoginScreen() {
           </Text>
         </TouchableOpacity>
 
-        <View className="mt-8 w-full pt-6 border-t border-gray-800 items-center">
+        {/* <View className="mt-8 w-full pt-6 border-t border-gray-800 items-center">
           <Text className="text-gray-500 text-xs mb-3 font-semibold uppercase tracking-wider">Developer Auth Bypass</Text>
           <View className="w-full flex-row space-x-2">
             <TextInput 
@@ -226,7 +226,7 @@ export default function LoginScreen() {
               <Text className="text-gray-300 text-xs font-bold">BYPASS</Text>
             </TouchableOpacity>
           </View>
-        </View>
+        </View> */}
       </Animated.View>
     </View>
   );

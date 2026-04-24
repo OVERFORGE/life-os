@@ -12,7 +12,7 @@ import {
 import { fetchWithAuth } from '../../../utils/api';
 
 type HealthData = {
-  biometrics: { height: number | null; heightUnit: string; weight: number | null; targetCalories: number; maintenanceCalories: number };
+  biometrics: { height: number | null; heightUnit: string; weight: number | null; targetCalories: number; maintenanceCalories: number; dietMode: string; dietModeCalorieOffset: number };
   calories: { today: number; status: string; variance: number };
   gym: { last7Days: number; last30Days: number; consistencyScore: number; latestWorkout: any };
   weight: { currentWeight: number | null; last7Avg: number | null; trend: string };
@@ -190,6 +190,12 @@ export default function HealthScreen() {
               onEdit={() => {
                 Alert.alert("Auto-Calculated", "Maintenance calories are now dynamically updated based on your weekly weight trend and calorie logs. You don't need to manually edit this!");
               }}
+            />
+            <StatPill
+              label="Diet Mode"
+              value={data?.biometrics.dietMode ? `${data.biometrics.dietMode.replace('_', ' ')} (${data.biometrics.dietModeCalorieOffset > 0 ? '+' : ''}${data.biometrics.dietModeCalorieOffset || 0} kcal)` : 'Recomp (0 kcal)'}
+              color={data?.biometrics.dietMode?.includes('cut') ? '#f87171' : data?.biometrics.dietMode?.includes('bulk') ? '#4ade80' : '#60a5fa'}
+              onEdit={() => router.push('/(dashboard)/personalization')}
             />
           </View>
           <Text className="text-gray-600 text-[10px] mt-3">Tap any card to edit ✏️</Text>
