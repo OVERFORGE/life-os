@@ -26,7 +26,10 @@ export default function DashboardFeed() {
         
         if (dashRes.ok) setLogs(await dashRes.json());
         if (trajRes.ok) setPhase(await trajRes.json());
-        if (goalRes.ok) setGoalLoad(await goalRes.json());
+        if (goalRes.ok) {
+          const goalData = await goalRes.json();
+          setGoalLoad(goalData.goalLoad ?? goalData); // API returns { ok, goalLoad: {...} }
+        }
       } catch (e) {
         console.error("Dashboard data load error:", e);
       } finally {

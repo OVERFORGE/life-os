@@ -2,7 +2,7 @@ import { groqChat, cleanLLMResponse } from "./groq";
 import { getActiveDate } from "@/server/automation/timeUtils";
 
 export type ExtractedAction = {
-  type: "log_activity" | "propose_goal" | "confirm_goal" | "delete_goal" | "update_weight" | "log_meal" | "log_workout";
+  type: "log_activity" | "propose_goal" | "confirm_goal" | "delete_goal" | "update_weight" | "log_meal" | "log_workout" | "propose_diet_mode" | "confirm_diet_mode";
   payload: any;
 };
 
@@ -20,6 +20,32 @@ export async function extractActions(input: string, intent: string, activeGoalsL
     // create_goal → always returns propose_goal so the system drafts a proposal first
     if (intent === "create_goal") {
         return [{ type: "propose_goal", payload: { userMessage: input } }];
+    }
+
+    // diet mode: proposal from user intent → propose phase
+    if (intent === "propose_diet_mode") {
+        // Extract mode from message with a quick regex pass
+        const lower = input.toLowerCase();
+        let mode = 'recomp';
+        if (lower.includes('bulk') && (lower.includes('slight') || lower.includes('lean') || lower.includes('small'))) mode = 'slight_bulk';
+        else if (lower.includes('bulk')) mode = 'bulk';
+        else if (lower.includes('cut') && (lower.includes('slight') || lower.includes('small') || lower.includes('mini'))) mode = 'slight_cut';
+        else if (lower.includes('cut') || lower.includes('deficit') || lower.includes('lose')) mode = 'cut';
+        else if (lower.includes('recomp') || lower.includes('maintenance') || lower.includes('maintain')) mode = 'recomp';
+        // Extract custom offset if mentioned (e.g. "300 calorie deficit")
+        const numMatch = lower.match(/(\d{2,4})\s*(cal|kcal|calorie)/);
+        const calorieOffset = numMatch ? (lower.includes('deficit') || lower.includes('cut') ? -parseInt(numMatch[1]) : parseInt(numMatch[1])) : undefined;
+        return [{ type: "propose_diet_mode", payload: { mode, calorieOffset } }];
+    }
+
+    // User confirmed the diet mode proposal
+    if (intent === "confirm_diet_mode") {
+        // Try to detect a specific calorie amount in the confirmation
+        const lower = input.toLowerCase();
+        const numMatch = lower.match(/(\d{2,4})\s*(cal|kcal|calorie)?/);
+        const calorieOffset = numMatch ? (lower.includes('deficit') || lower.includes('cut') ? -parseInt(numMatch[1]) : parseInt(numMatch[1])) : undefined;
+        // We need the mode from prior context, so the conversation handler should pass it
+        return [{ type: "confirm_diet_mode", payload: { calorieOffset } }];
     }
 
 const generalSchemas = `
@@ -114,6 +140,12 @@ Payload:
 {
   "description": "exact phrase of the workout context, e.g. '1 hour of weightlifting' or 'hit the gym'"
 }
+
+#### 4. propose_diet_mode
+Use when user wants to change their diet plan, switch modes, or set a calorie goal.
+Triggers: "switch to bulk", "I want to cut", "put me on a deficit", "let's do recomp", "start cutting", "want to lean bulk", "500 calorie surplus", "losing weight mode"
+Payload: {}
+(The system will parse the mode automatically from the intent)
 `;
 
     // Health mode: restrict to health-only tools (no goal management)

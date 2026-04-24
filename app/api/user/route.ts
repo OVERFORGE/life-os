@@ -60,6 +60,10 @@ export async function GET(req: Request) {
       height: user.height,
       heightUnit: user.heightUnit,
       hasPassword: !!user.password,
+      targetCalories: (user as any).targetCalories || 2000,
+      maintenanceCalories: (user as any).maintenanceCalories || 2200,
+      dietMode: (user as any).dietMode || 'recomp',
+      dietModeCalorieOffset: (user as any).dietModeCalorieOffset || 0,
       preferences: (user as any).preferences || {},
     });
   } catch (error: any) {
@@ -87,6 +91,8 @@ export async function PUT(req: Request) {
     if (body.heightUnit !== undefined) updatePayload.heightUnit = body.heightUnit;
     if (body.targetCalories !== undefined) updatePayload.targetCalories = Number(body.targetCalories);
     if (body.maintenanceCalories !== undefined) updatePayload.maintenanceCalories = Number(body.maintenanceCalories);
+    if (body.dietMode !== undefined) updatePayload.dietMode = body.dietMode;
+    if (body.dietModeCalorieOffset !== undefined) updatePayload.dietModeCalorieOffset = Number(body.dietModeCalorieOffset);
     // Preferences
     if (body.preferences !== undefined) {
       const p = body.preferences;

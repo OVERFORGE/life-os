@@ -3,7 +3,7 @@ import {
   View, Text, ScrollView, TouchableOpacity, SafeAreaView,
   Switch, ActivityIndicator,
 } from 'react-native';
-import { ArrowLeft, Bell, Moon, Scale, ChevronUp, ChevronDown, Check } from 'lucide-react-native';
+import { ArrowLeft, Bell, Moon, Scale, ChevronUp, ChevronDown, Check, Flame, TrendingDown, Minus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { fetchWithAuth } from '../../utils/api';
@@ -60,6 +60,12 @@ export default function PersonalizationScreen() {
   const [reminderHour, setReminderHour] = useState(9);   // 9am
   const [rolloverHour, setRolloverHour] = useState(4);   // 4am
 
+  // Diet mode state
+  const [dietMode, setDietMode] = useState('recomp');
+  const [maintenanceCals, setMaintenanceCals] = useState(2200);
+  const [dietSaving, setDietSaving] = useState(false);
+  const [dietSaved, setDietSaved] = useState(false);
+
   const loadPrefs = async () => {
     setLoading(true);
     try {
@@ -71,6 +77,8 @@ export default function PersonalizationScreen() {
         setReminderDay(prefs.weightReminderDay ?? 0);
         setReminderHour(prefs.weightReminderHour ?? 9);
         setRolloverHour(prefs.dayRolloverHour ?? 4);
+        if (d.dietMode) setDietMode(d.dietMode);
+        if (d.maintenanceCalories) setMaintenanceCals(d.maintenanceCalories);
       }
     } catch (e) {
       console.error('Load prefs error:', e);
@@ -229,6 +237,92 @@ export default function PersonalizationScreen() {
               </Text>
             </View>
           </View>
+
+          {/* ── Diet Plan ── */}
+          {(() => {
+            const MODES = [
+              { key: 'bulk',       label: 'Bulk',         desc: '+500 kcal surplus',   color: '#4ade80', offset: 500 },
+              { key: 'slight_bulk',label: 'Slight Bulk',  desc: '+250 kcal surplus',   color: '#86efac', offset: 250 },
+              { key: 'recomp',     label: 'Recomp',       desc: '~Maintenance',         color: '#60a5fa', offset: 0 },
+              { key: 'slight_cut', label: 'Slight Cut',   desc: '−250 kcal deficit',   color: '#facc15', offset: -250 },
+              { key: 'cut',        label: 'Cut',          desc: '−500 kcal deficit',   color: '#f87171', offset: -500 },
+            ];
+            const activeModeObj = MODES.find(m => m.key === dietMode) || MODES[2];
+            const targetCals = maintenanceCals + activeModeObj.offset;
+
+            const saveDietMode = async (newMode: string) => {
+              setDietSaving(true);
+              const modeObj = MODES.find(m => m.key === newMode) || MODES[2];
+              try {
+                await fetchWithAuth('/user', {
+                  method: 'PATCH',
+                  headers: { 'Content-Type': 'application/json' },
+                  body: JSON.stringify({
+                    dietMode: newMode,
+                    dietModeCalorieOffset: modeObj.offset,
+                    targetCalories: Math.max(1200, maintenanceCals + modeObj.offset),
+                  }),
+                });
+                setDietMode(newMode);
+                setDietSaved(true);
+                setTimeout(() => setDietSaved(false), 2000);
+              } catch (e) { console.error(e); }
+              finally { setDietSaving(false); }
+            };
+
+            return (
+              <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 20, marginBottom: 20 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 18 }}>
+                  <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: activeModeObj.color + '20', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
+                    <Flame color={activeModeObj.color} size={18} />
+                  </View>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: C.text, fontSize: 16, fontWeight: '800' }}>Diet Plan</Text>
+                    <Text style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>Target: {targetCals} kcal/day</Text>
+                  </View>
+                  {dietSaving ? <ActivityIndicator color={C.emerald} size="small" /> :
+                    dietSaved ? <Check color={C.emerald} size={18} /> : null}
+                </View>
+
+                <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Select Mode</Text>
+                <View style={{ gap: 8 }}>
+                  {MODES.map(m => {
+                    const isActive = dietMode === m.key;
+                    return (
+                      <TouchableOpacity
+                        key={m.key}
+                        onPress={() => saveDietMode(m.key)}
+                        style={{
+                          flexDirection: 'row', alignItems: 'center',
+                          backgroundColor: isActive ? m.color + '15' : C.bg,
+                          borderWidth: 1,
+                          borderColor: isActive ? m.color + '60' : C.border,
+                          borderRadius: 14, padding: 14,
+                        }}
+                      >
+                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: isActive ? m.color : '#374151', marginRight: 12 }} />
+                        <View style={{ flex: 1 }}>
+                          <Text style={{ color: isActive ? m.color : C.text, fontSize: 14, fontWeight: '700' }}>{m.label}</Text>
+                          <Text style={{ color: C.muted, fontSize: 12, marginTop: 1 }}>{m.desc}</Text>
+                        </View>
+                        {isActive && <Check color={m.color} size={16} />}
+                      </TouchableOpacity>
+                    );
+                  })}
+                </View>
+
+                <View style={{ backgroundColor: activeModeObj.color + '10', borderRadius: 12, borderWidth: 1, borderColor: activeModeObj.color + '30', padding: 12, marginTop: 14 }}>
+                  <Text style={{ color: activeModeObj.color, fontSize: 12, lineHeight: 18 }}>
+                    Maintenance: <Text style={{ fontWeight: '800' }}>{maintenanceCals} kcal</Text>
+                    {activeModeObj.offset !== 0 ? (
+                      <Text> {activeModeObj.offset > 0 ? '+ ' : '− '}{Math.abs(activeModeObj.offset)} = <Text style={{ fontWeight: '800' }}>{targetCals} kcal target</Text></Text>
+                    ) : ' (your target)'}
+                  </Text>
+                  <Text style={{ color: C.muted, fontSize: 11, marginTop: 4 }}>You can also say "switch to bulk" or "start a cut" in the AI chat.</Text>
+                </View>
+              </View>
+            );
+          })()}
 
           {/* Notification Note */}
           <View style={{ backgroundColor: C.card, borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 16 }}>

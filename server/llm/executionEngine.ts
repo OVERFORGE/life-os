@@ -7,6 +7,7 @@ import { handleConfirmGoal } from "./executionHandlers/handleConfirmGoal";
 import { handleUpdateWeight } from "./executionHandlers/handleUpdateWeight";
 import { handleLogMeal } from "./executionHandlers/handleLogMeal";
 import { handleLogWorkout } from "./executionHandlers/handleLogWorkout";
+import { handleSetDietMode } from "./executionHandlers/handleSetDietMode";
 
 /* ===================================================== */
 /* 🚀 SYSTEM KERNEL (DETERMINISTIC ROUTING)              */
@@ -47,6 +48,16 @@ export async function executeActions(actions: ExtractedAction[], userId: string,
                 case "log_workout":
                     const workoutResult = await handleLogWorkout(payload, userId);
                     results.push(workoutResult);
+                    break;
+                case "propose_diet_mode":
+                    // Proposal phase — LLM detected intent, returns a suggested plan for user approval
+                    const dietProposal = await handleSetDietMode({ ...payload, confirmed: false }, userId);
+                    results.push(dietProposal);
+                    break;
+                case "confirm_diet_mode":
+                    // Confirmation phase — user approved, apply the changes
+                    const dietConfirm = await handleSetDietMode({ ...payload, confirmed: true }, userId);
+                    results.push(dietConfirm);
                     break;
                 default:
                     console.warn("Unknown action type extracted:", type);

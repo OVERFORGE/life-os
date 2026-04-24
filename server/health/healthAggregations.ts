@@ -78,3 +78,43 @@ export async function getCalorieStatus(userId: string) {
 
     return { status, difference: Number(difference.toFixed(0)) };
 }
+
+// Computes rolling weekly and monthly macro averages for LLM context
+export async function getNutritionAverages(userId: string) {
+    const now = new Date();
+    const sevenAgo = new Date(now); sevenAgo.setDate(now.getDate() - 7);
+    const thirtyAgo = new Date(now); thirtyAgo.setDate(now.getDate() - 30);
+
+    const sevenStr  = sevenAgo.toISOString().split('T')[0];
+    const thirtyStr = thirtyAgo.toISOString().split('T')[0];
+    const nowStr    = now.toISOString().split('T')[0];
+
+    const [weekLogs, monthLogs] = await Promise.all([
+        NutritionLog.find({ userId, date: { $gte: sevenStr,  $lte: nowStr } }).select('dailyTotals').lean(),
+        NutritionLog.find({ userId, date: { $gte: thirtyStr, $lte: nowStr } }).select('dailyTotals').lean(),
+    ]);
+
+    function avg(logs: any[], key: string) {
+        const vals = logs.map(l => l.dailyTotals?.[key] || 0).filter(v => v > 0);
+        if (!vals.length) return 0;
+        return Math.round(vals.reduce((a, b) => a + b, 0) / vals.length);
+    }
+
+    return {
+        weekly: {
+            calories: avg(weekLogs, 'calories'),
+            protein:  avg(weekLogs, 'protein'),
+            carbs:    avg(weekLogs, 'carbs'),
+            fats:     avg(weekLogs, 'fats'),
+            daysLogged: weekLogs.length,
+        },
+        monthly: {
+            calories: avg(monthLogs, 'calories'),
+            protein:  avg(monthLogs, 'protein'),
+            carbs:    avg(monthLogs, 'carbs'),
+            fats:     avg(monthLogs, 'fats'),
+            daysLogged: monthLogs.length,
+        },
+    };
+}
+

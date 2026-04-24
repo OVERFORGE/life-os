@@ -33,6 +33,33 @@ export function detectIntent(input: string, _history: string = "", _model?: stri
         }
     }
 
+    // ── DIET MODE ─────────────────────────────────────────────
+    // Must be before log_meal and ask_advice to catch mode-switch intents
+    const dietModeSwitchKeywords = [
+        "switch to bulk", "switch to cut", "switch to recomp", "switch to slight",
+        "want to bulk", "want to cut", "want to recomp", "want to maintain",
+        "start bulking", "start cutting", "start a cut", "start a bulk",
+        "put me on a", "put me in a", "go on a bulk", "go on a cut",
+        "lean bulk", "aggressive cut", "calorie surplus", "calorie deficit",
+        "i want to lose weight", "i want to gain muscle", "change my diet mode",
+        "change my diet plan", "update my diet mode", "update my diet",
+        "change my calorie target", "set my diet", "diet mode",
+    ];
+    if (dietModeSwitchKeywords.some(kw => msg.includes(kw))) {
+        return { intent: "propose_diet_mode", confidence: 1.0 };
+    }
+
+    // Detect confirmation of a pending diet mode proposal
+    const dietConfirmKeywords = ["yes", "yeah", "yep", "go ahead", "do it", "confirm", "sure", "ok", "perfect", "that works", "sounds good", "apply it", "use that"];
+    const isProbablyDietConfirm = (
+        dietConfirmKeywords.some(kw => msg.includes(kw)) &&
+        (msg.includes("calorie") || msg.includes("kcal") || msg.includes("target") || msg.includes("diet") || msg.includes("bulk") || msg.includes("cut") || msg.length < 40)
+    );
+    if (isProbablyDietConfirm) {
+        return { intent: "confirm_diet_mode", confidence: 0.8 };
+    }
+
+
     // ── ASK ADVICE / HEALTH QUERY ────────────────────────────
     // MUST run before log_meal/log_activity so question phrases beat action keywords
     const adviceKeywords = [

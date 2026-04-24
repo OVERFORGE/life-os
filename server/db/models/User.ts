@@ -14,6 +14,12 @@ const UserSchema = new Schema(
     heightUnit: { type: String, default: 'cm', enum: ['cm', 'ft'] },
     targetCalories: { type: Number, default: 2000 },
     maintenanceCalories: { type: Number, default: 2200 },
+    dietMode: { 
+      type: String, 
+      enum: ['bulk', 'slight_bulk', 'recomp', 'slight_cut', 'cut'], 
+      default: 'recomp' 
+    },
+    dietModeCalorieOffset: { type: Number, default: 0 }, // kcal above/below maintenance
     settings: {
       timezone: String,
       weekStartsOn: Number,
