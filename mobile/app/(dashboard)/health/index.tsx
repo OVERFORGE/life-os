@@ -9,7 +9,7 @@ import {
   Heart, Flame, Dumbbell, ChevronRight,
   TrendingUp, TrendingDown, Minus, Utensils, MessageCircle, Pencil, X, Check
 } from 'lucide-react-native';
-import { fetchWithAuth } from '../../utils/api';
+import { fetchWithAuth } from '../../../utils/api';
 
 type HealthData = {
   biometrics: { height: number | null; heightUnit: string; weight: number | null; targetCalories: number; maintenanceCalories: number };
@@ -25,6 +25,7 @@ export default function HealthScreen() {
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [weightHistory, setWeightHistory] = useState<any[]>([]);
+  const [dynamicMaintenance, setDynamicMaintenance] = useState<number | null>(null);
 
   // Edit modal state
   const [editModal, setEditModal] = useState<{ visible: boolean; field: string; label: string; value: string }>({
@@ -36,10 +37,18 @@ export default function HealthScreen() {
     try {
       const [ctxRes, weightRes] = await Promise.all([
         fetchWithAuth('/health/context'),
-        fetchWithAuth('/health/weight'),
+        fetchWithAuth('/health/weight-trend'),
       ]);
       if (ctxRes.ok) setData((await ctxRes.json()).data);
-      if (weightRes.ok) setWeightHistory((await weightRes.json()).logs || []);
+      if (weightRes.ok) {
+        const d = await weightRes.json();
+        setWeightHistory(d.weightLogs || []);
+        const weeks = d.weeklyData || [];
+        const latestWithEstimate = [...weeks].reverse().find(w => w.maintenanceEstimate !== null);
+        if (latestWithEstimate) {
+          setDynamicMaintenance(latestWithEstimate.maintenanceEstimate);
+        }
+      }
     } catch (e) {
       console.error('Health load error:', e);
     } finally {
@@ -176,9 +185,11 @@ export default function HealthScreen() {
             />
             <StatPill
               label="Maintenance"
-              value={`${data?.biometrics.maintenanceCalories ?? 2200} kcal`}
+              value={`${Math.round(dynamicMaintenance ?? data?.biometrics.maintenanceCalories ?? 2200)} kcal`}
               color="#818cf8"
-              onEdit={() => openEdit('maintenanceCalories', 'Maintenance Calories', data?.biometrics.maintenanceCalories)}
+              onEdit={() => {
+                Alert.alert("Auto-Calculated", "Maintenance calories are now dynamically updated based on your weekly weight trend and calorie logs. You don't need to manually edit this!");
+              }}
             />
           </View>
           <Text className="text-gray-600 text-[10px] mt-3">Tap any card to edit ✏️</Text>

@@ -56,10 +56,6 @@ export default function DashboardLayout() {
           name="personalization"
           options={{ href: null, title: 'Personalization' }}
         />
-        <Tabs.Screen
-          name="health/weight-trend"
-          options={{ href: null, title: 'Weight Trend' }}
-        />
       </Tabs>
     </SafeAreaView>
   );

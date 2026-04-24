@@ -90,7 +90,8 @@ export default function CaloriesChartScreen() {
     };
   });
 
-  const maxCal = Math.max(...days.map(d => d.calories), targetCalories * 1.3, 500);
+  const maxCal = Math.max(...days.map(d => d.calories || 0), (targetCalories || 2000) * 1.3, 500);
+  const safeMax = isNaN(maxCal) || maxCal <= 0 ? 2600 : maxCal;
   const BAR_H = 180;
 
   const barColor = (cals: number) => {
@@ -174,7 +175,7 @@ export default function CaloriesChartScreen() {
               <View style={{
                 position: 'absolute',
                 left: 0, right: 0,
-                top: BAR_H - (targetCalories / maxCal) * BAR_H,
+                top: BAR_H - ((targetCalories || 2000) / safeMax) * BAR_H,
                 height: 1,
                 borderStyle: 'dashed',
                 borderWidth: 1,
@@ -183,7 +184,7 @@ export default function CaloriesChartScreen() {
               <Text style={{
                 position: 'absolute',
                 right: 0,
-                top: BAR_H - (targetCalories / maxCal) * BAR_H - 14,
+                top: BAR_H - ((targetCalories || 2000) / safeMax) * BAR_H - 14,
                 color: C.amber,
                 fontSize: 9,
                 fontWeight: '700',
@@ -192,7 +193,7 @@ export default function CaloriesChartScreen() {
               {/* Bars */}
               <View style={{ flexDirection: 'row', alignItems: 'flex-end', height: BAR_H, gap: 6 }}>
                 {days.map((day, i) => {
-                  const barH = day.calories > 0 ? Math.max(4, (day.calories / maxCal) * BAR_H) : 4;
+                  const barH = day.calories > 0 ? Math.max(10, (day.calories / safeMax) * BAR_H) : 4;
                   const isToday = day.dateStr === todayStr;
                   return (
                     <View key={i} style={{ flex: 1, alignItems: 'center', justifyContent: 'flex-end', height: BAR_H }}>

@@ -1,6 +1,7 @@
 import { connectDB } from "@/server/db/connect";
 import { getAuthSession } from "@/lib/auth";
 import { NutritionLog } from "@/server/db/models/NutritionLog";
+import { FoodItem } from "@/server/db/models/FoodItem";
 
 export async function GET(req: Request) {
   try {

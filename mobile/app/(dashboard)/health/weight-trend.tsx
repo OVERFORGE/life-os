@@ -27,7 +27,7 @@ function LineChart({ data, color = C.emerald, unit = 'kg' }: { data: { label: st
   const max = Math.max(...values) + 0.5;
   const range = max - min || 1;
   const H = 140;
-  const W = CHART_W - 32;
+  const W = SCREEN_W - 148;
   const step = W / Math.max(data.length - 1, 1);
 
   const toY = (v: number) => H - ((v - min) / range) * H;
@@ -63,16 +63,17 @@ function LineChart({ data, color = C.emerald, unit = 'kg' }: { data: { label: st
           const dy = pt.y - prev.y;
           const len = Math.sqrt(dx * dx + dy * dy);
           const angle = Math.atan2(dy, dx) * (180 / Math.PI);
+          const cx = (prev.x + pt.x) / 2;
+          const cy = (prev.y + pt.y) / 2;
           return (
             <View key={i} style={{
               position: 'absolute',
-              left: prev.x,
-              top: prev.y,
+              left: cx - len / 2,
+              top: cy - 1,
               width: len,
               height: 2,
               backgroundColor: color,
               opacity: 0.8,
-              transformOrigin: '0 50%',
               transform: [{ rotate: `${angle}deg` }],
             }} />
           );
