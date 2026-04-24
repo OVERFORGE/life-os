@@ -52,7 +52,6 @@ export default function DashboardLayout() {
         <Tabs.Screen name="notifications" options={{ href: null, title: 'Notifications' }} />
         <Tabs.Screen name="profile" options={{ href: null, title: 'Profile' }} />
         <Tabs.Screen name="settings" options={{ href: null, title: 'Settings' }} />
-        <Tabs.Screen name="health" options={{ href: null, title: 'Health' }} />
       </Tabs>
     </SafeAreaView>
   );

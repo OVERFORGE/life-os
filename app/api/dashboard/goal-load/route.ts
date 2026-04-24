@@ -1,8 +1,7 @@
 // app/api/dashboard/goal-load/route.ts
 
 import { connectDB } from "@/server/db/connect";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getAuthSession } from "@/lib/auth";
 
 import { Goal } from "@/features/goals/models/Goal";
 import { GoalStats } from "@/features/goals/models/GoalStats";
@@ -18,8 +17,8 @@ import { analyzeGlobalGoalLoad } from "@/features/goals/engine/analyzeGlobalGoal
 /* ===================================================== */
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
-
+  const session = await getAuthSession();
+  
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
