@@ -131,18 +131,13 @@ export default function SettingsScreen() {
     });
   };
 
-  if (loading && !data) {
+  if (loading && !userProfile) {
     return (
       <View className="flex-1 bg-[#0f1115] items-center justify-center">
         <ActivityIndicator color="#fcd34d" />
       </View>
     );
   }
-
-  const effective = data?.effective || {};
-  const phaseThresholds = effective?.phases?.thresholds || {};
-  const phaseWeights = effective?.phases?.weights || {};
-  const goalWeights = effective?.goals?.pressureWeights || {};
 
   return (
     <View className="flex-1 bg-[#0f1115]">
@@ -206,107 +201,39 @@ export default function SettingsScreen() {
         </TouchableOpacity>
 
 
-        {/* V2 - SYSTEM LEARNED OPTIMIZATION */}
-        {derived && typeof derived === 'object' && Object.keys(derived).length > 0 && (
-          <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-6">
-            <Text className="text-gray-100 font-bold text-base mb-1">System-Learned Optimization (V2)</Text>
-            <Text className="text-gray-400 text-xs mb-4">These values are automatically calibrated by LifeOS from your behavior.</Text>
-            {Object.entries(derived).map(([key, metric]: any) => (
-              <View key={key} className="flex-row justify-between items-center py-3 border-b border-[#232632] last:border-0">
-                <View className="flex-1">
-                  <Text className="text-gray-300 capitalize text-sm font-semibold">{key}</Text>
-                  <Text className="text-gray-500 text-[10px] uppercase tracking-wider">{metric.reason || 'Learned adjustment'}</Text>
-                </View>
-                <Text className="text-amber-500 font-mono font-bold">{typeof metric.value === 'number' ? metric.value.toFixed(2) : '—'}</Text>
-              </View>
-            ))}
+        <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4 mt-2">Preferences</Text>
+
+        <TouchableOpacity
+          onPress={() => router.push('/(dashboard)/settings/signals')}
+          className="bg-[#161922] border border-[#232632] rounded-2xl p-4 mb-4 flex-row items-center active:opacity-70"
+        >
+          <View className="w-12 h-12 rounded-xl bg-purple-500/10 items-center justify-center mr-4">
+            <SettingsIcon size={22} color="#a855f7" />
           </View>
-        )}
+          <View className="flex-1">
+            <Text className="text-gray-100 font-bold text-base leading-tight mb-0.5">Custom Signals</Text>
+            <Text className="text-gray-500 text-xs">Create & manage category schemas</Text>
+          </View>
+          <View className="w-8 h-8 rounded-full bg-white/5 items-center justify-center">
+            <ChevronRight size={18} color="#9ca3af" />
+          </View>
+        </TouchableOpacity>
 
-        {/* PHASE THRESHOLDS */}
-        <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-6">
-          <Text className="text-gray-100 font-bold text-base mb-1">Phase Detection Thresholds</Text>
-          <Text className="text-gray-400 text-xs mb-4">Rules that trigger phase transitions (burnout, grind, slump, recovery…)</Text>
-          {Object.entries(phaseThresholds).map(([phase, values]: any) => (
-            <View key={phase} className="mb-4">
-              <Text className="text-gray-300 font-bold capitalize mb-2 bg-[#1b1f2a] px-3 py-1 rounded self-start overflow-hidden">{phase}</Text>
-              {Object.entries(values || {}).map(([key, val]: any) => (
-                <View key={key} className="flex-row justify-between items-center mb-3">
-                  <Text className="text-gray-400 text-sm capitalize">{key}</Text>
-                  <TextInput
-                    keyboardType="decimal-pad"
-                    value={String(getVal(['phases', 'thresholds', phase, key], val))}
-                    onChangeText={(v) => {
-                      const num = parseFloat(v);
-                      if (!isNaN(num)) setVal(['phases', 'thresholds', phase, key], num);
-                    }}
-                    className="bg-[#0f1115] border border-[#232632] rounded-md px-3 py-1 text-gray-200 font-mono text-center w-20"
-                  />
-                </View>
-              ))}
-            </View>
-          ))}
-        </View>
-
-        {/* PHASE SIGNAL WEIGHTS */}
-        <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-6">
-          <Text className="text-gray-100 font-bold text-base mb-1">Phase Signal Weights</Text>
-          <Text className="text-gray-400 text-xs mb-4">How strongly each signal affects phase scoring.</Text>
-          {Object.entries(phaseWeights).map(([key, val]: any) => (
-            <View key={key} className="flex-row justify-between items-center mb-3">
-              <Text className="text-gray-400 text-sm capitalize">{key}</Text>
-              <TextInput
-                keyboardType="decimal-pad"
-                value={String(getVal(['phases', 'weights', key], val))}
-                onChangeText={(v) => {
-                  const num = parseFloat(v);
-                  if (!isNaN(num)) setVal(['phases', 'weights', key], num);
-                }}
-                className="bg-[#0f1115] border border-[#232632] rounded-md px-3 py-1 text-gray-200 font-mono text-center w-20"
-              />
-            </View>
-          ))}
-        </View>
-
-        {/* GOAL PRESSURE WEIGHTS */}
-        <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-6">
-          <Text className="text-gray-100 font-bold text-base mb-1">Goal Load Pressure Weights</Text>
-          <Text className="text-gray-400 text-xs mb-4">How goal cadence, ambition, and conflicts contribute to pressure.</Text>
-          {Object.entries(goalWeights).map(([key, val]: any) => (
-            <View key={key} className="flex-row justify-between items-center mb-3">
-              <Text className="text-gray-400 text-sm capitalize">{key}</Text>
-              <TextInput
-                keyboardType="decimal-pad"
-                value={String(getVal(['goals', 'pressureWeights', key], val))}
-                onChangeText={(v) => {
-                  const num = parseFloat(v);
-                  if (!isNaN(num)) setVal(['goals', 'pressureWeights', key], num);
-                }}
-                className="bg-[#0f1115] border border-[#232632] rounded-md px-3 py-1 text-gray-200 font-mono text-center w-20"
-              />
-            </View>
-          ))}
-        </View>
-
-        {/* Actions */}
-        <View className="flex-row space-x-4 mb-6 pt-4 border-t border-[#232632]">
-          <TouchableOpacity
-            onPress={resetDefaults}
-            disabled={saving}
-            className="flex-1 bg-[#161922] border border-[#232632] rounded-xl items-center justify-center p-4 flex-row"
-          >
-            <RefreshCw size={16} color="#9ca3af" />
-            <Text className="text-gray-400 font-bold ml-2 text-sm uppercase">Reset</Text>
-          </TouchableOpacity>
-          <TouchableOpacity
-            onPress={saveOverrides}
-            disabled={saving}
-            className="flex-[2] bg-amber-500 rounded-xl items-center justify-center p-4 flex-row"
-          >
-            {saving ? <ActivityIndicator color="#0f1115" className="mr-2" /> : <Save size={16} color="#0f1115" />}
-            <Text className="text-black font-bold ml-2 text-sm uppercase">Save Changes</Text>
-          </TouchableOpacity>
-        </View>
+        <TouchableOpacity
+          onPress={() => router.push('/(dashboard)/settings/weights')}
+          className="bg-[#161922] border border-[#232632] rounded-2xl p-4 mb-6 flex-row items-center active:opacity-70"
+        >
+          <View className="w-12 h-12 rounded-xl bg-amber-500/10 items-center justify-center mr-4">
+            <SettingsIcon size={22} color="#fbbf24" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-gray-100 font-bold text-base leading-tight mb-0.5">Algorithm Weights</Text>
+            <Text className="text-gray-500 text-xs">Tune LifeOS V1 Phase & Goal weights</Text>
+          </View>
+          <View className="w-8 h-8 rounded-full bg-white/5 items-center justify-center">
+            <ChevronRight size={18} color="#9ca3af" />
+          </View>
+        </TouchableOpacity>
 
       </ScrollView>
     </View>

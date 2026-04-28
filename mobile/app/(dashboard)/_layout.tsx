@@ -18,9 +18,9 @@ export default function DashboardLayout() {
           }}
         />
         <Tabs.Screen
-          name="health"
+          name="tools"
           options={{
-            title: 'Health',
+            title: 'Tools',
           }}
         />
         <Tabs.Screen
@@ -46,6 +46,7 @@ export default function DashboardLayout() {
           options={{ href: null, title: 'Phase Detail' }}
         />
         {/* Hidden tabs — still navigable but not shown in bar */}
+        <Tabs.Screen name="health" options={{ href: null, title: 'Health Hub' }} />
         <Tabs.Screen name="gym" options={{ href: null, title: 'Gym Session' }} />
         <Tabs.Screen name="nutrition" options={{ href: null, title: 'Nutrition Tracker' }} />
         <Tabs.Screen name="personalization" options={{ href: null, title: 'Personalization' }} />

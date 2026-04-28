@@ -7,15 +7,14 @@ import { analyzeGlobalGoalLoad } from "@/features/goals/engine/analyzeGlobalGoal
 import { adaptGoalToSystemState } from "@/features/goals/engine/adaptGoalToSystemState";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getAuthSession } from "@/lib/auth";
 
 export async function GET(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const session = await getAuthSession();
+  if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -103,8 +102,8 @@ export async function PUT(
   req: Request,
   context: { params: Promise<{ id: string }> }
 ) {
-  const session = await getServerSession(authOptions);
-  if (!session?.user) {
+  const session = await getAuthSession();
+  if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -124,6 +123,24 @@ export async function PUT(
   if (!goal) {
     return Response.json({ error: "Not found" }, { status: 404 });
   }
+
+  return Response.json({ ok: true });
+}
+
+export async function DELETE(
+  req: Request,
+  context: { params: Promise<{ id: string }> }
+) {
+  const session = await getAuthSession();
+  if (!session?.user?.id) {
+    return Response.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const { id } = await context.params;
+  await connectDB();
+
+  await Goal.deleteOne({ _id: id, userId: session.user.id });
+  await GoalStats.deleteOne({ goalId: id });
 
   return Response.json({ ok: true });
 }

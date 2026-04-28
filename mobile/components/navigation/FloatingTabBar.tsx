@@ -1,7 +1,7 @@
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Home, Heart, Bot, Settings } from 'lucide-react-native';
+import { Home, Grid, Bot, Settings } from 'lucide-react-native';
 import { useSegments } from 'expo-router';
 
 // Sub-screens within each module where the tab bar should be hidden.
@@ -19,6 +19,10 @@ const HIDE_ON_SEGMENTS: string[][] = [
   ['(dashboard)', 'gym', 'history'],
   ['(dashboard)', 'gym', 'log-past'],
   ['(dashboard)', 'gym', 'edit-session'],
+  // tools sub-screens
+  ['(dashboard)', 'tools', 'daily-log'],
+  ['(dashboard)', 'tools', 'history'],
+  ['(dashboard)', 'tools', 'goals'],
 ];
 
 function useIsTabBarVisible() {
@@ -36,7 +40,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
 
   const visibleRoutes = state.routes.filter(route => {
     const options = descriptors[route.key].options as any;
-    const allowedRoutes = ['index', 'health', 'brain', 'settings'];
+    const allowedRoutes = ['index', 'tools', 'brain', 'settings'];
     return allowedRoutes.includes(route.name) && options.href !== null;
   });
 
@@ -60,7 +64,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
 
           let Icon = Home;
           if (route.name === 'index') Icon = Home;
-          if (route.name === 'health') Icon = Heart;
+          if (route.name === 'tools') Icon = Grid;
           if (route.name === 'brain') Icon = Bot;
           if (route.name === 'settings') Icon = Settings;
 
