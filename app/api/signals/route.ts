@@ -1,15 +1,14 @@
 // app/api/signals/route.ts
 
 import { connectDB } from "@/server/db/connect";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getAuthSession } from "@/lib/auth";
 import { LifeSignal } from "@/features/signals/models/LifeSignal";
 
 /* ======================= */
 /* GET Signals             */
 /* ======================= */
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -31,7 +30,7 @@ export async function GET() {
 /* CREATE Signal           */
 /* ======================= */
 export async function POST(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -85,7 +84,7 @@ export async function POST(req: Request) {
 /* DELETE Signal           */
 /* ======================= */
 export async function DELETE(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }

@@ -1,7 +1,7 @@
 import { View, TouchableOpacity, StyleSheet } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
-import { Home, Grid, Bot, Settings } from 'lucide-react-native';
+import { Home, Wrench, Bot, Settings } from 'lucide-react-native';
 import { useSegments } from 'expo-router';
 
 // Sub-screens within each module where the tab bar should be hidden.
@@ -64,7 +64,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
 
           let Icon = Home;
           if (route.name === 'index') Icon = Home;
-          if (route.name === 'tools') Icon = Grid;
+          if (route.name === 'tools') Icon = Wrench;
           if (route.name === 'brain') Icon = Bot;
           if (route.name === 'settings') Icon = Settings;
 

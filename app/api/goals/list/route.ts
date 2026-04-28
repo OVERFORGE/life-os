@@ -4,14 +4,13 @@ import { GoalStats } from "@/features/goals/models/GoalStats";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 import { analyzeGoalPressure } from "@/features/goals/engine/analyzeGoalPressure";
 import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getAuthSession } from "@/lib/auth";
 import { LifeSettings } from "@/features/insights/models/LifeSettings";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
 
-  if (!session?.user) {
+  if (!session?.user?.id) {
     return Response.json([], { status: 401 });
   }
 

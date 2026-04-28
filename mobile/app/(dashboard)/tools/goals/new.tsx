@@ -114,7 +114,7 @@ export default function NewGoalScreen() {
                   onPress={() => setSelectedSignalKey(s.key)}
                   className={`mr-2 px-3 py-1.5 rounded-lg border ${selectedSignalKey === s.key ? 'border-[#10b981] bg-[#10b981]/20' : 'border-[#232632]'}`}
                 >
-                  <Text className={selectedSignalKey === s.key ? 'text-[#10b981]' : 'text-gray-400'}>{s.key}</Text>
+                  <Text className={selectedSignalKey === s.key ? 'text-[#10b981] text-sm' : 'text-gray-400 text-sm'}>{s.label || s.key}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -126,7 +126,10 @@ export default function NewGoalScreen() {
           {/* List of Added Signals */}
           {signals.map((s, idx) => (
             <View key={s.key} className="bg-[#161922] border border-[#232632] rounded-xl p-4 mb-3 flex-row justify-between items-center">
-              <Text className="text-white font-medium">{s.key}</Text>
+              <View>
+                <Text className="text-white font-medium">{availableSignals.find(a => a.key === s.key)?.label || s.key}</Text>
+                <Text className="text-gray-500 text-xs">{s.key}</Text>
+              </View>
               <View className="flex-row items-center gap-4">
                 <View className="flex-row items-center gap-2">
                   <Text className="text-gray-400 text-xs">Weight</Text>

@@ -7,7 +7,7 @@ import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
 import {
   Heart, Flame, Dumbbell, ChevronRight,
-  TrendingUp, TrendingDown, Minus, Utensils, MessageCircle, Pencil, X, Check
+  TrendingUp, TrendingDown, Minus, Utensils, MessageCircle, Pencil, X, Check, ArrowLeft
 } from 'lucide-react-native';
 import { fetchWithAuth } from '../../../utils/api';
 
@@ -144,6 +144,9 @@ export default function HealthScreen() {
         style={{ backgroundColor: 'rgba(15,17,21,0.85)' }}
       >
         <View className="flex-row items-center gap-3">
+          <TouchableOpacity onPress={() => router.push('/(dashboard)/tools')} className="mr-1">
+            <ArrowLeft color="#fff" size={24} />
+          </TouchableOpacity>
           <View className="w-9 h-9 rounded-xl bg-emerald-500/15 items-center justify-center border border-emerald-500/30">
             <Heart color="#10b981" size={18} />
           </View>

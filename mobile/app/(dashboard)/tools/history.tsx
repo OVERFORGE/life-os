@@ -13,8 +13,13 @@ export default function HistoryScreen() {
   useEffect(() => {
     fetchWithAuth('/daily-log/list?limit=30')
       .then(res => res.json())
-      .then(data => setLogs(data))
-      .catch(e => console.error(e))
+      .then(data => {
+        // API returns array directly
+        if (Array.isArray(data)) setLogs(data);
+        else if (Array.isArray(data?.logs)) setLogs(data.logs);
+        else setLogs([]);
+      })
+      .catch(e => { console.error(e); setLogs([]); })
       .finally(() => setLoading(false));
   }, []);
 

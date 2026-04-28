@@ -15,12 +15,6 @@ export default function ToolsHubScreen() {
           <Text className="text-white font-bold text-[22px]">Tools & Modules</Text>
           <Text className="text-gray-500 text-xs mt-1">Manage your life infrastructure</Text>
         </View>
-        <TouchableOpacity 
-          onPress={() => router.push('/(dashboard)/tools/history')}
-          className="w-10 h-10 rounded-full bg-[#161922] border border-[#232632] items-center justify-center"
-        >
-          <Clock size={20} color="#9ca3af" />
-        </TouchableOpacity>
       </BlurView>
 
       <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 120 }}>

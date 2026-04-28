@@ -1,12 +1,11 @@
 import { connectDB } from "@/server/db/connect";
 import { Goal } from "@/features/goals/models/Goal";
 import { GOAL_TEMPLATES } from "@/features/goals/templates";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getAuthSession } from "@/lib/auth";
 
 export async function POST() {
-  const session = await getServerSession(authOptions);
-  if (!session?.user)
+  const session = await getAuthSession();
+  if (!session?.user?.id)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   await connectDB();

@@ -183,15 +183,17 @@ export default function SettingsScreen() {
           </TouchableOpacity>
         )}
 
-        {/* PERSONALIZATION CARD */}
+        {/* PREFERENCES SECTION */}
+        <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4 mt-2">Preferences</Text>
+
         <TouchableOpacity
           onPress={() => router.push('/(dashboard)/personalization')}
-          className="bg-[#161922] border border-[#232632] rounded-2xl p-4 mb-6 flex-row items-center active:opacity-70"
+          className="bg-[#161922] border border-[#232632] rounded-2xl p-4 mb-4 flex-row items-center active:opacity-70"
         >
-          <View className="w-14 h-14 rounded-full bg-emerald-500/10 border border-emerald-500/30 mr-4 items-center justify-center">
+          <View className="w-12 h-12 rounded-xl bg-emerald-500/10 items-center justify-center mr-4">
             <SettingsIcon size={22} color="#10b981" />
           </View>
-          <View className="flex-1 justify-center">
+          <View className="flex-1">
             <Text className="text-gray-100 font-bold text-base leading-tight mb-0.5">Personalization</Text>
             <Text className="text-gray-500 text-xs">Reminders, rollover hour & preferences</Text>
           </View>
@@ -199,9 +201,6 @@ export default function SettingsScreen() {
             <ChevronRight size={18} color="#9ca3af" />
           </View>
         </TouchableOpacity>
-
-
-        <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4 mt-2">Preferences</Text>
 
         <TouchableOpacity
           onPress={() => router.push('/(dashboard)/settings/signals')}
