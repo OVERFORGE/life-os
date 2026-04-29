@@ -6,7 +6,7 @@ export type ExtractedAction = {
   payload: any;
 };
 
-export async function extractActions(input: string, intent: string, activeGoalsList: string = "", model?: string, mode: string = "general", timezone?: string): Promise<ExtractedAction[]> {
+export async function extractActions(input: string, intent: string, activeGoalsList: string = "", existingSignalsList: string = "", model?: string, mode: string = "general", timezone?: string): Promise<ExtractedAction[]> {
     // These intents specifically query logs or ask generic advice, skip extraction
     if (["get_insights", "ask_advice"].includes(intent)) {
         return [];
@@ -52,12 +52,13 @@ const generalSchemas = `
 #### 1. log_activity
 Use when user explicitly reports doing something — exercising, sleeping, reading, working, or overriding mental stats.
 NEVER use this for weight logging, meal logging, or workout-as-meal context. Those have dedicated actions below.
+CRITICAL: For signals, YOU MUST ONLY use keys from the "Existing Tracked Signals" list provided below. DO NOT invent new signal keys. If a user activity roughly matches an existing signal, map it. If it doesn't match anything, do NOT log it as a signal. 
 Payload (only include fields that are EXPLICITLY mentioned):
 {
   "gym": true,                          // Only if they mention workout/gym (and NOT specifically a food/meal context)
   "wakeTime": "7:00am",                 // Only if wake time stated
   "sleepTime": "11:30pm",               // Only if sleep time stated
-  "deepWorkHours": 4,                   // Only if work/focus hours stated
+  "deepWorkHours": 4,                   // MUST include this if the activity involves studying, coding, reading, or intense focus. Calculate the total hours implied.
   "mentalOverrides": {                  // ONLY if explicitly setting mood/stress/energy/anxiety/focus values
     "mood": 3,
     "energy": 7,
@@ -65,10 +66,9 @@ Payload (only include fields that are EXPLICITLY mentioned):
     "anxiety": 5,
     "focus": 6
   },
-  "signals": {                          // Any other named habits/activities with quantities
-    "pages_read": 40,
-    "meditation_minutes": 20,
-    "water_glasses": 4
+  "signals": {                          // STRICTLY ONLY EXISTING SIGNAL KEYS
+    "existing_key_1": 40,
+    "existing_key_2": 20
   }
 }
 
@@ -100,13 +100,14 @@ Payload:
 ONLY create this action if the user gives an EXPLICIT command to create a goal RIGHT NOW.
 Trigger words: "create", "set up", "make a goal", "don't ask", "just do it", "set it up".
 DO NOT create this action for vague exploratory inputs like "thinking of trying X" or "what should I track?".
+CRITICAL: The "signals" array MUST ONLY contain keys from the "Existing Tracked Signals" list. If you need a new signal, use "newSignals", but keep it extremely concise and fundamental (MAX 1 OR 2 NEW SIGNALS). Do NOT create redundant signals. 
 Payload:
 {
   "title": "Goal Title",
   "type": "performance" | "identity" | "maintenance",
   "cadence": "daily" | "weekly" | "flexible",
   "signals": ["existing_signal_key"],
-  "newSignals": [ { "label": "signal name", "inputType": "number" | "checkbox" | "time" } ]
+  "newSignals": [ { "label": "Concise Name", "inputType": "number" | "checkbox" | "time", "categoryKey": "work" | "habits" | "physical", "weight": 5 } ]
 }
 
 #### 6. delete_goal
@@ -114,7 +115,7 @@ Use when user explicitly asks to delete, remove, drop, or kill a goal.
 Match their description semantically against the Active Goals list.
 Payload:
 {
-  "title": "Exact matching title from active goals list"
+  "title": "The exact title copied verbatim from the 'User's Active Goals' list. Do not alter case or add words."
 }
 `;
 
@@ -164,6 +165,7 @@ DO NOT hallucinate. If a value is not explicitly mentioned, do not include it.
 User Message: "${input}"
 Detected Intent: "${intent}"
 User's Active Goals (for delete matching): [${activeGoalsList}]
+Existing Tracked Signals (MUST USE FOR LOGGING/GOALS): [${existingSignalsList || "none"}]
 Operating Mode: "${mode}"
 Current Local Date Context: "${getActiveDate(timezone)}"
 

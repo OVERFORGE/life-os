@@ -11,6 +11,7 @@ import { generateResponse } from "@/server/llm/reasoningModel";
 import { Goal } from "@/features/goals/models/Goal";
 import { GoalProposal } from "@/server/db/models/GoalProposal";
 import { User } from "@/server/db/models/User";
+import { LifeSignal } from "@/features/signals/models/LifeSignal";
 
 export async function POST(req: Request) {
   const session = await getAuthSession();
@@ -52,7 +53,10 @@ export async function POST(req: Request) {
   const activeGoals = await Goal.find({ userId }).select("title").lean();
   const goalTitles = activeGoals.map(g => g.title).join(", ");
 
-  const actions = await extractActions(message, intent, goalTitles, model, mode, timezone);
+  const existingSignals = await LifeSignal.find({ userId, enabled: true }).select("key label inputType").lean();
+  const existingSignalsList = existingSignals.map(s => `${s.key} (${s.label})`).join(", ");
+
+  const actions = await extractActions(message, intent, goalTitles, existingSignalsList, model, mode, timezone);
   console.log(`⚡ [PIPELINE] Extracted Actions (${actions.length}):`, JSON.stringify(actions, null, 2));
 
   /* ===================================================== */

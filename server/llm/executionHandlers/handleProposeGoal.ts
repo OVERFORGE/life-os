@@ -16,7 +16,11 @@ Based on the user's goal request, draft a structured goal proposal.
 User Request: "${userMessage}"
 User's Existing Tracked Signals: [${existingList || "none yet"}]
 
-Design a goal proposal. Reuse existing signals where relevant. Only propose newSignals for things not already tracked.
+CRITICAL INSTRUCTIONS:
+1. Re-use existing signals whenever possible!
+2. If you absolutely MUST create new tracking signals, keep them concise and fundamental (Max 1 or 2). DO NOT create redundant signals with same meanings.
+3. For any "newSignals", you MUST assign them a valid categoryKey: "work", "habits", or "physical". If it's a mental state, use "habits".
+4. Assign reasonable weights to signals based on importance (1 to 10).
 
 Return strict JSON only:
 {
@@ -25,7 +29,7 @@ Return strict JSON only:
   "cadence": "daily" | "weekly" | "flexible",
   "signals": ["existing_signal_keys_to_attach"],
   "newSignals": [
-    { "label": "Human readable name", "inputType": "number" | "checkbox" | "time" }
+    { "label": "Human readable name", "inputType": "number" | "checkbox" | "time", "categoryKey": "work" | "habits" | "physical", "weight": 5 }
   ],
   "description": "One sentence summary of what will be tracked and why"
 }

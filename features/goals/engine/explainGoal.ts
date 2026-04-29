@@ -15,7 +15,9 @@ export async function explainGoal(goal: any, userId: string) {
     const values: number[] = [];
 
     for (const log of logs) {
-      const v = getValueByPath(log, s.key);
+      // First check dynamic signals map (which lean() converts to a standard object), then fallback to root path
+      const dynamicSignalValue = log.signals ? log.signals[s.key] : undefined;
+      const v = dynamicSignalValue !== undefined ? dynamicSignalValue : getValueByPath(log, s.key);
 
       if (typeof v === "boolean") {
         if (v) activeDays++;

@@ -34,7 +34,7 @@ Return the full updated proposal as strict JSON:
   "type": "performance" | "identity" | "maintenance",
   "cadence": "daily" | "weekly" | "flexible",
   "signals": [...],
-  "newSignals": [ { "label": "...", "inputType": "number" | "checkbox" | "time" } ],
+  "newSignals": [ { "label": "...", "inputType": "number" | "checkbox" | "time", "categoryKey": "work" | "habits" | "physical", "weight": 5 } ],
   "description": "..."
 }
 `;

@@ -8,6 +8,7 @@ import { adaptGoalToSystemState } from "@/features/goals/engine/adaptGoalToSyste
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
 import { getAuthSession } from "@/lib/auth";
+import { LifeSignal } from "@/features/signals/models/LifeSignal";
 
 export async function GET(
   req: Request,
@@ -137,10 +138,23 @@ export async function DELETE(
   }
 
   const { id } = await context.params;
-  await connectDB();
+  const goalToDelete = await Goal.findOne({ _id: id, userId: session.user.id });
+  
+  if (goalToDelete) {
+      const signalKeys = goalToDelete.signals.map((s: any) => s.key);
+      await Goal.deleteOne({ _id: id, userId: session.user.id });
+      await GoalStats.deleteOne({ goalId: id });
 
-  await Goal.deleteOne({ _id: id, userId: session.user.id });
-  await GoalStats.deleteOne({ goalId: id });
+      if (signalKeys.length > 0) {
+          const remainingGoals = await Goal.find({ userId: session.user.id, "signals.key": { $in: signalKeys } });
+          const usedKeys = new Set(remainingGoals.flatMap(g => g.signals.map((s: any) => s.key)));
+          
+          const orphanedKeys = signalKeys.filter((k: string) => !usedKeys.has(k));
+          if (orphanedKeys.length > 0) {
+              await LifeSignal.deleteMany({ userId: session.user.id, key: { $in: orphanedKeys } });
+          }
+      }
+  }
 
   return Response.json({ ok: true });
 }

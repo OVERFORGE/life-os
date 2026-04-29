@@ -4,6 +4,7 @@ import { computeDayInsights } from "@/features/insights/computeDayInsights";
 import { NotificationLog } from "@/server/db/models/Notification";
 import { User } from "@/server/db/models/User";
 import { getActiveDate } from "@/server/automation/timeUtils";
+import { updateGoalStats } from "@/features/goals/engine/updateGoalStats";
 
 function parseTimeStr(timeStr: string) {
   if (!timeStr) return 0;
@@ -161,6 +162,9 @@ export async function handleLogActivity(payload: any, userId: string) {
     if (session.isComplete) {
        await computeDayInsights({ userId, date: finalDate, session });
     }
+
+    // Recalculate goal stats and scores instantly to reflect the new logs in the UI
+    await updateGoalStats(userId);
 
     return { type: "log_activity", success: true, data: { logUpdates: payload, ai_instruction: log.meta?.ai_instruction } };
 }

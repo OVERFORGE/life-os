@@ -2,6 +2,7 @@ import { DailyLog } from "@/server/db/models/DailyLog";
 import { WorkoutSession } from "@/server/db/models/WorkoutSession";
 import { NutritionLog } from "@/server/db/models/NutritionLog";
 import { computeSleepDelta } from "./timeUtils";
+import { updateGoalStats } from "@/features/goals/engine/updateGoalStats";
 
 /**
  * syncEngine.ts
@@ -114,6 +115,9 @@ export async function syncEngine(userId: string, activeDateStr: string) {
     if (actionsTaken.length > 0) {
         todayLog.markModified('signals');
         await todayLog.save();
+        
+        // Recalculate all goal stats based on the freshly synced signals
+        await updateGoalStats(userId);
     }
 
     return actionsTaken;
