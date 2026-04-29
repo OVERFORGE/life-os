@@ -6,6 +6,13 @@
 export function detectIntent(input: string, _history: string = "", _model?: string, hasPendingProposal: boolean = false): { intent: string, confidence: number } {
     const msg = input.toLowerCase();
 
+    // ── DELETE TASK ────────────────────────────────────────── (before delete_goal)
+    if (
+        (msg.includes("delete task") || msg.includes("remove task") || msg.includes("cancel task") || msg.includes("drop task"))
+    ) {
+        return { intent: "delete_task", confidence: 1.0 };
+    }
+
     // ── DELETE GOAL ──────────────────────────────────────────
     // Must check before create_goal since "delete" is unambiguous
     if (
@@ -97,6 +104,39 @@ export function detectIntent(input: string, _history: string = "", _model?: stri
     }
 
     // ── ASK ADVICE / HEALTH QUERY (duplicate block removed — moved above) ──
+
+    // ── TASK MANAGEMENT ──────────────────────────────────────
+    const taskCreateKeywords = [
+        "remind me", "create a task", "add task", "add a task", "schedule a task",
+        "i need to remember", "don't let me forget", "put on my list", "new task",
+        "set a reminder", "create task",
+    ];
+    if (taskCreateKeywords.some(kw => msg.includes(kw))) {
+        return { intent: "create_task", confidence: 1.0 };
+    }
+
+    const taskCompleteKeywords = [
+        "i finished", "i completed", "i did", "mark as done", "mark done",
+        "check off", "tick off", "i got it done", "skip all tasks",
+        "i was too tired", "skip my tasks", "reschedule my missed",
+        "reschedule overdue", "couldn't do it",
+    ];
+    if (taskCompleteKeywords.some(kw => msg.includes(kw))) {
+        return { intent: "complete_task", confidence: 1.0 };
+    }
+
+    const taskUpdateKeywords = [
+        "reschedule task", "move task", "change task", "update task",
+        "push task", "push it to", "move it to",
+    ];
+    if (taskUpdateKeywords.some(kw => msg.includes(kw))) {
+        return { intent: "update_task", confidence: 0.95 };
+    }
+
+    // ── PLAN MY DAY ──────────────────────────────────────────
+    if (msg.includes("plan my day") || msg.includes("what should i do today") || msg.includes("my daily plan") || msg.includes("plan for today")) {
+        return { intent: "ask_advice", confidence: 1.0 };
+    }
 
     // Physical actions, mental overrides, sleep/wake, numeric habits
     const activityKeywords = [

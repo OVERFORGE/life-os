@@ -2,7 +2,11 @@ import { groqChat, cleanLLMResponse } from "./groq";
 import { getActiveDate } from "@/server/automation/timeUtils";
 
 export type ExtractedAction = {
-  type: "log_activity" | "propose_goal" | "confirm_goal" | "delete_goal" | "update_weight" | "log_meal" | "log_workout" | "propose_diet_mode" | "confirm_diet_mode";
+  type:
+    | "log_activity" | "propose_goal" | "confirm_goal" | "delete_goal"
+    | "update_weight" | "log_meal" | "log_workout"
+    | "propose_diet_mode" | "confirm_diet_mode"
+    | "create_task" | "update_task" | "complete_task" | "delete_task";
   payload: any;
 };
 
@@ -116,6 +120,54 @@ Match their description semantically against the Active Goals list.
 Payload:
 {
   "title": "The exact title copied verbatim from the 'User's Active Goals' list. Do not alter case or add words."
+}
+
+#### 7. create_task
+Use when user wants to create, add, remind, or schedule a task.
+Trigger words: "remind me", "create a task", "add task", "schedule", "I need to", "don't let me forget", "put on my list".
+Resolve date references: "today"→today, "tomorrow"→tomorrow, "next Monday"→calculate.
+Payload:
+{
+  "title": "Short task title",
+  "description": "Optional detail",
+  "dueDate": "YYYY-MM-DD or relative: today/tomorrow",
+  "dueTime": "HH:MM (24h, only if explicitly mentioned)",
+  "priority": "low" | "medium" | "high",
+  "recurring": { "type": "daily" | "weekly" | "custom", "interval": 1 } // ONLY if user says daily/every day/weekly/every week
+  "goalTitle": "Matching goal title if user links to a goal",
+  "estimatedDuration": 30 // minutes, only if stated
+}
+
+#### 8. complete_task
+Use when user says they finished, completed, or did a task.
+Also use for skip: "skip", "mark as skipped", "couldn't do it", "I was too tired".
+Also use for "skip all tasks today", "reschedule my missed tasks".
+Payload:
+{
+  "title": "Natural language title of the task they completed/skipped",
+  "action": "complete" | "skip",  // default: complete
+  "skipAll": true,                 // ONLY for "skip all tasks today"
+  "rescheduleOverdue": true        // ONLY for "reschedule missed/overdue tasks"
+}
+
+#### 9. delete_task
+Use when user wants to delete or remove a task (NOT a goal).
+Trigger: "delete task", "remove task", "cancel task", "drop task".
+Payload:
+{
+  "title": "Natural language title of the task to delete"
+}
+
+#### 10. update_task
+Use when user wants to change or reschedule a specific task.
+Trigger: "change task", "move task", "reschedule task", "update task", "push X to tomorrow".
+Payload:
+{
+  "title": "Current task title hint",
+  "dueDate": "new date if changed",
+  "dueTime": "new time if changed",
+  "priority": "new priority if changed",
+  "description": "new description if changed"
 }
 `;
 

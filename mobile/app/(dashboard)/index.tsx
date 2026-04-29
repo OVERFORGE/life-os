@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { Bell } from 'lucide-react-native';
+import { Bell, CheckSquare } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../utils/api';
 import { TrajectoryCard, CurrentEraCard, GoalLoadCard } from '../../components/dashboard/Cards';
@@ -70,6 +70,23 @@ export default function DashboardFeed() {
         </View>
 
         <GoalLoadCard goalLoad={goalLoad} />
+
+        {/* Task Manager Quick Link */}
+        <TouchableOpacity 
+          onPress={() => router.push('/(dashboard)/tools/tasks')}
+          className="bg-[#161922] p-4 rounded-xl border border-[#232632] mb-4 flex-row items-center justify-between"
+        >
+          <View className="flex-row items-center">
+            <View className="w-10 h-10 bg-[#1e2330] rounded-full items-center justify-center mr-3">
+              <CheckSquare color="#3b82f6" size={20} />
+            </View>
+            <View>
+              <Text className="text-gray-100 font-bold text-lg">Task Manager</Text>
+              <Text className="text-gray-400 text-sm">View and manage today's plan</Text>
+            </View>
+          </View>
+        </TouchableOpacity>
+
         <SystemInsightCard />
         
         {/* Data Visualization */}

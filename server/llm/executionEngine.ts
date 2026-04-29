@@ -8,6 +8,10 @@ import { handleUpdateWeight } from "./executionHandlers/handleUpdateWeight";
 import { handleLogMeal } from "./executionHandlers/handleLogMeal";
 import { handleLogWorkout } from "./executionHandlers/handleLogWorkout";
 import { handleSetDietMode } from "./executionHandlers/handleSetDietMode";
+import { handleCreateTask } from "./executionHandlers/handleCreateTask";
+import { handleCompleteTask } from "./executionHandlers/handleCompleteTask";
+import { handleDeleteTask } from "./executionHandlers/handleDeleteTask";
+import { handleUpdateTask } from "./executionHandlers/handleUpdateTask";
 
 /* ===================================================== */
 /* 🚀 SYSTEM KERNEL (DETERMINISTIC ROUTING)              */
@@ -59,6 +63,21 @@ export async function executeActions(actions: ExtractedAction[], userId: string,
                     const dietConfirm = await handleSetDietMode({ ...payload, confirmed: true }, userId);
                     results.push(dietConfirm);
                     break;
+
+                // ── TASK ACTIONS ────────────────────────────────────────────
+                case "create_task":
+                    results.push(await handleCreateTask(payload, userId));
+                    break;
+                case "complete_task":
+                    results.push(await handleCompleteTask(payload, userId));
+                    break;
+                case "delete_task":
+                    results.push(await handleDeleteTask(payload, userId));
+                    break;
+                case "update_task":
+                    results.push(await handleUpdateTask(payload, userId));
+                    break;
+
                 default:
                     console.warn("Unknown action type extracted:", type);
             }

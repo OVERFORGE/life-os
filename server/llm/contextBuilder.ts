@@ -2,7 +2,9 @@ import { DailyLog } from "../db/models/DailyLog";
 import { NutritionLog } from "../db/models/NutritionLog";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 import { Goal } from "@/features/goals/models/Goal";
+import { Task } from "@/server/db/models/Task";
 import { buildHealthContext } from "@/server/health/healthContextBuilder";
+import { getActiveDate } from "@/server/automation/timeUtils";
 
 export async function buildContext({
   intents,
@@ -29,8 +31,24 @@ export async function buildContext({
     // 1. Last 7 days logs
     const sevenDaysAgo = new Date();
     sevenDaysAgo.setDate(todayDate.getDate() - 7);
-    const todayStr = todayDate.toISOString().split("T")[0];
-    
+    const today = todayDate.toISOString().split("T")[0];
+    const todayStr = today;
+
+    // Fetch today's tasks, overdue, and upcoming for AI context
+    const yesterday = new Date(todayDate);
+    yesterday.setDate(yesterday.getDate() - 1);
+    const sevenDaysForward = new Date(todayDate);
+    sevenDaysForward.setDate(sevenDaysForward.getDate() + 7);
+
+    const [todayTasks, overdueTasks, upcomingTasks] = await Promise.all([
+      Task.find({ userId, dueDate: todayStr, status: "pending" }).lean(),
+      Task.find({ userId, dueDate: { $lt: todayStr }, status: "pending" }).lean(),
+      Task.find({ userId, dueDate: { $gt: todayStr, $lte: sevenDaysForward.toISOString().slice(0, 10) }, status: "pending" }).lean(),
+    ]);
+
+    const formatTasks = (tasks: any[]) =>
+      tasks.map((t) => `${t.title} [${t.priority}] ${t.dueTime ? `at ${t.dueTime}` : ""}`.trim());
+
     const logs = await DailyLog.find({
       userId,
       date: { $gte: sevenDaysAgo.toISOString().split("T")[0] },
@@ -60,6 +78,11 @@ export async function buildContext({
         fats: todayNutrition.dailyTotals?.fats || 0,
         mealCount: todayNutrition.meals?.length || 0,
       } : { calories: 0, protein: 0, carbs: 0, fats: 0, mealCount: 0, note: "No meals logged today" },
+      tasks: {
+        today: formatTasks(todayTasks),
+        overdue: formatTasks(overdueTasks),
+        upcoming: formatTasks(upcomingTasks),
+      },
     };
   }
 

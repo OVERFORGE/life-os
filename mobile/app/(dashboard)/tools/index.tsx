@@ -2,7 +2,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
-import { Heart, FileText, Target, Clock, ChevronRight } from 'lucide-react-native';
+import { Heart, FileText, Target, Clock, ChevronRight, CheckSquare } from 'lucide-react-native';
 
 export default function ToolsHubScreen() {
   const router = useRouter();
@@ -19,6 +19,22 @@ export default function ToolsHubScreen() {
 
       <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 120 }}>
         <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4">Available Modules</Text>
+
+        {/* ─── Task Manager Card ─── */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => router.push('/(dashboard)/tools/tasks')}
+          className="bg-[#161922] border border-[#232632] rounded-2xl p-5 mb-4 flex-row items-center"
+        >
+          <View className="w-12 h-12 rounded-xl bg-blue-500/10 items-center justify-center mr-4">
+            <CheckSquare size={24} color="#3b82f6" />
+          </View>
+          <View className="flex-1">
+            <Text className="text-white font-semibold text-base">Task Manager</Text>
+            <Text className="text-gray-500 text-sm mt-0.5">Manage daily schedule and to-dos</Text>
+          </View>
+          <ChevronRight size={20} color="#4b5563" />
+        </TouchableOpacity>
 
         {/* ─── Health Hub Card ─── */}
         <TouchableOpacity

@@ -1,11 +1,38 @@
-import { Schema, model, models } from "mongoose";
+import mongoose from "mongoose";
 
-const TaskSchema = new Schema(
+const RecurringSchema = new mongoose.Schema(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true },
+    type: {
+      type: String,
+      enum: ["daily", "weekly", "custom"],
+      required: true,
+    },
+    interval: { type: Number, default: 1 }, // every N days (for "custom")
+    daysOfWeek: [Number],                   // 0=Sun … 6=Sat (for "weekly")
+  },
+  { _id: false }
+);
+
+const TaskSchema = new mongoose.Schema(
+  {
+    userId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "User",
+      required: true,
+      index: true,
+    },
 
     title: { type: String, required: true },
-    description: String,
+    description: { type: String, default: "" },
+
+    dueDate: { type: String, required: true }, // "YYYY-MM-DD"
+    dueTime: { type: String, default: null },  // "HH:MM" 24-h, optional
+
+    priority: {
+      type: String,
+      enum: ["low", "medium", "high"],
+      default: "medium",
+    },
 
     status: {
       type: String,
@@ -13,10 +40,46 @@ const TaskSchema = new Schema(
       default: "pending",
     },
 
-    dueDate: Date,
-    completedAt: Date,
+    completedAt: { type: Date, default: null },
+
+    // Recurring rule — null means one-off task
+    recurring: { type: RecurringSchema, default: null },
+
+    // Optional: link to a Goal for signal contribution on completion
+    goalId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Goal",
+      default: null,
+    },
+
+    // Subtask support — references parent Task
+    parentTaskId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Task",
+      default: null,
+    },
+
+    // For recurring instances: points back to the "template" task
+    recurringParentId: {
+      type: mongoose.Schema.Types.ObjectId,
+      ref: "Task",
+      default: null,
+    },
+
+    // ISO Date strings for when to fire push reminders
+    reminders: [{ type: Date }],
+
+    metadata: {
+      energyCost: { type: Number, default: null },        // 1-10: how draining
+      estimatedDuration: { type: Number, default: null }, // minutes
+    },
   },
   { timestamps: true }
 );
 
-export const Task = models.Task || model("Task", TaskSchema);
+// Fast date-range queries
+TaskSchema.index({ userId: 1, dueDate: 1 });
+TaskSchema.index({ userId: 1, status: 1, dueDate: 1 });
+
+export const Task =
+  mongoose.models.Task || mongoose.model("Task", TaskSchema);
