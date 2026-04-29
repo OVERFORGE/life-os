@@ -56,7 +56,7 @@ export async function updatePhaseHistory({
     Math.ceil((now.getTime() - since.getTime()) / (1000 * 60 * 60 * 24))
   );
 
-  const required = REQUIRED_DAYS[newPhase] || 3;
+  const required = REQUIRED_DAYS[last.phase] || 3;
 
   // ❌ Not persistent enough → do nothing
   if (daysInCurrent < required) {
