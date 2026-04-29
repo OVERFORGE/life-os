@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth";
 import { connectDB } from "@/server/db/connect";
-import { completeTask, skipTask, skipAllForToday } from "@/features/tasks/engine/taskEngine";
+import { completeTask, skipTask, skipAllForToday, uncompleteTask } from "@/features/tasks/engine/taskEngine";
 import { updateGoalStats } from "@/features/goals/engine/updateGoalStats";
 import { User } from "@/server/db/models/User";
 
@@ -27,6 +27,11 @@ export async function POST(req: Request) {
   let result;
   if (action === "skip") {
     result = await skipTask(userId, taskId);
+  } else if (action === "uncomplete") {
+    result = await uncompleteTask(userId, taskId, timezone);
+    if (result.success && (result.task as any)?.goalId) {
+      await updateGoalStats(userId).catch(() => {});
+    }
   } else {
     result = await completeTask(userId, taskId, timezone);
     // Refresh goal scores if task was linked to a goal

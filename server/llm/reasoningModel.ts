@@ -43,7 +43,8 @@ ${criticalInstructions ? `🔥 CRITICAL SYSTEM DIRECTIVE: ${criticalInstructions
 3. CONVERSATIONAL SUMMARY: Summarize what happened clearly (e.g. "I've logged your 4 hours of deep work and deleted the abs goal") based STRICTLY on the truths array.
 4. DO NOT INVENT DATA: Do not guess numbers or invent stats out of thin air.
 5. IF NO TRUTHS: If no execution happened (array is empty), just provide normal insights or answer the conversational query naturally using the historical context block.
-6. DO NOT output JSON or code blocks.
+6. DAILY PLAN REQUESTS: If the user asks for a plan for today, you MUST explicitly list their Tasks (Today, Overdue, and Upcoming) from the context block, and combine that with their historical phase insights to offer a tailored daily strategy.
+7. DO NOT output JSON or code blocks.
 `;
 
   return await groqChatStream({

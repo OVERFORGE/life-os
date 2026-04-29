@@ -213,6 +213,47 @@ export async function completeTask(userId: string, taskId: string, timezone?: st
 }
 
 /* ─────────────────────────────────────────────────────────── */
+/* uncompleteTask                                              */
+/* ─────────────────────────────────────────────────────────── */
+
+export async function uncompleteTask(userId: string, taskId: string, timezone?: string) {
+  const task = await Task.findOne({ _id: taskId, userId });
+  if (!task) return { success: false, error: "Task not found" };
+
+  if (task.status !== "completed") return { success: true, task };
+
+  task.status = "pending";
+  task.completedAt = null;
+  await task.save();
+
+  // ── Revert Goal Signal Contribution ─────────────────────────────────────────
+  if (task.goalId) {
+    try {
+      const goal = await Goal.findById(task.goalId).lean();
+      if (goal && goal.signals?.length > 0) {
+        const signalKey = goal.signals[0].key;
+        const today = getActiveDate(timezone);
+
+        const log = await DailyLog.findOne({ userId, date: today });
+        if (log && log.signals && log.signals.has(signalKey)) {
+          const existing = log.signals.get(signalKey) || 0;
+          if (existing > 0) {
+            log.signals.set(signalKey, existing - 1);
+            log.markModified("signals");
+            await log.save();
+          }
+        }
+      }
+    } catch (e) {
+      console.warn("[taskEngine] Goal signal revert failed:", e);
+    }
+  }
+
+  // We do not delete the auto-spawned recurring instance as it could have been modified by the user.
+  return { success: true, task };
+}
+
+/* ─────────────────────────────────────────────────────────── */
 /* skipTask                                                    */
 /* ─────────────────────────────────────────────────────────── */
 
@@ -306,7 +347,32 @@ export async function findTaskByTitle(userId: string, titleHint: string) {
   let match = all.find((t) => t.title.toLowerCase() === lower);
   if (match) return match;
 
-  // 2. Partial match
+  // 2. Substring match
   match = all.find((t) => t.title.toLowerCase().includes(lower) || lower.includes(t.title.toLowerCase()));
-  return match || null;
+  if (match) return match;
+
+  // 3. Token overlap match (best effort)
+  const hintWords = lower.split(/\s+/).filter(w => w.length > 2);
+  if (hintWords.length === 0) return null;
+
+  let bestMatch = null;
+  let maxOverlap = 0;
+
+  for (const t of all) {
+    const titleWords = t.title.toLowerCase().split(/\s+/);
+    let overlap = 0;
+    for (const hw of hintWords) {
+      if (titleWords.some((tw: string) => tw.includes(hw) || hw.includes(tw))) {
+        overlap++;
+      }
+    }
+    if (overlap > maxOverlap) {
+      maxOverlap = overlap;
+      bestMatch = t;
+    }
+  }
+
+  // If at least one meaningful word overlaps, consider it a match
+  if (maxOverlap > 0) return bestMatch;
+  return null;
 }
