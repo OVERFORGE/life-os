@@ -139,7 +139,7 @@ Payload:
 }
 
 #### 8. complete_task
-Use when user says they finished, completed, or did a task.
+Use when user explicitly completes, finishes, or skips a scheduled task, OR when they say they finished an activity that sounds like a specific to-do item (e.g. "I just finished my solana contract work", "done with my essay").
 Also use for skip: "skip", "mark as skipped", "couldn't do it", "I was too tired".
 Also use for "skip all tasks today", "reschedule my missed tasks".
 Payload:

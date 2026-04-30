@@ -29,20 +29,35 @@ export default function TasksScreen() {
   };
 
   const toggleComplete = async (task: any) => {
+    const action = task.status === 'completed' ? 'uncomplete' : 'complete';
+    const newStatus = action === 'complete' ? 'completed' : 'pending';
+
+    // Optimistic UI Update
+    if (tasksData) {
+      const updateList = (list: any[]) => list?.map(t => t._id === task._id ? { ...t, status: newStatus } : t);
+      setTasksData({
+        today: updateList(tasksData.today),
+        upcoming: updateList(tasksData.upcoming),
+        overdue: updateList(tasksData.overdue),
+      });
+    }
+    
+    if (selectedTask && selectedTask._id === task._id) {
+      setSelectedTask({...selectedTask, status: newStatus});
+    }
+
     try {
-      const action = task.status === 'completed' ? 'uncomplete' : 'complete';
       const res = await fetchWithAuth('/tasks/complete', {
         method: 'POST',
         body: JSON.stringify({ taskId: task._id, action })
       });
-      if (res.ok) {
-        if (selectedTask && selectedTask._id === task._id) {
-          setSelectedTask({...selectedTask, status: action === 'complete' ? 'completed' : 'pending'});
-        }
+      if (!res.ok) {
+        // Revert if failed
         loadTasks();
       }
     } catch (e) {
       console.error(e);
+      loadTasks(); // Revert if failed
     }
   };
 
@@ -213,9 +228,9 @@ export default function TasksScreen() {
             <View className="flex-row justify-between space-x-4 pt-4 border-t border-[#232632]">
               <TouchableOpacity 
                 onPress={() => {
+                  const id = selectedTask?._id;
                   setSelectedTask(null);
-                  router.push(`/tools/tasks/new`); // We'll handle edit routing if requested, but basic edit can use a similar form. For now, we skip deep edit view unless built.
-                  Alert.alert('Not Implemented', 'Edit screen coming soon!');
+                  router.push(`/tools/tasks/${id}`);
                 }}
                 className="flex-1 bg-blue-600/20 border border-blue-500 py-3 rounded-xl flex-row justify-center items-center"
               >

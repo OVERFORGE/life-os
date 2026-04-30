@@ -3,7 +3,7 @@ import { getAuthSession } from "@/lib/auth";
 import { connectDB } from "@/server/db/connect";
 import { deleteTask } from "@/features/tasks/engine/taskEngine";
 
-export async function DELETE(req: Request) {
+export async function POST(req: Request) {
   const session = await getAuthSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 

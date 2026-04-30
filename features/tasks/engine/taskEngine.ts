@@ -164,31 +164,7 @@ export async function completeTask(userId: string, taskId: string, timezone?: st
   task.completedAt = new Date();
   await task.save();
 
-  // ── Goal Signal Contribution ──────────────────────────────────────────────
-  // If the task is linked to a goal, find the first signal on that goal
-  // and add +1 to it in today's DailyLog.signals map.
-  if (task.goalId) {
-    try {
-      const goal = await Goal.findById(task.goalId).lean();
-      if (goal && goal.signals?.length > 0) {
-        const signalKey = goal.signals[0].key;
-        const today = getActiveDate(timezone);
-
-        let log = await DailyLog.findOne({ userId, date: today });
-        if (!log) {
-          log = new DailyLog({ userId, date: today, signals: new Map() });
-        }
-
-        const existing = log.signals?.get(signalKey) ?? 0;
-        if (!log.signals) log.signals = new Map();
-        log.signals.set(signalKey, existing + 1);
-        log.markModified("signals");
-        await log.save();
-      }
-    } catch (e) {
-      console.warn("[taskEngine] Goal signal update failed:", e);
-    }
-  }
+  // (REMOVED: The arbitrary signal +1 hack. Tasks are now natively calculated as a system.tasks_completed signal in the explainGoal engine.)
 
   // ── Auto-spawn next recurring instance ───────────────────────────────────
   if (task.recurring) {
@@ -226,28 +202,7 @@ export async function uncompleteTask(userId: string, taskId: string, timezone?: 
   task.completedAt = null;
   await task.save();
 
-  // ── Revert Goal Signal Contribution ─────────────────────────────────────────
-  if (task.goalId) {
-    try {
-      const goal = await Goal.findById(task.goalId).lean();
-      if (goal && goal.signals?.length > 0) {
-        const signalKey = goal.signals[0].key;
-        const today = getActiveDate(timezone);
-
-        const log = await DailyLog.findOne({ userId, date: today });
-        if (log && log.signals && log.signals.has(signalKey)) {
-          const existing = log.signals.get(signalKey) || 0;
-          if (existing > 0) {
-            log.signals.set(signalKey, existing - 1);
-            log.markModified("signals");
-            await log.save();
-          }
-        }
-      }
-    } catch (e) {
-      console.warn("[taskEngine] Goal signal revert failed:", e);
-    }
-  }
+  // (REMOVED: Signal revert hack)
 
   // We do not delete the auto-spawned recurring instance as it could have been modified by the user.
   return { success: true, task };

@@ -119,7 +119,8 @@ export function detectIntent(input: string, _history: string = "", _model?: stri
         "i finished", "i completed", "i did", "mark as done", "mark done",
         "check off", "tick off", "i got it done", "skip all tasks",
         "i was too tired", "skip my tasks", "reschedule my missed",
-        "reschedule overdue", "couldn't do it",
+        "reschedule overdue", "couldn't do it", "just finished", "am done with",
+        "done doing", "completed my", "finished my"
     ];
     if (taskCompleteKeywords.some(kw => msg.includes(kw))) {
         return { intent: "complete_task", confidence: 1.0 };
