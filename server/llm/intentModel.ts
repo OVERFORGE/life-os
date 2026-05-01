@@ -112,6 +112,8 @@ ${INTENT_DESCRIPTIONS}
 6. Questions about current status, today's plan, or near-future guidance = ask_advice.
    Questions about the past (last week, last month, trends) = get_insights.
 
+7. CONTEXTUAL DISAMBIGUATION: If the chat history shows the assistant JUST asked the user to clarify WHICH task they meant (e.g., "Which one of these you meant to mark as completed?"), and the user answers with a selection ("the morning one", "the first one", "the second"), you MUST classify it as the intent the assistant was trying to execute (e.g., complete_task). Do not classify as casual_chat.
+
 ## Output Format (strict JSON only):
 {"intent": "<intent_key>", "confidence": <0.0-1.0>}
 
