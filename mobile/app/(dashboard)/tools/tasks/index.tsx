@@ -26,12 +26,13 @@ export default function TasksScreen() {
   const [selectedTask, setSelectedTask] = useState<any>(null);
   const [rescheduleTask, setRescheduleTask] = useState<any>(null);
   const [rescheduleDays, setRescheduleDays] = useState('1');
+  const [rescheduleTime, setRescheduleTime] = useState('');
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
   useFocusEffect(useCallback(() => { loadTasks(); }, []));
 
-  const loadTasks = async () => {
-    setLoading(true);
+  const loadTasks = async (silent = false) => {
+    if (!silent && !tasksData) setLoading(true);
     try {
       const res = await fetchWithAuth('/tasks/list');
       if (res.ok) setTasksData(await res.json());
@@ -63,8 +64,8 @@ export default function TasksScreen() {
 
     try {
       const res = await fetchWithAuth('/tasks/complete', { method: 'POST', body: JSON.stringify({ taskId: task._id, action }) });
-      if (!res.ok) loadTasks();
-    } catch (e) { loadTasks(); }
+      loadTasks(true);
+    } catch (e) { loadTasks(true); }
   };
 
   const handleDelete = async (taskId: string) => {
@@ -72,11 +73,15 @@ export default function TasksScreen() {
       { text: 'Cancel', style: 'cancel' },
       {
         text: 'Delete', style: 'destructive', onPress: async () => {
+          if (tasksData) {
+            const upd = (list: any[]) => list?.filter(t => t._id !== taskId);
+            setTasksData({ today: upd(tasksData.today), upcoming: upd(tasksData.upcoming), overdue: upd(tasksData.overdue) });
+          }
           closeModal();
           try {
             await fetchWithAuth('/tasks/delete', { method: 'POST', body: JSON.stringify({ taskId }) });
-            loadTasks();
-          } catch (e) { console.error(e); }
+            loadTasks(true);
+          } catch (e) { console.error(e); loadTasks(true); }
         }
       },
     ]);
@@ -89,15 +94,22 @@ export default function TasksScreen() {
     newDate.setDate(newDate.getDate() + days);
     const dateStr = newDate.toISOString().split('T')[0];
 
+    if (tasksData) {
+      const upd = (list: any[]) => list?.filter(t => t._id !== rescheduleTask._id);
+      setTasksData({ today: upd(tasksData.today), upcoming: upd(tasksData.upcoming), overdue: upd(tasksData.overdue) });
+    }
+    
+    const targetTask = rescheduleTask;
+    setRescheduleTask(null);
+    closeModal();
+
     try {
       await fetchWithAuth('/tasks/update', {
         method: 'POST',
-        body: JSON.stringify({ taskId: rescheduleTask._id, dueDate: dateStr })
+        body: JSON.stringify({ taskId: targetTask._id, dueDate: dateStr, dueTime: rescheduleTime || null })
       });
-      setRescheduleTask(null);
-      closeModal();
-      loadTasks();
-    } catch (e) { console.error(e); }
+      loadTasks(true);
+    } catch (e) { console.error(e); loadTasks(true); }
   };
 
   if (loading) {
@@ -450,7 +462,10 @@ export default function TasksScreen() {
                         <Text style={{ color: '#d1d5db', fontWeight: '600', fontSize: 15 }}>Edit</Text>
                       </TouchableOpacity>
                       <TouchableOpacity
-                        onPress={() => setRescheduleTask(selectedTask)}
+                        onPress={() => {
+                          setRescheduleTask(selectedTask);
+                          setRescheduleTime(selectedTask.dueTime || '');
+                        }}
                         style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1c1a2e', paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: '#3b1d8a' }}
                       >
                         <AlarmClock size={16} color="#a78bfa" />
@@ -492,13 +507,24 @@ export default function TasksScreen() {
               ))}
             </View>
 
-            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e2029', borderRadius: 12, paddingHorizontal: 16, marginBottom: 20, borderWidth: 1, borderColor: '#2a2d3a' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e2029', borderRadius: 12, paddingHorizontal: 16, marginBottom: 12, borderWidth: 1, borderColor: '#2a2d3a' }}>
               <Text style={{ color: '#6b7280', flex: 1 }}>Custom days:</Text>
               <TextInput
                 style={{ color: '#f9fafb', fontWeight: '700', fontSize: 18, textAlign: 'right', paddingVertical: 12 }}
                 keyboardType="numeric"
                 value={rescheduleDays}
                 onChangeText={setRescheduleDays}
+              />
+            </View>
+
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e2029', borderRadius: 12, paddingHorizontal: 16, marginBottom: 20, borderWidth: 1, borderColor: '#2a2d3a' }}>
+              <Text style={{ color: '#6b7280', flex: 1 }}>Time (e.g. 14:30):</Text>
+              <TextInput
+                style={{ color: '#f9fafb', fontWeight: '700', fontSize: 18, textAlign: 'right', paddingVertical: 12 }}
+                placeholder="Optional"
+                placeholderTextColor="#4b5563"
+                value={rescheduleTime}
+                onChangeText={setRescheduleTime}
               />
             </View>
 

@@ -10,7 +10,7 @@ export type ExtractedAction = {
   payload: any;
 };
 
-export async function extractActions(input: string, intent: string, activeGoalsList: string = "", existingSignalsList: string = "", model?: string, mode: string = "general", timezone?: string): Promise<ExtractedAction[]> {
+export async function extractActions(input: string, intent: string, activeGoalsList: string = "", existingSignalsList: string = "", history: string = "", model?: string, mode: string = "general", timezone?: string): Promise<ExtractedAction[]> {
     // These intents specifically query logs or ask generic advice, skip extraction
     if (["get_insights", "ask_advice"].includes(intent)) {
         return [];
@@ -214,12 +214,18 @@ You are a deterministic action extraction engine for LifeOS.
 Extract ALL executable actions from the user's message and return them as a strict JSON array.
 DO NOT hallucinate. If a value is not explicitly mentioned, do not include it.
 
+Recent Conversation History:
+${history || "No history"}
+
 User Message: "${input}"
 Detected Intent: "${intent}"
 User's Active Goals (for delete matching): [${activeGoalsList}]
 Existing Tracked Signals (MUST USE FOR LOGGING/GOALS): [${existingSignalsList || "none"}]
 Operating Mode: "${mode}"
 Current Local Date Context: "${getActiveDate(timezone)}"
+
+### CRITICAL DISAMBIGUATION INSTRUCTION:
+If the user's message is a short choice (e.g. "the morning one", "the first one", "delete it"), look at the Recent Conversation History to see what specific items the system just presented. Extract the EXACT title of the intended task/goal from the history, rather than the user's vague phrase.
 
 ### ACTION SCHEMAS:
 ${schemas}

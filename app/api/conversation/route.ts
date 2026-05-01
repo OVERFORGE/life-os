@@ -57,7 +57,7 @@ export async function POST(req: Request) {
   const existingSignals = await LifeSignal.find({ userId, enabled: true }).select("key label inputType").lean();
   const existingSignalsList = existingSignals.map(s => `${s.key} (${s.label})`).join(", ");
 
-  const actions = await extractActions(message, intent, goalTitles, existingSignalsList, model, mode, timezone);
+  const actions = await extractActions(message, intent, goalTitles, existingSignalsList, historyText, model, mode, timezone);
   console.log(`⚡ [PIPELINE] Extracted Actions (${actions.length}):`, JSON.stringify(actions, null, 2));
 
   /* ===================================================== */
