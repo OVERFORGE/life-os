@@ -296,7 +296,7 @@ export async function rescheduleOverdue(userId: string, timezone?: string) {
 
 export async function findTaskByTitle(userId: string, titleHint: string) {
   const result = await findTaskByTitleSafe(userId, titleHint);
-  return result.match ?? null;
+  return result.status === "found" ? result.match : null;
 }
 
 /* ─────────────────────────────────────────────────────────── */

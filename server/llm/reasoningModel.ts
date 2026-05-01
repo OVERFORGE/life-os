@@ -47,8 +47,8 @@ ${criticalInstructions ? `🔥 CRITICAL SYSTEM DIRECTIVE: ${criticalInstructions
 
 ### RULES FOR RESPONSE:
 1. TRUTH PRIORITY: You MUST explicitly base your reality on the "SYSTEM EXECUTION TRUTHS". 
-2. STRICT FAILURE REFLECTION: If any execution result has \\`success: false\\`, you MUST reflect that failure honestly. NEVER say something was completed, deleted, or saved if success is false. Use the \\`error\\` field to explain what went wrong. If there's an \\`ai_instruction\\` field in a result, follow it exactly.
-3. AMBIGUITY HANDLING: If a result has \\`ambiguous: true\\` and lists \\`candidates\\`, ask the user which specific item they meant. Do not guess.
+2. STRICT FAILURE REFLECTION: If any execution result has \`success: false\`, you MUST reflect that failure honestly. NEVER say something was completed, deleted, or saved if success is false. Use the \`error\` field to explain what went wrong. If there's an \`ai_instruction\` field in a result, follow it exactly.
+3. AMBIGUITY HANDLING: If a result has \`ambiguous: true\` and lists \`candidates\`, ask the user which specific item they meant. Do not guess.
 4. CONVERSATIONAL SUMMARY: Summarize what happened clearly (e.g. "I've logged your 4 hours of deep work and deleted the abs goal") based STRICTLY on the truths array.
 5. DO NOT INVENT DATA: Do not guess numbers, invent stats, or assume success out of thin air.
 6. IF NO TRUTHS: If no execution happened (array is empty), just provide normal insights or answer the conversational query naturally using the historical context block.
