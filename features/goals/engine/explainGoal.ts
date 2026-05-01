@@ -15,8 +15,17 @@ export async function explainGoal(goal: any, userId: string) {
     const values: number[] = [];
 
     for (const log of logs) {
-      // First check dynamic signals map (which lean() converts to a standard object), then fallback to root path
-      const dynamicSignalValue = log.signals ? log.signals[s.key] : undefined;
+      const possibleBaseKey = s.key.split('.').slice(1).join('.') || s.key;
+      let dynamicSignalValue = undefined;
+      
+      if (log.signals) {
+        if (log.signals[s.key] !== undefined) {
+          dynamicSignalValue = log.signals[s.key];
+        } else if (possibleBaseKey && log.signals[possibleBaseKey] !== undefined) {
+          dynamicSignalValue = log.signals[possibleBaseKey];
+        }
+      }
+
       const v = dynamicSignalValue !== undefined ? dynamicSignalValue : getValueByPath(log, s.key);
 
       if (typeof v === "boolean") {

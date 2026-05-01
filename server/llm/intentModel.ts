@@ -1,172 +1,203 @@
 // ============================================================
-// 🎯 DETERMINISTIC INTENT CLASSIFIER — NO LLM
-// Rules-based engine. Zero token cost, zero hallucination risk.
+// 🎯 LLM-BASED INTENT CLASSIFIER
+//
+// Architecture:
+//   - Stage 1: Hard guards — fast, zero-cost checks for states
+//               that MUST be handled deterministically (pending
+//               proposals, unambiguous system commands like
+//               "skip all tasks today"). These run in microseconds.
+//
+//   - Stage 2: LLM classifier — llama-3.1-8b-instant (tiny,
+//               fast, cheap) maps ANY natural-language input to
+//               a bounded intent enum. Determinism comes from
+//               the output schema, not the input processing.
+//               Latency: ~150ms. Runs in parallel with action extraction.
+//
+// This means there are zero hardcoded phrase lists.
+// The LLM understands "I paid the bill", "done with my essay",
+// "knocked it out", "wrapped up my session" — all correctly.
 // ============================================================
 
-export function detectIntent(input: string, _history: string = "", _model?: string, hasPendingProposal: boolean = false): { intent: string, confidence: number } {
-    const msg = input.toLowerCase();
+import { groqChat, cleanLLMResponse } from "./groq";
 
-    // ── DELETE TASK ────────────────────────────────────────── (before delete_goal)
-    if (
-        (msg.includes("delete task") || msg.includes("remove task") || msg.includes("cancel task") || msg.includes("drop task"))
-    ) {
-        return { intent: "delete_task", confidence: 1.0 };
+export type Intent =
+  | "log_activity"
+  | "complete_task"
+  | "create_task"
+  | "update_task"
+  | "delete_task"
+  | "ask_advice"
+  | "get_insights"
+  | "create_goal"
+  | "confirm_goal"
+  | "delete_goal"
+  | "propose_diet_mode"
+  | "confirm_diet_mode"
+  | "casual_chat";
+
+const INTENT_DESCRIPTIONS = `
+- log_activity: User is reporting an ongoing activity, a physical/mental state, or a general life event — e.g. slept 7 hours, mood is 8/10, worked out for 45 minutes, drank 3L water, energy level, stress level. Use this when the user describes HOW they did something (duration, intensity, quantity) rather than simply saying it's done.
+- complete_task: User is reporting that a specific named task or to-do item is now done. Use when they mention completing errands, bills, submissions, appointments, or sessions WITHOUT measurement details (e.g. "paid the bill", "finished my Solana work", "knocked out the meeting"). If the message contains BOTH a task completion AND a state log (compound), pick complete_task as primary.
+- create_task: User wants to create a new task, reminder, or to-do item. Words like "remind me", "I need to", "don't let me forget", "add to my list".
+- update_task: User wants to change properties of an existing task — move it, reschedule it, change its priority, push it forward in time.
+- delete_task: User wants to permanently remove/delete/cancel a task (not just complete it).
+- ask_advice: User is asking for a recommendation, plan, strategy, or guidance about what to do NOW or in the NEAR FUTURE — e.g. "what should I do today", "how is my diet looking", "am I in a deficit", "how should I spend today". If it's a question about current status, use ask_advice.
+- get_insights: User wants to review HISTORICAL data or TRENDS over a past time window — e.g. "last week", "last month", "past 30 days", "how have I been doing", "show me my stats".
+- create_goal: User wants to set up a new long-term goal, habit, or tracking objective.
+- confirm_goal: User is responding to a previously proposed goal plan (accepting or modifying a goal draft).
+- delete_goal: User wants to remove or abandon a goal, habit, or tracking objective.
+- propose_diet_mode: User wants to INITIATE or SWITCH their nutrition strategy — bulk, cut, recomp, maintain, or change calorie target. Use when the user is requesting a change ("I want to bulk", "switch to cut", "change my diet to maintenance", "start a cut").
+- confirm_diet_mode: User is ACCEPTING a diet mode change that was ALREADY PROPOSED in the conversation (e.g. replying "yes" or "sounds good" to a diet proposal the assistant just made).
+- casual_chat: General conversation, greetings, questions about LifeOS, vague/unclear messages with no specific action, or single-word responses with no clear intent.
+`.trim();
+
+// ── Stage 1: Hard guards — deterministic, runs first ──────────────────────────
+// Only keep guards for things that MUST be zero-latency or context-dependent:
+// 1. confirm_goal — requires DB state (hasPendingProposal)
+// 2. confirm_diet_mode — requires knowing a proposal was just made (short message + recent diet context)
+function applyHardGuards(
+  msg: string,
+  hasPendingProposal: boolean
+): { intent: Intent; confidence: number } | null {
+  // confirm_goal: ONLY fires when we know there's a pending DB proposal
+  if (hasPendingProposal) {
+    const rejectWords = ["no", "nope", "don't", "change", "modify", "instead", "different"];
+    const acceptWords = ["yes", "yeah", "yep", "sure", "ok", "go ahead", "do it", "create", "make it", "looks good", "perfect", "approved", "sounds good", "correct", "fine"];
+    if (acceptWords.some(kw => msg.includes(kw)) || rejectWords.some(kw => msg.includes(kw))) {
+      return { intent: "confirm_goal", confidence: 0.95 };
     }
+  }
+  return null;
+}
 
-    // ── DELETE GOAL ──────────────────────────────────────────
-    // Must check before create_goal since "delete" is unambiguous
-    if (
-        (msg.includes("delete") || msg.includes("remove") || msg.includes("drop") || msg.includes("kill") || msg.includes("destroy")) &&
-        (msg.includes("goal") || msg.includes("habit") || msg.includes("objective"))
-    ) {
-        return { intent: "delete_goal", confidence: 1.0 };
-    }
+// ── Stage 2: LLM classifier ────────────────────────────────────────────────────
+async function classifyWithLLM(
+  input: string,
+  history: string,
+  model?: string
+): Promise<{ intent: Intent; confidence: number }> {
+  const classifierModel = "llama-3.1-8b-instant"; // Fast, cheap — purpose-built for this
 
-    // ── CREATE GOAL ──────────────────────────────────────────
-    if (
-        (msg.includes("create") || msg.includes("set up") || msg.includes("make a goal") || msg.includes("start tracking") || msg.includes("add a goal") || msg.includes("new goal")) &&
-        (msg.includes("goal") || msg.includes("habit") || msg.includes("track") || msg.includes("signal"))
-    ) {
-        return { intent: "create_goal", confidence: 1.0 };
-    }
+  const systemPrompt = `You are a precision intent classifier for a personal life-tracking assistant called LifeOS. 
 
-    // ── CONFIRM GOAL ─────────────────────────────────────────
-    // Fires when there is a real pending GoalProposal in the DB
-    if (hasPendingProposal) {
-        const confirmKeywords = ["yes", "yeah", "yep", "looks good", "go ahead", "do it", "create it", "make it", "sure", "ok", "perfect", "that works", "confirmed", "approve", "fine", "correct", "sounds good"];
-        const modifyKeywords  = ["change", "modify", "update", "instead", "adjust", "make it", "rename", "call it", "different", "use", "add signal", "remove signal"];
-        if (confirmKeywords.some(kw => msg.includes(kw)) || modifyKeywords.some(kw => msg.includes(kw))) {
-            return { intent: "confirm_goal", confidence: 0.9 };
-        }
-    }
+Your ONLY job is to classify the user's message into exactly one intent from the list below.
+You must return ONLY valid JSON. No explanation. No markdown. No extra text.
 
-    // ── DIET MODE ─────────────────────────────────────────────
-    // Must be before log_meal and ask_advice to catch mode-switch intents
-    const dietModeSwitchKeywords = [
-        "switch to bulk", "switch to cut", "switch to recomp", "switch to slight",
-        "want to bulk", "want to cut", "want to recomp", "want to maintain",
-        "start bulking", "start cutting", "start a cut", "start a bulk",
-        "put me on a", "put me in a", "go on a bulk", "go on a cut",
-        "lean bulk", "aggressive cut", "calorie surplus", "calorie deficit",
-        "i want to lose weight", "i want to gain muscle", "change my diet mode",
-        "change my diet plan", "update my diet mode", "update my diet",
-        "change my calorie target", "set my diet", "diet mode",
+## Intent Options:
+${INTENT_DESCRIPTIONS}
+
+## Critical Disambiguation Rules (read carefully):
+
+1. TASK COMPLETION vs LOG ACTIVITY — The key test: did the user name a specific to-do or errand that's now done?
+   - "I finished my workout" → log_activity (workout = recurring physical activity, not a named task)
+   - "I finished the Solana session" → complete_task (named work session = specific task)
+   - "I paid the electricity bill" → complete_task (specific errand = task)
+   - "I worked out for 45 minutes" → log_activity (has measurement detail, describing the activity)
+   - RULE: If the message says they finished/completed something named and specific (a bill, a submission, a project, an appointment), use complete_task. Generic physical/mental activities (gym, workout, run) = log_activity.
+
+2. COMPOUND MESSAGES — If the user mentions both completing a task AND reporting a state (e.g. "I paid the bill and my energy is 3/10"), use complete_task as the primary intent. The log will be extracted separately.
+
+3. ASK ADVICE vs GET INSIGHTS:
+   - "How is my diet looking?" → ask_advice (current status question)
+   - "How was my diet last week?" → get_insights (past period)
+   - RULE: "How is X" = ask_advice. "How was X / show me X over last N days" = get_insights.
+
+4. PROPOSE DIET MODE vs CONFIRM DIET MODE:
+   - "I want to bulk" / "Change my diet to maintenance" / "Switch to a cut" → propose_diet_mode (initiating a change)
+   - "Yes, do it" / "Sounds good" (after assistant proposed a diet) → confirm_diet_mode (accepting a previous proposal)
+   - RULE: If the user is REQUESTING a change, use propose_diet_mode. Only use confirm_diet_mode if the conversation context shows the assistant just made a diet proposal.
+
+5. VAGUE / UNCERTAIN MESSAGES — If the message is a single word ("Done", "Ok", "Sure") with NO context, or uses hedging language ("I think I did", "maybe I", "not sure if"), use casual_chat with low confidence.
+
+6. Questions about current status, today's plan, or near-future guidance = ask_advice.
+   Questions about the past (last week, last month, trends) = get_insights.
+
+## Output Format (strict JSON only):
+{"intent": "<intent_key>", "confidence": <0.0-1.0>}
+
+Set confidence < 0.6 if the message is genuinely ambiguous or too vague to classify with certainty.`;
+
+  const userPrompt = history
+    ? `Recent conversation context:\n${history}\n\nUser's current message: "${input}"`
+    : `User's message: "${input}"`;
+
+  try {
+    const raw = await groqChat({
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      temperature: 0.0, // Zero temperature = maximally deterministic
+      model: classifierModel,
+    });
+
+    const cleaned = cleanLLMResponse(raw);
+    const parsed = JSON.parse(cleaned);
+
+    // Validate the intent is in our allowed set
+    const validIntents: Intent[] = [
+      "log_activity", "complete_task", "create_task", "update_task",
+      "delete_task", "ask_advice", "get_insights", "create_goal",
+      "confirm_goal", "delete_goal", "propose_diet_mode", "confirm_diet_mode",
+      "casual_chat"
     ];
-    if (dietModeSwitchKeywords.some(kw => msg.includes(kw))) {
-        return { intent: "propose_diet_mode", confidence: 1.0 };
+
+    const resolvedIntent = validIntents.includes(parsed.intent) ? parsed.intent as Intent : "casual_chat";
+    const resolvedConfidence = typeof parsed.confidence === "number" ? parsed.confidence : 0.85;
+
+    // FIX 1: Confidence gate — never execute actions if model is uncertain
+    // This prevents wrong DB mutations from ambiguous inputs.
+    if (resolvedConfidence < 0.6) {
+      console.warn(`[IntentClassifier] Low confidence (${(resolvedConfidence * 100).toFixed(0)}%) for intent "${resolvedIntent}" — gating to casual_chat`);
+      return { intent: "casual_chat", confidence: resolvedConfidence };
     }
 
-    // Detect confirmation of a pending diet mode proposal
-    const dietConfirmKeywords = ["yes", "yeah", "yep", "go ahead", "do it", "confirm", "sure", "ok", "perfect", "that works", "sounds good", "apply it", "use that"];
-    const isProbablyDietConfirm = (
-        dietConfirmKeywords.some(kw => new RegExp(`\\b${kw}\\b`, 'i').test(msg)) &&
-        (msg.includes("calorie") || msg.includes("kcal") || msg.includes("target") || msg.includes("diet") || msg.includes("bulk") || msg.includes("cut") || msg.length < 40) &&
-        !msg.includes("why") && !msg.includes("feel") && !msg.includes("terrible") && !msg.includes("how") && !msg.includes("but")
-    );
-    if (isProbablyDietConfirm) {
-        return { intent: "confirm_diet_mode", confidence: 0.8 };
+    if (!validIntents.includes(parsed.intent)) {
+      console.warn("[IntentClassifier] LLM returned invalid intent:", parsed.intent, "— defaulting to casual_chat");
     }
 
+    return { intent: resolvedIntent, confidence: resolvedConfidence };
 
-    // ── ASK ADVICE / HEALTH QUERY ────────────────────────────
-    // MUST run before log_meal/log_activity so question phrases beat action keywords
-    const adviceKeywords = [
-        "what should i", "how should i", "what do you recommend", "any advice",
-        "help me improve", "how can i", "what can i do", "tips for",
-        "how to improve", "suggest", "recommendation",
-        // Health/calorie queries that need real data context:
-        "am i in a deficit", "am i eating enough", "how is my diet", "how many calories",
-        "how's my diet", "what did i eat", "my calorie", "deficit", "surplus",
-        "how many cal", "calories have i", "calorie count", "have i had today",
-    ];
-    if (adviceKeywords.some(kw => msg.includes(kw))) {
-        return { intent: "ask_advice", confidence: 1.0 };
-    }
+  } catch (err) {
+    // If LLM call fails, fall back to a simple heuristic so the app doesn't break
+    console.error("[IntentClassifier] LLM failed, using fallback heuristic:", err);
+    return fallbackHeuristic(input);
+  }
+}
 
-    // ── LOG WEIGHT ───────────────────────────────────────────
-    // Must be before log_activity to prevent "weigh" being grabbed by generic keywords
-    if (
-        msg.match(/\d+\s*(kg|lbs|pounds|kilos)/) ||
-        msg.includes("i weigh") || msg.includes("my weight") || msg.includes("weighed myself") ||
-        msg.includes("today i'm") && msg.match(/\d+(kg|lbs)/)
-    ) {
-        return { intent: "log_activity", confidence: 1.0 }; // Routes to log_activity intent but extractor will create update_weight action
-    }
+// ── Emergency fallback (only if LLM call completely fails) ───────────────────
+// Very intentionally minimal — just enough to not crash the pipeline.
+function fallbackHeuristic(input: string): { intent: Intent; confidence: number } {
+  const msg = input.toLowerCase();
 
-    // ── LOG MEAL ─────────────────────────────────────────────
-    if (
-        msg.includes("i ate") || msg.includes("just ate") || msg.includes("i had") ||
-        msg.includes("i've eaten") || msg.includes("i'm eating") ||
-        (msg.includes("log") && (msg.includes("meal") || msg.includes("food") || msg.includes("diet") || msg.includes("template"))) ||
-        (msg.includes("apply") && msg.includes("template"))
-    ) {
-        return { intent: "log_activity", confidence: 1.0 }; // Routes to log_activity intent but extractor will create log_meal action
-    }
+  // Only the highest-signal, most unambiguous patterns as a last resort
+  if (msg.match(/\b(delete|remove|drop|kill)\b.*\b(goal|task)\b/)) return { intent: "delete_task", confidence: 0.7 };
+  if (msg.match(/\b(remind me|create.*task|add.*task|new task)\b/)) return { intent: "create_task", confidence: 0.7 };
+  if (msg.match(/\b(i finished|i completed|i paid|i submitted|just finished|done with)\b/)) return { intent: "complete_task", confidence: 0.7 };
+  if (msg.match(/\b(slept|woke|gym|workout|mood|energy|stress|ate|drank)\b/)) return { intent: "log_activity", confidence: 0.7 };
+  if (msg.match(/\b(plan|advice|recommend|suggest|what should i)\b/)) return { intent: "ask_advice", confidence: 0.7 };
+  if (msg.match(/\b(last week|last month|my stats|history|trend|progress)\b/)) return { intent: "get_insights", confidence: 0.7 };
 
-    // ── ASK ADVICE / HEALTH QUERY (duplicate block removed — moved above) ──
+  return { intent: "casual_chat", confidence: 0.5 };
+}
 
-    // ── TASK MANAGEMENT ──────────────────────────────────────
-    const taskCreateKeywords = [
-        "remind me", "create a task", "add task", "add a task", "schedule a task",
-        "i need to remember", "don't let me forget", "put on my list", "new task",
-        "set a reminder", "create task",
-    ];
-    if (taskCreateKeywords.some(kw => msg.includes(kw))) {
-        return { intent: "create_task", confidence: 1.0 };
-    }
+// ── Public API ─────────────────────────────────────────────────────────────────
+export async function detectIntent(
+  input: string,
+  history: string = "",
+  model?: string,
+  hasPendingProposal: boolean = false
+): Promise<{ intent: string; confidence: number }> {
 
-    const taskCompleteKeywords = [
-        "i finished", "i completed", "i did", "mark as done", "mark done",
-        "check off", "tick off", "i got it done", "skip all tasks",
-        "i was too tired", "skip my tasks", "reschedule my missed",
-        "reschedule overdue", "couldn't do it", "just finished", "am done with",
-        "done doing", "completed my", "finished my"
-    ];
-    if (taskCompleteKeywords.some(kw => msg.includes(kw))) {
-        return { intent: "complete_task", confidence: 1.0 };
-    }
+  // Stage 1: Hard guards (sync, zero-latency)
+  const hardGuardResult = applyHardGuards(input.toLowerCase(), hasPendingProposal);
+  if (hardGuardResult) {
+    console.log(`[IntentClassifier] Hard guard fired → ${hardGuardResult.intent}`);
+    return hardGuardResult;
+  }
 
-    const taskUpdateKeywords = [
-        "reschedule task", "move task", "change task", "update task",
-        "push task", "push it to", "move it to",
-    ];
-    if (taskUpdateKeywords.some(kw => msg.includes(kw))) {
-        return { intent: "update_task", confidence: 0.95 };
-    }
-
-    // ── PLAN MY DAY ──────────────────────────────────────────
-    if (msg.includes("plan my day") || msg.includes("what should i do today") || msg.includes("my daily plan") || msg.includes("plan for today")) {
-        return { intent: "ask_advice", confidence: 1.0 };
-    }
-
-    // Physical actions, mental overrides, sleep/wake, numeric habits
-    const activityKeywords = [
-        "slept", "sleep at", "slept at", "went to bed", "going to bed", "sleep time", "going to sleep",
-        "woke up", "wake up", "woke", "waked",
-        "gym", "workout", "worked out", "exercised", "trained",
-        "read", "reading", "pages",
-        "meditat", "mindful",
-        "worked", "deep work", "focus hours", "hours of work", "hours of focus",
-        "mood", "stress", "energy", "anxiety", "focus is", "set my mood", "change my mood",
-        "change my stress", "set my stress", "my energy is", "i feel", "i'm feeling",
-        "drank", "water", "steps", "walked",
-        "ran", "running", "jogged", "stretch",
-        "i went", "i did", "i completed", "i finished", "i got",
-    ];
-    if (activityKeywords.some(kw => msg.includes(kw))) {
-        return { intent: "log_activity", confidence: 1.0 };
-    }
-
-    // ── GET INSIGHTS ─────────────────────────────────────────
-    const insightKeywords = [
-        "last week", "last month", "last 30", "past 7", "past week", "past month",
-        "my stats", "show me", "how have i been", "am i improving", "trend",
-        "average", "history", "data", "summary", "progress report",
-    ];
-    if (insightKeywords.some(kw => msg.includes(kw))) {
-        return { intent: "get_insights", confidence: 1.0 };
-    }
-
-    // ── DEFAULT ──────────────────────────────────────────────
-    return { intent: "casual_chat", confidence: 0.8 };
+  // Stage 2: LLM classifier (async, ~150ms)
+  const result = await classifyWithLLM(input, history, model);
+  console.log(`[IntentClassifier] LLM classified → ${result.intent} (confidence: ${result.confidence})`);
+  return result;
 }

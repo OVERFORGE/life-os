@@ -17,7 +17,7 @@ export async function GET(req: Request) {
   const timezone = (user as any)?.settings?.timezone;
   const today = getActiveDate(timezone);
 
-  const filter = searchParams.get("filter") || "today"; // today | upcoming | overdue | all
+  const filter = searchParams.get("filter") || "all"; // today | upcoming | overdue | all
 
   let query: any = { userId };
 

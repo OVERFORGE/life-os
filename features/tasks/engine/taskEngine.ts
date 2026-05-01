@@ -291,43 +291,75 @@ export async function rescheduleOverdue(userId: string, timezone?: string) {
 }
 
 /* ─────────────────────────────────────────────────────────── */
-/* fuzzy find task by title (for AI natural language deletion) */
+/* findTaskByTitle — fuzzy match, returns best single match   */
 /* ─────────────────────────────────────────────────────────── */
 
 export async function findTaskByTitle(userId: string, titleHint: string) {
+  const result = await findTaskByTitleSafe(userId, titleHint);
+  return result.match ?? null;
+}
+
+/* ─────────────────────────────────────────────────────────── */
+/* findTaskByTitleSafe — returns structured result with        */
+/* ambiguity detection for safe AI execution                  */
+/* ─────────────────────────────────────────────────────────── */
+
+export type TaskMatchResult =
+  | { status: "found";     match: any }
+  | { status: "ambiguous"; candidates: string[] }
+  | { status: "not_found" };
+
+export async function findTaskByTitleSafe(
+  userId: string,
+  titleHint: string
+): Promise<TaskMatchResult> {
   const all = await Task.find({ userId, status: "pending" }).lean();
   const lower = titleHint.toLowerCase();
 
-  // 1. Exact match
-  let match = all.find((t) => t.title.toLowerCase() === lower);
-  if (match) return match;
+  // 1. Exact match — unambiguous, return immediately
+  const exactMatches = all.filter(t => t.title.toLowerCase() === lower);
+  if (exactMatches.length === 1) return { status: "found", match: exactMatches[0] };
+  if (exactMatches.length > 1) {
+    return { status: "ambiguous", candidates: exactMatches.map(t => t.title) };
+  }
 
   // 2. Substring match
-  match = all.find((t) => t.title.toLowerCase().includes(lower) || lower.includes(t.title.toLowerCase()));
-  if (match) return match;
+  const substringMatches = all.filter(
+    t => t.title.toLowerCase().includes(lower) || lower.includes(t.title.toLowerCase())
+  );
+  if (substringMatches.length === 1) return { status: "found", match: substringMatches[0] };
+  if (substringMatches.length > 1) {
+    return { status: "ambiguous", candidates: substringMatches.map(t => t.title) };
+  }
 
-  // 3. Token overlap match (best effort)
+  // 3. Token overlap — scored matching
   const hintWords = lower.split(/\s+/).filter(w => w.length > 2);
-  if (hintWords.length === 0) return null;
+  if (hintWords.length === 0) return { status: "not_found" };
 
-  let bestMatch = null;
-  let maxOverlap = 0;
-
-  for (const t of all) {
+  const scored = all.map(t => {
     const titleWords = t.title.toLowerCase().split(/\s+/);
     let overlap = 0;
     for (const hw of hintWords) {
-      if (titleWords.some((tw: string) => tw.includes(hw) || hw.includes(tw))) {
-        overlap++;
-      }
+      if (titleWords.some((tw: string) => tw.includes(hw) || hw.includes(tw))) overlap++;
     }
-    if (overlap > maxOverlap) {
-      maxOverlap = overlap;
-      bestMatch = t;
-    }
+    return { task: t, overlap, ratio: overlap / hintWords.length };
+  });
+
+  // Only consider matches with at least 40% word overlap (prevents bad guesses)
+  const MINIMUM_RATIO = 0.4;
+  const strong = scored.filter(s => s.ratio >= MINIMUM_RATIO).sort((a, b) => b.overlap - a.overlap);
+
+  if (strong.length === 0) return { status: "not_found" };
+
+  // If top score is clearly dominant (>= 2x the next best), return it
+  if (strong.length === 1 || strong[0].overlap > strong[1].overlap) {
+    return { status: "found", match: strong[0].task };
   }
 
-  // If at least one meaningful word overlaps, consider it a match
-  if (maxOverlap > 0) return bestMatch;
-  return null;
+  // Multiple equally-strong candidates — ask for clarification
+  return {
+    status: "ambiguous",
+    candidates: strong.slice(0, 3).map(s => s.task.title),
+  };
 }
+

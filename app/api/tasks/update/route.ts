@@ -3,7 +3,7 @@ import { getAuthSession } from "@/lib/auth";
 import { connectDB } from "@/server/db/connect";
 import { updateTask } from "@/features/tasks/engine/taskEngine";
 
-export async function PATCH(req: Request) {
+async function handler(req: Request) {
   const session = await getAuthSession();
   if (!session?.user?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -16,3 +16,6 @@ export async function PATCH(req: Request) {
   const result = await updateTask(userId, taskId, updates);
   return NextResponse.json(result);
 }
+
+export const PATCH = handler;
+export const POST = handler;

@@ -1,254 +1,518 @@
-import { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Modal, Alert } from 'react-native';
+import { useEffect, useState, useCallback, useRef } from 'react';
+import {
+  View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
+  Modal, Alert, Animated, PanResponder, Dimensions, TextInput
+} from 'react-native';
 import { useRouter, useFocusEffect } from 'expo-router';
-import { ArrowLeft, CheckCircle, Circle, Clock, Flame, BatteryMedium, Plus, Trash2, Edit2, X } from 'lucide-react-native';
+import {
+  ArrowLeft, Plus, CheckCircle2, Circle, Clock, Flame, Zap, Target,
+  Trash2, Edit3, X, ChevronRight, AlertCircle, Calendar, RefreshCw,
+  MoreHorizontal, AlarmClock
+} from 'lucide-react-native';
 import { fetchWithAuth } from '../../../../utils/api';
+
+const { height: SCREEN_HEIGHT } = Dimensions.get('window');
+
+const PRIORITY_CONFIG: Record<string, { color: string; bg: string; border: string; label: string }> = {
+  high:   { color: '#f87171', bg: '#7f1d1d22', border: '#7f1d1d66', label: 'High' },
+  medium: { color: '#fb923c', bg: '#7c2d1222', border: '#7c2d1266', label: 'Medium' },
+  low:    { color: '#34d399', bg: '#0647380',   border: '#06473855', label: 'Low'  },
+};
 
 export default function TasksScreen() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [tasksData, setTasksData] = useState<any>(null);
   const [selectedTask, setSelectedTask] = useState<any>(null);
+  const [rescheduleTask, setRescheduleTask] = useState<any>(null);
+  const [rescheduleDays, setRescheduleDays] = useState('1');
+  const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
-  useFocusEffect(
-    useCallback(() => {
-      loadTasks();
-    }, [])
-  );
+  useFocusEffect(useCallback(() => { loadTasks(); }, []));
 
   const loadTasks = async () => {
     setLoading(true);
     try {
       const res = await fetchWithAuth('/tasks/list');
       if (res.ok) setTasksData(await res.json());
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
+  };
+
+  const openModal = (task: any) => {
+    setSelectedTask(task);
+    Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true, damping: 20, stiffness: 200 }).start();
+  };
+
+  const closeModal = () => {
+    Animated.timing(slideAnim, { toValue: SCREEN_HEIGHT, duration: 280, useNativeDriver: true }).start(() => {
+      setSelectedTask(null);
+    });
   };
 
   const toggleComplete = async (task: any) => {
     const action = task.status === 'completed' ? 'uncomplete' : 'complete';
     const newStatus = action === 'complete' ? 'completed' : 'pending';
 
-    // Optimistic UI Update
+    // Optimistic
     if (tasksData) {
-      const updateList = (list: any[]) => list?.map(t => t._id === task._id ? { ...t, status: newStatus } : t);
-      setTasksData({
-        today: updateList(tasksData.today),
-        upcoming: updateList(tasksData.upcoming),
-        overdue: updateList(tasksData.overdue),
-      });
+      const upd = (list: any[]) => list?.map(t => t._id === task._id ? { ...t, status: newStatus } : t);
+      setTasksData({ today: upd(tasksData.today), upcoming: upd(tasksData.upcoming), overdue: upd(tasksData.overdue) });
     }
-    
-    if (selectedTask && selectedTask._id === task._id) {
-      setSelectedTask({...selectedTask, status: newStatus});
-    }
+    if (selectedTask?._id === task._id) setSelectedTask({ ...selectedTask, status: newStatus });
 
     try {
-      const res = await fetchWithAuth('/tasks/complete', {
-        method: 'POST',
-        body: JSON.stringify({ taskId: task._id, action })
-      });
-      if (!res.ok) {
-        // Revert if failed
-        loadTasks();
-      }
-    } catch (e) {
-      console.error(e);
-      loadTasks(); // Revert if failed
-    }
+      const res = await fetchWithAuth('/tasks/complete', { method: 'POST', body: JSON.stringify({ taskId: task._id, action }) });
+      if (!res.ok) loadTasks();
+    } catch (e) { loadTasks(); }
   };
 
   const handleDelete = async (taskId: string) => {
-    Alert.alert('Delete Task', 'Are you sure you want to delete this task?', [
+    Alert.alert('Delete Task', 'This action cannot be undone.', [
       { text: 'Cancel', style: 'cancel' },
-      { text: 'Delete', style: 'destructive', onPress: async () => {
-        try {
-          const res = await fetchWithAuth(`/tasks/delete`, {
-            method: 'POST',
-            body: JSON.stringify({ taskId })
-          });
-          if (res.ok) {
-            setSelectedTask(null);
+      {
+        text: 'Delete', style: 'destructive', onPress: async () => {
+          closeModal();
+          try {
+            await fetchWithAuth('/tasks/delete', { method: 'POST', body: JSON.stringify({ taskId }) });
             loadTasks();
-          }
-        } catch (e) {
-          console.error(e);
+          } catch (e) { console.error(e); }
         }
-      }}
+      },
     ]);
+  };
+
+  const handleReschedule = async () => {
+    if (!rescheduleTask) return;
+    const days = parseInt(rescheduleDays) || 1;
+    const newDate = new Date();
+    newDate.setDate(newDate.getDate() + days);
+    const dateStr = newDate.toISOString().split('T')[0];
+
+    try {
+      await fetchWithAuth('/tasks/update', {
+        method: 'POST',
+        body: JSON.stringify({ taskId: rescheduleTask._id, dueDate: dateStr })
+      });
+      setRescheduleTask(null);
+      closeModal();
+      loadTasks();
+    } catch (e) { console.error(e); }
   };
 
   if (loading) {
     return (
-      <View className="flex-1 bg-[#0f1115] items-center justify-center">
-        <ActivityIndicator color="#4b5563" />
+      <View className="flex-1 bg-[#0a0b0e] items-center justify-center">
+        <ActivityIndicator color="#8b5cf6" size="large" />
       </View>
     );
   }
 
-  const renderTask = (task: any, isOverdue = false) => (
-    <TouchableOpacity
-      key={task._id}
-      className="flex-row items-center bg-[#161922] p-4 rounded-xl border border-[#232632] mb-3"
-      onPress={() => setSelectedTask(task)}
-    >
-      <TouchableOpacity onPress={() => toggleComplete(task)} className="mr-4 p-1">
-        {task.status === 'completed' ? (
-          <CheckCircle size={24} color="#10b981" />
-        ) : (
-          <Circle size={24} color={isOverdue ? "#ef4444" : "#4b5563"} />
-        )}
-      </TouchableOpacity>
-      <View className="flex-1">
-        <Text className={`text-gray-100 font-medium ${task.status === 'completed' ? 'line-through opacity-50' : ''}`}>
-          {task.title}
-        </Text>
-        {task.description ? (
-          <Text className="text-gray-400 text-sm mt-1">{task.description}</Text>
-        ) : null}
-        
-        <View className="flex-row items-center mt-2 space-x-3">
-          {task.dueTime && (
-            <View className="flex-row items-center bg-[#232632] px-2 py-1 rounded">
-              <Clock size={12} color="#9ca3af" className="mr-1" />
-              <Text className="text-xs text-gray-400">{task.dueTime}</Text>
+  const allCount = (tasksData?.today?.length || 0) + (tasksData?.overdue?.length || 0);
+  const doneCount = [
+    ...(tasksData?.today || []),
+    ...(tasksData?.overdue || []),
+  ].filter((t: any) => t.status === 'completed').length;
+
+  const renderTask = (task: any, isOverdue = false) => {
+    const p = PRIORITY_CONFIG[task.priority] || PRIORITY_CONFIG.medium;
+    const isDone = task.status === 'completed';
+
+    return (
+      <TouchableOpacity
+        key={task._id}
+        onPress={() => openModal(task)}
+        activeOpacity={0.75}
+        style={{
+          backgroundColor: '#12141a',
+          borderRadius: 16,
+          marginBottom: 10,
+          borderWidth: 1,
+          borderColor: isDone ? '#1e2029' : (isOverdue ? '#3f1c1c' : '#1e2029'),
+          overflow: 'hidden',
+        }}
+      >
+        {/* Priority stripe removed as per user request */}
+
+        <View style={{ flexDirection: 'row', alignItems: 'center', padding: 16 }}>
+          {/* Checkbox */}
+          <TouchableOpacity
+            onPress={() => toggleComplete(task)}
+            hitSlop={{ top: 10, bottom: 10, left: 10, right: 10 }}
+            style={{ marginRight: 14 }}
+          >
+            {isDone
+              ? <CheckCircle2 size={24} color="#8b5cf6" />
+              : <Circle size={24} color={isOverdue ? '#ef4444' : '#3a3d4a'} />
+            }
+          </TouchableOpacity>
+
+          {/* Content */}
+          <View style={{ flex: 1 }}>
+            <Text
+              numberOfLines={2}
+              style={{
+                color: isDone ? '#4b5563' : '#e5e7eb',
+                fontWeight: '600',
+                fontSize: 15,
+                textDecorationLine: isDone ? 'line-through' : 'none',
+              }}
+            >
+              {task.title}
+            </Text>
+
+            <View style={{ flexDirection: 'row', marginTop: 8, gap: 8, flexWrap: 'wrap' }}>
+              {task.dueTime && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Clock size={11} color="#6b7280" />
+                  <Text style={{ color: '#6b7280', fontSize: 12 }}>{task.dueTime}</Text>
+                </View>
+              )}
+              {!isDone && (
+                <View style={{
+                  flexDirection: 'row', alignItems: 'center', gap: 4,
+                  backgroundColor: p.bg, paddingHorizontal: 8, paddingVertical: 3,
+                  borderRadius: 99, borderWidth: 1, borderColor: p.border
+                }}>
+                  <Flame size={11} color={p.color} />
+                  <Text style={{ color: p.color, fontSize: 11, fontWeight: '700' }}>{p.label}</Text>
+                </View>
+              )}
+              {isOverdue && !isDone && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <AlertCircle size={11} color="#ef4444" />
+                  <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '600' }}>Overdue</Text>
+                </View>
+              )}
+              {task.metadata?.energyCost && !isDone && (
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                  <Zap size={11} color="#fbbf24" />
+                  <Text style={{ color: '#6b7280', fontSize: 11 }}>{task.metadata.energyCost}/10</Text>
+                </View>
+              )}
             </View>
-          )}
-          {task.metadata?.energyCost && (
-            <View className="flex-row items-center bg-[#232632] px-2 py-1 rounded">
-              <BatteryMedium size={12} color="#fbbf24" className="mr-1" />
-              <Text className="text-xs text-gray-400">{task.metadata.energyCost}/10 Energy</Text>
-            </View>
-          )}
-          {task.priority === 'high' && (
-            <View className="flex-row items-center bg-[#451a1e] px-2 py-1 rounded">
-              <Flame size={12} color="#ef4444" className="mr-1" />
-              <Text className="text-xs text-red-400">High</Text>
-            </View>
-          )}
+
+            {/* Sub-tasks progress */}
+            {task.subtasks?.length > 0 && (
+              <View style={{ marginTop: 8 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 4 }}>
+                  <Text style={{ color: '#6b7280', fontSize: 11 }}>
+                    {task.subtasks.filter((s: any) => s.done).length}/{task.subtasks.length} subtasks
+                  </Text>
+                </View>
+                <View style={{ height: 3, backgroundColor: '#1e2029', borderRadius: 99 }}>
+                  <View style={{
+                    height: 3,
+                    width: `${(task.subtasks.filter((s: any) => s.done).length / task.subtasks.length) * 100}%`,
+                    backgroundColor: '#8b5cf6', borderRadius: 99
+                  }} />
+                </View>
+              </View>
+            )}
+          </View>
+
+          <ChevronRight size={18} color="#3a3d4a" style={{ marginLeft: 8 }} />
         </View>
-      </View>
-    </TouchableOpacity>
-  );
+      </TouchableOpacity>
+    );
+  };
+
+  const panResponder = PanResponder.create({
+    onMoveShouldSetPanResponder: (_, g) => g.dy > 5,
+    onPanResponderMove: (_, g) => { if (g.dy > 0) slideAnim.setValue(g.dy); },
+    onPanResponderRelease: (_, g) => {
+      if (g.dy > 120) closeModal();
+      else Animated.spring(slideAnim, { toValue: 0, useNativeDriver: true }).start();
+    },
+  });
 
   return (
-    <View className="flex-1 bg-[#0f1115]">
+    <View style={{ flex: 1, backgroundColor: '#0a0b0e' }}>
       {/* Header */}
-      <View className="px-6 pt-16 pb-4 border-b border-[#232632] flex-row items-center justify-between">
-        <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 rounded-full border border-[#232632] bg-[#161922] items-center justify-center">
-          <ArrowLeft color="#f3f4f6" size={20} />
-        </TouchableOpacity>
-        <Text className="text-xl font-bold text-gray-100">Tasks</Text>
-        <TouchableOpacity onPress={() => router.push('/(dashboard)/tools/tasks/new')} className="w-10 h-10 rounded-full border border-[#232632] bg-blue-600/20 items-center justify-center">
-          <Plus color="#3b82f6" size={20} />
-        </TouchableOpacity>
+      <View style={{ paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#12141a' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+          <TouchableOpacity
+            onPress={() => router.back()}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#12141a', borderWidth: 1, borderColor: '#1e2029', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <ArrowLeft color="#9ca3af" size={18} />
+          </TouchableOpacity>
+
+          <View style={{ alignItems: 'center' }}>
+            <Text style={{ color: '#f9fafb', fontWeight: '700', fontSize: 18 }}>Tasks</Text>
+            {allCount > 0 && (
+              <Text style={{ color: '#6b7280', fontSize: 12, marginTop: 2 }}>{doneCount}/{allCount} done today</Text>
+            )}
+          </View>
+
+          <TouchableOpacity
+            onPress={() => router.push('/(dashboard)/tools/tasks/new')}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#3b1d8a', borderWidth: 1, borderColor: '#5b21b6', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Plus color="#a78bfa" size={20} />
+          </TouchableOpacity>
+        </View>
+
+        {/* Progress bar */}
+        {allCount > 0 && (
+          <View style={{ marginTop: 12, height: 3, backgroundColor: '#1e2029', borderRadius: 99 }}>
+            <View style={{ height: 3, width: `${(doneCount / allCount) * 100}%`, backgroundColor: '#8b5cf6', borderRadius: 99 }} />
+          </View>
+        )}
       </View>
 
-      <ScrollView className="flex-1" contentContainerStyle={{ padding: 16 }}>
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 16, paddingBottom: 40 }}>
+
+        {/* Overdue */}
         {tasksData?.overdue?.length > 0 && (
-          <View className="mb-6">
-            <Text className="text-red-400 font-bold mb-3 uppercase text-xs tracking-wider">Overdue</Text>
+          <View style={{ marginBottom: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+              <AlertCircle size={13} color="#ef4444" />
+              <Text style={{ color: '#ef4444', fontWeight: '700', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase' }}>Overdue</Text>
+            </View>
             {tasksData.overdue.map((t: any) => renderTask(t, true))}
           </View>
         )}
 
-        <View className="mb-6">
-          <Text className="text-gray-400 font-bold mb-3 uppercase text-xs tracking-wider">Today</Text>
-          {tasksData?.today?.length > 0 ? (
-            tasksData.today.map((t: any) => renderTask(t))
-          ) : (
-            <Text className="text-gray-500 italic text-center py-4 bg-[#161922] rounded-xl border border-[#232632]">
-              No tasks for today.
-            </Text>
-          )}
+        {/* Today */}
+        <View style={{ marginBottom: 24 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+            <Calendar size={13} color="#8b5cf6" />
+            <Text style={{ color: '#8b5cf6', fontWeight: '700', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase' }}>Today</Text>
+          </View>
+          {tasksData?.today?.length > 0
+            ? tasksData.today.map((t: any) => renderTask(t))
+            : (
+              <View style={{ backgroundColor: '#12141a', borderRadius: 16, borderWidth: 1, borderColor: '#1e2029', padding: 28, alignItems: 'center' }}>
+                <CheckCircle2 size={32} color="#1e2029" />
+                <Text style={{ color: '#4b5563', marginTop: 12, fontSize: 14 }}>All clear for today!</Text>
+              </View>
+            )
+          }
         </View>
 
+        {/* Upcoming */}
         {tasksData?.upcoming?.length > 0 && (
-          <View className="mb-6">
-            <Text className="text-blue-400 font-bold mb-3 uppercase text-xs tracking-wider">Upcoming</Text>
-            {tasksData.upcoming.map((t: any) => renderTask(t))}
+          <View style={{ marginBottom: 24 }}>
+            {(() => {
+              // Group upcoming tasks by date
+              const grouped = tasksData.upcoming.reduce((acc: any, task: any) => {
+                const date = task.dueDate || 'No Date';
+                if (!acc[date]) acc[date] = [];
+                acc[date].push(task);
+                return acc;
+              }, {});
+
+              return Object.entries(grouped).sort(([a], [b]) => a.localeCompare(b)).map(([dateStr, tasks]: any) => {
+                let formattedDate = dateStr;
+                if (dateStr !== 'No Date') {
+                  const d = new Date(dateStr);
+                  // Quick timezone-safe tomorrow check
+                  const today = new Date();
+                  const diffTime = Math.abs(d.getTime() - today.getTime());
+                  const diffDays = Math.ceil(diffTime / (1000 * 60 * 60 * 24)); 
+                  
+                  if (diffDays === 1 || diffDays === 0) { // Can be 0 or 1 depending on time differences
+                    // Actually, let's just do a reliable offset
+                    const tomorrow = new Date();
+                    tomorrow.setDate(tomorrow.getDate() + 1);
+                    if (d.toISOString().split('T')[0] === tomorrow.toISOString().split('T')[0]) {
+                      formattedDate = `Tomorrow, ${d.toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`;
+                    } else {
+                      formattedDate = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                    }
+                  } else {
+                    formattedDate = d.toLocaleDateString('en-US', { weekday: 'long', month: 'short', day: 'numeric' });
+                  }
+                }
+
+                return (
+                  <View key={dateStr} style={{ marginBottom: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, marginBottom: 12 }}>
+                      <Calendar size={13} color="#60a5fa" />
+                      <Text style={{ color: '#60a5fa', fontWeight: '700', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase' }}>{formattedDate}</Text>
+                    </View>
+                    {tasks.map((t: any) => renderTask(t))}
+                  </View>
+                );
+              });
+            })()}
           </View>
         )}
       </ScrollView>
 
-      {/* Task Details Modal */}
-      <Modal visible={!!selectedTask} animationType="slide" transparent={true}>
-        <View className="flex-1 justify-end bg-black/60">
-          <View className="bg-[#161922] rounded-t-3xl border-t border-[#232632] p-6 max-h-[80%]">
-            <View className="flex-row justify-between items-center mb-6">
-              <View className="flex-row items-center">
-                <TouchableOpacity onPress={() => toggleComplete(selectedTask)} className="mr-3">
-                  {selectedTask?.status === 'completed' ? (
-                    <CheckCircle size={28} color="#10b981" />
-                  ) : (
-                    <Circle size={28} color="#4b5563" />
-                  )}
-                </TouchableOpacity>
-                <Text className={`text-xl font-bold text-white flex-1 ${selectedTask?.status === 'completed' ? 'line-through opacity-50' : ''}`} numberOfLines={2}>
-                  {selectedTask?.title}
-                </Text>
+      {/* Task Detail Modal */}
+      <Modal visible={!!selectedTask} transparent animationType="none" onRequestClose={closeModal}>
+        <View style={{ flex: 1, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.7)' }}>
+          <TouchableOpacity style={{ flex: 1 }} activeOpacity={1} onPress={closeModal} />
+          <Animated.View
+            style={{ transform: [{ translateY: slideAnim }] }}
+            {...panResponder.panHandlers}
+          >
+            <View style={{
+              backgroundColor: '#12141a',
+              borderTopLeftRadius: 28, borderTopRightRadius: 28,
+              borderTopWidth: 1, borderLeftWidth: 1, borderRightWidth: 1,
+              borderColor: '#1e2029',
+              paddingBottom: 40,
+            }}>
+              {/* Drag handle */}
+              <View style={{ alignItems: 'center', paddingTop: 12, paddingBottom: 8 }}>
+                <View style={{ width: 36, height: 4, backgroundColor: '#2a2d3a', borderRadius: 99 }} />
               </View>
-              <TouchableOpacity onPress={() => setSelectedTask(null)} className="w-8 h-8 bg-[#232632] rounded-full items-center justify-center">
-                <X color="#9ca3af" size={16} />
-              </TouchableOpacity>
+
+              {selectedTask && (() => {
+                const p = PRIORITY_CONFIG[selectedTask.priority] || PRIORITY_CONFIG.medium;
+                const isDone = selectedTask.status === 'completed';
+
+                return (
+                  <View style={{ paddingHorizontal: 24 }}>
+                    {/* Title row */}
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 16 }}>
+                      <TouchableOpacity onPress={() => toggleComplete(selectedTask)} style={{ marginTop: 2, marginRight: 12 }}>
+                        {isDone
+                          ? <CheckCircle2 size={26} color="#8b5cf6" />
+                          : <Circle size={26} color="#3a3d4a" />
+                        }
+                      </TouchableOpacity>
+                      <Text style={{
+                        flex: 1, color: isDone ? '#6b7280' : '#f9fafb',
+                        fontWeight: '700', fontSize: 20, lineHeight: 28,
+                        textDecorationLine: isDone ? 'line-through' : 'none'
+                      }}>
+                        {selectedTask.title}
+                      </Text>
+                      <TouchableOpacity onPress={closeModal} style={{ marginLeft: 8, marginTop: 2 }}>
+                        <X size={20} color="#6b7280" />
+                      </TouchableOpacity>
+                    </View>
+
+                    {/* Description */}
+                    {selectedTask.description && (
+                      <Text style={{ color: '#9ca3af', fontSize: 14, lineHeight: 22, marginBottom: 16, backgroundColor: '#0a0b0e', padding: 12, borderRadius: 12 }}>
+                        {selectedTask.description}
+                      </Text>
+                    )}
+
+                    {/* Meta chips */}
+                    <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
+                      {selectedTask.dueDate && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1e2029', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99 }}>
+                          <Calendar size={13} color="#9ca3af" />
+                          <Text style={{ color: '#d1d5db', fontSize: 13 }}>
+                            {selectedTask.dueDate} {selectedTask.dueTime || ''}
+                          </Text>
+                        </View>
+                      )}
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: p.bg, paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99, borderWidth: 1, borderColor: p.border }}>
+                        <Flame size={13} color={p.color} />
+                        <Text style={{ color: p.color, fontSize: 13, fontWeight: '600' }}>{p.label} Priority</Text>
+                      </View>
+                      {selectedTask.metadata?.energyCost && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1e2029', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99 }}>
+                          <Zap size={13} color="#fbbf24" />
+                          <Text style={{ color: '#d1d5db', fontSize: 13 }}>{selectedTask.metadata.energyCost}/10 energy</Text>
+                        </View>
+                      )}
+                      {selectedTask.goalId && (
+                        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6, backgroundColor: '#1c1a2e', paddingHorizontal: 12, paddingVertical: 7, borderRadius: 99, borderWidth: 1, borderColor: '#3b1d8a' }}>
+                          <Target size={13} color="#a78bfa" />
+                          <Text style={{ color: '#a78bfa', fontSize: 13 }}>Goal linked</Text>
+                        </View>
+                      )}
+                    </View>
+
+                    {/* Sub-tasks */}
+                    {selectedTask.subtasks?.length > 0 && (
+                      <View style={{ marginBottom: 20 }}>
+                        <Text style={{ color: '#6b7280', fontWeight: '700', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1, marginBottom: 10 }}>Subtasks</Text>
+                        {selectedTask.subtasks.map((sub: any, idx: number) => (
+                          <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', gap: 10, marginBottom: 8 }}>
+                            {sub.done
+                              ? <CheckCircle2 size={18} color="#8b5cf6" />
+                              : <Circle size={18} color="#3a3d4a" />
+                            }
+                            <Text style={{ color: sub.done ? '#6b7280' : '#d1d5db', fontSize: 14, textDecorationLine: sub.done ? 'line-through' : 'none' }}>
+                              {sub.title}
+                            </Text>
+                          </View>
+                        ))}
+                      </View>
+                    )}
+
+                    {/* Actions */}
+                    <View style={{ flexDirection: 'row', gap: 10, marginBottom: 12 }}>
+                      <TouchableOpacity
+                        onPress={() => { const id = selectedTask._id; closeModal(); router.push(`/tools/tasks/${id}`); }}
+                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1e2029', paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: '#2a2d3a' }}
+                      >
+                        <Edit3 size={16} color="#9ca3af" />
+                        <Text style={{ color: '#d1d5db', fontWeight: '600', fontSize: 15 }}>Edit</Text>
+                      </TouchableOpacity>
+                      <TouchableOpacity
+                        onPress={() => setRescheduleTask(selectedTask)}
+                        style={{ flex: 1, flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1c1a2e', paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: '#3b1d8a' }}
+                      >
+                        <AlarmClock size={16} color="#a78bfa" />
+                        <Text style={{ color: '#a78bfa', fontWeight: '600', fontSize: 15 }}>Delay</Text>
+                      </TouchableOpacity>
+                    </View>
+
+                    <TouchableOpacity
+                      onPress={() => handleDelete(selectedTask._id)}
+                      style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', gap: 8, backgroundColor: '#1a0a0a', paddingVertical: 14, borderRadius: 16, borderWidth: 1, borderColor: '#3f1c1c' }}
+                    >
+                      <Trash2 size={16} color="#ef4444" />
+                      <Text style={{ color: '#ef4444', fontWeight: '600', fontSize: 15 }}>Delete Task</Text>
+                    </TouchableOpacity>
+                  </View>
+                );
+              })()}
+            </View>
+          </Animated.View>
+        </View>
+      </Modal>
+
+      {/* Reschedule Modal */}
+      <Modal visible={!!rescheduleTask} transparent animationType="fade" onRequestClose={() => setRescheduleTask(null)}>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', justifyContent: 'center', paddingHorizontal: 24 }}>
+          <View style={{ backgroundColor: '#12141a', borderRadius: 24, padding: 24, borderWidth: 1, borderColor: '#1e2029' }}>
+            <Text style={{ color: '#f9fafb', fontWeight: '700', fontSize: 18, marginBottom: 8 }}>Delay Task</Text>
+            <Text style={{ color: '#6b7280', fontSize: 14, marginBottom: 20 }}>Push "{rescheduleTask?.title}" by how many days?</Text>
+
+            <View style={{ flexDirection: 'row', gap: 10, marginBottom: 20 }}>
+              {[1, 2, 3, 7].map(d => (
+                <TouchableOpacity
+                  key={d}
+                  onPress={() => setRescheduleDays(d.toString())}
+                  style={{ flex: 1, paddingVertical: 12, borderRadius: 12, alignItems: 'center', backgroundColor: rescheduleDays === d.toString() ? '#3b1d8a' : '#1e2029', borderWidth: 1, borderColor: rescheduleDays === d.toString() ? '#8b5cf6' : '#2a2d3a' }}
+                >
+                  <Text style={{ color: rescheduleDays === d.toString() ? '#a78bfa' : '#9ca3af', fontWeight: '700', fontSize: 15 }}>{d}d</Text>
+                </TouchableOpacity>
+              ))}
             </View>
 
-            <ScrollView className="mb-6">
-              {selectedTask?.description && (
-                <Text className="text-gray-300 text-base mb-6 leading-relaxed bg-[#0f1115] p-4 rounded-xl border border-[#232632]">
-                  {selectedTask.description}
-                </Text>
-              )}
+            <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1e2029', borderRadius: 12, paddingHorizontal: 16, marginBottom: 20, borderWidth: 1, borderColor: '#2a2d3a' }}>
+              <Text style={{ color: '#6b7280', flex: 1 }}>Custom days:</Text>
+              <TextInput
+                style={{ color: '#f9fafb', fontWeight: '700', fontSize: 18, textAlign: 'right', paddingVertical: 12 }}
+                keyboardType="numeric"
+                value={rescheduleDays}
+                onChangeText={setRescheduleDays}
+              />
+            </View>
 
-              <View className="flex-row flex-wrap">
-                {selectedTask?.dueDate && (
-                  <View className="bg-[#232632] px-3 py-2 rounded-lg flex-row items-center mr-3 mb-3">
-                    <Clock size={16} color="#9ca3af" className="mr-2" />
-                    <Text className="text-gray-300">{selectedTask.dueDate} {selectedTask.dueTime || ''}</Text>
-                  </View>
-                )}
-                {selectedTask?.priority && (
-                  <View className="bg-[#232632] px-3 py-2 rounded-lg flex-row items-center mr-3 mb-3">
-                    <Flame size={16} color={selectedTask.priority === 'high' ? '#ef4444' : selectedTask.priority === 'low' ? '#3b82f6' : '#f59e0b'} className="mr-2" />
-                    <Text className="text-gray-300 capitalize">{selectedTask.priority}</Text>
-                  </View>
-                )}
-                {selectedTask?.metadata?.energyCost && (
-                  <View className="bg-[#232632] px-3 py-2 rounded-lg flex-row items-center mr-3 mb-3">
-                    <BatteryMedium size={16} color="#fbbf24" className="mr-2" />
-                    <Text className="text-gray-300">{selectedTask.metadata.energyCost}/10 Energy</Text>
-                  </View>
-                )}
-              </View>
-            </ScrollView>
-
-            <View className="flex-row justify-between space-x-4 pt-4 border-t border-[#232632]">
-              <TouchableOpacity 
-                onPress={() => {
-                  const id = selectedTask?._id;
-                  setSelectedTask(null);
-                  router.push(`/tools/tasks/${id}`);
-                }}
-                className="flex-1 bg-blue-600/20 border border-blue-500 py-3 rounded-xl flex-row justify-center items-center"
-              >
-                <Edit2 color="#3b82f6" size={18} className="mr-2" />
-                <Text className="text-blue-400 font-bold">Edit</Text>
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              <TouchableOpacity onPress={() => setRescheduleTask(null)} style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: '#1e2029', alignItems: 'center', borderWidth: 1, borderColor: '#2a2d3a' }}>
+                <Text style={{ color: '#9ca3af', fontWeight: '600' }}>Cancel</Text>
               </TouchableOpacity>
-              <TouchableOpacity 
-                onPress={() => handleDelete(selectedTask?._id)}
-                className="flex-1 bg-red-500/10 border border-red-500/50 py-3 rounded-xl flex-row justify-center items-center"
-              >
-                <Trash2 color="#ef4444" size={18} className="mr-2" />
-                <Text className="text-red-400 font-bold">Delete</Text>
+              <TouchableOpacity onPress={handleReschedule} style={{ flex: 1, paddingVertical: 14, borderRadius: 14, backgroundColor: '#3b1d8a', alignItems: 'center' }}>
+                <Text style={{ color: '#a78bfa', fontWeight: '700' }}>Delay Task</Text>
               </TouchableOpacity>
             </View>
           </View>
         </View>
       </Modal>
-
     </View>
   );
 }

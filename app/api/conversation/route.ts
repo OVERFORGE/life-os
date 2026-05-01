@@ -3,6 +3,7 @@ import { ConversationMessage } from "@/server/db/models/ConversationMessage";
 import { getAuthSession } from "@/lib/auth";
 
 import { detectIntent } from "@/server/llm/intentModel";
+import { logIntent } from "@/server/llm/debugLogger";
 import { extractActions } from "@/server/llm/actionExtractor";
 import { executeActions } from "@/server/llm/executionEngine";
 import { runAutomation } from "@/server/automation/automationEngine";
@@ -40,8 +41,8 @@ export async function POST(req: Request) {
   const pendingProposal = await GoalProposal.findOne({ userId, status: "pending" }).lean();
   const hasPendingProposal = !!pendingProposal;
 
-  const { intent } = detectIntent(message, historyText, model, hasPendingProposal);
-  console.log(`\n🎯 [PIPELINE] Intent: "${intent}" | Input: "${message.slice(0, 80)}"`);
+  const { intent, confidence } = await detectIntent(message, historyText, model, hasPendingProposal);
+  console.log(`\n🎯 [PIPELINE] Intent: "${intent}" (${(confidence * 100).toFixed(0)}%) | Input: "${message.slice(0, 80)}"`);  
   
   /* ===================================================== */
   /* 2. ACTION LAYER (LLM #2)                             */
@@ -71,6 +72,14 @@ export async function POST(req: Request) {
       console.log(`⚠️  [PIPELINE] No actions extracted — skipping execution layer.`);
   }
 
+  // FIX 3: Structured debug log after execution
+  logIntent({
+    input: message,
+    intent,
+    confidence,
+    actionsExecuted: executionResults.map((r: any) => r.type || "unknown"),
+  });
+
   /* ===================================================== */
   /* 4. CONTEXT BUILDING (INTELLIGENCE LAYER)             */
   /* ===================================================== */
@@ -85,8 +94,9 @@ export async function POST(req: Request) {
   const groqStream = await generateResponse({ 
       input: message, 
       context: intelContext, 
-      toolResults: executionResults, // Pass executed results mapping
-      model 
+      toolResults: executionResults,
+      model,
+      intentConfidence: confidence,  // FIX 2: pass confidence for safe fallback
   });
 
   const stream = new ReadableStream({

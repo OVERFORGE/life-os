@@ -65,6 +65,33 @@ export async function buildContext({
     // 4. Active Goals
     const activeGoals = await Goal.find({ userId }).lean();
 
+    // 5. Today's mental/physical snapshot (most important for advice)
+    const todayLog = logs.find(l => l.date === todayStr) as any;
+    const todayMental = todayLog ? {
+      energy: todayLog.mental?.energy ?? null,
+      mood: todayLog.mental?.mood ?? null,
+      stress: todayLog.mental?.stress ?? null,
+      focus: todayLog.mental?.focus ?? null,
+    } : null;
+
+    // 6. Recent 7-day averages for context
+    const recentLogs = logs.filter(l => l.date >= sevenDaysAgo.toISOString().split("T")[0]);
+    let avgEnergy = 0, avgMood = 0, avgStress = 0;
+    let daysWithMental = 0;
+    for (const l of recentLogs as any[]) {
+      if (l.mental) {
+        if (l.mental.energy) avgEnergy += l.mental.energy;
+        if (l.mental.mood) avgMood += l.mental.mood;
+        if (l.mental.stress) avgStress += l.mental.stress;
+        daysWithMental++;
+      }
+    }
+    if (daysWithMental > 0) {
+      avgEnergy = Math.round((avgEnergy / daysWithMental) * 10) / 10;
+      avgMood = Math.round((avgMood / daysWithMental) * 10) / 10;
+      avgStress = Math.round((avgStress / daysWithMental) * 10) / 10;
+    }
+
     return {
       type: "advice",
       logs,
@@ -82,6 +109,13 @@ export async function buildContext({
         today: formatTasks(todayTasks),
         overdue: formatTasks(overdueTasks),
         upcoming: formatTasks(upcomingTasks),
+      },
+      mentalState: {
+        today: todayMental,
+        recentAverages: daysWithMental > 0 ? { avgEnergy, avgMood, avgStress, daysTracked: daysWithMental } : null,
+        note: todayMental
+          ? `Today's logged state: Energy ${todayMental.energy ?? "not set"}/10, Mood ${todayMental.mood ?? "not set"}/10, Stress ${todayMental.stress ?? "not set"}/10`
+          : "No mental state logged today yet",
       },
     };
   }

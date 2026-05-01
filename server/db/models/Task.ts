@@ -73,6 +73,14 @@ const TaskSchema = new mongoose.Schema(
       energyCost: { type: Number, default: null },        // 1-10: how draining
       estimatedDuration: { type: Number, default: null }, // minutes
     },
+
+    // Inline subtasks (lightweight checklist items, not full Task documents)
+    subtasks: [
+      {
+        title: { type: String, required: true },
+        done: { type: Boolean, default: false },
+      }
+    ],
   },
   { timestamps: true }
 );
