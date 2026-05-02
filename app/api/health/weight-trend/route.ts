@@ -13,12 +13,12 @@ export async function GET() {
 
   await connectDB();
 
-  // Fetch last 35 days of data
+  // Fetch last 60 days to ensure we have enough anchor points for segments
   const now = new Date();
-  const thirtyFiveAgo = new Date(now);
-  thirtyFiveAgo.setDate(thirtyFiveAgo.getDate() - 35);
+  const sixtyAgo = new Date(now);
+  sixtyAgo.setDate(sixtyAgo.getDate() - 60);
 
-  const startStr = thirtyFiveAgo.toISOString().split("T")[0];
+  const startStr = sixtyAgo.toISOString().split("T")[0];
   const endStr = now.toISOString().split("T")[0];
 
   const [weightLogs, nutritionLogs] = await Promise.all([
@@ -31,20 +31,83 @@ export async function GET() {
       .lean(),
   ]);
 
-  // Build a map of date → calories
   const calMap: Record<string, number> = {};
   for (const log of nutritionLogs) {
     calMap[log.date] = log.dailyTotals?.calories || 0;
   }
 
-  // Monthly average weight
   const allWeights = weightLogs.map(w => w.weight);
   const monthlyAvg = allWeights.length
     ? parseFloat((allWeights.reduce((s, v) => s + v, 0) / allWeights.length).toFixed(1))
     : null;
 
-  // Compute maintenance estimates per week
-  // Group weight logs by week (using Sunday-anchored ISO weeks)
+  // 1. Calculate static maintenance segments
+  const segments: Array<{
+    startDate: string;
+    endDate: string;
+    maintenanceEstimate: number | null;
+  }> = [];
+
+  if (weightLogs.length >= 2) {
+    let currentStartLog = weightLogs[0];
+    for (let i = 1; i < weightLogs.length; i++) {
+      const log = weightLogs[i];
+      const daysGap = Math.round((new Date(log.date).getTime() - new Date(currentStartLog.date).getTime()) / 86400000);
+      
+      // Enforce at least 7 days difference for a valid maintenance calculation
+      if (daysGap >= 7) {
+        let totalCals = 0;
+        let countedDays = 0;
+        const cur = new Date(currentStartLog.date);
+        const end = new Date(log.date);
+        while (cur <= end) {
+          const dStr = cur.toISOString().split("T")[0];
+          if (calMap[dStr] > 0) {
+            totalCals += calMap[dStr];
+            countedDays++;
+          }
+          cur.setDate(cur.getDate() + 1);
+        }
+
+        let maintenanceEstimate = null;
+        if (countedDays > 0) {
+          const avgCals = Math.round(totalCals / countedDays);
+          const deltaKg = log.weight - currentStartLog.weight;
+          const dailyDelta = Math.round((deltaKg * 7700) / daysGap);
+          maintenanceEstimate = Math.max(1200, avgCals - dailyDelta);
+        }
+
+        segments.push({
+          startDate: currentStartLog.date,
+          endDate: log.date,
+          maintenanceEstimate
+        });
+
+        // Start new segment
+        currentStartLog = log;
+      }
+    }
+  }
+
+  // Helper to find the active maintenance for a given date
+  const getMaintenanceForDate = (dateStr: string) => {
+    // Find a segment that covers this date
+    for (const seg of segments) {
+      if (dateStr >= seg.startDate && dateStr <= seg.endDate) {
+        return seg.maintenanceEstimate;
+      }
+    }
+    // If no segment covers it (e.g. current week without a second weigh-in yet), 
+    // use the most recent available segment's estimate
+    for (let i = segments.length - 1; i >= 0; i--) {
+      if (segments[i].maintenanceEstimate !== null) {
+        return segments[i].maintenanceEstimate;
+      }
+    }
+    return null;
+  };
+
+  // 2. Build 5 weeks back from today for the UI Graph
   const weeklyData: Array<{
     weekLabel: string;
     startDate: string;
@@ -55,7 +118,6 @@ export async function GET() {
     maintenanceEstimate: number | null;
   }> = [];
 
-  // Build 5 weeks back from today
   for (let w = 4; w >= 0; w--) {
     const weekEnd = new Date(now);
     weekEnd.setDate(weekEnd.getDate() - w * 7);
@@ -65,12 +127,7 @@ export async function GET() {
     const wStartStr = weekStart.toISOString().split("T")[0];
     const wEndStr = weekEnd.toISOString().split("T")[0];
 
-    // Get weight logs within this week
-    const weekWeights = weightLogs.filter(
-      wl => wl.date >= wStartStr && wl.date <= wEndStr
-    );
-
-    // Get calorie logs within this week
+    const weekWeights = weightLogs.filter(wl => wl.date >= wStartStr && wl.date <= wEndStr);
     const weekCals: number[] = [];
     const cur = new Date(weekStart);
     while (cur <= weekEnd) {
@@ -79,25 +136,12 @@ export async function GET() {
       cur.setDate(cur.getDate() + 1);
     }
 
-    const avgCals = weekCals.length > 0
-      ? Math.round(weekCals.reduce((s, v) => s + v, 0) / weekCals.length)
-      : null;
-
+    const avgCals = weekCals.length > 0 ? Math.round(weekCals.reduce((s, v) => s + v, 0) / weekCals.length) : null;
     const startW = weekWeights[0]?.weight ?? null;
     const endW = weekWeights[weekWeights.length - 1]?.weight ?? null;
 
-    // Maintenance estimate: 
-    // deltaWeight (kg) × 7700 kcal/kg / 7 days = daily surplus/deficit
-    // maintenance ≈ avgDailyCalories - dailySurplus
-    let maintenanceEstimate: number | null = null;
-    if (avgCals !== null && startW !== null && endW !== null && startW !== endW) {
-      const deltaKg = endW - startW;
-      const dailyDelta = Math.round((deltaKg * 7700) / 7);
-      maintenanceEstimate = Math.max(1200, avgCals - dailyDelta);
-    } else if (avgCals !== null && startW !== null && endW !== null) {
-      // Stable weight → avg calories ≈ maintenance
-      maintenanceEstimate = avgCals;
-    }
+    // Apply the static segment-based maintenance estimate to this week
+    const maintenanceEstimate = getMaintenanceForDate(wEndStr);
 
     const weekNum = 5 - w;
     weeklyData.push({
@@ -112,7 +156,8 @@ export async function GET() {
   }
 
   return NextResponse.json({
-    weightLogs: weightLogs.map(w => ({ date: w.date, weight: w.weight })),
+    // Only return the last 35 days of weights for the UI scatter plot to prevent crowding
+    weightLogs: weightLogs.filter(w => w.date >= new Date(now.getTime() - 35 * 86400000).toISOString().split("T")[0]).map(w => ({ date: w.date, weight: w.weight })),
     monthlyAvg,
     weeklyData,
   });

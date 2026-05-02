@@ -36,6 +36,8 @@ export async function registerForPushNotificationsAsync() {
   return false;
 }
 
+import { fetchWithAuth } from './api';
+
 export async function scheduleDailyReminder() {
   // Clear existings to prevent duplicates
   await Notifications.cancelAllScheduledNotificationsAsync();
@@ -54,4 +56,36 @@ export async function scheduleDailyReminder() {
       minute: 0,
     },
   });
+
+  // Fetch user preferences for weight reminder
+  try {
+    const res = await fetchWithAuth('/user');
+    if (res.ok) {
+      const data = await res.json();
+      const prefs = data.preferences || {};
+      
+      if (prefs.weightReminderEnabled !== false) {
+        // Weekday starts from 1 (Sunday) in Expo Notifications
+        const day = (prefs.weightReminderDay ?? 0) + 1; 
+        const hour = prefs.weightReminderHour ?? 9;
+
+        await Notifications.scheduleNotificationAsync({
+          content: {
+            title: "Time for a Weigh-in ⚖️",
+            body: "Consistent tracking helps LifeOS adapt your maintenance calories. Log your weight now!",
+            data: { route: '/(dashboard)/health' },
+            sound: true,
+          },
+          trigger: {
+            type: Notifications.SchedulableTriggerInputTypes.WEEKLY,
+            weekday: day,
+            hour: hour,
+            minute: 0,
+          },
+        });
+      }
+    }
+  } catch (e) {
+    console.error('Failed to schedule weight reminder', e);
+  }
 }

@@ -102,6 +102,11 @@ export async function PUT(req: Request) {
       if (p.dayRolloverHour !== undefined) updatePayload['preferences.dayRolloverHour'] = Number(p.dayRolloverHour);
     }
     
+    // Settings
+    if (body.settings !== undefined) {
+      if (body.settings.timezone !== undefined) updatePayload['settings.timezone'] = body.settings.timezone;
+    }
+    
     const user = await User.findByIdAndUpdate(userId, { $set: updatePayload }, { new: true });
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 

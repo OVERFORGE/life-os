@@ -107,6 +107,10 @@ export default function PersonalizationScreen() {
       if (res.ok) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
+        // Reschedule notifications with new prefs
+        import('../../utils/notifications').then(({ scheduleDailyReminder }) => {
+          scheduleDailyReminder();
+        });
       }
     } catch (e) {
       console.error('Save prefs error:', e);

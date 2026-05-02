@@ -6,16 +6,18 @@ import { getActiveDate } from "@/server/automation/timeUtils";
 
 // Retrieves current total macro intake
 export async function getTodayCalories(userId: string) {
-    const user = await User.findById(userId).select("settings").lean();
-    const todayStr = getActiveDate(user?.settings?.timezone);
+    const user = await User.findById(userId).select("settings preferences").lean();
+    const rolloverHour = (user as any)?.preferences?.dayRolloverHour ?? 4;
+    const todayStr = getActiveDate(user?.settings?.timezone, rolloverHour);
     const log = await NutritionLog.findOne({ userId, date: todayStr }).lean();
     return log?.dailyTotals?.calories || 0;
 }
 
 // Retrieves gym volume stats
 export async function getGymStats(userId: string) {
-    const user = await User.findById(userId).select("settings").lean();
-    const todayStr = getActiveDate(user?.settings?.timezone);
+    const user = await User.findById(userId).select("settings preferences").lean();
+    const rolloverHour = (user as any)?.preferences?.dayRolloverHour ?? 4;
+    const todayStr = getActiveDate(user?.settings?.timezone, rolloverHour);
     const todayObj = new Date(todayStr + "T23:59:59Z");
     
     const thirtyDaysAgo = new Date(todayObj);

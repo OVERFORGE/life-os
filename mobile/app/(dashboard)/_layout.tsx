@@ -1,8 +1,21 @@
 import { Tabs } from 'expo-router';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { FloatingTabBar } from '../../components/navigation/FloatingTabBar';
+import { useEffect } from 'react';
+import { fetchWithAuth } from '../../utils/api';
 
 export default function DashboardLayout() {
+  useEffect(() => {
+    // Sync local timezone to backend on boot
+    const localTimezone = Intl.DateTimeFormat().resolvedOptions().timeZone;
+    if (localTimezone) {
+      fetchWithAuth('/user', {
+        method: 'PATCH',
+        body: JSON.stringify({ settings: { timezone: localTimezone } }),
+      }).catch(e => console.log('Timezone sync failed', e));
+    }
+  }, []);
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0f1115' }} edges={['top']}>
       <Tabs
