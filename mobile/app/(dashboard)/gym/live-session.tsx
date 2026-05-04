@@ -1,10 +1,11 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Image, Dimensions } from 'react-native';
-import { useRouter } from 'expo-router';
-import { ArrowLeft, Play, Timer, Save, ChevronRight, ChevronLeft, Zap, Info } from 'lucide-react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Image, Dimensions, Alert } from 'react-native';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { ArrowLeft, Play, Timer, Save, ChevronRight, ChevronLeft, Zap, Info, Image as ImageIcon, Camera, X } from 'lucide-react-native';
 import { fetchWithAuth } from '../../../utils/api';
 import { useToast } from '../../../components/ui/Toast';
-import Animated, { FadeIn, FadeOut, SlideInRight, SlideOutLeft } from 'react-native-reanimated';
+import Animated, { FadeIn, FadeInDown, SlideInRight, SlideOutLeft } from 'react-native-reanimated';
+import * as ImagePicker from 'expo-image-picker';
 
 const { width: SCREEN_WIDTH } = Dimensions.get('window');
 
@@ -29,6 +30,7 @@ function getMuscleImage(equipmentName: string) {
 }
 
 export default function LiveSessionScreen() {
+  const params = useLocalSearchParams<{ routineId?: string; dayName?: string }>();
   const router = useRouter();
   const toast = useToast();
   const [routines, setRoutines] = useState<any[]>([]);
@@ -37,6 +39,7 @@ export default function LiveSessionScreen() {
   
   const [loading, setLoading] = useState(true);
   const [active, setActive] = useState(false);
+  const [startTime, setStartTime] = useState<number | null>(null);
   const [seconds, setSeconds] = useState(0);
 
   // Stepper State
@@ -45,6 +48,9 @@ export default function LiveSessionScreen() {
   // Payload for logged sets
   const [logs, setLogs] = useState<any>({}); 
   const [saving, setSaving] = useState(false);
+  
+  // History State
+  const [history, setHistory] = useState<Record<string, any>>({});
 
   // Raw text states for weight inputs keyed by "exIdx-setIdx"
   const [weightTexts, setWeightTexts] = useState<Record<string, string>>({});
@@ -68,26 +74,96 @@ export default function LiveSessionScreen() {
   useEffect(() => {
     fetchWithAuth('/gym/routines')
       .then(res => res.json())
-      .then(data => setRoutines(data))
+      .then(data => {
+        setRoutines(data);
+        if (params.routineId && params.dayName) {
+          const r = data.find((x: any) => x._id === params.routineId);
+          if (r) {
+            setSelectedRoutine(r);
+            const d = r.splitDays?.find((x: any) => x.dayName === params.dayName);
+            if (d) {
+              setSelectedDay(d);
+              startWorkout(d);
+            }
+          }
+        }
+      })
       .finally(() => setLoading(false));
   }, []);
 
   useEffect(() => {
     let int: any;
-    if (active) {
-      int = setInterval(() => setSeconds(s => s + 1), 1000);
+    if (active && startTime) {
+      int = setInterval(() => setSeconds(Math.floor((Date.now() - startTime) / 1000)), 1000);
     }
     return () => clearInterval(int);
-  }, [active]);
+  }, [active, startTime]);
 
-  const toggleWorkout = () => setActive(!active);
+  const fetchHistoryForDay = async (day: any) => {
+    if (!day || !day.exercises) return;
+    const equipmentNames = day.exercises.map((e: any) => e.equipmentName);
+    try {
+      const res = await fetchWithAuth('/gym/exercise-history', {
+        method: 'POST',
+        body: JSON.stringify({ equipmentNames })
+      });
+      if (res.ok) {
+        const data = await res.json();
+        setHistory(data.history || {});
+      }
+    } catch (e) { console.log('Failed to load history', e); }
+  };
+
+  const startWorkout = (day: any = selectedDay) => {
+    if (!day) return;
+    setStartTime(Date.now());
+    setActive(true);
+    fetchHistoryForDay(day);
+  };
+
+  const toggleWorkout = () => {
+    if (!active) {
+      startWorkout();
+    } else {
+      setActive(false);
+    }
+  };
 
   const handleSaveSet = (exIdx: number, setIdx: number, field: string, value: any) => {
     const nextLogs = { ...logs };
     if (!nextLogs[exIdx]) nextLogs[exIdx] = [];
-    if (!nextLogs[exIdx][setIdx]) nextLogs[exIdx][setIdx] = { repsDone: 0, weightUsed: 0, restSecondsTaken: 0, assisted: false, assistedAtRep: 0 };
+    if (!nextLogs[exIdx][setIdx]) nextLogs[exIdx][setIdx] = { repsDone: 0, weightUsed: 0, restSecondsTaken: 0, assisted: false, assistedAtRep: 0, note: '', imageUrl: '' };
     nextLogs[exIdx][setIdx][field] = value;
     setLogs(nextLogs);
+  };
+
+  const pickLiveImage = async (exIdx: number, setIdx: number) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets[0].base64) {
+      toast.show("Uploading image...", "info");
+      try {
+        const base64Img = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        const res = await fetchWithAuth('/upload', {
+          method: 'POST',
+          body: JSON.stringify({ file: base64Img, folder: 'gym-live-session' })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          handleSaveSet(exIdx, setIdx, 'imageUrl', data.url);
+          toast.show("Image attached!", "success");
+        } else {
+          toast.show("Upload Failed", "error");
+        }
+      } catch (e) {
+        toast.show("Network error", "error");
+      }
+    }
   };
 
   const finishWorkout = async () => {
@@ -250,10 +326,24 @@ export default function LiveSessionScreen() {
                           {/* Sets Logger */}
                           <View>
                             {Array.from({ length: ex.targetSets }).map((_, setIdx) => {
-                              const setData = logs[exIdx]?.[setIdx] || { repsDone: 0, weightUsed: 0, restSecondsTaken: 0, assisted: false, assistedAtRep: 0 };
+                              const setData = logs[exIdx]?.[setIdx] || { repsDone: 0, weightUsed: 0, restSecondsTaken: 0, assisted: false, assistedAtRep: 0, note: '', imageUrl: '' };
+                              const prevData = history[ex.equipmentName]?.sets?.[setIdx];
+                              const routineNote = ex.setDetails?.[setIdx]?.note;
+                              const routineImage = ex.setDetails?.[setIdx]?.imageUrl;
                               
                               return (
                                 <View key={setIdx} className="bg-black/20 border border-[#232632] rounded-2xl p-4 mb-4">
+                                  {/* Routine Note/Image (Keep at top or move? Let's keep Routine Details at top) */}
+                                  {(routineNote || routineImage) && (
+                                    <View className="mb-4 bg-[#1b1f2a] border border-[#232632] p-3 rounded-xl">
+                                      <Text className="text-amber-500/80 font-bold text-[10px] uppercase mb-1">Routine Details</Text>
+                                      {routineNote ? <Text className="text-gray-300 text-sm mb-2">{routineNote}</Text> : null}
+                                      {routineImage ? (
+                                        <Image source={{ uri: routineImage }} className="w-full h-32 rounded-lg" resizeMode="cover" />
+                                      ) : null}
+                                    </View>
+                                  )}
+
                                   <View className="flex-row items-center justify-between mb-4">
                                     <Text className="text-gray-400 font-black text-xs uppercase">Set {setIdx + 1}</Text>
                                     
@@ -265,8 +355,23 @@ export default function LiveSessionScreen() {
                                     </TouchableOpacity>
                                   </View>
 
-                                  <View className="flex-row space-x-3 mb-4">
-                                    <View className="flex-1 bg-[#1b1f2a] rounded-xl p-3 border border-[#232632]">
+                                  {/* Progressive Overload Banner */}
+                                  {prevData && (
+                                    <View className="mb-4 bg-indigo-500/10 border border-indigo-500/20 p-3 rounded-xl flex-row justify-between items-center">
+                                      <View>
+                                        <Text className="text-indigo-400 font-bold text-[10px] uppercase">Last Session</Text>
+                                        <Text className="text-indigo-200 text-sm mt-0.5">{prevData.weightUsed || 0}kg × {prevData.repsDone || 0} reps</Text>
+                                      </View>
+                                      <View className="bg-indigo-500/20 px-2 py-1 rounded">
+                                        <Text className="text-indigo-400 text-[10px] font-bold">
+                                          {(prevData.repsDone || 0) >= ex.targetReps ? 'Increase Weight 🚀' : `Push to ${ex.targetReps} reps 🔥`}
+                                        </Text>
+                                      </View>
+                                    </View>
+                                  )}
+
+                                  <View className="flex-row mb-4">
+                                    <View className="flex-1 bg-[#1b1f2a] rounded-xl p-3 border border-[#232632] mr-2">
                                       <Text className="text-gray-500 text-[9px] font-black uppercase mb-1">Weight (kg)</Text>
                                       <TextInput
                                         keyboardType="decimal-pad"
@@ -277,7 +382,7 @@ export default function LiveSessionScreen() {
                                         className="text-white font-bold text-lg"
                                       />
                                     </View>
-                                    <View className="flex-1 bg-[#1b1f2a] rounded-xl p-3 border border-[#232632]">
+                                    <View className="flex-1 bg-[#1b1f2a] rounded-xl p-3 border border-[#232632] ml-2">
                                       <Text className="text-gray-500 text-[9px] font-black uppercase mb-1">Reps</Text>
                                       <TextInput
                                         keyboardType="decimal-pad"
@@ -309,7 +414,7 @@ export default function LiveSessionScreen() {
 
                                   {/* Break List */}
                                   <Text className="text-gray-600 text-[9px] font-black uppercase mb-2 ml-1">Log Actual Rest</Text>
-                                  <View className="flex-row flex-wrap">
+                                  <View className="flex-row flex-wrap mb-4">
                                     {['45s', '1.5m', '2m', '3m', '3m+'].map((label) => {
                                       const valMap: any = { '45s': 45, '1.5m': 90, '2m': 120, '3m': 180, '3m+': 300 };
                                       const isSel = setData.restSecondsTaken === valMap[label];
@@ -324,6 +429,36 @@ export default function LiveSessionScreen() {
                                       );
                                     })}
                                   </View>
+
+                                  {/* Live Notes & Image */}
+                                  <View className="bg-[#1b1f2a] border border-[#232632] rounded-xl p-3 mt-2">
+                                    <View className="flex-row items-center justify-between mb-2">
+                                      <Text className="text-gray-500 text-[10px] font-black uppercase">Live Notes</Text>
+                                      {!setData.imageUrl && (
+                                        <TouchableOpacity onPress={() => pickLiveImage(exIdx, setIdx)}>
+                                          <Camera size={16} color="#9ca3af" />
+                                        </TouchableOpacity>
+                                      )}
+                                    </View>
+                                    <TextInput
+                                      placeholder="Add a note about this set..."
+                                      placeholderTextColor="#4b5563"
+                                      value={setData.note}
+                                      onChangeText={(val) => handleSaveSet(exIdx, setIdx, 'note', val)}
+                                      className="text-white text-sm"
+                                    />
+                                    {setData.imageUrl && (
+                                      <View className="mt-3 relative w-full h-32 rounded-lg overflow-hidden">
+                                        <Image source={{ uri: setData.imageUrl }} className="w-full h-full" resizeMode="cover" />
+                                        <TouchableOpacity 
+                                          onPress={() => handleSaveSet(exIdx, setIdx, 'imageUrl', '')}
+                                          className="absolute top-2 right-2 bg-black/60 p-1.5 rounded-full"
+                                        >
+                                          <X size={14} color="#fff" />
+                                        </TouchableOpacity>
+                                      </View>
+                                    )}
+                                  </View>
                                 </View>
                               );
                             })}
@@ -333,47 +468,49 @@ export default function LiveSessionScreen() {
                     </Animated.View>
                   );
                 })}
-
-                {/* Navigation Buttons */}
-                <View className="flex-row space-x-4 mb-6">
-                  <TouchableOpacity 
-                    onPress={() => setCurrentExIdx(prev => Math.max(0, prev - 1))}
-                    disabled={currentExIdx === 0}
-                    className={`flex-1 h-14 bg-[#161922] rounded-2xl items-center justify-center border border-[#232632] ${currentExIdx === 0 ? 'opacity-30' : ''}`}
-                  >
-                    <ChevronLeft size={20} color="#9ca3af" />
-                  </TouchableOpacity>
-
-                  {currentExIdx < selectedDay.exercises.length - 1 ? (
-                    <TouchableOpacity 
-                      onPress={() => setCurrentExIdx(prev => prev + 1)}
-                      className="flex-[3] h-14 bg-amber-500 rounded-2xl items-center justify-center border border-amber-600 shadow-lg shadow-amber-500/20"
-                    >
-                      <View className="flex-row items-center">
-                        <Text className="text-black font-black uppercase tracking-widest text-sm">Next Exercise</Text>
-                        <ChevronRight size={18} color="#000" className="ml-2" />
-                      </View>
-                    </TouchableOpacity>
-                  ) : (
-                    <TouchableOpacity 
-                      onPress={finishWorkout}
-                      disabled={saving}
-                      className="flex-[3] h-14 bg-green-500 rounded-2xl items-center justify-center border border-green-600 shadow-lg shadow-green-500/20"
-                    >
-                      {saving ? <ActivityIndicator color="#000" /> : (
-                        <View className="flex-row items-center">
-                          <Text className="text-black font-black uppercase tracking-widest text-sm">Finish Session</Text>
-                          <Save size={18} color="#000" className="ml-2" />
-                        </View>
-                      )}
-                    </TouchableOpacity>
-                  )}
-                </View>
               </View>
             )}
           </View>
         )}
       </ScrollView>
+
+      {/* Navigation Buttons (Sticky Bottom) */}
+      {!loading && active && selectedDay && selectedDay.exercises && (
+        <View className="absolute bottom-0 left-0 right-0 p-5 bg-[#0f1115] border-t border-[#232632] flex-row space-x-4">
+          <TouchableOpacity 
+            onPress={() => setCurrentExIdx(prev => Math.max(0, prev - 1))}
+            disabled={currentExIdx === 0}
+            className={`flex-1 h-14 bg-[#161922] rounded-2xl items-center justify-center border border-[#232632] ${currentExIdx === 0 ? 'opacity-30' : ''}`}
+          >
+            <ChevronLeft size={20} color="#9ca3af" />
+          </TouchableOpacity>
+
+          {currentExIdx < selectedDay.exercises.length - 1 ? (
+            <TouchableOpacity 
+              onPress={() => setCurrentExIdx(prev => prev + 1)}
+              className="flex-[3] h-14 bg-amber-500 rounded-2xl items-center justify-center border border-amber-600 shadow-lg shadow-amber-500/20"
+            >
+              <View className="flex-row items-center">
+                <Text className="text-black font-black uppercase tracking-widest text-sm">Next Exercise</Text>
+                <ChevronRight size={18} color="#000" className="ml-2" />
+              </View>
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity 
+              onPress={finishWorkout}
+              disabled={saving}
+              className="flex-[3] h-14 bg-green-500 rounded-2xl items-center justify-center border border-green-600 shadow-lg shadow-green-500/20"
+            >
+              {saving ? <ActivityIndicator color="#000" /> : (
+                <View className="flex-row items-center">
+                  <Text className="text-black font-black uppercase tracking-widest text-sm">Finish Session</Text>
+                  <Save size={18} color="#000" className="ml-2" />
+                </View>
+              )}
+            </TouchableOpacity>
+          )}
+        </View>
+      )}
     </View>
   );
 }

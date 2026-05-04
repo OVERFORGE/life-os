@@ -60,6 +60,7 @@ export default function GymHub() {
   const [routines, setRoutines] = useState<any[]>([]);
   const [sessions, setSessions] = useState<any[]>([]);
   const [loading, setLoading] = useState(true);
+  const [expandedRoutine, setExpandedRoutine] = useState<string | null>(null);
 
   const loadGymData = useCallback(async () => {
     setLoading(true);
@@ -150,24 +151,54 @@ export default function GymHub() {
         </View>
       </View>
 
-      {/* Start Live Session */}
+      {/* Quick Start Live Session */}
       <View className="mb-8">
-        <TouchableOpacity
-          onPress={() => router.push('/(dashboard)/gym/live-session')}
-          className="bg-amber-500 rounded-2xl p-5 mb-3 flex-row items-center justify-between shadow-xl shadow-amber-500/20"
-        >
-          <View>
-            <Text className="font-bold text-black text-xl mb-1">Start Workout</Text>
-            <Text className="text-amber-900 font-medium">Log your active session</Text>
-          </View>
-          <View className="bg-black/10 rounded-full p-2">
-            <Play size={24} color="#000" fill="#000" />
-          </View>
-        </TouchableOpacity>
+        <View className="flex-row items-center mb-4">
+          <Play size={18} color="#fcd34d" fill="#fcd34d" />
+          <Text className="text-lg font-semibold text-gray-100 ml-2">Quick Start</Text>
+        </View>
 
+        {loading ? <ActivityIndicator color="#fcd34d" /> : routines.length === 0 ? (
+          <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 items-center">
+            <Text className="text-gray-500">Create a routine to start a session.</Text>
+          </View>
+        ) : (
+          routines.map(r => (
+            <View key={r._id} className="bg-[#1b1f2a] border border-[#232632] rounded-xl mb-3 overflow-hidden">
+              <TouchableOpacity 
+                onPress={() => setExpandedRoutine(expandedRoutine === r._id ? null : r._id)}
+                className="p-4 flex-row justify-between items-center bg-[#161922]"
+              >
+                <Text className="text-gray-100 font-bold text-base">{r.routineName}</Text>
+                {expandedRoutine === r._id ? <ChevronUp color="#9ca3af" size={20} /> : <ChevronDown color="#9ca3af" size={20} />}
+              </TouchableOpacity>
+              
+              {expandedRoutine === r._id && (
+                <View className="p-3 bg-[#0f1115]">
+                  {r.splitDays.map((day: any, idx: number) => (
+                    <TouchableOpacity 
+                      key={idx}
+                      onPress={() => router.push({ pathname: '/(dashboard)/gym/live-session', params: { routineId: r._id, dayName: day.dayName } })}
+                      className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg mb-2 flex-row justify-between items-center"
+                    >
+                      <View>
+                        <Text className="text-amber-500 font-bold">{day.dayName}</Text>
+                        <Text className="text-amber-500/60 text-xs mt-1">{day.exercises?.length || 0} exercises</Text>
+                      </View>
+                      <View className="bg-amber-500 p-2 rounded-full">
+                        <Play size={14} color="#000" fill="#000" />
+                      </View>
+                    </TouchableOpacity>
+                  ))}
+                </View>
+              )}
+            </View>
+          ))
+        )}
+        
         <TouchableOpacity
           onPress={() => router.push('/(dashboard)/gym/log-past')}
-          className="bg-[#1b1f2a] border border-[#232632] rounded-xl p-4 flex-row items-center justify-center"
+          className="mt-3 bg-[#1b1f2a] border border-[#232632] rounded-xl p-4 flex-row items-center justify-center"
         >
           <Calendar size={18} color="#9ca3af" />
           <Text className="text-gray-300 font-medium ml-2">Log Past Workout</Text>

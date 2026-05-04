@@ -6,6 +6,8 @@ const LoggedSetSchema = new mongoose.Schema({
   restSecondsTaken: { type: Number, required: false }, // actually this should probably be string or number based on UI, we use number
   assisted: { type: Boolean, default: false },
   assistedAtRep: { type: Number, required: false },
+  note: { type: String, required: false },
+  imageUrl: { type: String, required: false },
 });
 
 const LoggedExerciseSchema = new mongoose.Schema({

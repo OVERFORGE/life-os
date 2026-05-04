@@ -1,10 +1,16 @@
 import mongoose from "mongoose";
 
+const SetDetailSchema = new mongoose.Schema({
+  note: { type: String, required: false },
+  imageUrl: { type: String, required: false },
+});
+
 const ExerciseSchema = new mongoose.Schema({
   equipmentName: { type: String, required: true },
   targetSets: { type: Number, required: true },
   targetReps: { type: Number, required: true },
   restSeconds: { type: Number, default: 90 },
+  setDetails: [SetDetailSchema],
 });
 
 const SplitDaySchema = new mongoose.Schema({

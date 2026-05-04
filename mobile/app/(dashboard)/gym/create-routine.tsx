@@ -1,9 +1,10 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert, Modal, FlatList } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert, Modal, FlatList, Image } from 'react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
-import { ArrowLeft, Trash2, Plus, X, Search, Check } from 'lucide-react-native';
+import { ArrowLeft, Trash2, Plus, X, Search, Check, ChevronDown, ChevronUp, Image as ImageIcon } from 'lucide-react-native';
 import { fetchWithAuth } from '../../../utils/api';
 import Animated, { FadeInDown, SlideInDown } from 'react-native-reanimated';
+import * as ImagePicker from 'expo-image-picker';
 
 export default function CreateRoutineScreen() {
   const router = useRouter();
@@ -21,6 +22,9 @@ export default function CreateRoutineScreen() {
   const [modalVisible, setModalVisible] = useState(false);
   const [currentDayIdx, setCurrentDayIdx] = useState<number | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
+  
+  // Set Details Expand State
+  const [expandedExercise, setExpandedExercise] = useState<string | null>(null);
 
   useEffect(() => {
     const fetchData = async () => {
@@ -110,7 +114,8 @@ export default function CreateRoutineScreen() {
       equipmentName,
       targetSets: 3,
       targetReps: 10,
-      restSeconds: 90
+      restSeconds: 90,
+      setDetails: Array(3).fill({ note: '', imageUrl: '' })
     });
     setSplitDays(updated);
     setModalVisible(false);
@@ -126,10 +131,70 @@ export default function CreateRoutineScreen() {
   const updateExercise = (dayIdx: number, exIdx: number, field: string, value: any) => {
     const updated = [...splitDays];
     updated[dayIdx].exercises[exIdx][field] = value;
+    
+    if (field === 'targetSets') {
+      const newSets = Number(value) || 0;
+      const currentDetails = updated[dayIdx].exercises[exIdx].setDetails || [];
+      if (newSets > currentDetails.length) {
+        updated[dayIdx].exercises[exIdx].setDetails = [
+          ...currentDetails, 
+          ...Array(newSets - currentDetails.length).fill({ note: '', imageUrl: '' })
+        ];
+      } else if (newSets < currentDetails.length) {
+        updated[dayIdx].exercises[exIdx].setDetails = currentDetails.slice(0, newSets);
+      }
+    }
+    
     setSplitDays(updated);
   };
 
-  const currentGymEquipment = gyms.find(g => g._id === selectedGym)?.selectedPreSeeded || [];
+  const updateSetDetail = (dayIdx: number, exIdx: number, setIdx: number, field: string, value: any) => {
+    const updated = [...splitDays];
+    if (!updated[dayIdx].exercises[exIdx].setDetails) {
+      updated[dayIdx].exercises[exIdx].setDetails = Array(updated[dayIdx].exercises[exIdx].targetSets).fill({ note: '', imageUrl: '' });
+    }
+    const currentSet = { ...updated[dayIdx].exercises[exIdx].setDetails[setIdx] };
+    currentSet[field] = value;
+    updated[dayIdx].exercises[exIdx].setDetails[setIdx] = currentSet;
+    setSplitDays(updated);
+  };
+
+  const pickImage = async (dayIdx: number, exIdx: number, setIdx: number) => {
+    const result = await ImagePicker.launchImageLibraryAsync({
+      mediaTypes: ImagePicker.MediaTypeOptions.Images,
+      allowsEditing: true,
+      quality: 0.7,
+      base64: true,
+    });
+
+    if (!result.canceled && result.assets[0].base64) {
+      setLoading(true);
+      try {
+        const base64Img = `data:image/jpeg;base64,${result.assets[0].base64}`;
+        const res = await fetchWithAuth('/upload', {
+          method: 'POST',
+          body: JSON.stringify({ file: base64Img, folder: 'gym-routine-notes' })
+        });
+        if (res.ok) {
+          const data = await res.json();
+          updateSetDetail(dayIdx, exIdx, setIdx, 'imageUrl', data.url);
+        } else {
+          Alert.alert("Upload Failed", "Could not upload image to server.");
+        }
+      } catch (e) {
+        Alert.alert("Upload Error", "Network error during upload.");
+      } finally {
+        setLoading(false);
+      }
+    }
+  };
+
+  const currentGym = gyms.find(g => g._id === selectedGym);
+  const currentGymEquipment = [
+    ...(currentGym?.selectedPreSeeded || []),
+    ...(currentGym?.customEquipment?.map((c: any) => c.name) || [])
+  ];
+  
   const filteredEquipment = currentGymEquipment.filter((e: string) => 
     e.toLowerCase().includes(searchQuery.toLowerCase())
   );
@@ -210,7 +275,7 @@ export default function CreateRoutineScreen() {
                   </TouchableOpacity>
                 </View>
 
-                <View className="flex-row space-x-3">
+                <View className="flex-row space-x-3 mb-2">
                   <View className="flex-1">
                     <Text className="text-gray-500 text-[10px] uppercase font-bold mb-1 ml-1">Sets</Text>
                     <TextInput
@@ -239,6 +304,55 @@ export default function CreateRoutineScreen() {
                     />
                   </View>
                 </View>
+
+                {/* Set Details Toggle */}
+                <TouchableOpacity 
+                  onPress={() => setExpandedExercise(expandedExercise === `${idx}-${eIdx}` ? null : `${idx}-${eIdx}`)}
+                  className="mt-2 py-2 flex-row items-center justify-between border-t border-[#232632]"
+                >
+                  <Text className="text-gray-400 text-xs font-medium">Add Notes / Images per set</Text>
+                  {expandedExercise === `${idx}-${eIdx}` ? <ChevronUp size={16} color="#fbbf24" /> : <ChevronDown size={16} color="#9ca3af" />}
+                </TouchableOpacity>
+
+                {/* Expanded Set Details */}
+                {expandedExercise === `${idx}-${eIdx}` && (
+                  <View className="mt-2 space-y-3">
+                    {Array.from({ length: ex.targetSets }).map((_, setIdx) => {
+                      const setDetail = ex.setDetails?.[setIdx] || { note: '', imageUrl: '' };
+                      return (
+                        <View key={setIdx} className="bg-[#161922] p-3 rounded-lg border border-[#232632]">
+                          <Text className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-2">Set {setIdx + 1}</Text>
+                          <TextInput
+                            placeholder="Add a note (e.g., focus on squeeze)..."
+                            placeholderTextColor="#4b5563"
+                            value={setDetail.note}
+                            onChangeText={(val) => updateSetDetail(idx, eIdx, setIdx, 'note', val)}
+                            className="text-white text-sm bg-[#0f1115] border border-[#232632] rounded-md px-3 py-2 mb-2"
+                          />
+                          {setDetail.imageUrl ? (
+                            <View className="relative w-full h-32 rounded-lg overflow-hidden border border-[#232632]">
+                              <Image source={{ uri: setDetail.imageUrl }} className="w-full h-full" resizeMode="cover" />
+                              <TouchableOpacity 
+                                onPress={() => updateSetDetail(idx, eIdx, setIdx, 'imageUrl', '')}
+                                className="absolute top-2 right-2 bg-black/60 p-1.5 rounded-full"
+                              >
+                                <X size={14} color="#fff" />
+                              </TouchableOpacity>
+                            </View>
+                          ) : (
+                            <TouchableOpacity 
+                              onPress={() => pickImage(idx, eIdx, setIdx)}
+                              className="flex-row items-center bg-[#0f1115] border border-[#232632] self-start px-3 py-1.5 rounded-md"
+                            >
+                              <ImageIcon size={14} color="#fbbf24" />
+                              <Text className="text-amber-400 text-xs font-medium ml-2">Attach Image</Text>
+                            </TouchableOpacity>
+                          )}
+                        </View>
+                      );
+                    })}
+                  </View>
+                )}
               </Animated.View>
             ))}
 
