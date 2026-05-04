@@ -100,3 +100,47 @@ export function isPastHour(timezone: string | undefined, targetHour: number): bo
 
     return currentFraction >= targetHour;
 }
+
+/**
+ * Resolves a relative time expression like "in one hour", "in 30 minutes", "tomorrow at 3pm",
+ * or an explicit HH:MM on a given dueDate, to an absolute ISO 8601 Date string.
+ * Returns null if the expression cannot be parsed.
+ * 
+ * @param expr - The natural language expression (e.g. "in 2 hours", "at 14:00", "in 30 minutes")
+ * @param dueDate - The task's due date (YYYY-MM-DD) used as the base date for time-of-day expressions like "at 3pm"
+ * @param timezone - Optional IANA timezone string
+ */
+export function resolveRelativeReminder(expr: string, dueDate: string, timezone?: string): string | null {
+    const now = new Date();
+    const lower = expr.toLowerCase().trim();
+
+    // Case 1: "in X minute(s)" / "in X hour(s)"
+    const relativeMatch = lower.match(/in\s+(\d+|one|two|three|four|five|ten|fifteen|twenty|thirty|forty|sixty)\s+(minute|hour|min|hr)/);
+    if (relativeMatch) {
+        const wordMap: Record<string, number> = {
+            one: 1, two: 2, three: 3, four: 4, five: 5,
+            ten: 10, fifteen: 15, twenty: 20, thirty: 30, forty: 40, sixty: 60
+        };
+        const amount = wordMap[relativeMatch[1]] ?? parseInt(relativeMatch[1]);
+        const unit = relativeMatch[2];
+        const ms = unit.startsWith('h') ? amount * 60 * 60 * 1000 : amount * 60 * 1000;
+        return new Date(now.getTime() + ms).toISOString();
+    }
+
+    // Case 2: "HH:MM" or "H:MM" or "Hpm" / "Hat Xpm" on the dueDate
+    const timeOnlyMatch = lower.match(/(?:at\s+)?(\d{1,2})(?::(\d{2}))?\s*(am|pm)?/);
+    if (timeOnlyMatch) {
+        let h = parseInt(timeOnlyMatch[1]);
+        const m = parseInt(timeOnlyMatch[2] || '0');
+        const meridiem = timeOnlyMatch[3];
+        if (meridiem === 'pm' && h < 12) h += 12;
+        if (meridiem === 'am' && h === 12) h = 0;
+
+        // Build a datetime on the dueDate
+        const base = new Date(`${dueDate}T00:00:00`);
+        base.setHours(h, m, 0, 0);
+        return base.toISOString();
+    }
+
+    return null;
+}

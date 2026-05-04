@@ -5,7 +5,7 @@ import { CheckCircle, XCircle, AlertCircle, Info, X } from 'lucide-react-native'
 type ToastType = 'success' | 'error' | 'warning' | 'info';
 
 interface ToastConfig {
-  message: string;
+  message?: string;
   title?: string;
   type?: ToastType;
   duration?: number;

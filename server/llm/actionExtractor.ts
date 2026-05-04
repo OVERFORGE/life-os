@@ -126,16 +126,24 @@ Payload:
 Use when user wants to create, add, remind, or schedule a task.
 Trigger words: "remind me", "create a task", "add task", "schedule", "I need to", "don't let me forget", "put on my list".
 Resolve date references: "today"→today, "tomorrow"→tomorrow, "next Monday"→calculate.
+
+CRITICAL TIME RESOLUTION: If the user says "in one hour", "in 30 minutes", "in 2 hours", or any relative time:
+- Set dueDate = today (or tomorrow if past midnight)
+- Set reminderOffsetMinutes = the number of minutes from now (e.g. "in 1 hour" → 60, "in 30 minutes" → 30)
+- Do NOT put "in one hour" as a string into dueTime or reminders. Compute the offset.
+
 Payload:
 {
   "title": "Short task title",
   "description": "Optional detail",
   "dueDate": "YYYY-MM-DD or relative: today/tomorrow",
-  "dueTime": "HH:MM (24h, only if explicitly mentioned)",
+  "dueTime": "HH:MM (24h, only if explicitly mentioned as an exact time)",
   "priority": "low" | "medium" | "high",
-  "recurring": { "type": "daily" | "weekly" | "custom", "interval": 1 } // ONLY if user says daily/every day/weekly/every week
+  "recurring": { "type": "daily" | "weekly" | "custom", "interval": 1 }, // ONLY if user says daily/every day/weekly/every week
   "goalTitle": "Matching goal title if user links to a goal",
-  "estimatedDuration": 30 // minutes, only if stated
+  "estimatedDuration": 30, // minutes, only if stated
+  "reminderOffsetMinutes": 60, // ONLY for relative time reminders like "in one hour" — number of minutes from NOW
+  "reminderTimes": ["HH:MM", "HH:MM"] // explicit 24h times for specific reminder moments on the dueDate, e.g. ["13:00", "15:00"]
 }
 
 #### 8. complete_task
@@ -167,7 +175,9 @@ Payload:
   "dueDate": "new date if changed",
   "dueTime": "new time if changed",
   "priority": "new priority if changed",
-  "description": "new description if changed"
+  "description": "new description if changed",
+  "reminderOffsetMinutes": 60, // ONLY for relative time reminders like "remind me in one hour"
+  "reminderTimes": ["HH:MM", "HH:MM"] // explicit 24h reminder times if user sets new reminders
 }
 `;
 

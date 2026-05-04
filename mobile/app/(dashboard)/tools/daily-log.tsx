@@ -118,11 +118,11 @@ export default function DailyLogScreen() {
           <Text className="text-white font-semibold text-lg mb-1">Core Signals</Text>
           <Text className="text-gray-500 text-xs mb-4">System signals for today</Text>
 
-          <SignalInput label="Mood (1-10)" value={form.signals.mood ?? 5} onChange={(v) => updateSignal('mood', Number(v))} type="number" />
-          <SignalInput label="Energy (1-10)" value={form.signals.energy ?? 5} onChange={(v) => updateSignal('energy', Number(v))} type="number" />
-          <SignalInput label="Stress (1-10)" value={form.signals.stress ?? 5} onChange={(v) => updateSignal('stress', Number(v))} type="number" />
-          <SignalInput label="Deep Work Hours" value={form.signals.deepWorkHours ?? 0} onChange={(v) => updateSignal('deepWorkHours', Number(v))} type="number" />
-          <SignalInput label="Sleep Duration (hrs)" value={form.signals.sleepHours ?? 0} onChange={(v) => updateSignal('sleepHours', Number(v))} type="number" />
+          <SignalInput label="Mood (1-10)" value={form.signals.mood ?? 5} onChange={(v: string) => updateSignal('mood', Number(v))} type="number" />
+          <SignalInput label="Energy (1-10)" value={form.signals.energy ?? 5} onChange={(v: string) => updateSignal('energy', Number(v))} type="number" />
+          <SignalInput label="Stress (1-10)" value={form.signals.stress ?? 5} onChange={(v: string) => updateSignal('stress', Number(v))} type="number" />
+          <SignalInput label="Deep Work Hours" value={form.signals.deepWorkHours ?? 0} onChange={(v: string) => updateSignal('deepWorkHours', Number(v))} type="number" />
+          <SignalInput label="Sleep Duration (hrs)" value={form.signals.sleepHours ?? 0} onChange={(v: string) => updateSignal('sleepHours', Number(v))} type="number" />
         </View>
 
         {/* ─── Dynamic Categories ─── */}
@@ -151,7 +151,7 @@ export default function DailyLogScreen() {
                       <SignalInput 
                         label={s.label} 
                         value={form.signals[s.key] ?? ''} 
-                        onChange={(v) => updateSignal(s.key, s.inputType === 'number' ? Number(v) : v)} 
+                        onChange={(v: string) => updateSignal(s.key, s.inputType === 'number' ? Number(v) : v)} 
                         type={s.inputType} 
                       />
                     )}

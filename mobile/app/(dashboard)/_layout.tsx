@@ -3,6 +3,7 @@ import { SafeAreaView } from 'react-native-safe-area-context';
 import { FloatingTabBar } from '../../components/navigation/FloatingTabBar';
 import { useEffect } from 'react';
 import { fetchWithAuth } from '../../utils/api';
+import { scheduleAllTaskReminders } from '../../utils/notifications';
 
 export default function DashboardLayout() {
   useEffect(() => {
@@ -14,6 +15,9 @@ export default function DashboardLayout() {
         body: JSON.stringify({ settings: { timezone: localTimezone } }),
       }).catch(e => console.log('Timezone sync failed', e));
     }
+
+    // Re-schedule all task reminders on app boot
+    scheduleAllTaskReminders().catch(e => console.log('Task reminder sync failed', e));
   }, []);
 
   return (

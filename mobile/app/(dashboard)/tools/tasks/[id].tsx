@@ -4,9 +4,10 @@ import {
   ActivityIndicator, Platform, Alert, KeyboardAvoidingView
 } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { ArrowLeft, Calendar, Clock, Target, Repeat, Zap, Timer, X, Plus } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, Target, Repeat, Zap, Timer, X, Plus, Bell } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { fetchWithAuth } from '../../../../utils/api';
+import { scheduleTaskReminders } from '../../../../utils/notifications';
 
 const PRIORITIES = [
   { key: 'low',    label: 'Low',    color: '#34d399', bg: '#064738' },
@@ -35,6 +36,9 @@ export default function EditTaskScreen() {
   const [estimatedDuration, setEstimatedDuration] = useState('');
   const [subtasks, setSubtasks] = useState<any[]>([]);
   const [newSubtask, setNewSubtask] = useState('');
+  const [reminders, setReminders] = useState<Date[]>([]);
+  const [showReminderPicker, setShowReminderPicker] = useState(false);
+  const [pendingReminder, setPendingReminder] = useState<Date>(new Date());
 
   useEffect(() => {
     fetchGoals();
@@ -84,6 +88,11 @@ export default function EditTaskScreen() {
 
           if (task.subtasks) {
             setSubtasks(task.subtasks);
+          }
+
+          // Load existing reminders as Date objects
+          if (task.reminders && task.reminders.length > 0) {
+            setReminders(task.reminders.map((r: string) => new Date(r)));
           }
         }
       }
@@ -136,12 +145,21 @@ export default function EditTaskScreen() {
         estimatedDuration: estimatedDuration ? parseInt(estimatedDuration) : null,
       },
       subtasks: subtasks.map(t => typeof t === 'string' ? { title: t, done: false } : { title: t.title || t, done: t.done || false }),
+      reminders: reminders.map(r => r.toISOString()),
     };
 
     try {
       const res = await fetchWithAuth('/tasks/update', { method: 'POST', body: JSON.stringify(payload) });
-      if (res.ok) router.back();
-      else Alert.alert('Error', 'Failed to update task.');
+      if (res.ok) {
+        // Schedule local notifications for the updated reminders
+        const resData = await res.json();
+        if (resData.task) {
+          scheduleTaskReminders(resData.task).catch(() => {});
+        } else {
+          scheduleTaskReminders({ _id: String(id), title, reminders: payload.reminders }).catch(() => {});
+        }
+        router.back();
+      } else Alert.alert('Error', 'Failed to update task.');
     } catch (e) {
       Alert.alert('Error', 'Network error.');
     } finally {
@@ -346,6 +364,46 @@ export default function EditTaskScreen() {
               <Text style={{ color: '#4b5563', fontSize: 11 }}>High</Text>
             </View>
           </View>
+        </View>
+
+        {/* Reminders */}
+        <View style={{ marginBottom: 28 }}>
+          {sectionLabel(`Reminders (${reminders.length})`)}
+          {reminders.length > 0 && reminders.map((r, idx) => (
+            <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#12141a', borderRadius: 12, borderWidth: 1, borderColor: '#1e2029', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8 }}>
+              <Bell size={14} color="#a78bfa" style={{ marginRight: 10 }} />
+              <Text style={{ flex: 1, color: '#d1d5db', fontSize: 14 }}>
+                {r.toLocaleDateString([], { month: 'short', day: 'numeric' })} at {r.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+              </Text>
+              <TouchableOpacity onPress={() => setReminders(reminders.filter((_, i) => i !== idx))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={16} color="#6b7280" />
+              </TouchableOpacity>
+            </View>
+          ))}
+          <TouchableOpacity
+            onPress={() => {
+              setPendingReminder(new Date());
+              setShowReminderPicker(true);
+            }}
+            style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#1c1a2e', borderRadius: 12, borderWidth: 1, borderColor: '#3b1d8a', paddingHorizontal: 14, paddingVertical: 12 }}
+          >
+            <Plus size={16} color="#a78bfa" />
+            <Text style={{ color: '#a78bfa', fontSize: 14, fontWeight: '600' }}>Add Reminder</Text>
+          </TouchableOpacity>
+          {showReminderPicker && (
+            <DateTimePicker
+              value={pendingReminder}
+              mode="datetime"
+              display="default"
+              onChange={(e, d) => {
+                setShowReminderPicker(Platform.OS === 'ios');
+                if (d) {
+                  setReminders(prev => [...prev, d].sort((a, b) => a.getTime() - b.getTime()));
+                  setPendingReminder(new Date());
+                }
+              }}
+            />
+          )}
         </View>
 
         {/* Estimated duration */}

@@ -1,7 +1,7 @@
 import React, { useState, useCallback, useRef } from 'react';
 import {
   View, Text, TextInput, TouchableOpacity, ScrollView,
-  ActivityIndicator, Modal, Animated, Dimensions, SafeAreaView
+  ActivityIndicator, Modal, Animated, Dimensions, SafeAreaView, Alert
 } from 'react-native';
 import { X, Check, Plus, Minus, Layers, Coffee, Sun, Moon, Apple } from 'lucide-react-native';
 import { useRouter } from 'expo-router';

@@ -7,9 +7,10 @@ import { useRouter, useFocusEffect } from 'expo-router';
 import {
   ArrowLeft, Plus, CheckCircle2, Circle, Clock, Flame, Zap, Target,
   Trash2, Edit3, X, ChevronRight, AlertCircle, Calendar, RefreshCw,
-  MoreHorizontal, AlarmClock
+  MoreHorizontal, AlarmClock, Bell
 } from 'lucide-react-native';
 import { fetchWithAuth } from '../../../../utils/api';
+import { scheduleAllTaskReminders } from '../../../../utils/notifications';
 
 const { height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -65,6 +66,7 @@ export default function TasksScreen() {
     try {
       const res = await fetchWithAuth('/tasks/complete', { method: 'POST', body: JSON.stringify({ taskId: task._id, action }) });
       loadTasks(true);
+      scheduleAllTaskReminders().catch(() => {});
     } catch (e) { loadTasks(true); }
   };
 
@@ -81,6 +83,7 @@ export default function TasksScreen() {
           try {
             await fetchWithAuth('/tasks/delete', { method: 'POST', body: JSON.stringify({ taskId }) });
             loadTasks(true);
+            scheduleAllTaskReminders().catch(() => {});
           } catch (e) { console.error(e); loadTasks(true); }
         }
       },
@@ -109,6 +112,7 @@ export default function TasksScreen() {
         body: JSON.stringify({ taskId: targetTask._id, dueDate: dateStr, dueTime: rescheduleTime || null })
       });
       loadTasks(true);
+      scheduleAllTaskReminders().catch(() => {});
     } catch (e) { console.error(e); loadTasks(true); }
   };
 
@@ -202,6 +206,16 @@ export default function TasksScreen() {
                   <Text style={{ color: '#6b7280', fontSize: 11 }}>{task.metadata.energyCost}/10</Text>
                 </View>
               )}
+              {!isDone && task.reminders?.length > 0 && (() => {
+                const futureCount = task.reminders.filter((r: string) => new Date(r) > new Date()).length;
+                if (futureCount === 0) return null;
+                return (
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4, backgroundColor: '#1c1a2e', paddingHorizontal: 8, paddingVertical: 3, borderRadius: 99, borderWidth: 1, borderColor: '#3b1d8a' }}>
+                    <Bell size={11} color="#a78bfa" />
+                    <Text style={{ color: '#a78bfa', fontSize: 11, fontWeight: '700' }}>{futureCount}</Text>
+                  </View>
+                );
+              })()}
             </View>
 
             {/* Sub-tasks progress */}

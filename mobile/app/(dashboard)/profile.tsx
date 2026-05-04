@@ -79,7 +79,7 @@ export default function ProfileScreen() {
         
         const data = await res.json();
         if (data.success && data.url) {
-          setProfile(p => ({ ...p, avatar: data.url }));
+          setProfile((p: typeof profile) => ({ ...p, avatar: data.url }));
           Alert.alert('Success', 'Avatar updated!');
         } else {
           Alert.alert('Error', data.error || 'Avatar upload failed');

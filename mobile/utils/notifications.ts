@@ -7,6 +7,8 @@ Notifications.setNotificationHandler({
     shouldShowAlert: true,
     shouldPlaySound: true,
     shouldSetBadge: false,
+    shouldShowBanner: true,
+    shouldShowList: true,
   }),
 });
 
@@ -89,3 +91,77 @@ export async function scheduleDailyReminder() {
     console.error('Failed to schedule weight reminder', e);
   }
 }
+
+/**
+ * Schedules local push notifications for a single task's reminder timestamps.
+ * Cancels any previously scheduled notifications for this task first.
+ * Only schedules reminders that are in the future.
+ */
+export async function scheduleTaskReminders(task: {
+  _id: string;
+  title: string;
+  reminders?: string[];
+}) {
+  if (!task.reminders || task.reminders.length === 0) return;
+
+  const now = new Date();
+
+  for (let i = 0; i < task.reminders.length; i++) {
+    const reminderDate = new Date(task.reminders[i]);
+    if (reminderDate <= now) continue; // skip past reminders
+
+    const minutesUntil = Math.round((reminderDate.getTime() - now.getTime()) / 60000);
+    const timeLabel = reminderDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+
+    await Notifications.scheduleNotificationAsync({
+      identifier: `task-${task._id}-reminder-${i}`,
+      content: {
+        title: `⏰ Reminder: ${task.title}`,
+        body: minutesUntil <= 5
+          ? `This task is due now!`
+          : `Due at ${timeLabel} — don't forget!`,
+        data: { route: '/(dashboard)/tools/tasks', taskId: task._id },
+        sound: true,
+      },
+      trigger: {
+        type: Notifications.SchedulableTriggerInputTypes.DATE,
+        date: reminderDate,
+      },
+    });
+  }
+}
+
+/**
+ * Fetches all pending tasks from the backend and re-schedules
+ * all future task reminders as local Expo notifications.
+ * Call this on app boot and after any task is created/updated.
+ */
+export async function scheduleAllTaskReminders() {
+  try {
+    const res = await fetchWithAuth('/tasks/list');
+    if (!res.ok) return;
+    const data = await res.json();
+    const allTasks = [
+      ...(data.today || []),
+      ...(data.upcoming || []),
+      ...(data.overdue || []),
+    ];
+
+    // Cancel existing task reminder notifications
+    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+    for (const n of scheduled) {
+      if (n.identifier.startsWith('task-')) {
+        await Notifications.cancelScheduledNotificationAsync(n.identifier);
+      }
+    }
+
+    // Re-schedule for each task
+    for (const task of allTasks) {
+      if (task.status !== 'pending') continue;
+      await scheduleTaskReminders(task);
+    }
+  } catch (e) {
+    console.error('Failed to schedule task reminders', e);
+  }
+}
+
