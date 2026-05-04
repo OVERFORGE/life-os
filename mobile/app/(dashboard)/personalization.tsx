@@ -69,16 +69,32 @@ export default function PersonalizationScreen() {
   const loadPrefs = async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAuth('/user');
-      if (res.ok) {
-        const d = await res.json();
+      const [userRes, weightRes] = await Promise.all([
+        fetchWithAuth('/user'),
+        fetchWithAuth('/health/weight-trend')
+      ]);
+      
+      let dynamicMaintenance = null;
+      if (weightRes.ok) {
+        const d = await weightRes.json();
+        const weeks = d.weeklyData || [];
+        const latestWithEstimate = [...weeks].reverse().find((w: any) => w.maintenanceEstimate !== null);
+        if (latestWithEstimate) {
+          dynamicMaintenance = latestWithEstimate.maintenanceEstimate;
+        }
+      }
+
+      if (userRes.ok) {
+        const d = await userRes.json();
         const prefs = d.preferences || {};
         setReminderEnabled(prefs.weightReminderEnabled !== false);
         setReminderDay(prefs.weightReminderDay ?? 0);
         setReminderHour(prefs.weightReminderHour ?? 9);
         setRolloverHour(prefs.dayRolloverHour ?? 4);
         if (d.dietMode) setDietMode(d.dietMode);
-        if (d.maintenanceCalories) setMaintenanceCals(d.maintenanceCalories);
+        
+        const baseMaintenance = dynamicMaintenance || d.maintenanceCalories || 2200;
+        setMaintenanceCals(Math.round(baseMaintenance / 50) * 50);
       }
     } catch (e) {
       console.error('Load prefs error:', e);

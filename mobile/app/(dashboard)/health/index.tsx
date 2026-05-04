@@ -4,6 +4,9 @@ import {
   ActivityIndicator, RefreshControl, TextInput, Modal, Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
+import { useFocusEffect } from '@react-navigation/native';
+import { useCallback } from 'react';
+
 import { BlurView } from 'expo-blur';
 import {
   Heart, Flame, Dumbbell, ChevronRight,
@@ -33,7 +36,7 @@ export default function HealthScreen() {
   });
   const [editSaving, setEditSaving] = useState(false);
 
-  const load = async () => {
+  const load = useCallback(async () => {
     try {
       const [ctxRes, weightRes] = await Promise.all([
         fetchWithAuth('/health/context'),
@@ -44,7 +47,7 @@ export default function HealthScreen() {
         const d = await weightRes.json();
         setWeightHistory(d.weightLogs || []);
         const weeks = d.weeklyData || [];
-        const latestWithEstimate = [...weeks].reverse().find(w => w.maintenanceEstimate !== null);
+        const latestWithEstimate = [...weeks].reverse().find((w: any) => w.maintenanceEstimate !== null);
         if (latestWithEstimate) {
           setDynamicMaintenance(latestWithEstimate.maintenanceEstimate);
         }
@@ -55,9 +58,9 @@ export default function HealthScreen() {
       setLoading(false);
       setRefreshing(false);
     }
-  };
+  }, []);
 
-  useEffect(() => { load(); }, []);
+  useFocusEffect(useCallback(() => { load(); }, [load]));
   const onRefresh = () => { setRefreshing(true); load(); };
 
   const openEdit = (field: string, label: string, current: any) => {

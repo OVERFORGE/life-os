@@ -1,5 +1,5 @@
 import React, { useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Dimensions, RefreshControl } from 'react-native';
 import { ArrowLeft, ChevronLeft, ChevronRight, Flame } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
@@ -47,6 +47,7 @@ export default function CaloriesChartScreen() {
   const [logs, setLogs] = useState<any[]>([]);
   const [targetCalories, setTargetCalories] = useState(2000);
 
+  const [refreshing, setRefreshing] = useState(false);
   const { start: weekStart, end: weekEnd } = getWeekBounds(weekOffset);
 
   const loadData = useCallback(async () => {
@@ -70,10 +71,16 @@ export default function CaloriesChartScreen() {
       console.error('Calories chart error:', e);
     } finally {
       setLoading(false);
+      setRefreshing(false);
     }
   }, [weekOffset]);
 
   useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+
+  const onRefresh = () => {
+    setRefreshing(true);
+    loadData();
+  };
 
   // Build 7-day array
   const days = Array.from({ length: 7 }, (_, i) => {
@@ -119,7 +126,11 @@ export default function CaloriesChartScreen() {
         </View>
       </View>
 
-      <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+      <ScrollView
+        contentContainerStyle={{ padding: 24, paddingBottom: 60 }}
+        showsVerticalScrollIndicator={false}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.emerald} />}
+      >
 
         {/* Week Navigator */}
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', backgroundColor: C.card, borderRadius: 20, borderWidth: 1, borderColor: C.border, paddingHorizontal: 16, paddingVertical: 12, marginBottom: 20 }}>
