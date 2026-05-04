@@ -3,6 +3,7 @@ import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, K
 import { Bot, ArrowUp, Copy, Check, ArrowDown, Leaf } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithAuth, API_URL } from '../../utils/api';
+import { scheduleAllTaskReminders } from '../../utils/notifications';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
 
@@ -94,6 +95,8 @@ export default function BrainScreen() {
 
       xhr.onload = () => {
         setLoading(false);
+        // Resync reminders in case the AI created/updated a task
+        scheduleAllTaskReminders().catch(console.error);
       };
 
       xhr.onerror = () => {
