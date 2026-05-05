@@ -127,9 +127,9 @@ Use when user wants to create, add, remind, or schedule a task.
 Trigger words: "remind me", "create a task", "add task", "schedule", "I need to", "don't let me forget", "put on my list".
 Resolve date references: "today"→today, "tomorrow"→tomorrow, "next Monday"→calculate.
 
-CRITICAL TIME RESOLUTION: If the user says "in one hour", "in 30 minutes", "in 2 hours", or any relative time:
+CRITICAL TIME RESOLUTION: If the user says "in one hour", "in 30 minutes", "in 2 minutes", etc.:
 - Set dueDate = today (or tomorrow if past midnight)
-- Set reminderOffsetMinutes = the number of minutes from now (e.g. "in 1 hour" → 60, "in 30 minutes" → 30)
+- Set reminderOffsetMinutes = the STRICT NUMERICAL VALUE in MINUTES from now (e.g. "in 1 hour" → 60, "in 30 minutes" → 30, "in 2 minutes" → 2). DO NOT CONVERT TO SECONDS.
 - Do NOT put "in one hour" as a string into dueTime or reminders. Compute the offset.
 
 Payload:

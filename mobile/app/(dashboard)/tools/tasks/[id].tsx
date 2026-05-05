@@ -38,6 +38,7 @@ export default function EditTaskScreen() {
   const [newSubtask, setNewSubtask] = useState('');
   const [reminders, setReminders] = useState<Date[]>([]);
   const [showReminderPicker, setShowReminderPicker] = useState(false);
+  const [pickerMode, setPickerMode] = useState<'date' | 'time'>('date');
   const [pendingReminder, setPendingReminder] = useState<Date>(new Date());
 
   useEffect(() => {
@@ -383,7 +384,12 @@ export default function EditTaskScreen() {
           <TouchableOpacity
             onPress={() => {
               setPendingReminder(new Date());
-              setShowReminderPicker(true);
+              if (Platform.OS === 'ios') {
+                setShowReminderPicker(true);
+              } else {
+                setPickerMode('date');
+                setShowReminderPicker(true);
+              }
             }}
             style={{ flexDirection: 'row', alignItems: 'center', gap: 8, backgroundColor: '#1c1a2e', borderRadius: 12, borderWidth: 1, borderColor: '#3b1d8a', paddingHorizontal: 14, paddingVertical: 12 }}
           >
@@ -393,13 +399,33 @@ export default function EditTaskScreen() {
           {showReminderPicker && (
             <DateTimePicker
               value={pendingReminder}
-              mode="datetime"
+              mode={Platform.OS === 'ios' ? 'datetime' : pickerMode}
               display="default"
               onChange={(e, d) => {
-                setShowReminderPicker(Platform.OS === 'ios');
-                if (d) {
-                  setReminders(prev => [...prev, d].sort((a, b) => a.getTime() - b.getTime()));
-                  setPendingReminder(new Date());
+                if (Platform.OS === 'ios') {
+                  setShowReminderPicker(false);
+                  if (d) {
+                    setReminders(prev => [...prev, d].sort((a, b) => a.getTime() - b.getTime()));
+                    setPendingReminder(new Date());
+                  }
+                } else {
+                  // Android handling
+                  if (e.type === 'set' && d) {
+                    if (pickerMode === 'date') {
+                      const newDate = new Date(pendingReminder);
+                      newDate.setFullYear(d.getFullYear(), d.getMonth(), d.getDate());
+                      setPendingReminder(newDate);
+                      setPickerMode('time');
+                    } else {
+                      const newTime = new Date(pendingReminder);
+                      newTime.setHours(d.getHours(), d.getMinutes(), 0, 0);
+                      setReminders(prev => [...prev, newTime].sort((a, b) => a.getTime() - b.getTime()));
+                      setShowReminderPicker(false);
+                    }
+                  } else {
+                    // Cancelled
+                    setShowReminderPicker(false);
+                  }
                 }
               }}
             />

@@ -207,7 +207,6 @@ export default function LoginScreen() {
             Sign In with Google
           </Text>
         </TouchableOpacity>
-
         <View className="mt-8 w-full pt-6 border-t border-gray-800 items-center">
           <Text className="text-gray-500 text-xs mb-3 font-semibold uppercase tracking-wider">Developer Auth Bypass</Text>
           <View className="w-full flex-row space-x-2">
