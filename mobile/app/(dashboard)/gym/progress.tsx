@@ -2,12 +2,17 @@ import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, ActivityIndicator, TouchableOpacity, RefreshControl } from 'react-native';
 import { useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../../utils/api';
-import { ArrowLeft, Target, TrendingUp, Flame, Dumbbell, Shield, Zap, AlertTriangle } from 'lucide-react-native';
+import { ArrowLeft, Target, TrendingUp, Flame, Shield, AlertTriangle, ChevronDown, ChevronUp, Dumbbell, Activity } from 'lucide-react-native';
+import Animated, { FadeInDown } from 'react-native-reanimated';
 
 export default function GymProgressDashboard() {
   const router = useRouter();
   const [loading, setLoading] = useState(true);
   const [data, setData] = useState<any>(null);
+
+  // For Accordions
+  const [expandedDay, setExpandedDay] = useState<string | null>(null);
+  const [expandedExercise, setExpandedExercise] = useState<string | null>(null);
 
   const loadData = async () => {
     setLoading(true);
@@ -36,6 +41,14 @@ export default function GymProgressDashboard() {
       case 'Regressing': return '#ef4444';
       default: return '#6b7280';
     }
+  };
+
+  const getScoreColor = (score: number) => {
+    if (score >= 90) return '#8b5cf6';
+    if (score >= 70) return '#10b981';
+    if (score >= 40) return '#3b82f6';
+    if (score >= 20) return '#f59e0b';
+    return '#ef4444';
   };
 
   return (
@@ -94,11 +107,10 @@ export default function GymProgressDashboard() {
                     <Text className="text-gray-100 font-bold text-lg">{data.actualWeeklySessions} <Text className="text-gray-500 text-sm">/ {data.expectedWeeklySessions}</Text></Text>
                   </View>
                 </View>
-
               </View>
             </View>
 
-            {/* AI Insights (Mocked for dashboard, full details in drill-downs) */}
+            {/* AI Insights */}
             <View className="mb-8">
               <Text className="text-gray-500 font-bold text-[11px] tracking-widest uppercase mb-3">Intelligence Assessment</Text>
               
@@ -128,6 +140,76 @@ export default function GymProgressDashboard() {
                 </View>
               )}
             </View>
+
+            {/* Routine Hierarchy Breakdown */}
+            {data.activeRoutine && (
+              <View className="mb-12">
+                <Text className="text-gray-500 font-bold text-[11px] tracking-widest uppercase mb-3">Routine Progression Drill-down</Text>
+                
+                {data.activeRoutine.splitDays.map((day: any, dIdx: number) => (
+                  <Animated.View key={dIdx} entering={FadeInDown.delay(dIdx * 100)} className="mb-3">
+                    <TouchableOpacity 
+                      onPress={() => setExpandedDay(expandedDay === day.dayName ? null : day.dayName)}
+                      className="bg-[#12141a] border border-[#1e2029] rounded-xl p-4 flex-row items-center justify-between"
+                    >
+                      <View className="flex-row items-center">
+                        <Dumbbell size={18} color="#fcd34d" />
+                        <View className="ml-3">
+                          <Text className="text-gray-100 font-bold text-base">{day.dayName}</Text>
+                          <Text className="text-gray-500 text-xs">Day Score: <Text style={{ color: getScoreColor(day.score) }}>{day.score}</Text></Text>
+                        </View>
+                      </View>
+                      {expandedDay === day.dayName ? <ChevronUp color="#9ca3af" size={20} /> : <ChevronDown color="#9ca3af" size={20} />}
+                    </TouchableOpacity>
+
+                    {expandedDay === day.dayName && (
+                      <View className="pl-4 mt-2">
+                        {day.exercises.map((ex: any, eIdx: number) => {
+                          const exerciseId = `${day.dayName}-${ex.equipmentName}`;
+                          const isExExpanded = expandedExercise === exerciseId;
+                          
+                          return (
+                            <View key={eIdx} className="mb-2">
+                              <TouchableOpacity 
+                                onPress={() => setExpandedExercise(isExExpanded ? null : exerciseId)}
+                                className="bg-[#1a1c23] border border-[#2a2d3a] rounded-xl p-3 flex-row items-center justify-between"
+                              >
+                                <View className="flex-row items-center">
+                                  <Activity size={14} color="#8b5cf6" />
+                                  <View className="ml-3">
+                                    <Text className="text-gray-200 font-bold text-sm">{ex.equipmentName}</Text>
+                                    <Text className="text-gray-500 text-[10px]">Ex. Score: <Text style={{ color: getScoreColor(ex.score) }}>{ex.score}</Text></Text>
+                                  </View>
+                                </View>
+                                {isExExpanded ? <ChevronUp color="#6b7280" size={16} /> : <ChevronDown color="#6b7280" size={16} />}
+                              </TouchableOpacity>
+
+                              {isExExpanded && ex.setScores && (
+                                <View className="pl-4 pr-1 mt-2 mb-2 flex-row flex-wrap justify-between">
+                                  {ex.setScores.map((setObj: any, sIdx: number) => (
+                                    <TouchableOpacity 
+                                      key={sIdx}
+                                      onPress={() => router.push(`/(dashboard)/gym/exercise/${encodeURIComponent(ex.equipmentName)}/set/${setObj.setIndex}/progress`)}
+                                      className="w-[48%] bg-[#12141a] border border-[#2a2d3a] rounded-lg p-3 mb-2"
+                                    >
+                                      <Text className="text-gray-400 font-bold text-[10px] uppercase mb-1">Set {setObj.setIndex}</Text>
+                                      <View className="flex-row items-center justify-between">
+                                        <Text className="text-gray-200 font-bold text-xl" style={{ color: getScoreColor(setObj.score) }}>{setObj.score}</Text>
+                                        <TrendingUp size={14} color={getScoreColor(setObj.score)} />
+                                      </View>
+                                    </TouchableOpacity>
+                                  ))}
+                                </View>
+                              )}
+                            </View>
+                          );
+                        })}
+                      </View>
+                    )}
+                  </Animated.View>
+                ))}
+              </View>
+            )}
 
           </>
         ) : null}
