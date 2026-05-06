@@ -149,6 +149,13 @@ export default function GymHub() {
           <Dumbbell size={28} color="#fcd34d" />
           <Text className="text-2xl font-bold text-gray-100 ml-3">Gym Session</Text>
         </View>
+        <TouchableOpacity 
+          onPress={() => router.push('/(dashboard)/gym/progress')}
+          className="bg-amber-500/20 px-3 py-1.5 rounded-full border border-amber-500/30 flex-row items-center"
+        >
+          <Flame size={14} color="#fcd34d" />
+          <Text className="text-amber-400 font-bold ml-1.5 text-xs">Intelligence</Text>
+        </TouchableOpacity>
       </View>
 
       {/* Quick Start Live Session */}

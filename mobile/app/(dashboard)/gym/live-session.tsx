@@ -317,6 +317,14 @@ export default function LiveSessionScreen() {
                               <Text className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1">Target</Text>
                               <Text className="text-white font-bold text-lg">{ex.targetSets} Sets × {ex.targetReps} Reps</Text>
                             </View>
+                            <View className="items-center">
+                              <TouchableOpacity 
+                                onPress={() => router.push(`/(dashboard)/gym/exercise/${encodeURIComponent(ex.equipmentName)}/progress`)}
+                                className="bg-amber-500/10 border border-amber-500/20 px-3 py-1.5 rounded-full"
+                              >
+                                <Text className="text-amber-500 font-bold text-xs uppercase">View Progress</Text>
+                              </TouchableOpacity>
+                            </View>
                             <View className="items-end">
                               <Text className="text-gray-500 text-[10px] font-black uppercase tracking-widest mb-1">Ideal Rest</Text>
                               <Text className="text-amber-500 font-bold text-lg">{ex.restSeconds}s</Text>
