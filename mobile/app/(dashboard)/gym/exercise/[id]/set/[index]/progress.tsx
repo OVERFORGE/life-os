@@ -1,7 +1,7 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Dimensions } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { fetchWithAuth } from '../../../../../../utils/api';
+import { fetchWithAuth } from '../../../../../../../utils/api';
 import { ArrowLeft, TrendingUp, TrendingDown } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit';
 

@@ -15,8 +15,11 @@ export async function GET(req: Request) {
 
     const userId = (session.user as any).id;
 
-    // Get active routine
-    const activeRoutine = await WorkoutRoutine.findOne({ userId, isActive: true }).lean();
+    // Get active routine or fallback to most recent
+    let activeRoutine = await WorkoutRoutine.findOne({ userId, isActive: true }).lean();
+    if (!activeRoutine) {
+      activeRoutine = await WorkoutRoutine.findOne({ userId }).sort({ createdAt: -1 }).lean();
+    }
     const targetDays = activeRoutine && activeRoutine.splitDays ? activeRoutine.splitDays.length : 4;
 
     // Get all sessions

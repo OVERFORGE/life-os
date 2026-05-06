@@ -27,7 +27,10 @@ export async function GET(req: Request) {
     
     // To get the "targetReps Default", we can look if they have a routine with this exercise
     let targetRepsDefault = 10;
-    const routine = await WorkoutRoutine.findOne({ userId, isActive: true }).lean();
+    let routine = await WorkoutRoutine.findOne({ userId, isActive: true }).lean();
+    if (!routine) {
+      routine = await WorkoutRoutine.findOne({ userId }).sort({ createdAt: -1 }).lean();
+    }
     if (routine && routine.splitDays) {
       for (const day of routine.splitDays) {
         if (day.exercises) {
