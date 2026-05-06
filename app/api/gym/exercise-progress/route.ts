@@ -1,14 +1,17 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { WorkoutSession } from "@/server/db/models/WorkoutSession";
-import { verifyAuth } from "@/server/auth/verifyAuth";
+import { getAuthSession } from "@/lib/auth";
 import { scoreExerciseProgress } from "@/server/gym/progression/scoreExerciseProgress";
 import { WorkoutRoutine } from "@/server/db/models/WorkoutRoutine";
 
 export async function GET(req: Request) {
   try {
-    const user = await verifyAuth(req);
-    if (!user) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+    await connectDB();
+    const session = await getAuthSession();
+    if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+
+    const userId = (session.user as any).id;
 
     const url = new URL(req.url);
     const equipmentName = url.searchParams.get("equipmentName");
@@ -17,16 +20,14 @@ export async function GET(req: Request) {
       return NextResponse.json({ error: "equipmentName query parameter is required" }, { status: 400 });
     }
 
-    await connectDB();
-
     // Fetch all sessions and extract the specific exercise history
-    const sessions = await WorkoutSession.find({ userId: user._id }).sort({ date: 1 }).lean();
+    const sessions = await WorkoutSession.find({ userId }).sort({ date: 1 }).lean();
 
     const exerciseHistory: any[] = [];
     
     // To get the "targetReps Default", we can look if they have a routine with this exercise
     let targetRepsDefault = 10;
-    const routine = await WorkoutRoutine.findOne({ userId: user._id, isActive: true }).lean();
+    const routine = await WorkoutRoutine.findOne({ userId, isActive: true }).lean();
     if (routine && routine.splitDays) {
       for (const day of routine.splitDays) {
         if (day.exercises) {
