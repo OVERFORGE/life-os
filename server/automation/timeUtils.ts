@@ -55,6 +55,7 @@ export function parseLocalToUTC(dateStr: string, timeStr: string, timezone: stri
     
     if (offsetPart) {
       let offset = offsetPart.replace('GMT', '');
+      if (offset === 'UTC') offset = 'Z';
       if (offset === '') offset = '+00:00';
       return new Date(`${targetLocalStr}${offset}`);
     }
