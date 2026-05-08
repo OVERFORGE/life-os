@@ -39,6 +39,30 @@ export function getActiveDate(timezone?: string, rolloverHour: number = 4): stri
 }
 
 /**
+ * Parses a local date and time string into a UTC Date object
+ * taking into account the specific timezone.
+ */
+export function parseLocalToUTC(dateStr: string, timeStr: string, timezone: string | undefined): Date {
+    const tz = timezone || "UTC";
+    const targetLocalStr = `${dateStr}T${timeStr}:00`;
+    
+    const formatter = new Intl.DateTimeFormat('en-US', {
+      timeZone: tz,
+      timeZoneName: 'longOffset'
+    });
+    const parts = formatter.formatToParts(new Date(targetLocalStr + "Z"));
+    const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value;
+    
+    if (offsetPart) {
+      let offset = offsetPart.replace('GMT', '');
+      if (offset === '') offset = '+00:00';
+      return new Date(`${targetLocalStr}${offset}`);
+    }
+    
+    return new Date(targetLocalStr);
+}
+
+/**
  * Parses user input like "11:30pm", "7:00am", "11pm" to a continuous hour 0-24
  */
 export function parseTimeString(timeStr: string): number | null {

@@ -2,7 +2,7 @@
 import { findTaskByTitle, updateTask } from "@/features/tasks/engine/taskEngine";
 import { Task } from "@/server/db/models/Task";
 import { User } from "@/server/db/models/User";
-import { getActiveDate } from "@/server/automation/timeUtils";
+import { getActiveDate, parseLocalToUTC } from "@/server/automation/timeUtils";
 
 export async function handleUpdateTask(payload: any, userId: string) {
   let taskId = payload.taskId;
@@ -38,8 +38,7 @@ export async function handleUpdateTask(payload: any, userId: string) {
     for (const t of reminderTimes) {
       const match = String(t).match(/^(\d{1,2}):(\d{2})$/);
       if (match) {
-        const base = new Date(`${baseDate}T00:00:00`);
-        base.setHours(parseInt(match[1]), parseInt(match[2]), 0, 0);
+        const base = parseLocalToUTC(baseDate, `${match[1].padStart(2, '0')}:${match[2]}`, timezone);
         resolvedReminders.push(base.toISOString());
       }
     }

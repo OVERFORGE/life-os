@@ -232,7 +232,8 @@ Detected Intent: "${intent}"
 User's Active Goals (for delete matching): [${activeGoalsList}]
 Existing Tracked Signals (MUST USE FOR LOGGING/GOALS): [${existingSignalsList || "none"}]
 Operating Mode: "${mode}"
-Current Local Date Context: "${getActiveDate(timezone)}"
+Current Local Datetime: "${new Date().toLocaleString("en-US", { timeZone: timezone || "UTC", weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' })}"
+Current Local Date (YYYY-MM-DD): "${getActiveDate(timezone)}"
 
 ### CRITICAL DISAMBIGUATION INSTRUCTION:
 If the user's message is a short choice (e.g. "the morning one", "the first one", "delete it"), look at the Recent Conversation History to see what specific items the system just presented. Extract the EXACT title of the intended task/goal from the history, rather than the user's vague phrase.
