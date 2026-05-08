@@ -4,6 +4,26 @@ import { Task } from "@/server/db/models/Task";
 import { User } from "@/server/db/models/User";
 import { getActiveDate, parseLocalToUTC } from "@/server/automation/timeUtils";
 
+// Helper to locally resolve dates for reminders
+function resolveDateForReminders(raw: string, timezone?: string): string | null {
+  const today = getActiveDate(timezone);
+  if (!raw) return null;
+  const lower = raw.toLowerCase().trim();
+  if (lower === "today") return today;
+  if (lower === "tomorrow") {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+  if (lower === "yesterday") {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return today; // Fallback for hallucinations like "this Sunday"
+}
+
 export async function handleUpdateTask(payload: any, userId: string) {
   let taskId = payload.taskId;
 
@@ -24,9 +44,7 @@ export async function handleUpdateTask(payload: any, userId: string) {
   // Resolve new reminder times if provided
   const resolvedReminders: string[] = [];
   const now = new Date();
-  const newDueDate = updates.dueDate && !/^today|tomorrow|yesterday$/i.test(updates.dueDate)
-    ? updates.dueDate
-    : updates.dueDate ? getActiveDate(timezone) : null;
+  const newDueDate = resolveDateForReminders(updates.dueDate, timezone);
 
   if (reminderOffsetMinutes && !isNaN(Number(reminderOffsetMinutes))) {
     const ms = Number(reminderOffsetMinutes) * 60 * 1000;

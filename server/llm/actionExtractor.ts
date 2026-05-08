@@ -245,15 +245,14 @@ ${schemas}
 A single message can contain multiple actions. Extract ALL of them.
 Example: "I went to gym and delete my abs goal" → two actions: log_activity + delete_goal
 
-### DATE RESOLUTION (for log_meal only)
-The current local date is provided above. Use it to resolve relative date references:
-- "today" → do NOT include date (let system use default)
-- "yesterday" → subtract 1 day from current date
-- "day before yesterday" → subtract 2 days
-- "on Monday" / "last Monday" → calculate the most recent past Monday relative to current date
-- "on Tuesday" (if today is Friday) → subtract 3 days (most recent past Tuesday)
+### DATE RESOLUTION (for all actions, especially tasks and meals)
+The current local date is provided above. Use it to resolve ALL relative date references into "YYYY-MM-DD":
+- "today" → output today's YYYY-MM-DD
+- "tomorrow" → output tomorrow's YYYY-MM-DD
+- "yesterday" → output yesterday's YYYY-MM-DD
+- "this Sunday" / "next Friday" / "on Monday" → calculate the exact future or past date based on the Current Local Datetime provided above.
 - If no date is mentioned → do NOT include the date field at all
-CRITICAL: Always output date as "YYYY-MM-DD" format only.
+CRITICAL: Always output the dueDate or date field strictly as "YYYY-MM-DD" format. NEVER output strings like "this Sunday".
 
 ### OUTPUT FORMAT
 Return ONLY valid JSON, nothing else:

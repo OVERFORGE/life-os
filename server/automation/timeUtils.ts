@@ -46,21 +46,31 @@ export function parseLocalToUTC(dateStr: string, timeStr: string, timezone: stri
     const tz = timezone || "UTC";
     const targetLocalStr = `${dateStr}T${timeStr}:00`;
     
-    const formatter = new Intl.DateTimeFormat('en-US', {
-      timeZone: tz,
-      timeZoneName: 'longOffset'
-    });
-    const parts = formatter.formatToParts(new Date(targetLocalStr + "Z"));
-    const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value;
-    
-    if (offsetPart) {
-      let offset = offsetPart.replace('GMT', '');
-      if (offset === 'UTC') offset = 'Z';
-      if (offset === '') offset = '+00:00';
-      return new Date(`${targetLocalStr}${offset}`);
+    try {
+      const formatter = new Intl.DateTimeFormat('en-US', {
+        timeZone: tz,
+        timeZoneName: 'longOffset'
+      });
+      const parts = formatter.formatToParts(new Date(targetLocalStr + "Z"));
+      const offsetPart = parts.find(p => p.type === 'timeZoneName')?.value;
+      
+      if (offsetPart) {
+        let offset = offsetPart.replace('GMT', '');
+        if (offset === 'UTC') offset = 'Z';
+        if (offset === '') offset = '+00:00';
+        const finalDateStr = `${targetLocalStr}${offset}`;
+        const finalDate = new Date(finalDateStr);
+        if (isNaN(finalDate.getTime())) {
+          console.error(`[TIME UTILS] Invalid Date created from: ${finalDateStr} (tz: ${tz}, targetLocalStr: ${targetLocalStr}, offset: ${offset})`);
+        }
+        return finalDate;
+      }
+      
+      return new Date(targetLocalStr);
+    } catch (e: any) {
+      console.error(`[TIME UTILS] Exception in parseLocalToUTC: ${e.message} for ${dateStr} ${timeStr} ${timezone}`);
+      return new Date(targetLocalStr);
     }
-    
-    return new Date(targetLocalStr);
 }
 
 /**

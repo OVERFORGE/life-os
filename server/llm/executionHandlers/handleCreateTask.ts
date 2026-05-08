@@ -4,6 +4,26 @@ import { User } from "@/server/db/models/User";
 import { Goal } from "@/features/goals/models/Goal";
 import { getActiveDate, parseLocalToUTC } from "@/server/automation/timeUtils";
 
+// Helper to locally resolve dates for reminders
+function resolveDateForReminders(raw: string, timezone?: string): string {
+  const today = getActiveDate(timezone);
+  if (!raw) return today;
+  const lower = raw.toLowerCase().trim();
+  if (lower === "today") return today;
+  if (lower === "tomorrow") {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+  if (lower === "yesterday") {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return today; // Fallback for hallucinations like "this Sunday"
+}
+
 export async function handleCreateTask(payload: any, userId: string) {
   const user = await User.findById(userId).select("settings").lean();
   const timezone = (user as any)?.settings?.timezone;
@@ -25,9 +45,7 @@ export async function handleCreateTask(payload: any, userId: string) {
   // Resolve reminder times to absolute ISO Date strings
   const reminders: string[] = [];
   const now = new Date();
-  const dueDate = payload.dueDate && !/^today|tomorrow|yesterday$/i.test(payload.dueDate)
-    ? payload.dueDate
-    : getActiveDate(timezone);
+  const dueDate = resolveDateForReminders(payload.dueDate, timezone);
 
   // Case A: relative offset (e.g. "in one hour" → reminderOffsetMinutes: 60)
   if (payload.reminderOffsetMinutes && !isNaN(Number(payload.reminderOffsetMinutes))) {
