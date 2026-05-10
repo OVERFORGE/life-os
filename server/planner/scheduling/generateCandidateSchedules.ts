@@ -174,20 +174,32 @@ function buildGreedySchedule(
       if (context.reverseDependencyGraph && context.reverseDependencyGraph.has(task.id)) {
         const parentIds = context.reverseDependencyGraph.get(task.id)!;
         for (const parentId of parentIds) {
+          let parentEnd = -1;
+          let parentStart = -1;
           const parentSP = scheduledPlacements.find(sp => sp.task.id === parentId);
-          if (!parentSP) {
-            // Parent chunk was deferred or displaced. Child cannot be scheduled.
-            failsDependency = true;
-            break;
+          
+          if (parentSP) {
+            parentEnd = parentSP.placement.temporalWindow.endMinute;
+            parentStart = parentSP.placement.temporalWindow.startMinute;
+          } else {
+            // Check if parent is a frozen placement injected via constraints
+            const frozenConstraint = context.recurringConstraints?.find(c => 
+              c.sourceSignals?.includes(`frozen_placement:${parentId}`)
+            );
+            if (frozenConstraint) {
+              parentEnd = frozenConstraint.window.endMinute;
+              parentStart = frozenConstraint.window.startMinute;
+            } else {
+              // Parent chunk was deferred or displaced. Child cannot be scheduled.
+              failsDependency = true;
+              break;
+            }
           }
-          // Topological rule: child must start at or after parent ends
-          // Handling overnight wrapping correctly requires more complex arithmetic, 
-          // but for simple cases:
-          let parentEnd = parentSP.placement.temporalWindow.endMinute;
+
           let childStart = candidate.temporalWindow.startMinute;
           
           // Basic check for sequential overlap/inversion without crossing midnight
-          if (parentSP.placement.temporalWindow.startMinute < parentEnd && 
+          if (parentStart < parentEnd && 
               candidate.temporalWindow.startMinute < candidate.temporalWindow.endMinute) {
              if (childStart < parentEnd) {
                failsDependency = true;

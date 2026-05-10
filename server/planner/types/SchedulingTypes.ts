@@ -41,6 +41,11 @@ export interface SchedulableUnit {
   id: string; // Task ID or deterministic Chunk ID
   unitType: "task" | "chunk";
   
+  // Future-proofing: Identity Lineage tracking
+  // Preserves explainability when chunks merge/split/rebuild
+  derivedFromChunkId?: string;
+  mutationGeneration?: number;
+  
   // Temporal Properties
   estimatedDurationMinutes: number;
   hardConstraints: TemporalWindow[];

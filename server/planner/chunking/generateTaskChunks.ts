@@ -1,5 +1,6 @@
 import { SchedulableTask } from "../types/SchedulingTypes";
 import { ChunkedTaskPlan, TaskChunk, ChunkDependency } from "../types/ChunkGraphTypes";
+import { validateAcyclicGraph } from "../validation/validateAcyclicGraph";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 2C — Adaptive Chunking Engine
@@ -109,6 +110,11 @@ export function generateTaskChunks(task: SchedulableTask): ChunkedTaskPlan {
       dependencyGraph.get(prevChunkId)!.push(chunkId);
       reverseDependencyGraph.get(chunkId)!.push(prevChunkId);
     }
+  }
+
+  const validation = validateAcyclicGraph(dependencyGraph);
+  if (!validation.valid) {
+    throw new Error(`DAG violation detected during task chunking for ${task.id}. Cycle path: ${validation.cyclePath?.join(' -> ')}`);
   }
 
   return {
