@@ -7,7 +7,8 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "seed:life": "tsx scripts/seedLife.ts"
+    "seed:life": "tsx scripts/seedLife.ts",
+    "build:mobile": "cd mobile && eas build -p android --profile preview"
   },
   "dependencies": {
     "@google/genai": "^1.49.0",

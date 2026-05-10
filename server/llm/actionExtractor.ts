@@ -219,6 +219,17 @@ Payload: {}
     // Health mode: restrict to health-only tools (no goal management)
     const schemas = mode === "health" ? healthSchemas : generalSchemas;
 
+    const tz = timezone || "UTC";
+    let calendarRef = "Next 7 Days Reference:\n";
+    const now = new Date();
+    for(let i=0; i<7; i++) {
+        const d = new Date(now);
+        d.setDate(now.getDate() + i);
+        const dateStr = d.toLocaleDateString("en-CA", { timeZone: tz }); 
+        const dayStr = d.toLocaleDateString("en-US", { timeZone: tz, weekday: 'long' }); 
+        calendarRef += `- ${dayStr}: ${dateStr}\n`;
+    }
+
     const prompt = `
 You are a deterministic action extraction engine for LifeOS.
 Extract ALL executable actions from the user's message and return them as a strict JSON array.
@@ -232,8 +243,10 @@ Detected Intent: "${intent}"
 User's Active Goals (for delete matching): [${activeGoalsList}]
 Existing Tracked Signals (MUST USE FOR LOGGING/GOALS): [${existingSignalsList || "none"}]
 Operating Mode: "${mode}"
-Current Local Datetime: "${new Date().toLocaleString("en-US", { timeZone: timezone || "UTC", weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' })}"
+Current Local Datetime: "${new Date().toLocaleString("en-US", { timeZone: tz, weekday: 'long', year: 'numeric', month: 'long', day: 'numeric', hour: 'numeric', minute: 'numeric' })}"
 Current Local Date (YYYY-MM-DD): "${getActiveDate(timezone)}"
+
+${calendarRef}
 
 ### CRITICAL DISAMBIGUATION INSTRUCTION:
 If the user's message is a short choice (e.g. "the morning one", "the first one", "delete it"), look at the Recent Conversation History to see what specific items the system just presented. Extract the EXACT title of the intended task/goal from the history, rather than the user's vague phrase.

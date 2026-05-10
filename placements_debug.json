@@ -1,0 +1,177 @@
+[
+  {
+    "taskId": "t3",
+    "dayOfWeek": 1,
+    "startMinute": 780,
+    "endMinute": 840,
+    "temporalWindow": {
+      "startMinute": 780,
+      "endMinute": 840,
+      "wrapsMidnight": false,
+      "durationMinutes": 60
+    },
+    "placementScore": 0.26,
+    "confidence": 0.801,
+    "stabilityScore": 1,
+    "placementType": "fallback",
+    "penaltiesApplied": [
+      "deep_work_outside_focus"
+    ],
+    "boostsApplied": [],
+    "blockingReasons": [],
+    "reasoning": [],
+    "metadata": {
+      "focusAlignment": 0,
+      "recoveryConflict": 0,
+      "fragmentationRisk": 0.04,
+      "chronotypeAlignment": 0,
+      "deepWorkScore": -0.5
+    }
+  },
+  {
+    "taskId": "t3",
+    "dayOfWeek": 1,
+    "startMinute": 690,
+    "endMinute": 750,
+    "temporalWindow": {
+      "startMinute": 690,
+      "endMinute": 750,
+      "wrapsMidnight": false,
+      "durationMinutes": 60
+    },
+    "placementScore": 0.26,
+    "confidence": 0.801,
+    "stabilityScore": 1,
+    "placementType": "fallback",
+    "penaltiesApplied": [
+      "deep_work_outside_focus"
+    ],
+    "boostsApplied": [],
+    "blockingReasons": [],
+    "reasoning": [],
+    "metadata": {
+      "focusAlignment": 0,
+      "recoveryConflict": 0,
+      "fragmentationRisk": 0.04,
+      "chronotypeAlignment": 0,
+      "deepWorkScore": -0.5
+    }
+  },
+  {
+    "taskId": "t3",
+    "dayOfWeek": 1,
+    "startMinute": 660,
+    "endMinute": 720,
+    "temporalWindow": {
+      "startMinute": 660,
+      "endMinute": 720,
+      "wrapsMidnight": false,
+      "durationMinutes": 60
+    },
+    "placementScore": 0.26,
+    "confidence": 0.801,
+    "stabilityScore": 1,
+    "placementType": "fallback",
+    "penaltiesApplied": [
+      "deep_work_outside_focus"
+    ],
+    "boostsApplied": [],
+    "blockingReasons": [],
+    "reasoning": [],
+    "metadata": {
+      "focusAlignment": 0,
+      "recoveryConflict": 0,
+      "fragmentationRisk": 0.04,
+      "chronotypeAlignment": 0,
+      "deepWorkScore": -0.5
+    }
+  },
+  {
+    "taskId": "t3",
+    "dayOfWeek": 1,
+    "startMinute": 720,
+    "endMinute": 780,
+    "temporalWindow": {
+      "startMinute": 720,
+      "endMinute": 780,
+      "wrapsMidnight": false,
+      "durationMinutes": 60
+    },
+    "placementScore": 0.26,
+    "confidence": 0.801,
+    "stabilityScore": 1,
+    "placementType": "fallback",
+    "penaltiesApplied": [
+      "deep_work_outside_focus"
+    ],
+    "boostsApplied": [],
+    "blockingReasons": [],
+    "reasoning": [],
+    "metadata": {
+      "focusAlignment": 0,
+      "recoveryConflict": 0,
+      "fragmentationRisk": 0.04,
+      "chronotypeAlignment": 0,
+      "deepWorkScore": -0.5
+    }
+  },
+  {
+    "taskId": "t3",
+    "dayOfWeek": 1,
+    "startMinute": 750,
+    "endMinute": 810,
+    "temporalWindow": {
+      "startMinute": 750,
+      "endMinute": 810,
+      "wrapsMidnight": false,
+      "durationMinutes": 60
+    },
+    "placementScore": 0.26,
+    "confidence": 0.801,
+    "stabilityScore": 1,
+    "placementType": "fallback",
+    "penaltiesApplied": [
+      "deep_work_outside_focus"
+    ],
+    "boostsApplied": [],
+    "blockingReasons": [],
+    "reasoning": [],
+    "metadata": {
+      "focusAlignment": 0,
+      "recoveryConflict": 0,
+      "fragmentationRisk": 0.04,
+      "chronotypeAlignment": 0,
+      "deepWorkScore": -0.5
+    }
+  },
+  {
+    "taskId": "t3",
+    "dayOfWeek": 1,
+    "startMinute": 630,
+    "endMinute": 690,
+    "temporalWindow": {
+      "startMinute": 630,
+      "endMinute": 690,
+      "wrapsMidnight": false,
+      "durationMinutes": 60
+    },
+    "placementScore": 0.2,
+    "confidence": 0.793,
+    "stabilityScore": 0.955,
+    "placementType": "fallback",
+    "penaltiesApplied": [
+      "deep_work_outside_focus",
+      "recovery_overlap_gym"
+    ],
+    "boostsApplied": [],
+    "blockingReasons": [],
+    "reasoning": [],
+    "metadata": {
+      "focusAlignment": 0,
+      "recoveryConflict": 0.15,
+      "fragmentationRisk": 0.04,
+      "chronotypeAlignment": 0,
+      "deepWorkScore": -0.5
+    }
+  }
+]
