@@ -1,4 +1,5 @@
-import { CandidateSchedule, PlacementAnchorType } from "./SchedulingTypes";
+import { PlacementAnchorType } from "./SchedulingTypes";
+import { CandidateSchedule } from "./ScheduleGraphTypes";
 
 // ─── Architectural Bounds ───────────────────────────────────────────────────
 // These bounds prevent topology explosion and ensure deterministic tractability.
@@ -10,7 +11,13 @@ import { CandidateSchedule, PlacementAnchorType } from "./SchedulingTypes";
 // - graph instability
 // - repair severity
 export const MAX_REPAIR_RADIUS = 3; // Maximum degrees of dependency traversal during a localized repair
-export const MAX_PROPAGATION_DEPTH = 5; // Maximum depth for forward temporal risk propagation
+/** 
+ * Maximum depth for forward temporal risk propagation.
+ * TODO: Explicit Failure Semantics
+ * Propagation exceeding max depth is deterministically truncated 
+ * and emits bounded reasoning metadata.
+ */
+export const MAX_PROPAGATION_DEPTH = 5;
 export const MAX_CHUNK_PROLIFERATION = 12; // Absolute ceiling on chunks per task (prevents micro-fragmentation)
 export const MAX_REPAIR_OPERATIONS_PER_CYCLE = 10; // Cap on atomic mutations per repair pass
 

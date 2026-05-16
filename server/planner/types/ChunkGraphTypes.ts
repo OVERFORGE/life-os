@@ -12,11 +12,28 @@ import { SchedulableUnit } from "./SchedulingTypes";
  * Defines the execution lifecycle of a chunk.
  * Vital for replanning semantics: we do not resurrect completed chunks,
  * and we anchor active chunks.
+ *
+ * LEGAL STATE TRANSITIONS:
+ *   pending     → active        (execution begins)
+ *   active      → completed     (chunk finishes successfully)
+ *   active      → interrupted   (focus broken mid-execution)
+ *   interrupted → deferred      (explicitly pushed to later horizon)
+ *   interrupted → active        (resume after interruption)
+ *   deferred    → pending       (re-queued for future scheduling)
+ *
+ * ILLEGAL TRANSITIONS (must never occur — future runtime enforcement target):
+ *   completed   → active        (resurrection — breaks immutability guarantee)
+ *   completed   → pending       (resurrection)
+ *   completed   → deferred      (resurrection)
+ *   active      → pending       (lifecycle regression)
+ *
+ * These rules MUST be enforced by ALL systems that mutate ChunkStatus.
+ * Repair engines and replanning systems are NOT exempt.
  */
 export type ChunkStatus =
   | "pending"     // Not yet started
   | "active"      // Currently executing
-  | "completed"   // Finished successfully
+  | "completed"   // Finished successfully — TERMINAL STATE
   | "interrupted" // Partially completed but broken focus
   | "deferred";   // Explicitly pushed to a later horizon
 
@@ -39,6 +56,18 @@ export interface TaskChunk extends SchedulableUnit {
   
   /** Current execution lifecycle state */
   chunkStatus: ChunkStatus;
+
+  /**
+   * Stable logical identity of this chunk's originating plan slot.
+   * Preserved across splits, merges, and regenerations for lineage tracking.
+   *
+   * TODO: Eventually separate into:
+   *   lineageId  — stable across ALL mutations (ancestral identity)
+   *   instanceId — unique per physical runtime generation
+   * This separation is required for correct replay diffs, displacement
+   * tracking, and continuity analysis once repair cycles become frequent.
+   */
+  originalChunkId?: string;
 }
 
 /**
@@ -71,8 +100,11 @@ export interface ChunkedTaskPlan {
   dependencies: ChunkDependency[];
   
   /**
-   * Fast lookup graph: parentId -> array of childIds.
-   * Speeds up orchestration graph traversal.
+   * Forward dependencies: chunkId -> array of child chunkIds.
+   * TODO: Dependency graph construction order must itself be deterministic.
+   * Iteration over this Map relies on insertion order. If graph sources are 
+   * nondeterministic, replay guarantees will fail. Evolve toward a canonicalized 
+   * graph structure or deterministic builder.
    */
   dependencyGraph: Map<string, string[]>;
   
@@ -112,8 +144,36 @@ export interface TaskExecutionState {
   overestimationBias: number;
   
   /** 
-   * Measure of cognitive interruptions ∈ [0,1].
-   * Derived from number of times the task was paused/interrupted relative to expected chunking.
+   * Measure of cognitive interruptions ∈ [0.0, 1.0].
+   *
+   * Normalization basis:
+   *   0.0  = zero interruptions — perfect sustained focus
+   *   0.25 = minor instability (1–2 interruptions per chunk)
+   *   0.5  = moderate instability (consistent context switching)
+   *   0.75 = high instability (frequent context breaking)
+   *   1.0  = maximal instability (constant interruption pattern)
+   *
+   * Weighting basis: derived from (interruptionCount / expectedChunks)
+   * normalized against task cognitive load class.
+   *
+   * Interpretation thresholds (used by topology optimization):
+   *   > 0.6  triggers chunk size shrink
+   *   < 0.25 permits deep-work chunk expansion
    */
   focusInstabilityScore: number;
 }
+
+// ─────────────────────────────────────────────────────────────────────────────
+// TODO: Phase 4 Graph Safety — Deterministic Graph Builder
+//
+// Replace all ad-hoc Map<string, string[]> assembly throughout the kernel with:
+//
+//   buildDeterministicDependencyGraph(
+//     dependencies: ChunkDependency[]
+//   ): Map<string, string[]>
+//
+// This utility MUST sort node entries canonically (e.g. lexicographic by chunkId)
+// before insertion to guarantee Map iteration order is replay-safe regardless of
+// the assembly source ordering. Without this, graph traversal order can silently
+// diverge between replay runs assembled from different dependency orderings.
+// ─────────────────────────────────────────────────────────────────────────────

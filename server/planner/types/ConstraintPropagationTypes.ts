@@ -56,15 +56,3 @@ export interface ConstraintPropagationResult {
   reasoning: string[];
 }
 
-// TODO: Propagation Decay Subsystem
-// All propagation attenuation logic must eventually be centralized
-// into one deterministic propagation weighting subsystem.
-// Downstream influence attenuates deterministically (e.g., depthPenalty = 1 / (depth + 1)).
-
-// TODO: Phase 4 Cognitive Saturation Boundary
-// Future planner phases may introduce:
-// - fatigue accumulation
-// - cognitive load propagation
-// - energy decay curves
-// - saturation-aware scheduling
-// These are intentionally OUT OF SCOPE for current deterministic topology phases.

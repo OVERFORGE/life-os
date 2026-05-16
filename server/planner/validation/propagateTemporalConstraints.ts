@@ -1,4 +1,5 @@
-import { CandidateSchedule, PlacementAnalysisContext, SchedulableUnit } from "../types/SchedulingTypes";
+import { SchedulableUnit, PlacementAnalysisContext } from "../types/SchedulingTypes";
+import { CandidateSchedule, ScheduledTaskPlacement } from "../types/ScheduleGraphTypes";
 import { ConstraintPropagationResult, TemporalPressureSignal } from "../types/ConstraintPropagationTypes";
 import { MAX_PROPAGATION_DEPTH } from "../types/IncrementalRepairTypes";
 
@@ -27,8 +28,8 @@ export function propagateTemporalConstraints(
     if (!unit) continue;
 
     // A. Deadline Pressure
-    if (unit.hardDeadline !== undefined) {
-      const buffer = unit.hardDeadline - sp.placement.temporalWindow.endMinute;
+    if (unit.hardDeadlineMinute !== undefined) {
+      const buffer = unit.hardDeadlineMinute - sp.placement.temporalWindow.endMinute;
       if (buffer < 60) {
         // High risk if < 60 mins buffer
         const pressureScore = clamp(1.0 - (buffer / 60));
@@ -42,7 +43,7 @@ export function propagateTemporalConstraints(
             pressureScore,
             propagationDepth: 0,
             confidence: 0.9,
-            reasoning: [`Chunk completes at ${sp.placement.temporalWindow.endMinute}, dangerously close to deadline ${unit.hardDeadline}`]
+            reasoning: [`Chunk completes at ${sp.placement.temporalWindow.endMinute}, dangerously close to deadline ${unit.hardDeadlineMinute}`]
           });
           atRiskTasks.add(unit.id);
           recommendedRepairPriority.add(sp.task.id);
@@ -55,7 +56,7 @@ export function propagateTemporalConstraints(
     // to avoid emitting duplicate signals for every node in the same chain.
     if (unit.requiresDeepWork || (unit.cognitiveLoad && unit.cognitiveLoad >= 0.8)) {
       const predecessors = context.dependencyGraph ? 
-        Array.from(context.dependencyGraph.entries())
+        Array.from<[string, string[]]>(context.dependencyGraph.entries())
           .filter(([, deps]) => deps.includes(sp.task.id))
           .map(([id]) => id) : [];
       

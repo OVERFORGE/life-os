@@ -1,3 +1,13 @@
+// ─────────────────────────────────────────────────────────────────────────────
+// PLANNER-WIDE CANONICAL SEMANTICS
+//
+// confidence ∈ [0,1] — used across placements, schedules, signals, and repairs:
+//   Measures the deterministic trustworthiness of planner inputs, constraint
+//   integrity, and evaluation completeness — NOT probability of success.
+//   1.0 = all inputs structurally complete and internally consistent.
+//   <0.5 = significant missing or conflicting input data.
+//   See: server/planner/types/PlannerSemantics.ts for the authoritative definition.
+// ─────────────────────────────────────────────────────────────────────────────
 import { TemporalWindow } from "../utils/TemporalWindow";
 
 /**
@@ -39,11 +49,26 @@ export type PlacementAnchorType = "fixed" | "sticky" | "movable";
  */
 export interface SchedulableUnit {
   id: string; // Task ID or deterministic Chunk ID
+  /**
+   * TODO: Future schedulable units may include:
+   * - routines
+   * - recovery blocks
+   * - maintenance windows
+   * - adaptive buffers
+   * - collaborative sessions
+   */
   unitType: "task" | "chunk";
   
-  // Future-proofing: Identity Lineage tracking
-  // Preserves explainability when chunks merge/split/rebuild
+  /** 
+   * Lineage Substrate: Tracks identity preservation across mutations.
+   * lineageRootId must remain immutable once established.
+   */
+  lineageRootId?: string;
+  
+  /** Represents immediate parent lineage only (e.g., prior to a split) */
   derivedFromChunkId?: string;
+  
+  /** Must monotonically increase deterministically upon every chunk mutation */
   mutationGeneration?: number;
   
   // Temporal Properties
@@ -51,7 +76,29 @@ export interface SchedulableUnit {
   hardConstraints: TemporalWindow[];
   softConstraints: TemporalWindow[];
   preferredTimeWindows?: TemporalWindow[];
-  hardDeadline?: Date;
+  /**
+   * Planner-relative deadline for this unit, expressed as minutes from the
+   * start of the ACTIVE ORCHESTRATION HORIZON (day-start minute = 0).
+   *
+   * This is NOT wall-clock absolute time. It is not a Unix timestamp.
+   * It is not a Date. It is a minute offset within the current planning day.
+   *
+   * Semantics:
+   *   - 0   = start of the active scheduling day
+   *   - 720 = noon of the active scheduling day
+   *   - 1439 = last valid minute of the active scheduling day
+   *
+   * Cross-day safety:
+   *   hardDeadlineMinute is only meaningful within a single orchestration horizon.
+   *   For deadlines spanning multiple days, use PlannerDeadlineBoundary (see
+   *   PlannerSemantics.ts) which carries an explicit dayOffset anchor.
+   *
+   * Boundary rule:
+   *   Wall-clock dueDate (Date) is resolved to hardDeadlineMinute by the
+   *   normalization layer ONLY when the planning day anchor is known.
+   *   The planner kernel itself never performs this conversion.
+   */
+  hardDeadlineMinute?: number;
   
   // Arbitrations & Scoring
   priorityScore: number;
@@ -94,7 +141,11 @@ export interface CandidatePlacement {
   
   /** Weighted score ∈ [0,1] evaluating the quality of this slot */
   placementScore: number;
-  /** Propagated confidence ∈ [0,1] based on context reliability */
+  /** 
+   * Propagated confidence ∈ [0,1].
+   * Confidence measures deterministic trustworthiness of the underlying planner context 
+   * and evaluation inputs, NOT probabilistic success likelihood.
+   */
   confidence: number;
   /** Measure of fragility/resilience ∈ [0,1] (Refinement 4) */
   stabilityScore: number;
@@ -105,6 +156,9 @@ export interface CandidatePlacement {
   penaltiesApplied: string[];
   boostsApplied: string[];
   blockingReasons: string[];
+  /**
+   * TODO: Evolve to PlannerReasoningEvent objects for structured, queryable, and weightable metadata.
+   */
   reasoning: string[];
   
   // Raw subsystem scores
@@ -117,6 +171,18 @@ export interface CandidatePlacement {
   };
 
   // Phase 2C Replanning Lineage
+  /**
+   * Deterministic stable identity for this placement.
+   * Format: `{taskId}@{startMinute}-{endMinute}:{generationSeed}`
+   * where generationSeed derives from logicalTick or repairGeneration.
+   *
+   * Required for: replay diffs, repair lineage, displacement tracking,
+   * and continuity analysis across incremental repair cycles.
+   *
+   * TODO: Populate in generateCandidatePlacements() once logicalTick is
+   * threaded through the placement engine. Must NEVER use Date.now() or randomness.
+   */
+  placementId?: string;
   derivedFromPlacementId?: string;
   repairGeneration?: number;
 }

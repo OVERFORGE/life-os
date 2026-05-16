@@ -25691,3 +25691,51 @@ export function getTodayDateString() {
 ===== FILE: .\utils\format.ts =====
 
 
+$root=(Get-Location).Path
+>> $out="jarvis_dump.txt"
+>> 
+>> if(Test-Path $out){
+>>   Remove-Item $out
+>> }
+>> 
+>> $excludePatterns = @(
+>>   "\node_modules\",
+>>   "\.next\",
+>>   "\.git\",
+>>   "\dist\",
+>>   "\build\",
+>>   "\.vercel\",
+>> )
+>>
+>> $extensions=@(".ts",".tsx",".js",".jsx",".json",".css",".md")
+>>
+>> $files=Get-ChildItem -Recurse -File | Where-Object{
+>>   $full = $_.FullName
+>>
+>>   -not ($excludePatterns | Where-Object { $full -like "*$_*" }) -and
+>>   ($extensions -contains $_.Extension)
+>> }
+>>
+>> $sb=New-Object System.Text.StringBuilder
+>>
+>> foreach($f in $files){
+>>   $rel=$f.FullName.Replace($root+"\","")
+>>
+>>   $sb.AppendLine("") | Out-Null
+>>   $sb.AppendLine("===== FILE: .\$rel =====") | Out-Null
+>>
+>>   try{
+>>     Get-Content -LiteralPath $f.FullName | ForEach-Object{
+>>       $sb.AppendLine($_) | Out-Null
+>>     }
+>>   } catch {
+>>     $sb.AppendLine("[Error reading file]") | Out-Null
+>>   }
+>>
+>>   $sb.AppendLine("") | Out-Null
+>> }
+>>
+>> $sb.ToString() | Set-Content $out
+>>
+>> Write-Host "Dump created:" $out
+>> Write-Host "Files included:" $files.Count

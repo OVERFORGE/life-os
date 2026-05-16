@@ -1,4 +1,4 @@
-import { CandidatePlacement, PlacementAnalysisContext, SchedulableTask } from "../types/SchedulingTypes";
+import { CandidatePlacement, PlacementAnalysisContext, SchedulableUnit } from "../types/SchedulingTypes";
 import { calculateTemporalOverlap, temporalWindowContains, tryCreateTemporalWindow } from "../utils/TemporalWindow";
 
 export interface ValidationIssue {
@@ -14,7 +14,7 @@ export interface ValidationResult {
 
 export function validateCandidatePlacement(
   placement: CandidatePlacement,
-  task: SchedulableTask,
+  task: SchedulableUnit,
   context: PlacementAnalysisContext
 ): ValidationResult {
   const result: ValidationResult = {

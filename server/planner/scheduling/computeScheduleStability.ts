@@ -30,6 +30,7 @@ export interface StabilityAnalysis {
     lateNightPenalty: number;
     fragmentationPenalty: number;
     sequencingScore: number;
+    chunkContinuityPenalty: number;
   };
 }
 
@@ -58,6 +59,7 @@ export function computeScheduleStability(
         lateNightPenalty: 0,
         fragmentationPenalty: 0,
         sequencingScore: 1.0,
+        chunkContinuityPenalty: 0,
       },
     };
   }
@@ -71,8 +73,10 @@ export function computeScheduleStability(
   // Penalize frequent task type changes in adjacent slots.
   let contextSwitches = 0;
   for (let i = 1; i < sorted.length; i++) {
-    const prevType = sorted[i - 1].task.taskType ?? "general";
-    const currType = sorted[i].task.taskType ?? "general";
+    const prevTask = sorted[i - 1].task as any;
+    const currTask = sorted[i].task as any;
+    const prevType = prevTask.taskType ?? "general";
+    const currType = currTask.taskType ?? "general";
     const prevDeepWork = sorted[i - 1].task.requiresDeepWork;
     const currDeepWork = sorted[i].task.requiresDeepWork;
 

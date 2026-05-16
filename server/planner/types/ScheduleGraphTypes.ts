@@ -103,6 +103,8 @@ export interface CandidateSchedule {
   /**
    * Propagated confidence ∈ [0,1] for this schedule.
    * Derived from placement confidence, coverage, and stability.
+   * Confidence measures deterministic trustworthiness of the underlying planner context 
+   * and evaluation inputs, NOT probabilistic success likelihood.
    */
   confidence: number;
 
@@ -116,7 +118,10 @@ export interface CandidateSchedule {
 
   // ── Explainability ────────────────────────────────────────────────────────
 
-  /** High-level reasoning entries for this schedule */
+  /** 
+   * High-level reasoning entries for this schedule 
+   * TODO: Evolve to PlannerReasoningEvent objects for structured, queryable, and weightable metadata.
+   */
   reasoning: string[];
   /** Score-reducing factors */
   penaltiesApplied: string[];

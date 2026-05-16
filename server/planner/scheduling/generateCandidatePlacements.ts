@@ -126,11 +126,6 @@ export function generateCandidatePlacements(
     if (Math.abs(a.placementScore - b.placementScore) > 0.05) {
       return b.placementScore - a.placementScore;
     }
-    const prefA = a.metadata.preferenceRatio || 0;
-    const prefB = b.metadata.preferenceRatio || 0;
-    if (Math.abs(prefA - prefB) > 0.05) {
-      return prefB - prefA; // Higher preference match ratio first
-    }
     if (Math.abs(a.confidence - b.confidence) > 0.05) {
       return b.confidence - a.confidence;
     }
@@ -146,7 +141,7 @@ export function generateCandidatePlacements(
 }
 
 function evaluatePlacement(
-  task: SchedulableTask,
+  task: SchedulableUnit,
   window: TemporalWindow,
   dayOfWeek: number,
   avail: AvailabilityWindow,
@@ -349,7 +344,6 @@ function evaluatePlacement(
       fragmentationRisk: Number(fragmentationRisk.toFixed(3)),
       chronotypeAlignment: 0, // Placeholder
       deepWorkScore: Number(deepWorkScore.toFixed(3)),
-      preferenceRatio: Number(preferenceRatio.toFixed(3))
     }
   };
 }

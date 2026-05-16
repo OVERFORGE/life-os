@@ -53,6 +53,7 @@ export function normalizeTaskForScheduling(rawTask: RawTaskForScheduling): Sched
   const temporalFlexibility = Math.max(0, Math.min(1.0, baseFlexibility - deadlinePenalty));
 
   return {
+    unitType: "task",
     // Deterministic fallback — 'unsaved-task' avoids runtime nondeterminism from Date.now().
     // Ensures replay-safe, cache-safe, and reproducible planner normalization.
     id: rawTask._id?.toString() ?? rawTask.id ?? "unsaved-task",
@@ -63,7 +64,12 @@ export function normalizeTaskForScheduling(rawTask: RawTaskForScheduling): Sched
     requiresDeepWork,
     cognitiveLoad,
     minimumChunkSize,
-    hardDeadline: rawTask.dueDate ? new Date(rawTask.dueDate) : undefined,
+    // NOTE: hardDeadlineMinute is NOT set here because converting an absolute wall-clock dueDate
+    // to a planner-relative minute requires the planning day's start epoch — context not available
+    // at normalization time. Callers that have day context (e.g. daily schedule builders) MUST
+    // resolve `dueDate` → `hardDeadlineMinute` before passing this unit to the planner engine.
+    // hardDeadline (Date) is NEVER propagated into SchedulableUnit; it stops at this boundary.
+    hardDeadlineMinute: undefined,
     splittable: rawTask.metadata?.splittable ?? true,
     taskType: rawTask.category || "general",
     priorityScore,

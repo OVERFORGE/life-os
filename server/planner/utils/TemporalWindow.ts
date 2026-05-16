@@ -45,8 +45,12 @@
  *   O(n²) overlap loop in analyzeAvailabilityWindows with an interval tree.
  *   All operations here already produce the structures needed.
  *
- * TODO(multi-day): Extend to DaySpanWindow { dayOffset, window: TemporalWindow }
- *   for multi-day planning and recurrence expansion.
+ * TODO(multi-day): Extend to OrchestratorHorizonWindow { dayOffset: number; window: TemporalWindow }
+ *   for multi-day planning, rolling replanning, and recurrence expansion.
+ *   IMPORTANT: A TemporalWindow can represent an overnight span via wrapsMidnight, but it
+ *   CANNOT represent a deadline on a DIFFERENT calendar day. Example: a task due at 09:00
+ *   tomorrow is NOT [1440+540). It requires dayOffset=1 + minuteWithinDay=540.
+ *   See: server/planner/types/PlannerSemantics.ts → PlannerDeadlineBoundary
  *
  * TODO(stochastic-scheduling): Add probabilistic width ± σ around startMinute
  *   and endMinute for confidence-weighted schedule packing.

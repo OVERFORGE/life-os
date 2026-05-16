@@ -451,8 +451,8 @@ function arbitrate(
   incumbentPlacement: CandidatePlacement
 ): "challenger" | "incumbent" {
   // 1. Hard deadline
-  const challengerHasDeadline = !!challenger.hardDeadline;
-  const incumbentHasDeadline = !!incumbent.hardDeadline;
+  const challengerHasDeadline = challenger.hardDeadlineMinute !== undefined;
+  const incumbentHasDeadline = incumbent.hardDeadlineMinute !== undefined;
   if (challengerHasDeadline && !incumbentHasDeadline) return "challenger";
   if (!challengerHasDeadline && incumbentHasDeadline) return "incumbent";
 
@@ -486,7 +486,7 @@ function arbitrate(
 }
 
 function arbitrationReason(winner: SchedulableUnit, loser: SchedulableUnit): string {
-  if (!!winner.hardDeadline && !loser.hardDeadline) return "winner_has_hard_deadline";
+  if (winner.hardDeadlineMinute !== undefined && loser.hardDeadlineMinute === undefined) return "winner_has_hard_deadline";
   if (winner.urgency > loser.urgency + 0.01) return "winner_higher_urgency";
   if (winner.priorityScore > loser.priorityScore + 0.01) return "winner_higher_priority";
   if (winner.temporalFlexibility < loser.temporalFlexibility - 0.01) return "winner_less_flexible";

@@ -1,4 +1,5 @@
-import { CandidateSchedule, PlacementAnalysisContext, ScheduledPlacement, SchedulableUnit, PlacementAnchorType } from "../types/SchedulingTypes";
+import { PlacementAnalysisContext, SchedulableUnit, PlacementAnchorType } from "../types/SchedulingTypes";
+import { CandidateSchedule, ScheduledTaskPlacement } from "../types/ScheduleGraphTypes";
 import { IncrementalRepairPlan, RepairOperation, RepairTrigger, MAX_REPAIR_RADIUS, MAX_REPAIR_OPERATIONS_PER_CYCLE } from "../types/IncrementalRepairTypes";
 import { calculateTemporalOverlap, createTemporalWindow, TemporalWindow } from "../utils/TemporalWindow";
 import { generateCandidateSchedules } from "../scheduling/generateCandidateSchedules";
@@ -123,7 +124,7 @@ export function generateIncrementalRepairPlan(
   }
 
   // 3. Freeze Unaffected Placements
-  const frozenPlacements: ScheduledPlacement[] = [];
+  const frozenPlacements: ScheduledTaskPlacement[] = [];
   const affectedUnits: SchedulableUnit[] = [];
   const preservedPlacementIds: string[] = [];
 
@@ -165,7 +166,7 @@ export function generateIncrementalRepairPlan(
     reasoning.push("No units affected. Repair returns existing schedule.");
     return {
       plan: {
-        planId: `repair-${Date.now()}`,
+        planId: `repair-${trigger.triggerId}`,
         trigger,
         affectedChunkIds: [],
         affectedTaskIds: [],
@@ -230,30 +231,37 @@ export function generateIncrementalRepairPlan(
   finalPlacements.sort((a, b) => a.placement.temporalWindow.startMinute - b.placement.temporalWindow.startMinute);
 
   const finalSchedule: CandidateSchedule = {
-    id: `repaired-${Date.now()}`,
+    scheduleId: `repaired-${trigger.triggerId}`,
     scheduledPlacements: finalPlacements,
     unscheduledTaskIds: [...currentSchedule.unscheduledTaskIds, ...bestSubSchedule.unscheduledTaskIds],
-    conflicts: [...currentSchedule.conflicts, ...bestSubSchedule.conflicts],
-    overallScore: 0, // Recalculated below
-    overallConfidence: 0,
-    overallStability: 0,
-    metadata: {
-      generationReasoning: [...currentSchedule.metadata.generationReasoning, `Repaired via trigger: ${trigger.type}`],
-      computationalCostMs: 0
-    }
+    conflicts: [...currentSchedule.conflicts],
+    scheduleScore: 0,
+    confidence: 0,
+    stabilityScore: 0,
+    focusScore: 0,
+    fragmentationScore: 0,
+    recoverySafetyScore: 0,
+    coverageRatio: 0,
+    seedStrategy: "urgency_first",
+    penaltiesApplied: [],
+    boostsApplied: [],
+    reasoning: [...(currentSchedule.reasoning || []), `Repaired via trigger: ${trigger.type}`]
   };
 
   // Re-aggregate metrics
-  let totalScore = 0, totalConf = 0, totalStab = 0;
   if (finalPlacements.length > 0) {
+    let totalScore = 0;
+    let totalConf = 0;
+    let totalStab = 0;
     finalPlacements.forEach(sp => {
       totalScore += sp.placement.placementScore;
       totalConf += sp.placement.confidence;
       totalStab += sp.placement.stabilityScore;
     });
-    finalSchedule.overallScore = totalScore / finalPlacements.length;
-    finalSchedule.overallConfidence = totalConf / finalPlacements.length;
-    finalSchedule.overallStability = totalStab / finalPlacements.length;
+    finalSchedule.scheduleScore = totalScore / finalPlacements.length;
+    finalSchedule.confidence = totalConf / finalPlacements.length;
+    finalSchedule.stabilityScore = totalStab / finalPlacements.length;
+    finalSchedule.coverageRatio = finalPlacements.length / (finalPlacements.length + finalSchedule.unscheduledTaskIds.length);
   }
 
   // 8. Generate Operations Log
@@ -322,8 +330,8 @@ export function generateIncrementalRepairPlan(
     topologyChanges,
     preservedPlacements: preservedPlacementIds,
     displacedPlacements,
-    stabilityDelta: finalSchedule.overallStability - currentSchedule.overallStability,
-    confidenceDelta: finalSchedule.overallConfidence - currentSchedule.overallConfidence,
+    stabilityDelta: finalSchedule.stabilityScore - currentSchedule.stabilityScore,
+    confidenceDelta: finalSchedule.confidence - currentSchedule.confidence,
     reasoning
   };
 

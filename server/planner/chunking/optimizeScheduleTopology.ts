@@ -1,5 +1,5 @@
-import { ChunkedTaskPlan, TaskChunk } from "../types/ChunkGraphTypes";
-import { RawExecutionData, TaskExecutionState } from "../replanning/analyzeScheduleDrift";
+import { ChunkedTaskPlan, TaskChunk, TaskExecutionState } from "../types/ChunkGraphTypes";
+import { RawExecutionData } from "../replanning/analyzeScheduleDrift";
 import { MAX_CHUNK_PROLIFERATION } from "../types/IncrementalRepairTypes";
 import { validateAcyclicGraph } from "../validation/validateAcyclicGraph";
 
@@ -33,7 +33,7 @@ export function optimizeScheduleTopology(
   // If no execution data exists yet, topology is considered optimal as generated
   if (!state) {
     return {
-      planId: `opt-${Date.now()}`,
+      planId: `opt-${currentPlan.taskId}-no-history`,
       originalTaskId: currentPlan.taskId,
       optimizedPlan: currentPlan,
       topologyChanges: ["No execution history available. Retaining original topology."],
@@ -97,7 +97,7 @@ export function optimizeScheduleTopology(
   const sizeDiffRatio = Math.abs(targetChunkSize - currentAverageSize) / currentAverageSize;
   if (sizeDiffRatio < 0.15 || Number.isNaN(sizeDiffRatio)) {
     return {
-      planId: `opt-${Date.now()}`,
+      planId: `opt-${currentPlan.taskId}-stable`,
       originalTaskId: currentPlan.taskId,
       optimizedPlan: currentPlan,
       topologyChanges: ["Topology is within optimal bounds. No restructuring needed."],
@@ -116,8 +116,9 @@ export function optimizeScheduleTopology(
   let remainingToDistribute = totalRemainingMinutes;
   let chunkIndex = 0;
 
-  // We append a generation nonce to chunk IDs if they are restructured to prevent ID collisions with old stale placements
-  const structureGen = Date.now().toString().slice(-4);
+  // structureGen is deterministic: derived from taskId + total remaining minutes
+  // This prevents ID collisions with old stale placements while remaining replay-safe.
+  const structureGen = `${currentPlan.chunks.length}x${Math.floor(totalRemainingMinutes)}`;
 
   while (remainingToDistribute > 0 && chunkIndex < MAX_CHUNK_PROLIFERATION) {
     let alloc = Math.floor(targetChunkSize);
@@ -180,7 +181,7 @@ export function optimizeScheduleTopology(
   topologyChanges.push(`Successfully restructured topology: ${currentPlan.chunks.length} chunks -> ${newChunks.length} chunks.`);
 
   return {
-    planId: `opt-${Date.now()}`,
+    planId: `opt-${currentPlan.taskId}-gen:${structureGen}`,
     originalTaskId: currentPlan.taskId,
     optimizedPlan,
     topologyChanges,
