@@ -3,6 +3,7 @@ import { CandidateSchedule, ScheduledTaskPlacement } from "../types/ScheduleGrap
 import { IncrementalRepairPlan, RepairOperation, RepairTrigger, MAX_REPAIR_RADIUS, MAX_REPAIR_OPERATIONS_PER_CYCLE } from "../types/IncrementalRepairTypes";
 import { calculateTemporalOverlap, createTemporalWindow, TemporalWindow } from "../utils/TemporalWindow";
 import { generateCandidateSchedules } from "../scheduling/generateCandidateSchedules";
+import { HeuristicState, INITIAL_HEURISTIC_STATE } from "../heuristics/HeuristicTypes";
 
 function shiftTemporalWindow(window: TemporalWindow, minutes: number): TemporalWindow | null {
   const newStart = window.startMinute + minutes;
@@ -29,7 +30,8 @@ export function generateIncrementalRepairPlan(
   trigger: RepairTrigger,
   units: SchedulableUnit[],
   context: PlacementAnalysisContext,
-  anchors: Map<string, PlacementAnchorType> = new Map()
+  anchors: Map<string, PlacementAnchorType> = new Map(),
+  heuristicState: HeuristicState = INITIAL_HEURISTIC_STATE
 ): RepairEngineOutput {
   
   const operations: RepairOperation[] = [];
@@ -216,7 +218,7 @@ export function generateIncrementalRepairPlan(
   });
 
   // 6. Generate Sub-Schedule
-  const candidateSubSchedules = generateCandidateSchedules(reOrchestrationUnits, repairContext);
+  const candidateSubSchedules = generateCandidateSchedules(reOrchestrationUnits, repairContext, heuristicState);
   
   if (candidateSubSchedules.length === 0) {
     throw new Error("Repair engine failed to generate any valid sub-schedules.");

@@ -55,6 +55,11 @@ export interface ReplayStep {
   topologyChanged: boolean;
   /** True iff this event triggered a repair cycle (repairGeneration incremented) */
   repairTriggered: boolean;
+  /**
+   * True iff the constraintMemory state changed as a result of this event.
+   * Detected by checking evolutionTick difference (cheaper than deep equality).
+   */
+  memoryChanged: boolean;
 }
 
 // ─── Full Trace Replay ────────────────────────────────────────────────────────
@@ -68,11 +73,14 @@ export interface ReplayStep {
  *
  * @param trace - A full ExecutionTrace from simulateExecutionDay
  */
-export function* replayTrace(trace: ExecutionTrace): Generator<ReplayStep> {
+export function* replayTrace(trace: { events: readonly PlannerEvent[], initialState?: PlannerSimulationState, initialDayState?: PlannerSimulationState }): Generator<ReplayStep> {
   // Normalize ordering — defensive re-sort even if trace already sorted
   const events = sortPlannerEvents([...trace.events]);
 
-  let currentState = trace.initialState;
+  let currentState = trace.initialState || trace.initialDayState;
+  if (!currentState) {
+    throw new Error("Replay trace must provide either initialState or initialDayState");
+  }
 
   for (let i = 0; i < events.length; i++) {
     const event = events[i];
@@ -89,6 +97,7 @@ export function* replayTrace(trace: ExecutionTrace): Generator<ReplayStep> {
       stateAfter,
       topologyChanged: hashBefore !== hashAfter,
       repairTriggered: stateAfter.repairGeneration > stateBefore.repairGeneration,
+      memoryChanged: (stateAfter.constraintMemory?.evolutionTick ?? 0) !== (stateBefore.constraintMemory?.evolutionTick ?? 0),
     };
 
     currentState = stateAfter;

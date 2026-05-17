@@ -36,6 +36,9 @@
 import { SchedulableUnit } from "./SchedulingTypes";
 import { RepairTrigger } from "./IncrementalRepairTypes";
 import { DayBoundary } from "./HorizonTypes";
+import { HeuristicState, StabilizationProfile } from "../heuristics/HeuristicTypes";
+import { SystemTrajectory } from "./GovernanceTypes";
+import { ConstraintMemoryState } from "../heuristics/ConstraintMemoryTypes";
 
 // ─── Event Type Enum ─────────────────────────────────────────────────────────
 
@@ -48,7 +51,9 @@ export type PlannerEventType =
   | "recovery_window_expanded"
   | "new_task_inserted"
   | "day_boundary_crossed"
-  | "repair_triggered";
+  | "repair_triggered"
+  | "heuristic_state_updated"
+  | "constraint_memory_updated";
 
 /**
  * Canonical same-tick ordering precedence.
@@ -66,6 +71,9 @@ export const PLANNER_EVENT_SAME_TICK_PRECEDENCE: readonly PlannerEventType[] = [
   "new_task_inserted",
   "day_boundary_crossed",
   "repair_triggered",
+  "heuristic_state_updated",
+  // Causal order: repair → governance → heuristic adaptation → constraint memory evolution
+  "constraint_memory_updated"
 ] as const;
 
 /**
@@ -165,4 +173,29 @@ export type PlannerEvent =
     type: "day_boundary_crossed";
     boundary: DayBoundary;
     tick: number;
+  }
+  | {
+    type: "heuristic_state_updated";
+    tick: number;
+    previousProfile: StabilizationProfile;
+    nextProfile: StabilizationProfile;
+    heuristicState: HeuristicState;
+    triggeringTrajectory: SystemTrajectory;
+  }
+  | {
+    /**
+     * Emitted once per day boundary when the constraint memory state changes.
+     * Always follows heuristic_state_updated at the same tick.
+     * Causal order: repair → governance → heuristic_state_updated → constraint_memory_updated.
+     */
+    type: "constraint_memory_updated";
+    tick: number;
+    /** Chunk IDs whose instability vector changed in this evolution step */
+    affectedChunkIds: string[];
+    /** Region IDs whose aggregate instability changed */
+    affectedRegionIds: string[];
+    /** Canonical deterministic hash of what changed — enables fast external change detection */
+    memoryDeltaHash: string;
+    /** Full next memory state — enables replay without recomputation */
+    nextMemoryState: ConstraintMemoryState;
   };

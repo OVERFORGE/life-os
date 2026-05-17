@@ -77,6 +77,12 @@ export function applyDayBoundaryTransition(
     logicalTick,
     
     // Replay continuity preserved
-    eventLog: currentState.eventLog
+    eventLog: currentState.eventLog,
+
+    // Phase 7A: Preserve adaptive heuristics across day boundary
+    heuristicState: currentState.heuristicState,
+
+    // Phase 7B: Preserve constraint memory across day boundary
+    constraintMemory: currentState.constraintMemory
   };
 }

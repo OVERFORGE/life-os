@@ -36,7 +36,7 @@ import { PlannerSimulationState } from "../types/SimulationTypes";
 import { generateIncrementalRepairPlan } from "../replanning/generateIncrementalRepairPlan";
 import { propagateTemporalConstraints } from "../validation/propagateTemporalConstraints";
 import { RepairTrigger } from "../types/IncrementalRepairTypes";
-
+import { applyDayBoundaryTransition } from "../horizon/applyDayBoundaryTransition";
 import { projectTopology } from "../observability/projectTopology";
 
 /**
@@ -173,12 +173,12 @@ export function applyPlannerEvent(
         eventLog,
         units: updatedUnits,
       };
-      // Propagate constraint signals — pure evaluation, no repair triggered
       propagateTemporalConstraints(
         nextState.schedule,
         nextState.units as any[],
         nextState.context,
-        logicalTick
+        logicalTick,
+        nextState.heuristicState
       );
       return nextState;
     }
@@ -226,11 +226,38 @@ export function applyPlannerEvent(
         logicalTick,
         eventLog,
       };
-      // We must dynamically import to avoid circular dependencies if necessary,
-      // but assuming they are in the same module graph it's fine.
-      // Wait, applyDayBoundaryTransition isn't imported yet. Let's add the import.
-      const { applyDayBoundaryTransition } = require("../horizon/applyDayBoundaryTransition");
       return applyDayBoundaryTransition(baseState, event.boundary, logicalTick);
+    }
+
+    // ── heuristic_state_updated ──────────────────────────────────────────────
+    // Applies an evolved heuristic state to the simulation, ensuring adaptive
+    // behavior remains replayable and deterministic.
+    case "heuristic_state_updated": {
+      return {
+        ...state,
+        logicalTick,
+        eventLog,
+        heuristicState: event.heuristicState
+      };
+    }
+
+    // ── constraint_memory_updated ────────────────────────────────────────────
+    // Applies evolved constraint memory to the simulation state.
+    // Causal position: downstream of heuristic_state_updated at same tick.
+    //
+    // PURE PROJECTION INVARIANT:
+    //   This handler is the ONLY permitted point of constraint memory mutation
+    //   in the simulation kernel. No downstream subsystem (governance, scheduling,
+    //   repair, propagation) may write to constraintMemory directly.
+    //   All memory evolution must flow exclusively through this event transition.
+    //   Violations break replay determinism and causal reconstructability.
+    case "constraint_memory_updated": {
+      return {
+        ...state,
+        logicalTick,
+        eventLog,
+        constraintMemory: event.nextMemoryState
+      };
     }
   }
 }
@@ -264,7 +291,8 @@ function triggerRepair(
     trigger,
     state.units as any[],
     state.context,
-    anchorMap
+    anchorMap,
+    state.heuristicState
   );
 
   return {

@@ -2,6 +2,7 @@ import { ScheduledTaskPlacement } from "../types/ScheduleGraphTypes";
 import { PlacementAnalysisContext } from "../types/SchedulingTypes";
 import { distanceBetweenTemporalWindows } from "../utils/TemporalWindow";
 import { clamp } from "../utils/statistics";
+import { HeuristicState, INITIAL_HEURISTIC_STATE } from "../heuristics/HeuristicTypes";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // computeScheduleStability
@@ -43,7 +44,8 @@ export interface StabilityAnalysis {
  */
 export function computeScheduleStability(
   placements: ScheduledTaskPlacement[],
-  context: PlacementAnalysisContext
+  context: PlacementAnalysisContext,
+  heuristicState: HeuristicState = INITIAL_HEURISTIC_STATE
 ): StabilityAnalysis {
   const penalties: string[] = [];
   const boosts: string[] = [];
@@ -206,14 +208,19 @@ export function computeScheduleStability(
   }
 
   // ── Composite Score ───────────────────────────────────────────────────────
+  // We apply the heuristic stabilizationWeight to amplify stability penalties
+  // A higher stabilizationWeight means penalties are MORE punishing, forcing the system 
+  // to prefer "safer" topologies.
+  const penaltyMultiplier = heuristicState.stabilizationWeight;
+  
   const stabilityScore = clamp(
     1.0 -
-    contextSwitchingPenalty * 0.20 -
-    tinyGapPenalty * 0.15 -
-    lateNightPenalty * 0.20 -
-    fragmentationPenalty * 0.10 -
-    (1.0 - sequencingScore) * 0.15 -
-    chunkContinuityPenalty * 0.20
+    (contextSwitchingPenalty * 0.20 * penaltyMultiplier) -
+    (tinyGapPenalty * 0.15 * penaltyMultiplier) -
+    (lateNightPenalty * 0.20 * penaltyMultiplier) -
+    (fragmentationPenalty * 0.10 * penaltyMultiplier) -
+    ((1.0 - sequencingScore) * 0.15 * penaltyMultiplier) -
+    (chunkContinuityPenalty * 0.20 * penaltyMultiplier)
   );
 
   if (stabilityScore > 0.8) {

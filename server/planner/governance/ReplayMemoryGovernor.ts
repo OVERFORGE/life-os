@@ -45,7 +45,6 @@ export function governReplayMemory(
     }
 
     if (originalTerminalHash !== compactedTerminalHash) {
-      console.error(`Replay divergence detected! Original: ${originalTerminalHash}, Compacted: ${compactedTerminalHash}`);
       return {
         isCompressed: false,
         error: "horizon_memory_pressure"

@@ -27,6 +27,8 @@
 import { CandidateSchedule } from "./ScheduleGraphTypes";
 import { SchedulableUnit, PlacementAnalysisContext } from "./SchedulingTypes";
 import { PlannerEvent } from "./PlannerEventTypes";
+import { HeuristicState, HeuristicEvolutionSnapshot } from "../heuristics/HeuristicTypes";
+import { ConstraintMemoryState } from "../heuristics/ConstraintMemoryTypes";
 
 // ─── Simulation State ────────────────────────────────────────────────────────
 
@@ -70,6 +72,19 @@ export interface PlannerSimulationState {
    * Append-only. Required for full replay.
    */
   readonly eventLog: readonly PlannerEvent[];
+
+  /** 
+   * Current active heuristic adaptation state.
+   * Ensures deterministic heuristic evolution can be captured in snapshots.
+   */
+  readonly heuristicState: HeuristicState;
+
+  /**
+   * Current constraint memory state — historical instability accumulation.
+   * Evolved at each day boundary via evolveConstraintMemory().
+   * Replay-visible: always reconstructable from (initialState + events).
+   */
+  readonly constraintMemory: ConstraintMemoryState;
 }
 
 // ─── Execution Trace ─────────────────────────────────────────────────────────
@@ -112,6 +127,16 @@ export interface ExecutionTrace {
 
   /** Total repair cycles triggered across the full simulation */
   readonly totalRepairCycles: number;
+
+  /** The history of heuristic adaptations throughout the trace. */
+  readonly heuristicSnapshots: readonly HeuristicEvolutionSnapshot[];
+
+  /**
+   * Ordered sequence of ConstraintMemoryState snapshots, one per evolution event.
+   * memoryEvolutionHistory[i] = state after the i-th constraint_memory_updated event.
+   * Enables diff-by-generation analysis of instability accumulation.
+   */
+  readonly memoryEvolutionHistory: readonly ConstraintMemoryState[];
 }
 
 // ─── Convergence Report ───────────────────────────────────────────────────────

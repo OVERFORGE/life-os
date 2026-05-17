@@ -13,6 +13,8 @@ import { computeScheduleStability } from "./computeScheduleStability";
 import { temporalWindowsIntersect, calculateTemporalOverlap } from "../utils/TemporalWindow";
 import { propagateConfidence } from "../utils/confidencePropagation";
 import { clamp } from "../utils/statistics";
+import { HeuristicState, INITIAL_HEURISTIC_STATE } from "../heuristics/HeuristicTypes";
+import { ConstraintMemoryState, INITIAL_CONSTRAINT_MEMORY } from "../heuristics/ConstraintMemoryTypes";
 
 // ─────────────────────────────────────────────────────────────────────────────
 // Phase 2B — Candidate Schedule Generation Engine
@@ -54,7 +56,9 @@ type SeedStrategy =
  */
 export function generateCandidateSchedules(
   tasks: SchedulableUnit[],
-  context: PlacementAnalysisContext
+  context: PlacementAnalysisContext,
+  heuristicState: HeuristicState = INITIAL_HEURISTIC_STATE,
+  constraintMemory: ConstraintMemoryState = INITIAL_CONSTRAINT_MEMORY
 ): CandidateSchedule[] {
   if (tasks.length === 0) return [];
 
@@ -88,13 +92,17 @@ export function generateCandidateSchedules(
   const schedules: CandidateSchedule[] = [];
 
   for (const strategy of strategies) {
-    const ordered = sortTasksByStrategy(schedulableTasks, strategy);
+    // Phase 7B: Apply deterministic memory bias before ordering.
+    // Unstable chunks receive reduced effective urgency/priority.
+    const biasedTasks = applyMemoryBias(schedulableTasks, constraintMemory);
+    const ordered = sortTasksByStrategy(biasedTasks, strategy);
     const schedule = buildGreedySchedule(
       ordered,
       unschedulableTaskIds,
       placementMap,
       context,
-      strategy
+      strategy,
+      heuristicState
     );
     schedules.push(schedule);
   }
@@ -103,6 +111,54 @@ export function generateCandidateSchedules(
   schedules.sort((a, b) => b.scheduleScore - a.scheduleScore);
 
   return schedules;
+}
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Internal: Memory Bias Application
+// ─────────────────────────────────────────────────────────────────────────────
+
+/**
+ * Applies deterministic historical memory bias to the task ordering.
+ *
+ * This is NOT ML — it is deterministic historical reinforcement.
+ * High-instability chunks receive reduced effective urgency and priority
+ * to lower their scheduling priority relative to stable chunks.
+ *
+ * Bias scale: up to 30% reduction for aggregateInstabilityScore = 1.0.
+ * Reduction is proportional: bias = 1 - (score * 0.30).
+ * Stable chunks (score = 0) are not affected.
+ *
+ * HARD CONSTRAINT GUARD INVARIANTS:
+ *   This function MUST remain secondary to all hard scheduling constraints.
+ *   Memory bias affects only the ORDERING of schedulable tasks — it does not:
+ *     1. Remove a task from consideration (feasibility is never blocked by memory).
+ *     2. Override deadline enforcement (temporal hard constraints take precedence).
+ *     3. Break dependency ordering (dependency safety is never violated by bias).
+ *     4. Block mandatory tasks (tasks with no flexibility are never deprioritized).
+ *
+ *   The 30% cap is invariant. Future phases must NOT increase this cap without
+ *   first verifying that instability-driven deprioritization cannot cause
+ *   deadline violations for high-instability chunks with hard deadlines.
+ *
+ *   If memory bias must interact with deadline or dependency constraints in
+ *   Phase 7C+, introduce a dedicated conflict-resolution layer ABOVE this function,
+ *   not by increasing the bias magnitude.
+ */
+function applyMemoryBias(
+  tasks: SchedulableUnit[],
+  memory: ConstraintMemoryState
+): SchedulableUnit[] {
+  return tasks.map(task => {
+    const entry = memory.chunkMemory.get(task.id);
+    if (!entry || entry.aggregateInstabilityScore < 0.01) return task;
+    // Deterministic linear bias — no randomness, capped at 30%
+    const biasFactor = 1 - (entry.aggregateInstabilityScore * 0.30);
+    return {
+      ...task,
+      urgency: task.urgency * biasFactor,
+      priorityScore: task.priorityScore * biasFactor
+    };
+  });
 }
 
 // ─────────────────────────────────────────────────────────────────────────────
@@ -157,7 +213,8 @@ function buildGreedySchedule(
   baseUnschedulableIds: string[],
   placementMap: Map<string, CandidatePlacement[]>,
   context: PlacementAnalysisContext,
-  strategy: SeedStrategy
+  strategy: SeedStrategy,
+  heuristicState: HeuristicState
 ): CandidateSchedule {
   const scheduledPlacements: ScheduledTaskPlacement[] = [];
   const unscheduledTaskIds: string[] = [...baseUnschedulableIds];
@@ -355,7 +412,7 @@ function buildGreedySchedule(
   );
 
   // ── Phase 6: Stability Analysis ───────────────────────────────────────────
-  const stabilityAnalysis = computeScheduleStability(scheduledPlacements, context);
+  const stabilityAnalysis = computeScheduleStability(scheduledPlacements, context, heuristicState);
 
   // ── Phase 7: Confidence Propagation ──────────────────────────────────────
   const avgPlacementConfidence =

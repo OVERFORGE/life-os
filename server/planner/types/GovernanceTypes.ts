@@ -40,8 +40,26 @@ export interface GovernanceMetrics {
   /** Ratio of total events to snapshots/trace size */
   replayAmplificationFactor: number;
   
-  /** Evaluated system trajectory based on deltas */
+  /** Evaluated system trajectory class based on multi-dimensional analysis */
   trajectory?: SystemTrajectory;
+
+  /** Multi-dimensional trajectory analysis metrics */
+  trajectoryMetadata?: {
+    /** Slope of the underlying trend (directionality) */
+    trendSlope: number;
+    /** Measure of variance around the trend line (volatility) */
+    volatility: number;
+    /** Rate of change of the oscillation amplitude (envelope expansion) */
+    envelopeExpansionRate: number;
+    /** Number of directional sign changes per window (oscillation frequency) */
+    oscillationFrequency: number;
+  };
+
+  /** Number of times the heuristic profile changed within the horizon */
+  profileSwitchCount?: number;
+
+  /** True if the heuristic profile has remained unchanged for a sufficient duration */
+  heuristicConvergence?: boolean;
 }
 
 export interface StabilizationGuards {

@@ -2,6 +2,7 @@ import { SchedulableUnit, PlacementAnalysisContext } from "../types/SchedulingTy
 import { CandidateSchedule, ScheduledTaskPlacement } from "../types/ScheduleGraphTypes";
 import { ConstraintPropagationResult, TemporalPressureSignal } from "../types/ConstraintPropagationTypes";
 import { MAX_PROPAGATION_DEPTH } from "../types/IncrementalRepairTypes";
+import { HeuristicState, INITIAL_HEURISTIC_STATE } from "../heuristics/HeuristicTypes";
 
 function clamp(value: number, min = 0, max = 1): number {
   return Math.max(min, Math.min(max, value));
@@ -11,7 +12,8 @@ export function propagateTemporalConstraints(
   schedule: CandidateSchedule,
   units: SchedulableUnit[],
   context: PlacementAnalysisContext,
-  logicalTick: number = 0
+  logicalTick: number = 0,
+  heuristicState: HeuristicState = INITIAL_HEURISTIC_STATE
 ): ConstraintPropagationResult {
   const propagatedSignals: TemporalPressureSignal[] = [];
   const atRiskTasks = new Set<string>();
@@ -135,11 +137,18 @@ export function propagateTemporalConstraints(
             atRiskTasks.add(descendantId);
             nextWave.push(descendantId);
             
-            // Attenuate pressure score linearly as it propagates
-            const attenuatedScore = clamp(signal.pressureScore * (1.0 - (currentDepth * 0.15)));
+            // Attenuate pressure score linearly as it propagates.
+            // A higher downstreamPressureMultiplier makes the pressure drop off FASTER or SLOWER?
+            // Conservative profile has high downstreamPressureMultiplier (e.g. 1.5). 
+            // This means we care MORE about downstream, so attenuation should be SLOWER.
+            // Or wait, if downstreamPressureMultiplier is high, the cost of propagation is high.
+            const attenuationFactor = 0.15 / heuristicState.downstreamPressureMultiplier;
+            const attenuatedScore = clamp(signal.pressureScore * (1.0 - (currentDepth * attenuationFactor)));
             
             // If the pressure is still significant, queue it up for repair recommendation
-            if (attenuatedScore > 0.4) {
+            // repairAggressivenessMultiplier lowers the threshold
+            const inclusionThreshold = 0.4 / heuristicState.repairAggressivenessMultiplier;
+            if (attenuatedScore > inclusionThreshold) {
               recommendedRepairPriority.add(descendantId);
             }
           }
@@ -187,13 +196,28 @@ export function propagateTemporalConstraints(
     reasoning.push("No significant temporal pressures detected. Topology is stable.");
   }
 
+  // Adaptive Priority Sorting
+  const recommendedRepairPriorityArray = Array.from(recommendedRepairPriority).sort((a, b) => {
+    const getScore = (id: string) => {
+      let score = 0;
+      for (const s of propagatedSignals) {
+        if (s.sourceChunkId === id || s.affectedChunkIds.includes(id)) {
+          // Weight local pressure + downstream propagation depth
+          score += s.pressureScore + (s.propagationDepth * 0.1 * heuristicState.downstreamPressureMultiplier);
+        }
+      }
+      return score;
+    };
+    return getScore(b) - getScore(a);
+  });
+
   return {
     evaluationId: `prop-eval-${logicalTick}`,
     logicalTick,
     propagatedSignals,
     atRiskTasks: Array.from(atRiskTasks),
     stabilityRiskScore: Number(stabilityRiskScore.toFixed(3)),
-    recommendedRepairPriority: Array.from(recommendedRepairPriority),
+    recommendedRepairPriority: recommendedRepairPriorityArray,
     reasoning
   };
 }

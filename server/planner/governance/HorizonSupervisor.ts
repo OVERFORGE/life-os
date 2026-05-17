@@ -7,6 +7,7 @@ import { RuntimeFailureReason, GovernanceMetrics, StabilizationGuards } from "..
 import { simulateExecutionHorizon, HorizonExecutionTrace } from "../simulation/simulateExecutionHorizon";
 import { calculateGovernanceMetrics } from "./calculateGovernanceMetrics";
 import { detectRepairStorm } from "./detectRepairStorm";
+import { replayTrace } from "../observability/replayTrace";
 
 export interface SupervisedHorizonTrace {
   /** The aggregated trace across all executed days */
@@ -44,14 +45,34 @@ export function superviseExecutionHorizon(
   // 1. Run the pure deterministic kernel
   const fullTrace = simulateExecutionHorizon(initialSchedule, units, context, events, boundaries, options);
   
-  // 2. Evaluate Governance Rolling Window
-  const stabilizationHistory: GovernanceMetrics[] = [];
-  let sustainedViolations = 0;
-  const windowConfig = guards.stabilizationWindow || { evaluationWindowTicks: 1, sustainedViolationThreshold: 1 };
+  // 2. Un-Stub Carry-Forward Lineage via Explicit Transition Causality
+  const carryMetadataLog: DeferredCarryForward[] = [];
   
-  // Note: For simplicity in the hardening pass, we mock the carryLog here.
-  // In full implementation, it is derived from trace events/states.
-  const carryMetadataLog: DeferredCarryForward[] = []; 
+  // Replay the trace to observe exact causal transitions
+  for (const step of replayTrace(fullTrace)) {
+    if (step.event.type === "repair_triggered") {
+      const beforePlacements = new Set(step.stateBefore.schedule.scheduledPlacements.map(p => p.task.id));
+      const afterPlacements = new Set(step.stateAfter.schedule.scheduledPlacements.map(p => p.task.id));
+      
+      // If a chunk was in schedule before repair, but missing after, it was displaced.
+      for (const chunkId of beforePlacements) {
+        if (!afterPlacements.has(chunkId)) {
+          carryMetadataLog.push({
+            chunkId,
+            carryReason: "repair_displacement",
+            sourceTick: step.event.tick,
+            deferredDayIndex: -1 // Phase 6B.5 temporary approximation boundary: precise target day requires full timeline mapping
+          });
+        }
+      }
+    }
+  }
+
+  // 3. Evaluate Governance Rolling Window
+  const stabilizationHistory: GovernanceMetrics[] = [];
+  
+  const windowConfig = guards.stabilizationWindow || { evaluationWindowTicks: 1, sustainedViolationThreshold: 1 };
+  const violationWindow: boolean[] = [];
 
   for (let i = 0; i < boundaries.length; i++) {
     const partialBoundaries = boundaries.slice(0, i + 1);
@@ -73,30 +94,32 @@ export function superviseExecutionHorizon(
       isViolating = true;
     }
 
-    if (isViolating) {
-      sustainedViolations++;
-      if (sustainedViolations >= windowConfig.sustainedViolationThreshold) {
-        // Sustained Instability Detected
-        let reason: RuntimeFailureReason = "sustained_instability";
-        if (queueSize > guards.maxDeferredQueueSize) {
-          reason = "deferred_queue_explosion";
-        }
-        
-        return {
-          trace: fullTrace,
-          metrics: dailyMetrics,
-          failureReason: reason,
-          isStable: false,
-          stabilizationHistory
-        };
+    // Maintain explicit rolling window
+    violationWindow.push(isViolating);
+    if (violationWindow.length > windowConfig.evaluationWindowTicks) {
+      violationWindow.shift(); // Expire historical violations
+    }
+
+    const currentViolations = violationWindow.filter(v => v).length;
+
+    if (currentViolations >= windowConfig.sustainedViolationThreshold) {
+      // Sustained Instability Detected
+      let reason: RuntimeFailureReason = "sustained_instability";
+      if (queueSize > guards.maxDeferredQueueSize) {
+        reason = "deferred_queue_explosion";
       }
-    } else {
-      // Natural recovery within window
-      sustainedViolations = 0;
+      
+      return {
+        trace: fullTrace,
+        metrics: dailyMetrics,
+        failureReason: reason,
+        isStable: false,
+        stabilizationHistory
+      };
     }
   }
 
-  // 3. Repair Storm Containment (Lineage Aware)
+  // 4. Repair Storm Containment (Lineage Aware)
   const stormReport = detectRepairStorm(carryMetadataLog, units, guards.maxCarryForwardChains);
   if (stormReport.isStorm) {
     return {

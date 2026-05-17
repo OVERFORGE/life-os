@@ -119,6 +119,59 @@ async function runTests() {
     assert("Governor intercepts trace correctly", memoryReport.error === "horizon_memory_pressure");
   }
 
+  // ── Scenario 5: Lineage Mutation Boundaries ─────────────
+  {
+    console.log("\nScenario 5: Lineage Mutation Future Boundaries");
+
+    // TODO: Lineage fork validation
+    // TODO: Merge lineage validation
+    // TODO: Split lineage continuity
+    // TODO: Topology replay continuity under mutation
+
+    // Simulate adversarial mutation
+    const originalUnit: SchedulableUnit = {
+      id: "chunk_A",
+      lineageRootId: "root_A",
+      mutationGeneration: 1,
+      estimatedDurationMinutes: 30
+    } as any;
+
+    const validMutation: SchedulableUnit = {
+      ...originalUnit,
+      id: "chunk_A_split_1",
+      derivedFromChunkId: "chunk_A",
+      mutationGeneration: 2,
+      estimatedDurationMinutes: 15
+    };
+
+    const invalidMutation1: SchedulableUnit = {
+      ...originalUnit,
+      id: "chunk_A_split_2",
+      lineageRootId: "root_B", // Adversarial: Changed root ID!
+      derivedFromChunkId: "chunk_A",
+      mutationGeneration: 2
+    };
+
+    const invalidMutation2: SchedulableUnit = {
+      ...originalUnit,
+      id: "chunk_A_split_3",
+      derivedFromChunkId: "chunk_A",
+      mutationGeneration: 0 // Adversarial: Decreased generation!
+    };
+
+    function validateLineageMutation(original: SchedulableUnit, mutated: SchedulableUnit): boolean {
+      if (original.lineageRootId && mutated.lineageRootId !== original.lineageRootId) return false;
+      if (mutated.mutationGeneration !== undefined && original.mutationGeneration !== undefined) {
+        if (mutated.mutationGeneration <= original.mutationGeneration) return false;
+      }
+      return true;
+    }
+
+    assert("Valid mutation preserves lineage invariants", validateLineageMutation(originalUnit, validMutation));
+    assert("Invalid mutation caught: lineageRootId changed", !validateLineageMutation(originalUnit, invalidMutation1));
+    assert("Invalid mutation caught: mutationGeneration did not monotonically increase", !validateLineageMutation(originalUnit, invalidMutation2));
+  }
+
   console.log("\n─────────────────────────────────────────────────────────────────");
   if (failed === 0) {
     console.log(` ✅ ALL ${passed} HARDENING TESTS PASSED.`);
