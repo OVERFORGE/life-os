@@ -1,9 +1,15 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, Platform, KeyboardAvoidingView, Image } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, Platform, KeyboardAvoidingView, Image, SafeAreaView } from 'react-native';
 import { ChevronLeft, ShieldAlert, Camera, Key } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import * as ImagePicker from 'expo-image-picker';
 import { fetchWithAuth } from '../../utils/api';
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
+};
 
 export default function ProfileScreen() {
   const router = useRouter();
@@ -162,209 +168,209 @@ export default function ProfileScreen() {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-[#0f1115] items-center justify-center">
-        <ActivityIndicator color="#fcd34d" />
+      <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={C.primary} />
       </View>
     );
   }
 
   return (
-    <KeyboardAvoidingView 
-      behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
-      className="flex-1 bg-[#0f1115]"
-    >
-      <View className="px-4 pt-12 pb-4 border-b border-[#232632] flex-row justify-between items-center bg-[#0f1115]">
-        <View className="flex-row items-center">
-          <TouchableOpacity onPress={() => router.back()} className="mr-3 p-2 bg-[#161922] rounded-full border border-[#232632]">
-            <ChevronLeft size={20} color="#9ca3af" />
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+      <KeyboardAvoidingView 
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined} 
+        style={{ flex: 1 }}
+      >
+        <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ backgroundColor: C.card, padding: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border }}>
+            <ChevronLeft size={20} color={C.subtext} />
           </TouchableOpacity>
-          <Text className="text-xl font-bold text-gray-100">Profile Structure</Text>
+          <Text style={{ fontSize: 20, fontWeight: '900', color: C.text, marginLeft: 16 }}>Profile Structure</Text>
         </View>
-      </View>
 
-      <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 150 }}>
-        
-        {/* AVATAR SECTION */}
-        <View className="items-center mb-10">
-          <TouchableOpacity onPress={pickImage} disabled={uploadingAvatar} className="relative active:opacity-70">
-             {profile.avatar ? (
-              <Image 
-                source={{ uri: profile.avatar }} 
-                className="w-28 h-28 rounded-full border-4 border-[#1a1d24]"
-              />
-            ) : (
-              <View className="w-28 h-28 rounded-full border-4 border-[#1a1d24] bg-[#1a1d24] items-center justify-center">
-                <Camera size={36} color="#4b5563" />
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 150 }} showsVerticalScrollIndicator={false}>
+          
+          {/* AVATAR SECTION */}
+          <View style={{ alignItems: 'center', marginBottom: 40 }}>
+            <TouchableOpacity onPress={pickImage} disabled={uploadingAvatar} style={{ position: 'relative' }}>
+               {profile.avatar ? (
+                <Image 
+                  source={{ uri: profile.avatar }} 
+                  style={{ width: 112, height: 112, borderRadius: 56, borderWidth: 4, borderColor: C.border }}
+                />
+              ) : (
+                <View style={{ width: 112, height: 112, borderRadius: 56, borderWidth: 4, borderColor: C.border, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center' }}>
+                  <Camera size={36} color={C.muted} />
+                </View>
+              )}
+              
+              {/* Overlay Icon */}
+              <View style={{ position: 'absolute', bottom: 0, right: 0, backgroundColor: C.bg, padding: 8, borderRadius: 20, borderWidth: 2, borderColor: C.border }}>
+                {uploadingAvatar ? <ActivityIndicator size="small" color={C.primary} /> : <Camera size={16} color={C.primary} />}
+              </View>
+            </TouchableOpacity>
+            <Text style={{ color: C.muted, fontSize: 12, marginTop: 12, fontWeight: '600' }}>Tap to upload picture</Text>
+          </View>
+
+          {/* CORE SECTION */}
+          <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 20, marginBottom: 24 }}>
+            <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 20 }}>Core Identity</Text>
+            
+            <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700', marginBottom: 8, marginLeft: 4 }}>Email (Permanent)</Text>
+            <TextInput 
+              value={profile.email} 
+              editable={false}
+              style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.muted, fontSize: 14, marginBottom: 16, fontWeight: '600' }}
+            />
+
+            <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700', marginBottom: 8, marginLeft: 4 }}>Legal Name</Text>
+            <TextInput 
+              value={profile.name} 
+              onChangeText={(v) => setParam('name', v)}
+              placeholderTextColor={C.muted}
+              style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 15, fontWeight: '700' }}
+            />
+          </View>
+
+          {/* BIOMETRICS SECTION */}
+          <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 20, marginBottom: 24 }}>
+            <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 20 }}>Biometric Data</Text>
+            
+            <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700', marginBottom: 8, marginLeft: 4 }}>Biological Gender</Text>
+            <View style={{ flexDirection: 'row', gap: 8, marginBottom: 24 }}>
+              {['Male', 'Female', 'Other'].map((g) => (
+                <TouchableOpacity 
+                  key={g}
+                  onPress={() => setParam('gender', g)}
+                  style={{ flex: 1, height: 48, borderRadius: 16, borderWidth: 1, alignItems: 'center', justifyContent: 'center', backgroundColor: profile.gender === g ? C.primaryBg : C.bg, borderColor: profile.gender === g ? 'rgba(232,65,74,0.3)' : C.border }}
+                >
+                  <Text style={{ fontSize: 12, fontWeight: '800', color: profile.gender === g ? C.primary : C.subtext }}>
+                    {g}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </View>
+
+            <View style={{ flexDirection: 'row', gap: 12 }}>
+              <View style={{ flex: 1 }}>
+                 <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingRight: 4 }}>
+                   <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700', marginLeft: 4 }}>Height</Text>
+                   <TouchableOpacity onPress={() => setParam('heightUnit', profile.heightUnit === 'cm' ? 'ft' : 'cm')} style={{ backgroundColor: C.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                     <Text style={{ color: C.text, fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 }}>{profile.heightUnit}</Text>
+                   </TouchableOpacity>
+                 </View>
+                <TextInput 
+                  value={profile.height} 
+                  onChangeText={(v) => setParam('height', v)}
+                  keyboardType="decimal-pad"
+                  placeholder={profile.heightUnit === 'cm' ? '180' : '5.11'}
+                  placeholderTextColor={C.muted}
+                  style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 15, fontWeight: '700' }}
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8, paddingRight: 4 }}>
+                   <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700', marginLeft: 4 }}>Weight</Text>
+                   <View style={{ backgroundColor: C.border, paddingHorizontal: 8, paddingVertical: 4, borderRadius: 6 }}>
+                     <Text style={{ color: C.text, fontSize: 9, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 }}>KG</Text>
+                   </View>
+                 </View>
+                <TextInput 
+                  value={profile.weight} 
+                  onChangeText={(v) => setParam('weight', v)}
+                  keyboardType="decimal-pad"
+                  placeholder="75"
+                  placeholderTextColor={C.muted}
+                  style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 15, fontWeight: '700' }}
+                />
+              </View>
+
+              <View style={{ flex: 1 }}>
+                 <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700', marginBottom: 8, marginLeft: 4 }}>Age</Text>
+                 <TextInput 
+                  value={profile.age} 
+                  onChangeText={(v) => setParam('age', v)}
+                  keyboardType="number-pad"
+                  placeholder="25"
+                  placeholderTextColor={C.muted}
+                  style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 15, fontWeight: '700' }}
+                />
+              </View>
+            </View>
+
+            <TouchableOpacity 
+              onPress={handleSaveProfile} 
+              disabled={saving}
+              style={{ width: '100%', height: 56, backgroundColor: C.text, borderRadius: 16, alignItems: 'center', justifyContent: 'center', marginTop: 24 }}
+            >
+              {saving ? <ActivityIndicator size="small" color={C.bg} /> : <Text style={{ color: C.bg, fontWeight: '900', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1 }}>Save Profile Data</Text>}
+            </TouchableOpacity>
+          </View>
+
+          {/* SECURITY LOGIC SECTION */}
+          <View style={{ backgroundColor: 'rgba(239,68,68,0.05)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)', borderRadius: 24, padding: 20, marginBottom: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+              <ShieldAlert size={16} color="#ef4444" />
+              <Text style={{ color: '#f87171', fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginLeft: 8 }}>Master Security</Text>
+            </View>
+            
+            {hasPassword && (
+               <View style={{ marginBottom: 16 }}>
+                <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700', marginBottom: 8, marginLeft: 4 }}>Current Password</Text>
+                <TextInput 
+                  value={oldPassword} 
+                  onChangeText={setOldPassword}
+                  secureTextEntry
+                  placeholder="Authorize Changes"
+                  placeholderTextColor={C.muted}
+                  style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)', borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 14, fontWeight: '600' }}
+                />
               </View>
             )}
-            
-            {/* Overlay Icon */}
-            <View className="absolute bottom-0 right-0 bg-[#0f1115] p-2 rounded-full border-2 border-[#1a1d24]">
-              {uploadingAvatar ? <ActivityIndicator size="small" color="#fcd34d" /> : <Camera size={14} color="#fcd34d" />}
-            </View>
-          </TouchableOpacity>
-          <Text className="text-gray-400 text-xs mt-3">Tap to upload picture</Text>
-        </View>
 
-        {/* CORE SECTION */}
-        <View className="bg-[#161922] border border-[#232632] rounded-3xl p-5 mb-6">
-          <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-6">Core Identity</Text>
-          
-          <Text className="text-gray-500 text-xs mb-1 ml-1">Email (Permanent)</Text>
-          <TextInput 
-            value={profile.email} 
-            editable={false}
-            className="w-full bg-[#0f1115] border border-[#232632] rounded-xl px-4 py-3 text-gray-600 text-sm mb-4"
-          />
-
-          <Text className="text-gray-300 text-xs mb-1 ml-1 font-semibold">Legal Name</Text>
-          <TextInput 
-            value={profile.name} 
-            onChangeText={(v) => setParam('name', v)}
-            placeholderTextColor="#4b5563"
-            className="w-full bg-[#1a1d24] border border-[#2a2d36] rounded-xl px-4 py-3 text-gray-200 text-sm focus:border-amber-500/50"
-          />
-        </View>
-
-        {/* BIOMETRICS SECTION */}
-        <View className="bg-[#161922] border border-[#232632] rounded-3xl p-5 mb-6">
-          <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-6">Biometric Data</Text>
-          
-          <Text className="text-gray-300 text-xs mb-2 ml-1 font-semibold">Biological Gender</Text>
-          <View className="flex-row space-x-2 mb-6">
-            {['Male', 'Female', 'Other'].map((g) => (
-              <TouchableOpacity 
-                key={g}
-                onPress={() => setParam('gender', g)}
-                className={`flex-1 py-3 rounded-xl border items-center justify-center transition-all ${profile.gender === g ? 'bg-amber-500/10 border-amber-500/50' : 'bg-[#1a1d24] border-[#2a2d36]'}`}
-              >
-                <Text className={`text-xs font-bold ${profile.gender === g ? 'text-amber-400' : 'text-gray-400'}`}>
-                  {g}
-                </Text>
-              </TouchableOpacity>
-            ))}
-          </View>
-
-          <View className="flex-row space-x-3">
-            <View className="flex-1">
-               <View className="flex-row justify-between pr-2 items-center mb-1">
-                 <Text className="text-gray-300 text-xs ml-1 font-semibold">Height</Text>
-                 <TouchableOpacity onPress={() => setParam('heightUnit', profile.heightUnit === 'cm' ? 'ft' : 'cm')} className="bg-[#2a2d36] px-2 py-0.5 rounded">
-                   <Text className="text-gray-300 text-[10px] font-bold uppercase tracking-wider">{profile.heightUnit}</Text>
-                 </TouchableOpacity>
+            <View style={{ gap: 16, marginBottom: 16 }}>
+               <View>
+                <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700', marginBottom: 8, marginLeft: 4 }}>{hasPassword ? 'New Password' : 'Create Master Password'}</Text>
+                <TextInput 
+                  value={newPassword} 
+                  onChangeText={setNewPassword}
+                  secureTextEntry
+                  placeholder="6+ characters"
+                  placeholderTextColor={C.muted}
+                  style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)', borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 14, fontWeight: '600' }}
+                />
                </View>
-              <TextInput 
-                value={profile.height} 
-                onChangeText={(v) => setParam('height', v)}
-                keyboardType="decimal-pad"
-                placeholder={profile.heightUnit === 'cm' ? '180' : '5.11'}
-                placeholderTextColor="#4b5563"
-                className="w-full bg-[#1a1d24] border border-[#2a2d36] rounded-xl px-4 py-3 text-gray-200 text-sm focus:border-amber-500/50"
-              />
-            </View>
-
-            <View className="flex-1">
-              <View className="flex-row justify-between pr-2 items-center mb-1">
-                 <Text className="text-gray-300 text-xs ml-1 font-semibold">Weight</Text>
-                 <View className="bg-[#2a2d36] px-2 py-0.5 rounded">
-                   <Text className="text-gray-300 text-[10px] font-bold uppercase tracking-wider">KG</Text>
-                 </View>
+               <View>
+                <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700', marginBottom: 8, marginLeft: 4 }}>Confirm Password</Text>
+                <TextInput 
+                  value={confirmPassword} 
+                  onChangeText={setConfirmPassword}
+                  secureTextEntry
+                  placeholder="Type it again"
+                  placeholderTextColor={C.muted}
+                  style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)', borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 14, fontWeight: '600' }}
+                />
                </View>
-              <TextInput 
-                value={profile.weight} 
-                onChangeText={(v) => setParam('weight', v)}
-                keyboardType="decimal-pad"
-                placeholder="75"
-                placeholderTextColor="#4b5563"
-                className="w-full bg-[#1a1d24] border border-[#2a2d36] rounded-xl px-4 py-3 text-gray-200 text-sm focus:border-amber-500/50"
-              />
             </View>
 
-            <View className="flex-1">
-               <Text className="text-gray-300 text-xs mb-1 ml-1 font-semibold">Age</Text>
-               <TextInput 
-                value={profile.age} 
-                onChangeText={(v) => setParam('age', v)}
-                keyboardType="number-pad"
-                placeholder="25"
-                placeholderTextColor="#4b5563"
-                className="w-full bg-[#1a1d24] border border-[#2a2d36] rounded-xl px-4 py-3 text-gray-200 text-sm focus:border-amber-500/50"
-              />
-            </View>
+            <TouchableOpacity 
+              onPress={handleSavePassword} 
+              disabled={savingPass}
+              style={{ width: '100%', height: 56, backgroundColor: 'rgba(239,68,68,0.1)', borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)', borderRadius: 16, alignItems: 'center', justifyContent: 'center', flexDirection: 'row', marginTop: 8 }}
+            >
+              {savingPass ? (
+                <ActivityIndicator size="small" color="#ef4444" /> 
+              ) : (
+                <>
+                  <Key size={16} color="#fca5a5" style={{ marginRight: 8 }} />
+                  <Text style={{ color: '#fca5a5', fontWeight: '900', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }}>Update Vault Password</Text>
+                </>
+              )}
+            </TouchableOpacity>
           </View>
 
-          <TouchableOpacity 
-            onPress={handleSaveProfile} 
-            disabled={saving}
-            className="w-full h-12 bg-gray-100 rounded-xl items-center justify-center mt-6 active:opacity-70"
-          >
-            {saving ? <ActivityIndicator size="small" color="#0f1115" /> : <Text className="text-[#0f1115] font-bold text-sm text-center">Save Profile Data</Text>}
-          </TouchableOpacity>
-        </View>
-
-        {/* SECURITY LOGIC SECTION */}
-        <View className="bg-red-500/5 border border-red-500/20 rounded-3xl p-5 mb-6">
-          <View className="flex-row items-center mb-6">
-            <ShieldAlert size={16} color="#ef4444" />
-            <Text className="text-red-400 text-xs font-bold uppercase tracking-wider ml-2">Master Security</Text>
-          </View>
-          
-          {hasPassword && (
-             <View className="mb-4">
-              <Text className="text-gray-300 text-xs mb-1 ml-1 font-semibold">Current Password</Text>
-              <TextInput 
-                value={oldPassword} 
-                onChangeText={setOldPassword}
-                secureTextEntry
-                placeholder="Authorize Changes"
-                placeholderTextColor="#4b5563"
-                className="w-full bg-[#0f1115] border border-red-500/20 rounded-xl px-4 py-3 text-gray-200 text-sm focus:border-red-500/50"
-              />
-            </View>
-          )}
-
-          <View className="mb-4 space-y-3">
-             <View>
-              <Text className="text-gray-300 text-xs mb-1 ml-1 font-semibold">{hasPassword ? 'New Password' : 'Create Master Password'}</Text>
-              <TextInput 
-                value={newPassword} 
-                onChangeText={setNewPassword}
-                secureTextEntry
-                placeholder="6+ characters"
-                placeholderTextColor="#4b5563"
-                className="w-full bg-[#1a1d24] border border-[#2a2d36] rounded-xl px-4 py-3 text-gray-200 text-sm focus:border-red-500/50"
-              />
-             </View>
-             <View className="mt-3">
-              <Text className="text-gray-300 text-xs mb-1 ml-1 font-semibold">Confirm Password</Text>
-              <TextInput 
-                value={confirmPassword} 
-                onChangeText={setConfirmPassword}
-                secureTextEntry
-                placeholder="Type it again"
-                placeholderTextColor="#4b5563"
-                className="w-full bg-[#1a1d24] border border-[#2a2d36] rounded-xl px-4 py-3 text-gray-200 text-sm focus:border-red-500/50"
-              />
-             </View>
-          </View>
-
-          <TouchableOpacity 
-            onPress={handleSavePassword} 
-            disabled={savingPass}
-            className="w-full h-12 bg-red-500/10 border border-red-500/20 rounded-xl items-center justify-center mt-2 flex-row active:opacity-70"
-          >
-            {savingPass ? (
-              <ActivityIndicator size="small" color="#ef4444" /> 
-            ) : (
-              <>
-                <Key size={14} color="#fca5a5" className="mr-2" />
-                <Text className="text-red-300 font-bold text-sm text-center">Update Vault Password</Text>
-              </>
-            )}
-          </TouchableOpacity>
-        </View>
-
-      </ScrollView>
-    </KeyboardAvoidingView>
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

@@ -1,42 +1,35 @@
-import { View, TouchableOpacity, StyleSheet } from 'react-native';
+import { View, TouchableOpacity, StyleSheet, Keyboard } from 'react-native';
 import { BlurView } from 'expo-blur';
 import { BottomTabBarProps } from '@react-navigation/bottom-tabs';
 import { Home, Wrench, Bot, Settings } from 'lucide-react-native';
-import { useSegments } from 'expo-router';
+import { usePathname } from 'expo-router';
+import { useState, useEffect } from 'react';
 
-// Sub-screens within each module where the tab bar should be hidden.
-// The tab bar only shows when you're at the root index of each module.
-const HIDE_ON_SEGMENTS: string[][] = [
-  // nutrition sub-screens
-  ['(dashboard)', 'nutrition', 'scan'],
-  ['(dashboard)', 'nutrition', 'library'],
-  ['(dashboard)', 'nutrition', 'create-template'],
-  ['(dashboard)', 'nutrition', 'daily-log'],
-  // gym sub-screens
-  ['(dashboard)', 'gym', 'live-session'],
-  ['(dashboard)', 'gym', 'create-gym'],
-  ['(dashboard)', 'gym', 'create-routine'],
-  ['(dashboard)', 'gym', 'history'],
-  ['(dashboard)', 'gym', 'log-past'],
-  ['(dashboard)', 'gym', 'edit-session'],
-  // tools sub-screens
-  ['(dashboard)', 'tools', 'daily-log'],
-  ['(dashboard)', 'tools', 'history'],
-  ['(dashboard)', 'tools', 'goals'],
-];
-
+// Only show tab bar on explicit root pages
 function useIsTabBarVisible() {
-  const segments = useSegments();
-  for (const pattern of HIDE_ON_SEGMENTS) {
-    if (pattern.every((seg, i) => segments[i] === seg)) return false;
-  }
-  return true;
+  const pathname = usePathname();
+  
+  const allowedRoots = [
+    '/',
+    '/tools',
+    '/brain',
+    '/settings'
+  ];
+  
+  return allowedRoots.includes(pathname);
 }
 
 export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarProps) {
   const isVisible = useIsTabBarVisible();
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
-  if (!isVisible) return null;
+  useEffect(() => {
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { showSub.remove(); hideSub.remove(); };
+  }, []);
+
+  if (!isVisible || keyboardVisible) return null;
 
   const visibleRoutes = state.routes.filter(route => {
     const options = descriptors[route.key].options as any;
@@ -77,7 +70,7 @@ export function FloatingTabBar({ state, descriptors, navigation }: BottomTabBarP
               style={[styles.tabButton, isFocused && styles.tabButtonActive]}
               activeOpacity={0.7}
             >
-              <Icon size={22} color={isFocused ? '#f3f4f6' : '#4b5563'} strokeWidth={isFocused ? 2.5 : 2} />
+              <Icon size={22} color={isFocused ? '#E8414A' : 'rgba(236, 231, 227, 0.5)'} strokeWidth={isFocused ? 2.5 : 2} />
             </TouchableOpacity>
           );
         })}
@@ -96,7 +89,7 @@ const styles = StyleSheet.create({
     borderRadius: 30,
     overflow: 'hidden',
     borderWidth: 1,
-    borderColor: 'rgba(255, 255, 255, 0.1)',
+    borderColor: '#2A2B2F',
     shadowColor: '#000',
     shadowOffset: { width: 0, height: 8 },
     shadowOpacity: 0.3,
@@ -107,7 +100,7 @@ const styles = StyleSheet.create({
     flex: 1,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: 'rgba(15, 17, 21, 0.88)',
+    backgroundColor: 'rgba(31, 32, 35, 0.95)',
     paddingHorizontal: 8,
     justifyContent: 'space-around',
   },

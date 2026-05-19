@@ -13,8 +13,8 @@ export function MoodEnergyChart({ logs }: { logs: Log[] }) {
   const energyData = last14.length > 0 ? last14.map(l => l.mental?.energy ?? 0) : [0];
 
   return (
-    <View className="bg-[#161922] border border-[#232632] rounded-xl p-4 mb-6">
-      <Text className="text-gray-100 font-semibold mb-4 ml-2">Mood & Energy (14d)</Text>
+    <View className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-4 mb-6">
+      <Text className="text-[#FFFDFC] font-semibold mb-4 ml-2">Mood & Energy (14d)</Text>
       
       <LineChart
         data={{
@@ -22,12 +22,12 @@ export function MoodEnergyChart({ logs }: { logs: Log[] }) {
           datasets: [
             {
               data: moodData,
-              color: (opacity = 1) => `rgba(96, 165, 250, ${opacity})`, // blue-400
+              color: (opacity = 1) => `rgba(236, 231, 227, ${opacity})`, 
               strokeWidth: 2
             },
             {
               data: energyData,
-              color: (opacity = 1) => `rgba(52, 211, 153, ${opacity})`, // emerald-400
+              color: (opacity = 1) => `rgba(232, 65, 74, ${opacity})`,
               strokeWidth: 2
             }
           ],
@@ -36,12 +36,12 @@ export function MoodEnergyChart({ logs }: { logs: Log[] }) {
         width={screenWidth - 64} // padding 16 * 2 + parent padding 16 * 2
         height={220}
         chartConfig={{
-          backgroundColor: "#161922",
-          backgroundGradientFrom: "#161922",
-          backgroundGradientTo: "#161922",
+          backgroundColor: "#1F2023",
+          backgroundGradientFrom: "#1F2023",
+          backgroundGradientTo: "#1F2023",
           decimalPlaces: 1, 
-          color: (opacity = 1) => `rgba(255, 255, 255, ${opacity})`,
-          labelColor: (opacity = 1) => `rgba(156, 163, 175, ${opacity})`, // gray-400
+          color: (opacity = 1) => `rgba(236, 231, 227, ${opacity})`,
+          labelColor: (opacity = 1) => `rgba(236, 231, 227, ${opacity * 0.7})`,
           style: {
             borderRadius: 16
           },

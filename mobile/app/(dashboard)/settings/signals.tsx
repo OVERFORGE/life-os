@@ -1,9 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
-import { BlurView } from 'expo-blur';
 import { ArrowLeft, Trash2 } from 'lucide-react-native';
 import { fetchWithAuth } from '../../../utils/api';
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
+};
 
 export default function SignalsScreen() {
   const router = useRouter();
@@ -109,114 +114,124 @@ export default function SignalsScreen() {
 
   if (loading && signals.length === 0) {
     return (
-      <View className="flex-1 bg-[#0f1115] items-center justify-center">
-        <ActivityIndicator color="#fcd34d" />
+      <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={C.primary} />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#0f1115]">
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
-      <BlurView intensity={20} tint="dark" className="pt-16 pb-4 px-4 border-b border-[#232632] flex-row items-center z-10">
-        <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 items-center justify-center mr-2">
-          <ArrowLeft color="#fff" size={24} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ backgroundColor: C.card, padding: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border }}>
+          <ArrowLeft size={20} color={C.subtext} />
         </TouchableOpacity>
-        <Text className="text-white font-bold text-lg">Custom Signals</Text>
-      </BlurView>
+        <Text style={{ fontSize: 20, fontWeight: '900', color: C.text, marginLeft: 16 }}>Custom Signals</Text>
+      </View>
 
-      <ScrollView className="flex-1 px-4 pt-6" contentContainerStyle={{ paddingBottom: 150 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 150 }} showsVerticalScrollIndicator={false}>
         
-        <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-8">
-          <Text className="text-white font-bold text-lg mb-2">Create Signal</Text>
-          <Text className="text-gray-400 text-xs mb-6">Signals are dynamic daily inputs: stress sliders, water intake numbers, journaling fields, etc.</Text>
+        <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 24, marginBottom: 32 }}>
+          <Text style={{ color: C.text, fontWeight: '900', fontSize: 18, marginBottom: 4 }}>Create Signal</Text>
+          <Text style={{ color: C.muted, fontSize: 12, fontWeight: '600', marginBottom: 24 }}>Signals are dynamic daily inputs: stress sliders, water intake numbers, journaling fields, etc.</Text>
           
-          <Text className="text-gray-400 text-xs mb-1">Key (Internal ID)</Text>
+          <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Key (Internal ID)</Text>
           <TextInput
-            className="bg-[#0f1115] border border-[#232632] rounded-lg p-3 text-white mb-4"
+            style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 14, fontWeight: '600', marginBottom: 20 }}
             placeholder="e.g. water_intake"
-            placeholderTextColor="#4b5563"
+            placeholderTextColor={C.muted}
             value={form.key}
             onChangeText={t => setForm({ ...form, key: t })}
           />
 
-          <Text className="text-gray-400 text-xs mb-1">Label (UI Display)</Text>
+          <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Label (UI Display)</Text>
           <TextInput
-            className="bg-[#0f1115] border border-[#232632] rounded-lg p-3 text-white mb-4"
+            style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 14, fontWeight: '600', marginBottom: 20 }}
             placeholder="e.g. Water (L)"
-            placeholderTextColor="#4b5563"
+            placeholderTextColor={C.muted}
             value={form.label}
             onChangeText={t => setForm({ ...form, label: t })}
           />
 
-          <Text className="text-gray-400 text-xs mb-1">Category</Text>
-          <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4 flex-row">
-            {categories.map(c => (
-              <TouchableOpacity
-                key={c.key}
-                onPress={() => setForm({ ...form, categoryKey: c.key })}
-                className={`mr-2 px-3 py-2 rounded-lg border ${form.categoryKey === c.key ? 'border-[#10b981] bg-[#10b981]/20' : 'border-[#232632]'}`}
-              >
-                <Text className={form.categoryKey === c.key ? 'text-[#10b981]' : 'text-gray-400'}>{c.label}</Text>
-              </TouchableOpacity>
-            ))}
+          <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Category</Text>
+          <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', gap: 8 }}>
+              {categories.map(c => (
+                <TouchableOpacity
+                  key={c.key}
+                  onPress={() => setForm({ ...form, categoryKey: c.key })}
+                  style={{
+                    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 12, borderWidth: 1,
+                    backgroundColor: form.categoryKey === c.key ? C.primaryBg : C.bg,
+                    borderColor: form.categoryKey === c.key ? 'rgba(232,65,74,0.3)' : C.border
+                  }}
+                >
+                  <Text style={{ color: form.categoryKey === c.key ? C.primary : C.subtext, fontWeight: form.categoryKey === c.key ? '800' : '600', fontSize: 12 }}>{c.label}</Text>
+                </TouchableOpacity>
+              ))}
+            </View>
           </ScrollView>
 
-          <Text className="text-gray-400 text-xs mb-1">Input Type</Text>
-          <View className="flex-row flex-wrap gap-2 mb-4">
+          <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Input Type</Text>
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 20 }}>
             {['checkbox', 'number', 'slider', 'text', 'textarea'].map(t => (
               <TouchableOpacity
                 key={t}
                 onPress={() => setForm({ ...form, inputType: t })}
-                className={`px-3 py-1.5 rounded-lg border ${form.inputType === t ? 'border-white bg-[#2a2f3a]' : 'border-[#232632]'}`}
+                style={{
+                  paddingHorizontal: 14, paddingVertical: 8, borderRadius: 12, borderWidth: 1,
+                  backgroundColor: form.inputType === t ? C.text : C.bg,
+                  borderColor: form.inputType === t ? C.text : C.border
+                }}
               >
-                <Text className={form.inputType === t ? 'text-white' : 'text-gray-400'}>{t}</Text>
+                <Text style={{ color: form.inputType === t ? C.bg : C.subtext, fontWeight: form.inputType === t ? '900' : '600', fontSize: 12 }}>{t}</Text>
               </TouchableOpacity>
             ))}
           </View>
 
-          <Text className="text-gray-400 text-xs mb-1">Direction</Text>
-          <View className="flex-row gap-2 mb-4">
+          <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Direction</Text>
+          <View style={{ flexDirection: 'row', gap: 8, marginBottom: 20 }}>
             <TouchableOpacity
               onPress={() => setForm({ ...form, direction: 'higher_better' })}
-              className={`flex-1 p-2 rounded-lg items-center border ${form.direction === 'higher_better' ? 'border-[#10b981] bg-[#10b981]/20' : 'border-[#232632]'}`}
+              style={{ flex: 1, padding: 12, borderRadius: 16, alignItems: 'center', borderWidth: 1, backgroundColor: form.direction === 'higher_better' ? 'rgba(16,185,129,0.1)' : C.bg, borderColor: form.direction === 'higher_better' ? 'rgba(16,185,129,0.3)' : C.border }}
             >
-              <Text className={form.direction === 'higher_better' ? 'text-[#10b981] text-xs font-bold' : 'text-gray-400 text-xs'}>Higher = Better</Text>
+              <Text style={{ color: form.direction === 'higher_better' ? '#10b981' : C.subtext, fontSize: 12, fontWeight: form.direction === 'higher_better' ? '800' : '600' }}>Higher = Better</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setForm({ ...form, direction: 'lower_better' })}
-              className={`flex-1 p-2 rounded-lg items-center border ${form.direction === 'lower_better' ? 'border-[#10b981] bg-[#10b981]/20' : 'border-[#232632]'}`}
+              style={{ flex: 1, padding: 12, borderRadius: 16, alignItems: 'center', borderWidth: 1, backgroundColor: form.direction === 'lower_better' ? 'rgba(59,130,246,0.1)' : C.bg, borderColor: form.direction === 'lower_better' ? 'rgba(59,130,246,0.3)' : C.border }}
             >
-              <Text className={form.direction === 'lower_better' ? 'text-[#10b981] text-xs font-bold' : 'text-gray-400 text-xs'}>Lower = Better</Text>
+              <Text style={{ color: form.direction === 'lower_better' ? '#3b82f6' : C.subtext, fontSize: 12, fontWeight: form.direction === 'lower_better' ? '800' : '600' }}>Lower = Better</Text>
             </TouchableOpacity>
           </View>
 
           {form.inputType === 'number' && (
-            <View className="flex-row gap-2 mb-4">
-              <View className="flex-1">
-                <Text className="text-gray-400 text-xs mb-1">Unit</Text>
-                <TextInput className="bg-[#0f1115] border border-[#232632] rounded-lg p-3 text-white" value={form.unit} onChangeText={t => setForm({ ...form, unit: t })} />
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Unit</Text>
+                <TextInput style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 14, fontWeight: '600' }} value={form.unit} onChangeText={t => setForm({ ...form, unit: t })} placeholderTextColor={C.muted} />
               </View>
-              <View className="flex-1">
-                <Text className="text-gray-400 text-xs mb-1">Target</Text>
-                <TextInput keyboardType="numeric" className="bg-[#0f1115] border border-[#232632] rounded-lg p-3 text-white" value={form.target} onChangeText={t => setForm({ ...form, target: t })} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Target</Text>
+                <TextInput keyboardType="numeric" style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 14, fontWeight: '600' }} value={form.target} onChangeText={t => setForm({ ...form, target: t })} placeholderTextColor={C.muted} />
               </View>
             </View>
           )}
 
           {form.inputType === 'slider' && (
-            <View className="flex-row gap-2 mb-4">
-              <View className="flex-1">
-                <Text className="text-gray-400 text-xs mb-1">Min</Text>
-                <TextInput keyboardType="numeric" className="bg-[#0f1115] border border-[#232632] rounded-lg p-3 text-white" value={form.min} onChangeText={t => setForm({ ...form, min: t })} />
+            <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Min</Text>
+                <TextInput keyboardType="numeric" style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 14, fontWeight: '600' }} value={form.min} onChangeText={t => setForm({ ...form, min: t })} placeholderTextColor={C.muted} />
               </View>
-              <View className="flex-1">
-                <Text className="text-gray-400 text-xs mb-1">Max</Text>
-                <TextInput keyboardType="numeric" className="bg-[#0f1115] border border-[#232632] rounded-lg p-3 text-white" value={form.max} onChangeText={t => setForm({ ...form, max: t })} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Max</Text>
+                <TextInput keyboardType="numeric" style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 14, fontWeight: '600' }} value={form.max} onChangeText={t => setForm({ ...form, max: t })} placeholderTextColor={C.muted} />
               </View>
-              <View className="flex-1">
-                <Text className="text-gray-400 text-xs mb-1">Step</Text>
-                <TextInput keyboardType="numeric" className="bg-[#0f1115] border border-[#232632] rounded-lg p-3 text-white" value={form.step} onChangeText={t => setForm({ ...form, step: t })} />
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Step</Text>
+                <TextInput keyboardType="numeric" style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontSize: 14, fontWeight: '600' }} value={form.step} onChangeText={t => setForm({ ...form, step: t })} placeholderTextColor={C.muted} />
               </View>
             </View>
           )}
@@ -224,28 +239,28 @@ export default function SignalsScreen() {
           <TouchableOpacity
             onPress={addSignal}
             disabled={submitting}
-            className={`mt-4 p-4 rounded-xl items-center ${submitting ? 'bg-gray-600' : 'bg-white'}`}
+            style={{ marginTop: 8, height: 56, borderRadius: 16, alignItems: 'center', justifyContent: 'center', backgroundColor: submitting ? C.border : C.text }}
           >
-            <Text className="text-black font-bold">{submitting ? 'Creating...' : '+ Create Signal'}</Text>
+            <Text style={{ color: submitting ? C.muted : C.bg, fontWeight: '900', fontSize: 14, textTransform: 'uppercase', letterSpacing: 1 }}>{submitting ? 'Creating...' : '+ Create Signal'}</Text>
           </TouchableOpacity>
         </View>
 
         <View>
-          <Text className="text-white font-bold text-lg mb-4">Active Signals</Text>
+          <Text style={{ color: C.text, fontWeight: '900', fontSize: 18, marginBottom: 16, marginLeft: 4 }}>Active Signals</Text>
           {signals.map(s => (
-            <View key={s.key} className="bg-[#161922] border border-[#232632] rounded-xl p-4 mb-3 flex-row justify-between items-center">
-              <View>
-                <Text className="text-white font-medium mb-1">{s.label}</Text>
-                <Text className="text-gray-500 text-xs">{s.key} • {s.inputType} • {s.categoryKey}</Text>
+            <View key={s.key} style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.text, fontWeight: '800', fontSize: 15, marginBottom: 4 }}>{s.label}</Text>
+                <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600' }}>{s.key} • <Text style={{ color: C.muted }}>{s.inputType}</Text> • <Text style={{ color: C.muted }}>{s.categoryKey}</Text></Text>
               </View>
-              <TouchableOpacity onPress={() => removeSignal(s.key)} className="p-2">
-                <Trash2 size={20} color="#f87171" />
+              <TouchableOpacity onPress={() => removeSignal(s.key)} style={{ padding: 10, backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border, marginLeft: 16 }}>
+                <Trash2 size={16} color="#ef4444" />
               </TouchableOpacity>
             </View>
           ))}
         </View>
 
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

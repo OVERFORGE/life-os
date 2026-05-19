@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { User } from "@/server/db/models/User";
+import { WeightLog } from "@/server/db/models/WeightLog";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
 
@@ -86,7 +87,16 @@ export async function PUT(req: Request) {
     if (body.avatar !== undefined) updatePayload.avatar = body.avatar;
     if (body.gender !== undefined) updatePayload.gender = body.gender;
     if (body.age !== undefined) updatePayload.age = Number(body.age);
-    if (body.weight !== undefined) updatePayload.weight = Number(body.weight);
+    if (body.weight !== undefined) {
+      updatePayload.weight = Number(body.weight);
+      // Create or update today's weight log
+      const dateStr = new Date().toISOString().split('T')[0];
+      await WeightLog.findOneAndUpdate(
+        { userId, date: dateStr },
+        { weight: Number(body.weight) },
+        { upsert: true, new: true }
+      );
+    }
     if (body.height !== undefined) updatePayload.height = Number(body.height);
     if (body.heightUnit !== undefined) updatePayload.heightUnit = body.heightUnit;
     if (body.targetCalories !== undefined) updatePayload.targetCalories = Number(body.targetCalories);

@@ -6,13 +6,15 @@ import {
 import { ArrowLeft, Bell, Moon, Scale, ChevronUp, ChevronDown, Check, Flame, TrendingDown, Minus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithAuth } from '../../utils/api';
+import { setupPersistentNotification, refreshPersistentNotification } from '../../utils/persistentNotification';
+import * as Notifications from 'expo-notifications';
 
 const C = {
-  bg: '#0f1115', card: '#161922', border: '#232632', border2: '#374151',
-  text: '#f3f4f6', subtext: '#9ca3af', muted: '#6b7280',
-  emerald: '#10b981', emeraldBg: 'rgba(16,185,129,0.1)',
-  amber: '#f59e0b',
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
 };
 
 const DAYS = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
@@ -31,18 +33,18 @@ function Stepper({
     <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
       <TouchableOpacity
         onPress={() => onChange(Math.max(min, value - 1))}
-        style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' }}
+        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' }}
       >
-        <ChevronDown color={C.subtext} size={16} />
+        <ChevronDown color={C.subtext} size={18} />
       </TouchableOpacity>
-      <View style={{ backgroundColor: C.bg, borderRadius: 14, borderWidth: 1, borderColor: C.emerald + '40', paddingHorizontal: 20, paddingVertical: 8, minWidth: 110, alignItems: 'center' }}>
-        <Text style={{ color: C.text, fontSize: 15, fontWeight: '800' }}>{format(value)}</Text>
+      <View style={{ backgroundColor: C.bg, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(232,65,74,0.3)', paddingHorizontal: 24, paddingVertical: 10, minWidth: 120, alignItems: 'center' }}>
+        <Text style={{ color: C.text, fontSize: 16, fontWeight: '900' }}>{format(value)}</Text>
       </View>
       <TouchableOpacity
         onPress={() => onChange(Math.min(max, value + 1))}
-        style={{ width: 36, height: 36, borderRadius: 18, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' }}
+        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center' }}
       >
-        <ChevronUp color={C.subtext} size={16} />
+        <ChevronUp color={C.subtext} size={18} />
       </TouchableOpacity>
     </View>
   );
@@ -59,6 +61,7 @@ export default function PersonalizationScreen() {
   const [reminderDay, setReminderDay] = useState(0);     // 0=Sun
   const [reminderHour, setReminderHour] = useState(9);   // 9am
   const [rolloverHour, setRolloverHour] = useState(4);   // 4am
+  const [persistentNotifEnabled, setPersistentNotifEnabled] = useState(true);
 
   // Diet mode state
   const [dietMode, setDietMode] = useState('recomp');
@@ -69,10 +72,15 @@ export default function PersonalizationScreen() {
   const loadPrefs = async () => {
     setLoading(true);
     try {
-      const [userRes, weightRes] = await Promise.all([
+      const [userRes, weightRes, notifSetting] = await Promise.all([
         fetchWithAuth('/user'),
-        fetchWithAuth('/health/weight-trend')
+        fetchWithAuth('/health/weight-trend'),
+        AsyncStorage.getItem('@persistent_notif_enabled')
       ]);
+      
+      if (notifSetting !== null) {
+        setPersistentNotifEnabled(notifSetting !== 'false');
+      }
       
       let dynamicMaintenance = null;
       if (weightRes.ok) {
@@ -120,6 +128,15 @@ export default function PersonalizationScreen() {
           },
         }),
       });
+      
+      await AsyncStorage.setItem('@persistent_notif_enabled', persistentNotifEnabled ? 'true' : 'false');
+      
+      if (persistentNotifEnabled) {
+        setupPersistentNotification();
+      } else {
+        const prevId = await AsyncStorage.getItem('@persistent_notif_id');
+        if (prevId) await Notifications.dismissNotificationAsync(prevId);
+      }
       if (res.ok) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
@@ -138,34 +155,26 @@ export default function PersonalizationScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
-      <View style={{
-        flexDirection: 'row', alignItems: 'center',
-        paddingHorizontal: 24, paddingTop: 16, paddingBottom: 16,
-        borderBottomWidth: 1, borderBottomColor: C.border,
-      }}>
-        <TouchableOpacity
-          onPress={() => router.back()}
-          style={{ padding: 8, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, marginRight: 16 }}
-        >
-          <ArrowLeft color={C.subtext} size={18} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ backgroundColor: C.card, padding: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border }}>
+          <ArrowLeft size={20} color={C.subtext} />
         </TouchableOpacity>
-        <View style={{ flex: 1 }}>
-          <Text style={{ color: C.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 }}>Personalization</Text>
-          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2, marginTop: 1 }}>App Preferences</Text>
+        <View style={{ flex: 1, marginLeft: 16 }}>
+          <Text style={{ fontSize: 20, fontWeight: '900', color: C.text }}>Personalization</Text>
+          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 2 }}>App Preferences</Text>
         </View>
         <TouchableOpacity
           onPress={save}
           disabled={saving}
           style={{
             flexDirection: 'row', alignItems: 'center', gap: 6,
-            backgroundColor: saved ? C.emerald + '20' : C.emeraldBg,
-            borderWidth: 1, borderColor: saved ? C.emerald : C.emerald + '40',
-            paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20,
+            backgroundColor: saved ? C.primaryBg : C.text,
+            paddingHorizontal: 16, paddingVertical: 10, borderRadius: 20,
           }}
         >
-          {saving ? <ActivityIndicator color={C.emerald} size="small" /> :
-            saved ? <Check color={C.emerald} size={14} /> : null}
-          <Text style={{ color: C.emerald, fontWeight: '800', fontSize: 13 }}>
+          {saving ? <ActivityIndicator color={C.bg} size="small" /> :
+            saved ? <Check color={C.primary} size={14} /> : null}
+          <Text style={{ color: saved ? C.primary : C.bg, fontWeight: '900', fontSize: 13, textTransform: 'uppercase', letterSpacing: 1 }}>
             {saved ? 'Saved!' : 'Save'}
           </Text>
         </TouchableOpacity>
@@ -173,62 +182,81 @@ export default function PersonalizationScreen() {
 
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={C.emerald} size="large" />
+          <ActivityIndicator color={C.primary} size="large" />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
 
-          {/* ── Weight Reminder ── */}
-          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 20, marginBottom: 20 }}>
-            {/* Section header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: C.emeraldBg, alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                <Scale color={C.emerald} size={18} />
+          {/* ── Persistent Notification ── */}
+          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+                <Bell color={C.primary} size={20} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: C.text, fontSize: 16, fontWeight: '800' }}>Weight Reminder</Text>
-                <Text style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>Get notified to measure your weight</Text>
+                <Text style={{ color: C.text, fontSize: 16, fontWeight: '900' }}>Persistent Assistant</Text>
+                <Text style={{ color: C.muted, fontSize: 12, marginTop: 4, fontWeight: '600' }}>Quick chat access from notification shade</Text>
+              </View>
+              <Switch
+                value={persistentNotifEnabled}
+                onValueChange={setPersistentNotifEnabled}
+                trackColor={{ false: C.bg, true: 'rgba(232,65,74,0.4)' }}
+                thumbColor={persistentNotifEnabled ? C.primary : C.subtext}
+              />
+            </View>
+          </View>
+
+          {/* ── Weight Reminder ── */}
+          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 24 }}>
+            {/* Section header */}
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+                <Scale color={C.primary} size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.text, fontSize: 16, fontWeight: '900' }}>Weight Reminder</Text>
+                <Text style={{ color: C.muted, fontSize: 12, marginTop: 4, fontWeight: '600' }}>Get notified to measure your weight</Text>
               </View>
               <Switch
                 value={reminderEnabled}
                 onValueChange={setReminderEnabled}
-                trackColor={{ false: C.border2, true: C.emerald + '50' }}
-                thumbColor={reminderEnabled ? C.emerald : C.subtext}
+                trackColor={{ false: C.bg, true: 'rgba(232,65,74,0.4)' }}
+                thumbColor={reminderEnabled ? C.primary : C.subtext}
               />
             </View>
 
             {reminderEnabled && (
               <>
                 {/* Day Picker */}
-                <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Reminder Day</Text>
-                <View style={{ flexDirection: 'row', gap: 6, flexWrap: 'wrap', marginBottom: 20 }}>
+                <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12 }}>Reminder Day</Text>
+                <View style={{ flexDirection: 'row', gap: 8, flexWrap: 'wrap', marginBottom: 24 }}>
                   {DAYS.map((day, i) => (
                     <TouchableOpacity
                       key={day}
                       onPress={() => setReminderDay(i)}
                       style={{
                         flex: 1, minWidth: 40,
-                        paddingVertical: 10,
-                        borderRadius: 14,
+                        paddingVertical: 12,
+                        borderRadius: 16,
                         alignItems: 'center',
-                        backgroundColor: reminderDay === i ? C.emerald + '20' : C.bg,
+                        backgroundColor: reminderDay === i ? C.primaryBg : C.bg,
                         borderWidth: 1,
-                        borderColor: reminderDay === i ? C.emerald : C.border,
+                        borderColor: reminderDay === i ? 'rgba(232,65,74,0.3)' : C.border,
                       }}
                     >
                       <Text style={{
-                        color: reminderDay === i ? C.emerald : C.subtext,
-                        fontSize: 12,
-                        fontWeight: reminderDay === i ? '800' : '600',
+                        color: reminderDay === i ? C.primary : C.subtext,
+                        fontSize: 13,
+                        fontWeight: reminderDay === i ? '900' : '700',
                       }}>{day}</Text>
                     </TouchableOpacity>
                   ))}
                 </View>
 
                 {/* Time Picker */}
-                <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12 }}>Reminder Time (local)</Text>
+                <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12 }}>Reminder Time (local)</Text>
                 <Stepper value={reminderHour} min={0} max={23} onChange={setReminderHour} format={formatHour} />
-                <Text style={{ color: C.muted, fontSize: 11, marginTop: 10, lineHeight: 16 }}>
+                <Text style={{ color: C.muted, fontSize: 12, marginTop: 12, lineHeight: 18, fontWeight: '600' }}>
                   You'll be reminded every {DAYS_FULL[reminderDay]} at {formatHour(reminderHour)} to measure your weight.
                 </Text>
               </>
@@ -236,24 +264,24 @@ export default function PersonalizationScreen() {
           </View>
 
           {/* ── Day Rollover Hour ── */}
-          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 20, marginBottom: 20 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-              <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: C.amber + '15', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                <Moon color={C.amber} size={18} />
+          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+                <Moon color={C.primary} size={20} />
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: C.text, fontSize: 16, fontWeight: '800' }}>Day Rollover Hour</Text>
-                <Text style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>When does your "day" actually start?</Text>
+                <Text style={{ color: C.text, fontSize: 16, fontWeight: '900' }}>Day Rollover Hour</Text>
+                <Text style={{ color: C.muted, fontSize: 12, marginTop: 4, fontWeight: '600' }}>When does your "day" actually start?</Text>
               </View>
             </View>
 
             <Stepper value={rolloverHour} min={0} max={6} onChange={setRolloverHour} format={formatHour} />
 
-            <View style={{ backgroundColor: C.amber + '10', borderRadius: 14, borderWidth: 1, borderColor: C.amber + '30', padding: 14, marginTop: 16 }}>
-              <Text style={{ color: C.amber, fontSize: 12, fontWeight: '700', marginBottom: 4 }}>How it works</Text>
-              <Text style={{ color: C.subtext, fontSize: 12, lineHeight: 18 }}>
-                Currently set to <Text style={{ color: C.text, fontWeight: '700' }}>{formatHour(rolloverHour)}</Text>.{'\n'}
-                Any food or activity logged before {formatHour(rolloverHour)} will count towards <Text style={{ color: C.text, fontWeight: '700' }}>yesterday's</Text> record — great if you're a night owl.
+            <View style={{ backgroundColor: C.primaryBg, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(232,65,74,0.2)', padding: 16, marginTop: 20 }}>
+              <Text style={{ color: C.primary, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>How it works</Text>
+              <Text style={{ color: C.subtext, fontSize: 12, lineHeight: 20, fontWeight: '600' }}>
+                Currently set to <Text style={{ color: C.text, fontWeight: '900' }}>{formatHour(rolloverHour)}</Text>.{'\n'}
+                Any food or activity logged before {formatHour(rolloverHour)} will count towards <Text style={{ color: C.text, fontWeight: '900' }}>yesterday's</Text> record — great if you're a night owl.
               </Text>
             </View>
           </View>
@@ -261,11 +289,11 @@ export default function PersonalizationScreen() {
           {/* ── Diet Plan ── */}
           {(() => {
             const MODES = [
-              { key: 'bulk',       label: 'Bulk',         desc: '+500 kcal surplus',   color: '#4ade80', offset: 500 },
-              { key: 'slight_bulk',label: 'Slight Bulk',  desc: '+250 kcal surplus',   color: '#86efac', offset: 250 },
-              { key: 'recomp',     label: 'Recomp',       desc: '~Maintenance',         color: '#60a5fa', offset: 0 },
-              { key: 'slight_cut', label: 'Slight Cut',   desc: '−250 kcal deficit',   color: '#facc15', offset: -250 },
-              { key: 'cut',        label: 'Cut',          desc: '−500 kcal deficit',   color: '#f87171', offset: -500 },
+              { key: 'bulk',       label: 'Bulk',         desc: '+500 kcal surplus',   color: '#E8414A', offset: 500 },
+              { key: 'slight_bulk',label: 'Slight Bulk',  desc: '+250 kcal surplus',   color: '#E8414A', offset: 250 },
+              { key: 'recomp',     label: 'Recomp',       desc: '~Maintenance',         color: '#E8414A', offset: 0 },
+              { key: 'slight_cut', label: 'Slight Cut',   desc: '−250 kcal deficit',   color: '#E8414A', offset: -250 },
+              { key: 'cut',        label: 'Cut',          desc: '−500 kcal deficit',   color: '#E8414A', offset: -500 },
             ];
             const activeModeObj = MODES.find(m => m.key === dietMode) || MODES[2];
             const targetCals = maintenanceCals + activeModeObj.offset;
@@ -291,21 +319,21 @@ export default function PersonalizationScreen() {
             };
 
             return (
-              <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 20, marginBottom: 20 }}>
-                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 18 }}>
-                  <View style={{ width: 36, height: 36, borderRadius: 12, backgroundColor: activeModeObj.color + '20', alignItems: 'center', justifyContent: 'center', marginRight: 12 }}>
-                    <Flame color={activeModeObj.color} size={18} />
+              <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 24 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 24 }}>
+                  <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: `${activeModeObj.color}20`, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+                    <Flame color={activeModeObj.color} size={20} />
                   </View>
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: C.text, fontSize: 16, fontWeight: '800' }}>Diet Plan</Text>
-                    <Text style={{ color: C.muted, fontSize: 12, marginTop: 2 }}>Target: {targetCals} kcal/day</Text>
+                    <Text style={{ color: C.text, fontSize: 16, fontWeight: '900' }}>Diet Plan</Text>
+                    <Text style={{ color: C.muted, fontSize: 12, marginTop: 4, fontWeight: '600' }}>Target: {targetCals} kcal/day</Text>
                   </View>
-                  {dietSaving ? <ActivityIndicator color={C.emerald} size="small" /> :
-                    dietSaved ? <Check color={C.emerald} size={18} /> : null}
+                  {dietSaving ? <ActivityIndicator color={activeModeObj.color} size="small" /> :
+                    dietSaved ? <Check color={activeModeObj.color} size={20} /> : null}
                 </View>
 
-                <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 10 }}>Select Mode</Text>
-                <View style={{ gap: 8 }}>
+                <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12 }}>Select Mode</Text>
+                <View style={{ gap: 10 }}>
                   {MODES.map(m => {
                     const isActive = dietMode === m.key;
                     return (
@@ -314,41 +342,41 @@ export default function PersonalizationScreen() {
                         onPress={() => saveDietMode(m.key)}
                         style={{
                           flexDirection: 'row', alignItems: 'center',
-                          backgroundColor: isActive ? m.color + '15' : C.bg,
+                          backgroundColor: isActive ? `${m.color}10` : C.bg,
                           borderWidth: 1,
-                          borderColor: isActive ? m.color + '60' : C.border,
-                          borderRadius: 14, padding: 14,
+                          borderColor: isActive ? `${m.color}40` : C.border,
+                          borderRadius: 16, padding: 16,
                         }}
                       >
-                        <View style={{ width: 10, height: 10, borderRadius: 5, backgroundColor: isActive ? m.color : '#374151', marginRight: 12 }} />
+                        <View style={{ width: 12, height: 12, borderRadius: 6, backgroundColor: isActive ? m.color : C.border, marginRight: 16 }} />
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: isActive ? m.color : C.text, fontSize: 14, fontWeight: '700' }}>{m.label}</Text>
-                          <Text style={{ color: C.muted, fontSize: 12, marginTop: 1 }}>{m.desc}</Text>
+                          <Text style={{ color: isActive ? m.color : C.text, fontSize: 14, fontWeight: '900' }}>{m.label}</Text>
+                          <Text style={{ color: C.muted, fontSize: 12, marginTop: 2, fontWeight: '600' }}>{m.desc}</Text>
                         </View>
-                        {isActive && <Check color={m.color} size={16} />}
+                        {isActive && <Check color={m.color} size={18} />}
                       </TouchableOpacity>
                     );
                   })}
                 </View>
 
-                <View style={{ backgroundColor: activeModeObj.color + '10', borderRadius: 12, borderWidth: 1, borderColor: activeModeObj.color + '30', padding: 12, marginTop: 14 }}>
-                  <Text style={{ color: activeModeObj.color, fontSize: 12, lineHeight: 18 }}>
-                    Maintenance: <Text style={{ fontWeight: '800' }}>{maintenanceCals} kcal</Text>
+                <View style={{ backgroundColor: `${activeModeObj.color}10`, borderRadius: 16, borderWidth: 1, borderColor: `${activeModeObj.color}30`, padding: 16, marginTop: 20 }}>
+                  <Text style={{ color: activeModeObj.color, fontSize: 13, lineHeight: 20, fontWeight: '600' }}>
+                    Maintenance: <Text style={{ fontWeight: '900' }}>{maintenanceCals} kcal</Text>
                     {activeModeObj.offset !== 0 ? (
-                      <Text> {activeModeObj.offset > 0 ? '+ ' : '− '}{Math.abs(activeModeObj.offset)} = <Text style={{ fontWeight: '800' }}>{targetCals} kcal target</Text></Text>
+                      <Text> {activeModeObj.offset > 0 ? '+ ' : '− '}{Math.abs(activeModeObj.offset)} = <Text style={{ fontWeight: '900' }}>{targetCals} kcal target</Text></Text>
                     ) : ' (your target)'}
                   </Text>
-                  <Text style={{ color: C.muted, fontSize: 11, marginTop: 4 }}>You can also say "switch to bulk" or "start a cut" in the AI chat.</Text>
+                  <Text style={{ color: C.muted, fontSize: 11, marginTop: 8, fontWeight: '700' }}>You can also say "switch to bulk" or "start a cut" in the AI chat.</Text>
                 </View>
               </View>
             );
           })()}
 
           {/* Notification Note */}
-          <View style={{ backgroundColor: C.card, borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 16 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
-              <Bell color={C.muted} size={14} />
-              <Text style={{ color: C.muted, fontSize: 12, flex: 1, lineHeight: 18 }}>
+          <View style={{ backgroundColor: C.bg, borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+              <Bell color={C.muted} size={16} />
+              <Text style={{ color: C.muted, fontSize: 12, flex: 1, lineHeight: 18, fontWeight: '600' }}>
                 Notifications are delivered through the app. Make sure LifeOS notifications are enabled in your phone settings.
               </Text>
             </View>

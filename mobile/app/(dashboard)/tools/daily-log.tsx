@@ -1,7 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, Switch, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { BlurView } from 'expo-blur';
 import { fetchWithAuth } from '../../../utils/api';
 import { ArrowLeft, Save } from 'lucide-react-native';
 
@@ -20,7 +19,6 @@ export default function DailyLogScreen() {
   });
 
   const [schemaSignals, setSchemaSignals] = useState<any[]>([]);
-
   const todayDate = getTodayDateString();
 
   useEffect(() => {
@@ -62,7 +60,6 @@ export default function DailyLogScreen() {
       signals: { ...prev.signals, [key]: value }
     }));
 
-    // Auto-save signal (mimicking web behavior)
     try {
       await fetchWithAuth('/signals/log', {
         method: 'POST',
@@ -90,33 +87,44 @@ export default function DailyLogScreen() {
   };
 
   if (loading) return (
-    <View className="flex-1 bg-[#0f1115] justify-center items-center">
-      <ActivityIndicator size="large" color="#10b981" />
+    <View style={{ flex: 1, backgroundColor: '#161618', justifyContent: 'center', alignItems: 'center' }}>
+      <ActivityIndicator size="large" color="#E8414A" />
     </View>
   );
 
   const categories = ['physical', 'habits', 'work'];
 
-  return (
-    <View className="flex-1 bg-[#0f1115]">
-      {/* Header */}
-      <BlurView intensity={20} tint="dark" className="pt-16 pb-4 px-4 border-b border-[#232632] flex-row justify-between items-center z-10">
-        <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 items-center justify-center">
-          <ArrowLeft color="#fff" size={24} />
-        </TouchableOpacity>
-        <Text className="text-white font-bold text-lg">Daily Check-in</Text>
-        <TouchableOpacity onPress={saveForm} disabled={saving} className="w-10 h-10 items-center justify-center">
-          {saving ? <ActivityIndicator size="small" color="#10b981" /> : <Save color="#10b981" size={24} />}
-        </TouchableOpacity>
-      </BlurView>
+  const sectionLabel = (text: string) => (
+    <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 17, marginBottom: 12 }}>{text}</Text>
+  );
 
-      <ScrollView className="flex-1 px-4 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
-        {status ? <Text className="text-center text-[#10b981] mb-4 font-semibold">{status}</Text> : null}
+  return (
+    <View style={{ flex: 1, backgroundColor: '#161618' }}>
+      {/* Header */}
+      <View style={{ paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#2A2B2F', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <ArrowLeft color="rgba(236,231,227,0.7)" size={17} />
+        </TouchableOpacity>
+        <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 16 }}>Daily Check-in</Text>
+        <TouchableOpacity
+          onPress={saveForm}
+          disabled={saving}
+          style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: 'rgba(232,65,74,0.1)', borderWidth: 1, borderColor: 'rgba(232,65,74,0.25)', alignItems: 'center', justifyContent: 'center' }}
+        >
+          {saving ? <ActivityIndicator size="small" color="#E8414A" /> : <Save color="#E8414A" size={17} />}
+        </TouchableOpacity>
+      </View>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
+        {status ? <Text style={{ textAlign: 'center', color: '#E8414A', marginBottom: 16, fontWeight: '600' }}>{status}</Text> : null}
 
         {/* ─── Core Check-in ─── */}
-        <View className="bg-[#161922] border border-[#232632] rounded-2xl p-5 mb-6">
-          <Text className="text-white font-semibold text-lg mb-1">Core Signals</Text>
-          <Text className="text-gray-500 text-xs mb-4">System signals for today</Text>
+        <View style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+          {sectionLabel('Core Signals')}
+          <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 12, marginBottom: 16 }}>System signals for today</Text>
 
           <SignalInput label="Mood (1-10)" value={form.signals.mood ?? 5} onChange={(v: string) => updateSignal('mood', Number(v))} type="number" />
           <SignalInput label="Energy (1-10)" value={form.signals.energy ?? 5} onChange={(v: string) => updateSignal('energy', Number(v))} type="number" />
@@ -131,20 +139,20 @@ export default function DailyLogScreen() {
           if (sigs.length === 0) return null;
 
           return (
-            <View key={category} className="bg-[#161922] border border-[#232632] rounded-2xl p-5 mb-6">
-              <Text className="text-white font-semibold text-lg capitalize mb-4">{category}</Text>
+            <View key={category} style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+              <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 17, textTransform: 'capitalize', marginBottom: 16 }}>{category}</Text>
               {sigs.map(s => {
                 if (s.dependsOn && Number(form.signals[s.dependsOn]) !== Number(s.showIf ?? 1)) return null;
 
                 return (
-                  <View key={s.key} className="mb-4">
+                  <View key={s.key} style={{ marginBottom: 16 }}>
                     {s.inputType === 'checkbox' ? (
-                      <View className="flex-row items-center justify-between">
-                        <Text className="text-gray-300">{s.label}</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+                        <Text style={{ color: 'rgba(236,231,227,0.7)', fontSize: 14 }}>{s.label}</Text>
                         <Switch
                           value={form.signals[s.key] === 1}
                           onValueChange={(v) => updateSignal(s.key, v ? 1 : 0)}
-                          trackColor={{ true: '#10b981', false: '#374151' }}
+                          trackColor={{ true: '#E8414A', false: '#2A2B2F' }}
                         />
                       </View>
                     ) : (
@@ -163,59 +171,63 @@ export default function DailyLogScreen() {
         })}
 
         {/* ─── Planning ─── */}
-        <View className="bg-[#161922] border border-[#232632] rounded-2xl p-5 mb-6">
-          <Text className="text-white font-semibold text-lg mb-4">Planning & Execution</Text>
-          <View className="flex-row gap-4 mb-4">
-            <View className="flex-1">
-              <Text className="text-gray-400 text-xs mb-1">Tasks Planned</Text>
+        <View style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 16 }}>
+          {sectionLabel('Planning & Execution')}
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 16 }}>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 11, marginBottom: 6 }}>Tasks Planned</Text>
               <TextInput
-                className="bg-[#0f1115] border border-[#232632] text-white p-3 rounded-lg"
+                style={{ backgroundColor: '#161618', borderWidth: 1, borderColor: '#2A2B2F', color: '#FFFDFC', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, fontSize: 14 }}
                 keyboardType="numeric"
                 value={String(form.planning.plannedTasks)}
                 onChangeText={(v) => updateForm('planning', 'plannedTasks', Number(v))}
               />
             </View>
-            <View className="flex-1">
-              <Text className="text-gray-400 text-xs mb-1">Tasks Completed</Text>
+            <View style={{ flex: 1 }}>
+              <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 11, marginBottom: 6 }}>Tasks Completed</Text>
               <TextInput
-                className="bg-[#0f1115] border border-[#232632] text-white p-3 rounded-lg"
+                style={{ backgroundColor: '#161618', borderWidth: 1, borderColor: '#2A2B2F', color: '#FFFDFC', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, fontSize: 14 }}
                 keyboardType="numeric"
                 value={String(form.planning.completedTasks)}
                 onChangeText={(v) => updateForm('planning', 'completedTasks', Number(v))}
               />
             </View>
           </View>
-          <Text className="text-gray-400 text-xs mb-1">Reason for incomplete tasks</Text>
+          <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 11, marginBottom: 6 }}>Reason for incomplete tasks</Text>
           <TextInput
-            className="bg-[#0f1115] border border-[#232632] text-white p-3 rounded-lg min-h-[60px]"
+            style={{ backgroundColor: '#161618', borderWidth: 1, borderColor: '#2A2B2F', color: '#FFFDFC', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, fontSize: 14, minHeight: 60, textAlignVertical: 'top' }}
             multiline
             value={form.planning.reasonNotCompleted}
             onChangeText={(v) => updateForm('planning', 'reasonNotCompleted', v)}
             placeholder="Why didn't you finish?"
-            placeholderTextColor="#4b5563"
+            placeholderTextColor="rgba(236,231,227,0.3)"
           />
         </View>
 
         {/* ─── Reflection ─── */}
-        <View className="bg-[#161922] border border-[#232632] rounded-2xl p-5 mb-6">
-          <Text className="text-white font-semibold text-lg mb-4">Daily Reflection</Text>
+        <View style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 24 }}>
+          {sectionLabel('Daily Reflection')}
           {['win', 'mistake', 'learned', 'bothering'].map(field => (
-            <View key={field} className="mb-4">
-              <Text className="text-gray-400 text-xs mb-1 capitalize">{field}</Text>
+            <View key={field} style={{ marginBottom: 16 }}>
+              <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 11, marginBottom: 6, textTransform: 'capitalize' }}>{field}</Text>
               <TextInput
-                className="bg-[#0f1115] border border-[#232632] text-white p-3 rounded-lg min-h-[80px]"
+                style={{ backgroundColor: '#161618', borderWidth: 1, borderColor: '#2A2B2F', color: '#FFFDFC', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, fontSize: 14, minHeight: 80, textAlignVertical: 'top' }}
                 multiline
                 value={(form.reflection as any)[field]}
                 onChangeText={(v) => updateForm('reflection', field, v)}
                 placeholder={`What was your ${field}?`}
-                placeholderTextColor="#4b5563"
+                placeholderTextColor="rgba(236,231,227,0.3)"
               />
             </View>
           ))}
         </View>
 
-        <TouchableOpacity onPress={saveForm} disabled={saving} className="bg-white p-4 rounded-xl items-center mb-8">
-          <Text className="text-black font-bold text-base">{saving ? 'Saving...' : 'Save Check-in'}</Text>
+        <TouchableOpacity
+          onPress={saveForm}
+          disabled={saving}
+          style={{ backgroundColor: '#E8414A', paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 20 }}
+        >
+          <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 16 }}>{saving ? 'Saving...' : 'Save Check-in'}</Text>
         </TouchableOpacity>
 
       </ScrollView>
@@ -225,10 +237,10 @@ export default function DailyLogScreen() {
 
 function SignalInput({ label, value, onChange, type }: any) {
   return (
-    <View className="mb-4">
-      <Text className="text-gray-400 text-xs mb-1">{label}</Text>
+    <View style={{ marginBottom: 16 }}>
+      <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 11, marginBottom: 6 }}>{label}</Text>
       <TextInput
-        className="bg-[#0f1115] border border-[#232632] text-white p-3 rounded-lg"
+        style={{ backgroundColor: '#161618', borderWidth: 1, borderColor: '#2A2B2F', color: '#FFFDFC', paddingHorizontal: 14, paddingVertical: 12, borderRadius: 12, fontSize: 14 }}
         keyboardType={type === 'number' || type === 'slider' ? 'numeric' : 'default'}
         value={String(value)}
         onChangeText={onChange}

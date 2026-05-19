@@ -4,14 +4,14 @@ import {
   ActivityIndicator, Platform, Alert, KeyboardAvoidingView
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { ArrowLeft, Calendar, Clock, Target, Repeat, Zap, Timer, X, Plus } from 'lucide-react-native';
+import { ArrowLeft, Calendar, Clock, Timer, X, Plus } from 'lucide-react-native';
 import DateTimePicker from '@react-native-community/datetimepicker';
 import { fetchWithAuth } from '../../../../utils/api';
 
 const PRIORITIES = [
-  { key: 'low',    label: 'Low',    color: '#34d399', bg: '#064738' },
-  { key: 'medium', label: 'Medium', color: '#fb923c', bg: '#7c2d12' },
-  { key: 'high',   label: 'High',   color: '#f87171', bg: '#7f1d1d' },
+  { key: 'low',    label: 'Low',    color: 'rgba(236,231,227,0.7)',  border: 'rgba(236,231,227,0.2)',  activeBg: 'rgba(236,231,227,0.06)' },
+  { key: 'medium', label: 'Medium', color: '#F9A8AC',                border: 'rgba(249,168,172,0.35)', activeBg: 'rgba(249,168,172,0.08)' },
+  { key: 'high',   label: 'High',   color: '#E8414A',                border: 'rgba(232,65,74,0.4)',    activeBg: 'rgba(232,65,74,0.1)'    },
 ];
 
 export default function NewTaskScreen() {
@@ -49,36 +49,21 @@ export default function NewTaskScreen() {
     setNewSubtask('');
   };
 
-  const removeSubtask = (idx: number) => {
-    setSubtasks(subtasks.filter((_, i) => i !== idx));
-  };
-
   const handleCreate = async () => {
     if (!title.trim()) return;
     setLoading(true);
-
     let recurring = null;
     if (recurringType !== 'none') {
       recurring = { type: recurringType, interval: recurringType === 'custom' ? parseInt(recurringInterval) || 1 : 1 };
     }
-
     const payload = {
-      title,
-      description,
+      title, description,
       dueDate: dueDate.toISOString().split('T')[0],
-      dueTime: dueTime
-        ? `${dueTime.getHours().toString().padStart(2, '0')}:${dueTime.getMinutes().toString().padStart(2, '0')}`
-        : null,
-      priority,
-      recurring,
-      goalId,
-      metadata: {
-        energyCost,
-        estimatedDuration: estimatedDuration ? parseInt(estimatedDuration) : null,
-      },
+      dueTime: dueTime ? `${dueTime.getHours().toString().padStart(2, '0')}:${dueTime.getMinutes().toString().padStart(2, '0')}` : null,
+      priority, recurring, goalId,
+      metadata: { energyCost, estimatedDuration: estimatedDuration ? parseInt(estimatedDuration) : null },
       subtasks: subtasks.map(t => ({ title: t, done: false })),
     };
-
     try {
       const res = await fetchWithAuth('/tasks/create', { method: 'POST', body: JSON.stringify(payload) });
       if (res.ok) router.back();
@@ -91,38 +76,42 @@ export default function NewTaskScreen() {
   };
 
   const sectionLabel = (text: string) => (
-    <Text style={{ color: '#6b7280', fontWeight: '700', fontSize: 11, letterSpacing: 1.2, textTransform: 'uppercase', marginBottom: 10 }}>
+    <Text style={{ color: 'rgba(236,231,227,0.4)', fontWeight: '700', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 10 }}>
       {text}
     </Text>
   );
 
   return (
-    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#0a0b0e' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+    <KeyboardAvoidingView style={{ flex: 1, backgroundColor: '#161618' }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
       {/* Header */}
-      <View style={{ paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#12141a' }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: '#12141a', borderWidth: 1, borderColor: '#1e2029', alignItems: 'center', justifyContent: 'center' }}>
-          <ArrowLeft color="#9ca3af" size={18} />
+      <View style={{ paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', borderBottomWidth: 1, borderBottomColor: '#2A2B2F' }}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <ArrowLeft color="rgba(236,231,227,0.7)" size={17} />
         </TouchableOpacity>
-        <Text style={{ color: '#f9fafb', fontWeight: '700', fontSize: 18 }}>New Task</Text>
-        <View style={{ width: 40 }} />
+        <Text style={{ color: '#FFFDFC', fontWeight: '700', fontSize: 16 }}>New Task</Text>
+        <View style={{ width: 38 }} />
       </View>
 
       <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 100 }} keyboardShouldPersistTaps="handled">
 
         {/* Title */}
-        <View style={{ marginBottom: 20 }}>
-          {sectionLabel('What needs to be done?')}
+        <View style={{ marginBottom: 22 }}>
+          {sectionLabel("What needs to be done?")}
           <TextInput
-            style={{ backgroundColor: '#12141a', color: '#f9fafb', borderWidth: 1, borderColor: '#1e2029', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, fontWeight: '600' }}
+            style={{ backgroundColor: '#1F2023', color: '#FFFDFC', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, fontSize: 15, fontWeight: '600', marginBottom: 10 }}
             placeholder="Task title..."
-            placeholderTextColor="#4b5563"
+            placeholderTextColor="rgba(236,231,227,0.3)"
             value={title}
             onChangeText={setTitle}
+            autoFocus
           />
           <TextInput
-            style={{ backgroundColor: '#12141a', color: '#f9fafb', borderWidth: 1, borderColor: '#1e2029', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, marginTop: 10, minHeight: 80, textAlignVertical: 'top' }}
+            style={{ backgroundColor: '#1F2023', color: '#FFFDFC', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 14, fontSize: 14, minHeight: 80, textAlignVertical: 'top' }}
             placeholder="Add context or notes... (optional)"
-            placeholderTextColor="#4b5563"
+            placeholderTextColor="rgba(236,231,227,0.3)"
             multiline
             value={description}
             onChangeText={setDescription}
@@ -130,22 +119,22 @@ export default function NewTaskScreen() {
         </View>
 
         {/* Date & Time */}
-        <View style={{ marginBottom: 20 }}>
-          {sectionLabel('Schedule')}
+        <View style={{ marginBottom: 22 }}>
+          {sectionLabel("Schedule")}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <TouchableOpacity
               onPress={() => setShowDatePicker(true)}
-              style={{ flex: 1, backgroundColor: '#12141a', borderWidth: 1, borderColor: '#1e2029', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+              style={{ flex: 1, backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}
             >
-              <Calendar size={16} color="#8b5cf6" />
-              <Text style={{ color: '#d1d5db', fontSize: 14, fontWeight: '500' }}>{dueDate.toLocaleDateString()}</Text>
+              <Calendar size={15} color="#E8414A" />
+              <Text style={{ color: '#ECE7E3', fontSize: 13, fontWeight: '500' }}>{dueDate.toLocaleDateString()}</Text>
             </TouchableOpacity>
             <TouchableOpacity
               onPress={() => setShowTimePicker(true)}
-              style={{ flex: 1, backgroundColor: '#12141a', borderWidth: 1, borderColor: dueTime ? '#3b1d8a' : '#1e2029', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 10 }}
+              style={{ flex: 1, backgroundColor: '#1F2023', borderWidth: 1, borderColor: dueTime ? 'rgba(232,65,74,0.4)' : '#2A2B2F', borderRadius: 14, padding: 14, flexDirection: 'row', alignItems: 'center', gap: 8 }}
             >
-              <Clock size={16} color={dueTime ? '#a78bfa' : '#6b7280'} />
-              <Text style={{ color: dueTime ? '#a78bfa' : '#6b7280', fontSize: 14, fontWeight: '500' }}>
+              <Clock size={15} color={dueTime ? '#E8414A' : 'rgba(236,231,227,0.4)'} />
+              <Text style={{ color: dueTime ? '#E8414A' : 'rgba(236,231,227,0.4)', fontSize: 13, fontWeight: '500' }}>
                 {dueTime ? dueTime.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' }) : 'Anytime'}
               </Text>
             </TouchableOpacity>
@@ -160,95 +149,103 @@ export default function NewTaskScreen() {
         )}
 
         {/* Priority */}
-        <View style={{ marginBottom: 20 }}>
-          {sectionLabel('Priority')}
+        <View style={{ marginBottom: 22 }}>
+          {sectionLabel("Priority")}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             {PRIORITIES.map(p => (
               <TouchableOpacity
                 key={p.key}
                 onPress={() => setPriority(p.key as any)}
-                style={{ flex: 1, paddingVertical: 14, borderRadius: 14, alignItems: 'center', backgroundColor: priority === p.key ? p.bg + '55' : '#12141a', borderWidth: 1.5, borderColor: priority === p.key ? p.color + '88' : '#1e2029' }}
+                style={{
+                  flex: 1, paddingVertical: 13, borderRadius: 14, alignItems: 'center',
+                  backgroundColor: priority === p.key ? p.activeBg : '#1F2023',
+                  borderWidth: 1.5,
+                  borderColor: priority === p.key ? p.border : '#2A2B2F'
+                }}
               >
-                <Text style={{ color: priority === p.key ? p.color : '#6b7280', fontWeight: '700', fontSize: 14 }}>{p.label}</Text>
+                <Text style={{ color: priority === p.key ? p.color : 'rgba(236,231,227,0.4)', fontWeight: '700', fontSize: 13 }}>{p.label}</Text>
               </TouchableOpacity>
             ))}
           </View>
         </View>
 
-        {/* Sub-tasks */}
-        <View style={{ marginBottom: 20 }}>
+        {/* Subtasks */}
+        <View style={{ marginBottom: 22 }}>
           {sectionLabel(`Subtasks (${subtasks.length})`)}
           {subtasks.map((s, idx) => (
-            <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#12141a', borderRadius: 12, borderWidth: 1, borderColor: '#1e2029', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8 }}>
-              <View style={{ width: 6, height: 6, borderRadius: 99, backgroundColor: '#8b5cf6', marginRight: 12 }} />
-              <Text style={{ flex: 1, color: '#d1d5db', fontSize: 14 }}>{s}</Text>
-              <TouchableOpacity onPress={() => removeSubtask(idx)} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
-                <X size={16} color="#6b7280" />
+            <View key={idx} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1F2023', borderRadius: 12, borderWidth: 1, borderColor: '#2A2B2F', paddingHorizontal: 14, paddingVertical: 12, marginBottom: 8 }}>
+              <View style={{ width: 5, height: 5, borderRadius: 99, backgroundColor: '#E8414A', marginRight: 12, opacity: 0.6 }} />
+              <Text style={{ flex: 1, color: 'rgba(236,231,227,0.8)', fontSize: 13 }}>{s}</Text>
+              <TouchableOpacity onPress={() => setSubtasks(subtasks.filter((_, i) => i !== idx))} hitSlop={{ top: 8, bottom: 8, left: 8, right: 8 }}>
+                <X size={15} color="rgba(236,231,227,0.4)" />
               </TouchableOpacity>
             </View>
           ))}
           <View style={{ flexDirection: 'row', gap: 10 }}>
             <TextInput
-              style={{ flex: 1, backgroundColor: '#12141a', color: '#f9fafb', borderWidth: 1, borderColor: '#1e2029', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 14 }}
+              style={{ flex: 1, backgroundColor: '#1F2023', color: '#FFFDFC', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 12, fontSize: 13 }}
               placeholder="Add a subtask..."
-              placeholderTextColor="#4b5563"
+              placeholderTextColor="rgba(236,231,227,0.3)"
               value={newSubtask}
               onChangeText={setNewSubtask}
               onSubmitEditing={addSubtask}
               returnKeyType="done"
             />
-            <TouchableOpacity onPress={addSubtask} style={{ width: 48, backgroundColor: '#1c1a2e', borderRadius: 12, borderWidth: 1, borderColor: '#3b1d8a', alignItems: 'center', justifyContent: 'center' }}>
-              <Plus size={20} color="#a78bfa" />
+            <TouchableOpacity
+              onPress={addSubtask}
+              style={{ width: 46, backgroundColor: 'rgba(232,65,74,0.12)', borderRadius: 12, borderWidth: 1, borderColor: 'rgba(232,65,74,0.3)', alignItems: 'center', justifyContent: 'center' }}
+            >
+              <Plus size={19} color="#E8414A" />
             </TouchableOpacity>
           </View>
         </View>
 
         {/* Recurring */}
-        <View style={{ marginBottom: 20 }}>
-          {sectionLabel('Repeat')}
+        <View style={{ marginBottom: 22 }}>
+          {sectionLabel("Repeat")}
           <ScrollView horizontal showsHorizontalScrollIndicator={false}>
             {(['none', 'daily', 'weekly', 'custom'] as const).map(rt => (
               <TouchableOpacity
                 key={rt}
                 onPress={() => setRecurringType(rt)}
-                style={{ marginRight: 10, paddingHorizontal: 18, paddingVertical: 10, borderRadius: 99, backgroundColor: recurringType === rt ? '#1c1a2e' : '#12141a', borderWidth: 1, borderColor: recurringType === rt ? '#8b5cf6' : '#1e2029' }}
+                style={{ marginRight: 8, paddingHorizontal: 16, paddingVertical: 9, borderRadius: 99, backgroundColor: recurringType === rt ? 'rgba(232,65,74,0.12)' : '#1F2023', borderWidth: 1, borderColor: recurringType === rt ? 'rgba(232,65,74,0.4)' : '#2A2B2F' }}
               >
-                <Text style={{ color: recurringType === rt ? '#a78bfa' : '#6b7280', fontWeight: recurringType === rt ? '700' : '400', fontSize: 14, textTransform: 'capitalize' }}>{rt}</Text>
+                <Text style={{ color: recurringType === rt ? '#E8414A' : 'rgba(236,231,227,0.5)', fontWeight: recurringType === rt ? '700' : '400', fontSize: 13, textTransform: 'capitalize' }}>{rt}</Text>
               </TouchableOpacity>
             ))}
           </ScrollView>
           {recurringType === 'custom' && (
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 12, backgroundColor: '#12141a', borderRadius: 12, borderWidth: 1, borderColor: '#1e2029', paddingHorizontal: 16, paddingVertical: 10, gap: 12 }}>
-              <Text style={{ color: '#6b7280' }}>Every</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 10, backgroundColor: '#1F2023', borderRadius: 12, borderWidth: 1, borderColor: '#2A2B2F', paddingHorizontal: 16, paddingVertical: 10, gap: 12 }}>
+              <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 13 }}>Every</Text>
               <TextInput
-                style={{ color: '#f9fafb', fontWeight: '700', fontSize: 16, backgroundColor: '#1e2029', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, minWidth: 48, textAlign: 'center' }}
+                style={{ color: '#FFFDFC', fontWeight: '700', fontSize: 15, backgroundColor: '#2A2B2F', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 8, minWidth: 48, textAlign: 'center' }}
                 keyboardType="numeric"
                 value={recurringInterval}
                 onChangeText={setRecurringInterval}
               />
-              <Text style={{ color: '#6b7280' }}>days</Text>
+              <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 13 }}>days</Text>
             </View>
           )}
         </View>
 
         {/* Goal Link */}
         {goals.length > 0 && (
-          <View style={{ marginBottom: 20 }}>
-            {sectionLabel('Link to Goal')}
+          <View style={{ marginBottom: 22 }}>
+            {sectionLabel("Link to Goal")}
             <ScrollView horizontal showsHorizontalScrollIndicator={false}>
               <TouchableOpacity
                 onPress={() => setGoalId(null)}
-                style={{ marginRight: 10, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 99, backgroundColor: goalId === null ? '#1e2029' : '#12141a', borderWidth: 1, borderColor: goalId === null ? '#4b5563' : '#1e2029' }}
+                style={{ marginRight: 8, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 99, backgroundColor: goalId === null ? '#2A2B2F' : '#1F2023', borderWidth: 1, borderColor: goalId === null ? 'rgba(236,231,227,0.2)' : '#2A2B2F' }}
               >
-                <Text style={{ color: goalId === null ? '#d1d5db' : '#6b7280', fontSize: 14 }}>None</Text>
+                <Text style={{ color: goalId === null ? '#ECE7E3' : 'rgba(236,231,227,0.4)', fontSize: 13 }}>None</Text>
               </TouchableOpacity>
               {goals.map(g => (
                 <TouchableOpacity
                   key={g.id}
                   onPress={() => setGoalId(g.id)}
-                  style={{ marginRight: 10, paddingHorizontal: 14, paddingVertical: 10, borderRadius: 99, backgroundColor: goalId === g.id ? '#1c1a2e' : '#12141a', borderWidth: 1, borderColor: goalId === g.id ? '#8b5cf6' : '#1e2029' }}
+                  style={{ marginRight: 8, paddingHorizontal: 14, paddingVertical: 9, borderRadius: 99, backgroundColor: goalId === g.id ? 'rgba(232,65,74,0.12)' : '#1F2023', borderWidth: 1, borderColor: goalId === g.id ? 'rgba(232,65,74,0.4)' : '#2A2B2F' }}
                 >
-                  <Text style={{ color: goalId === g.id ? '#a78bfa' : '#6b7280', fontWeight: goalId === g.id ? '700' : '400', fontSize: 14 }}>{g.title}</Text>
+                  <Text style={{ color: goalId === g.id ? '#E8414A' : 'rgba(236,231,227,0.5)', fontWeight: goalId === g.id ? '700' : '400', fontSize: 13 }}>{g.title}</Text>
                 </TouchableOpacity>
               ))}
             </ScrollView>
@@ -258,39 +255,39 @@ export default function NewTaskScreen() {
         {/* Energy cost */}
         <View style={{ marginBottom: 28 }}>
           {sectionLabel(`Energy Cost — ${energyCost}/10`)}
-          <View style={{ backgroundColor: '#12141a', borderRadius: 14, borderWidth: 1, borderColor: '#1e2029', padding: 16 }}>
+          <View style={{ backgroundColor: '#1F2023', borderRadius: 14, borderWidth: 1, borderColor: '#2A2B2F', padding: 16 }}>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
               {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map(v => (
                 <TouchableOpacity
                   key={v}
                   onPress={() => setEnergyCost(v)}
-                  style={{ width: 28, height: 28, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: energyCost >= v ? '#3b1d8a' : '#1e2029' }}
+                  style={{ width: 26, height: 26, borderRadius: 8, alignItems: 'center', justifyContent: 'center', backgroundColor: energyCost >= v ? 'rgba(232,65,74,0.15)' : '#2A2B2F' }}
                 >
-                  <View style={{ width: 8, height: 8, borderRadius: 99, backgroundColor: energyCost >= v ? '#a78bfa' : '#2a2d3a' }} />
+                  <View style={{ width: 7, height: 7, borderRadius: 99, backgroundColor: energyCost >= v ? '#E8414A' : '#2A2B2F' }} />
                 </TouchableOpacity>
               ))}
             </View>
             <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginTop: 6 }}>
-              <Text style={{ color: '#4b5563', fontSize: 11 }}>Low</Text>
-              <Text style={{ color: '#4b5563', fontSize: 11 }}>High</Text>
+              <Text style={{ color: 'rgba(236,231,227,0.3)', fontSize: 10 }}>Low</Text>
+              <Text style={{ color: 'rgba(236,231,227,0.3)', fontSize: 10 }}>High</Text>
             </View>
           </View>
         </View>
 
         {/* Estimated duration */}
         <View style={{ marginBottom: 32 }}>
-          {sectionLabel('Estimated Duration')}
-          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#12141a', borderWidth: 1, borderColor: '#1e2029', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, gap: 12 }}>
-            <Timer size={16} color="#6b7280" />
+          {sectionLabel("Estimated Duration")}
+          <View style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 14, paddingHorizontal: 16, paddingVertical: 12, gap: 12 }}>
+            <Timer size={15} color="rgba(236,231,227,0.4)" />
             <TextInput
-              style={{ flex: 1, color: '#f9fafb', fontSize: 14 }}
+              style={{ flex: 1, color: '#FFFDFC', fontSize: 14 }}
               placeholder="Minutes (e.g. 45)"
-              placeholderTextColor="#4b5563"
+              placeholderTextColor="rgba(236,231,227,0.3)"
               keyboardType="numeric"
               value={estimatedDuration}
               onChangeText={setEstimatedDuration}
             />
-            <Text style={{ color: '#6b7280' }}>min</Text>
+            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 13 }}>min</Text>
           </View>
         </View>
 
@@ -298,11 +295,11 @@ export default function NewTaskScreen() {
         <TouchableOpacity
           onPress={handleCreate}
           disabled={loading || !title.trim()}
-          style={{ borderRadius: 16, paddingVertical: 18, alignItems: 'center', justifyContent: 'center', backgroundColor: !title.trim() ? '#1c1a2e' : '#3b1d8a', borderWidth: 1, borderColor: !title.trim() ? '#2a2d3a' : '#8b5cf6' }}
+          style={{ borderRadius: 16, paddingVertical: 17, alignItems: 'center', justifyContent: 'center', backgroundColor: !title.trim() ? '#1F2023' : '#E8414A', borderWidth: 1, borderColor: !title.trim() ? '#2A2B2F' : '#D62C35' }}
         >
           {loading
-            ? <ActivityIndicator color="#a78bfa" />
-            : <Text style={{ color: !title.trim() ? '#4b5563' : '#a78bfa', fontWeight: '700', fontSize: 16 }}>Create Task</Text>
+            ? <ActivityIndicator color="#FFFDFC" />
+            : <Text style={{ color: !title.trim() ? 'rgba(236,231,227,0.3)' : '#FFFDFC', fontWeight: '700', fontSize: 15 }}>Create Task</Text>
           }
         </TouchableOpacity>
       </ScrollView>

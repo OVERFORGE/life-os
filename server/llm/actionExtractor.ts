@@ -16,14 +16,13 @@ export async function extractActions(input: string, intent: string, activeGoalsL
         return [];
     }
 
-    // confirm_goal is handled directly from conversation context — no LLM extraction needed
-    if (intent === "confirm_goal") {
-        return [{ type: "confirm_goal", payload: { userMessage: input } }];
-    }
+    let autoActions: ExtractedAction[] = [];
 
-    // create_goal → always returns propose_goal so the system drafts a proposal first
+    if (intent === "confirm_goal") {
+        autoActions.push({ type: "confirm_goal", payload: { userMessage: input } });
+    }
     if (intent === "create_goal") {
-        return [{ type: "propose_goal", payload: { userMessage: input } }];
+        autoActions.push({ type: "propose_goal", payload: { userMessage: input } });
     }
 
     // diet mode: proposal from user intent → propose phase
@@ -285,12 +284,20 @@ If nothing actionable is present, return: { "actions": [] }
             model
         });
         const cleanRes = cleanLLMResponse(res);
-        const parsed = JSON.parse(cleanRes);
-        const extracted = Array.isArray(parsed.actions) ? parsed.actions : [];
+        let extracted = Array.isArray(parsed.actions) ? parsed.actions : [];
+        
+        // Filter out redundant goal creations if we auto-handled it
+        if (intent === "create_goal") {
+            extracted = extracted.filter(a => a.type !== "create_goal" && a.type !== "propose_goal");
+        }
+        if (intent === "confirm_goal") {
+            extracted = extracted.filter(a => a.type !== "confirm_goal" && a.type !== "create_goal");
+        }
+        
         console.log(`📋 [EXTRACTOR] Raw LLM output: ${res.slice(0, 200)}`);
-        return extracted;
+        return [...autoActions, ...extracted] as ExtractedAction[];
     } catch (e) {
         console.error("Action Extraction Error:", e);
-        return [];
+        return autoActions;
     }
 }

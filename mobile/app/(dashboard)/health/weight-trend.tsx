@@ -1,21 +1,19 @@
 import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Dimensions } from 'react-native';
-import { ArrowLeft, ChevronLeft, ChevronRight, Scale, Flame } from 'lucide-react-native';
+import { ArrowLeft, Scale, Flame } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { fetchWithAuth } from '../../../utils/api';
 
 const { width: SCREEN_W } = Dimensions.get('window');
-const CHART_W = SCREEN_W - 48;
 
 const C = {
-  bg: '#0f1115', card: '#161922', border: '#232632', border2: '#374151',
-  text: '#f3f4f6', subtext: '#9ca3af', muted: '#6b7280',
-  emerald: '#10b981', emeraldBg: 'rgba(16,185,129,0.1)',
-  amber: '#f59e0b', purple: '#818cf8',
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.5)', muted: 'rgba(236,231,227,0.3)',
+  primary: '#E8414A'
 };
 
-function LineChart({ data, color = C.emerald, unit = 'kg' }: { data: { label: string; value: number | null }[]; color?: string; unit?: string }) {
+function LineChart({ data, color = C.primary, unit = 'kg' }: { data: { label: string; value: number | null }[]; color?: string; unit?: string }) {
   const values = data.map(d => d.value).filter(v => v !== null) as number[];
   if (values.length === 0) return (
     <View style={{ height: 160, alignItems: 'center', justifyContent: 'center' }}>
@@ -100,7 +98,7 @@ function LineChart({ data, color = C.emerald, unit = 'kg' }: { data: { label: st
   );
 }
 
-function BarChart({ data, color = C.purple }: { data: { label: string; value: number | null }[]; color?: string }) {
+function BarChart({ data, color = C.primary }: { data: { label: string; value: number | null }[]; color?: string }) {
   const values = data.map(d => d.value).filter(v => v !== null) as number[];
   if (values.length === 0) return (
     <View style={{ height: 120, alignItems: 'center', justifyContent: 'center' }}>
@@ -176,85 +174,85 @@ export default function WeightTrendScreen() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, marginRight: 16 }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ padding: 10, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, marginRight: 16 }}>
           <ArrowLeft color={C.subtext} size={18} />
         </TouchableOpacity>
         <View>
-          <Text style={{ color: C.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 }}>Weight Trend</Text>
-          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2, marginTop: 1 }}>Monthly Overview</Text>
+          <Text style={{ color: C.text, fontSize: 20, fontWeight: '800' }}>Weight Trend</Text>
+          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 2 }}>Monthly Overview</Text>
         </View>
       </View>
 
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color={C.emerald} size="large" />
+          <ActivityIndicator color={C.primary} size="large" />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
 
           {/* Stats Row */}
-          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
-            <View style={{ flex: 1, backgroundColor: C.card, borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 16, alignItems: 'center' }}>
-              <Scale color={C.emerald} size={18} style={{ marginBottom: 6 }} />
-              <Text style={{ color: C.text, fontSize: 28, fontWeight: '900', letterSpacing: -1 }}>{currentWeight ?? '—'}</Text>
-              <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>Current (kg)</Text>
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 20 }}>
+            <View style={{ flex: 1, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 20, alignItems: 'center' }}>
+              <Scale color={C.primary} size={18} style={{ marginBottom: 8 }} />
+              <Text style={{ color: C.text, fontSize: 24, fontWeight: '900', letterSpacing: -1 }}>{currentWeight ?? '—'}</Text>
+              <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 2 }}>Current (kg)</Text>
             </View>
-            <View style={{ flex: 1, backgroundColor: C.card, borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 16, alignItems: 'center' }}>
-              <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Monthly Avg</Text>
-              <Text style={{ color: C.text, fontSize: 28, fontWeight: '900', letterSpacing: -1 }}>{monthlyAvg ?? '—'}</Text>
-              <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>kg</Text>
+            <View style={{ flex: 1, backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 20, alignItems: 'center' }}>
+              <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Monthly Avg</Text>
+              <Text style={{ color: C.text, fontSize: 24, fontWeight: '900', letterSpacing: -1 }}>{monthlyAvg ?? '—'}</Text>
+              <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginTop: 2 }}>kg</Text>
             </View>
           </View>
 
           {/* Weight Line Chart */}
-          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 20, marginBottom: 20 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-              <Scale color={C.emerald} size={14} />
-              <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', letterSpacing: 3, textTransform: 'uppercase', marginLeft: 8 }}>Weight History</Text>
+          <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 20, marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+              <Scale color={C.primary} size={14} />
+              <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', marginLeft: 8 }}>Weight History</Text>
             </View>
             {weightChartData.length === 0 ? (
               <View style={{ alignItems: 'center', padding: 32 }}>
-                <Text style={{ color: C.muted, fontSize: 13, textAlign: 'center' }}>
+                <Text style={{ color: C.muted, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>
                   No weight data yet.{'\n'}Tell the Health AI "I weigh 85kg" to start tracking.
                 </Text>
               </View>
             ) : (
-              <LineChart data={weightChartData} color={C.emerald} unit="kg" />
+              <LineChart data={weightChartData} color={C.primary} unit="kg" />
             )}
           </View>
 
           {/* Maintenance Calorie Estimate Chart */}
-          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 20, marginBottom: 20 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 4 }}>
-              <Flame color={C.amber} size={14} />
-              <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', letterSpacing: 3, textTransform: 'uppercase', marginLeft: 8 }}>Estimated Maintenance Calories</Text>
+          <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 20, marginBottom: 20 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
+              <Flame color={C.primary} size={14} />
+              <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', marginLeft: 8 }}>Estimated Maintenance Calories</Text>
             </View>
-            <Text style={{ color: C.muted, fontSize: 11, marginBottom: 16, lineHeight: 16 }}>
+            <Text style={{ color: C.muted, fontSize: 11, marginBottom: 20, lineHeight: 18 }}>
               Calculated from weekly weight change vs. average calories eaten. Based on ≈7700 kcal per kg of body mass.
             </Text>
-            <BarChart data={maintenanceChartData} color={C.amber} />
+            <BarChart data={maintenanceChartData} color={C.primary} />
           </View>
 
           {/* Weekly Breakdown */}
-          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 20 }}>
-            <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', letterSpacing: 3, textTransform: 'uppercase', marginBottom: 16 }}>Weekly Breakdown</Text>
+          <View style={{ backgroundColor: C.card, borderRadius: 16, borderWidth: 1, borderColor: C.border, padding: 20 }}>
+            <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 16 }}>Weekly Breakdown</Text>
             {weeklyData.map((week, i) => (
-              <View key={i} style={{ borderBottomWidth: i < weeklyData.length - 1 ? 1 : 0, borderBottomColor: C.border, paddingVertical: 12 }}>
-                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
-                  <Text style={{ color: C.text, fontSize: 13, fontWeight: '700' }}>{week.weekLabel}</Text>
+              <View key={i} style={{ borderBottomWidth: i < weeklyData.length - 1 ? 1 : 0, borderBottomColor: C.border, paddingVertical: 14 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 8 }}>
+                  <Text style={{ color: C.text, fontSize: 14, fontWeight: '800' }}>{week.weekLabel}</Text>
                   {week.maintenanceEstimate ? (
-                    <View style={{ backgroundColor: C.amber + '20', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10 }}>
-                      <Text style={{ color: C.amber, fontSize: 11, fontWeight: '800' }}>{Math.round(week.maintenanceEstimate)} kcal maint.</Text>
+                    <View style={{ backgroundColor: 'rgba(232,65,74,0.08)', paddingHorizontal: 12, paddingVertical: 4, borderRadius: 10, borderWidth: 1, borderColor: 'rgba(232,65,74,0.2)' }}>
+                      <Text style={{ color: C.primary, fontSize: 11, fontWeight: '800' }}>{Math.round(week.maintenanceEstimate)} kcal maint.</Text>
                     </View>
                   ) : (
-                    <Text style={{ color: C.muted, fontSize: 11 }}>Insufficient data</Text>
+                    <Text style={{ color: C.muted, fontSize: 11, fontWeight: '600' }}>Insufficient data</Text>
                   )}
                 </View>
-                <View style={{ flexDirection: 'row', gap: 16, marginTop: 6 }}>
-                  {week.startWeight && <Text style={{ color: C.muted, fontSize: 11 }}>Start: <Text style={{ color: C.subtext }}>{week.startWeight}kg</Text></Text>}
-                  {week.endWeight && <Text style={{ color: C.muted, fontSize: 11 }}>End: <Text style={{ color: C.subtext }}>{week.endWeight}kg</Text></Text>}
-                  {week.avgCalories && <Text style={{ color: C.muted, fontSize: 11 }}>Avg: <Text style={{ color: C.subtext }}>{week.avgCalories} kcal/day</Text></Text>}
+                <View style={{ flexDirection: 'row', gap: 16 }}>
+                  {week.startWeight && <Text style={{ color: C.muted, fontSize: 11, fontWeight: '600' }}>Start: <Text style={{ color: C.subtext }}>{week.startWeight}kg</Text></Text>}
+                  {week.endWeight && <Text style={{ color: C.muted, fontSize: 11, fontWeight: '600' }}>End: <Text style={{ color: C.subtext }}>{week.endWeight}kg</Text></Text>}
+                  {week.avgCalories && <Text style={{ color: C.muted, fontSize: 11, fontWeight: '600' }}>Avg: <Text style={{ color: C.subtext }}>{week.avgCalories} kcal/day</Text></Text>}
                 </View>
               </View>
             ))}

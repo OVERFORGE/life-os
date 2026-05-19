@@ -1,10 +1,16 @@
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
 import { ArrowLeft, Calendar, Trash2, Clock, PenLine } from 'lucide-react-native';
 import { useState, useCallback } from 'react';
 import { fetchWithAuth } from '../../../utils/api';
 import { useFocusEffect } from '@react-navigation/native';
 import React from 'react';
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
+};
 
 function getWeekRange(date: Date) {
   const d = new Date(date);
@@ -92,70 +98,70 @@ export default function HistoryPage() {
   const weeklyGroups = groupSessionsByWeek(sessions);
 
   return (
-    <View className="flex-1 bg-[#0f1115]">
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
-      <View className="flex-row items-center px-5 pt-12 pb-4 border-b border-[#232632] bg-[#0f1115]">
-        <TouchableOpacity onPress={() => router.back()} className="p-2 -ml-2 mr-2 bg-[#1b1f2a] rounded-full">
-          <ArrowLeft size={20} color="#fcd34d" />
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ backgroundColor: C.card, padding: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border }}>
+          <ArrowLeft size={18} color={C.subtext} />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-gray-100 flex-1">Workout History</Text>
+        <Text style={{ fontSize: 20, fontWeight: '900', color: C.text, marginLeft: 16 }}>Workout History</Text>
       </View>
 
-      <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
         {loading ? (
-          <ActivityIndicator color="#fcd34d" className="mt-10" />
+          <ActivityIndicator color={C.primary} style={{ marginTop: 40 }} />
         ) : weeklyGroups.length === 0 ? (
-          <View className="bg-[#161922] border border-[#232632] rounded-xl p-6 items-center mt-4">
-            <Calendar size={40} color="#4b5563" className="mb-4" />
-            <Text className="text-gray-300 font-semibold mb-2 text-lg">No Workouts Found</Text>
-            <Text className="text-gray-500 text-center text-sm">
+          <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 24, alignItems: 'center', marginTop: 16 }}>
+            <Calendar size={40} color={C.muted} style={{ marginBottom: 16 }} />
+            <Text style={{ color: C.text, fontWeight: '800', fontSize: 18, marginBottom: 8 }}>No Workouts Found</Text>
+            <Text style={{ color: C.subtext, textAlign: 'center', fontSize: 14 }}>
               You haven't logged any past sessions. They will show up here once you do.
             </Text>
           </View>
         ) : (
           weeklyGroups.map((week) => (
-            <View key={week.monday.toISOString()} className="mb-6">
-              <View className="flex-row items-center justify-between mb-3 border-b border-[#232632] pb-2">
-                <Text className="text-gray-400 font-semibold uppercase tracking-wider text-xs">
+            <View key={week.monday.toISOString()} style={{ marginBottom: 32 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12, borderBottomWidth: 1, borderBottomColor: C.border, paddingBottom: 8 }}>
+                <Text style={{ color: C.muted, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, fontSize: 11 }}>
                   {week.label}
                 </Text>
-                <Text className="text-gray-500 text-xs">{week.sessions.length} sessions</Text>
+                <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '700' }}>{week.sessions.length} sessions</Text>
               </View>
 
               {week.sessions.map((s) => (
-                <View key={s._id} className="bg-[#161922] border border-[#232632] rounded-xl p-4 mb-3 flex-row justify-between items-center">
-                  <View className="flex-1">
-                    <Text className="text-gray-100 font-bold text-base mb-1">{s.splitDayName || 'Freestyle Session'}</Text>
+                <View key={s._id} style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: C.text, fontWeight: '900', fontSize: 16, marginBottom: 6 }}>{s.splitDayName || 'Freestyle Session'}</Text>
                     
-                    <View className="flex-row items-center">
-                      <Calendar size={12} color="#6b7280" />
-                      <Text className="text-gray-500 text-xs ml-1.5 mr-3">
+                    <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                      <Calendar size={12} color={C.muted} />
+                      <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600', marginLeft: 6, marginRight: 12 }}>
                         {new Date(s.date || s.createdAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
                       </Text>
                       
-                      <Clock size={12} color="#6b7280" />
-                      <Text className="text-gray-500 text-xs ml-1.5 mr-3">
+                      <Clock size={12} color={C.muted} />
+                      <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600', marginLeft: 6, marginRight: 12 }}>
                         {formatDuration(s.durationSeconds)}
                       </Text>
 
                       {s.exercises && s.exercises.length > 0 && (
-                        <Text className="text-amber-500/80 text-xs font-semibold">
+                        <Text style={{ color: C.primary, fontSize: 12, fontWeight: '800' }}>
                           {s.exercises.length} exercises
                         </Text>
                       )}
                     </View>
                   </View>
                   
-                  <View className="flex-row space-x-2">
+                  <View style={{ flexDirection: 'row', gap: 8 }}>
                     <TouchableOpacity 
                       onPress={() => router.push({ pathname: '/(dashboard)/gym/edit-session', params: { id: s._id } })}
-                      className="p-3 bg-[#1b1f2a] rounded-full border border-[#232632]"
+                      style={{ padding: 10, backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border }}
                     >
-                      <PenLine size={16} color="#fcd34d" />
+                      <PenLine size={16} color={C.subtext} />
                     </TouchableOpacity>
                     <TouchableOpacity 
                       onPress={() => deleteSession(s._id)} 
-                      className="p-3 bg-[#1b1f2a] rounded-full border border-[#232632]"
+                      style={{ padding: 10, backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border }}
                     >
                       <Trash2 size={16} color="#ef4444" />
                     </TouchableOpacity>
@@ -166,6 +172,6 @@ export default function HistoryPage() {
           ))
         )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

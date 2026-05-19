@@ -32,6 +32,10 @@ export interface InstabilityVector {
    * Displacement instability.
    * Increases when the chunk is evicted from its slot during repair.
    * Decays on successful convergence.
+   *
+   * DECAY CLASS: TEMPORAL (transient) — persistence aging factor: 0.78/session.
+   * Displacement frequently resolves with capacity normalization. Aggressive
+   * cross-session decay prevents over-penalizing chunks for past overload events.
    */
   displacementInstability: number;
 
@@ -40,6 +44,10 @@ export interface InstabilityVector {
    * Increases when the chunk participates in a repair-storm cycle
    * (i.e., repaired → displaced → repaired again within a short window).
    * Decays when convergence is maintained across multiple boundaries.
+   *
+   * DECAY CLASS: STRUCTURAL (chronic) — persistence aging factor: 0.92/session.
+   * Oscillation indicates deep dependency conflicts that rarely self-resolve.
+   * Slow decay preserves this hard-won structural knowledge across sessions.
    */
   oscillationInstability: number;
 
@@ -48,6 +56,10 @@ export interface InstabilityVector {
    * Increases when a repair cycle containing this chunk fails to converge
    * (terminates with max_repairs_reached or unresolvable_conflict).
    * Decays when convergence succeeds.
+   *
+   * DECAY CLASS: STRUCTURAL (chronic) — persistence aging factor: 0.92/session.
+   * Convergence failures indicate systemic constraint violations that require
+   * explicit topology changes to resolve.
    */
   convergenceInstability: number;
 
@@ -56,6 +68,11 @@ export interface InstabilityVector {
    * Increases when the chunk is carried forward to a subsequent day.
    * Represents chronically unschedulable chunks.
    * Decays slowly as the chunk successfully completes across days.
+   *
+   * DECAY CLASS: TEMPORAL (transient) — persistence aging factor: 0.78/session.
+   * Deferral can result from temporary capacity pressure or voluntary scheduling
+   * decisions. Aggressive decay avoids penalizing chunks for past deferrals that
+   * have since resolved.
    */
   deferralInstability: number;
 }
@@ -84,14 +101,31 @@ export interface ConstraintMemoryEntry {
   readonly convergenceSuccessRate: number;
   /**
    * Fraction of day boundaries where this chunk was carried forward (deferred).
-   * Rolling ratio: deferralCount / totalDayBoundariesObserved.
+   * Rolling ratio: deferralCount / boundaryObservationCount.
    */
   readonly historicalDeferralRate: number;
+  /**
+   * True denominator for historicalDeferralRate (replaces Phase 7B approximation).
+   * Persisted verbatim to allow exact rolling updates across sessions.
+   */
+  readonly boundaryObservationCount: number;
   /**
    * Deterministic rolling mean of the propagation depth in repair events
    * where this chunk was the source or a primary casualty.
    */
   readonly averagePropagationDepth: number;
+
+  // ── Lineage Metadata ────────────────────────────────────────────────────────
+  /**
+   * Tracks rechunk inheritance depth to bound entropy (MAX_LINEAGE_DEPTH = 5).
+   * Fresh chunks start at 0. Rechunk descendants inherit parent + 1.
+   */
+  readonly mutationGeneration: number;
+  /**
+   * True if this entry had its instability halved due to crossing the max lineage depth.
+   * Useful for audit traces and replay observability.
+   */
+  readonly deepInheritanceFlag: boolean;
 
   // ── Multi-Dimensional Instability Vector ────────────────────────────────────
   /**
@@ -213,6 +247,26 @@ export const INITIAL_CONSTRAINT_MEMORY: ConstraintMemoryState = {
   evolutionTick: 0
 };
 
+// ─── Helper Factories ─────────────────────────────────────────────────────────
+
+export function createFreshConstraintMemoryEntry(chunkId: string, tick: number): ConstraintMemoryEntry {
+  return {
+    chunkId,
+    repairCount: 0,
+    displacementCount: 0,
+    oscillationParticipationCount: 0,
+    convergenceSuccessRate: 1.0,
+    historicalDeferralRate: 0.0,
+    boundaryObservationCount: 0,
+    averagePropagationDepth: 0.0,
+    mutationGeneration: 0,
+    deepInheritanceFlag: false,
+    instabilityVector: { ...INITIAL_INSTABILITY_VECTOR },
+    aggregateInstabilityScore: 0.0,
+    lastEvolvedTick: tick
+  };
+}
+
 // ─── Instability Weights ──────────────────────────────────────────────────────
 
 /**
@@ -225,6 +279,25 @@ export const INSTABILITY_WEIGHTS = {
   oscillation: 0.30,
   convergence: 0.20,
   deferral: 0.15
+} as const;
+
+/**
+ * Cross-session persistence aging decay factors per ADR-002 Decision 4.5.
+ *
+ * Structural dimensions (oscillation, convergence) decay slowly — they encode
+ * chronic topology-rooted constraints that rarely self-resolve.
+ *
+ * Temporal dimensions (displacement, deferral) decay aggressively — they
+ * encode transient conditions that frequently resolve with capacity normalization.
+ *
+ * Applied as: agedValue = value * (factor ^ sessionsSinceEvolution)
+ * These are ARCHITECTURAL INVARIANTS. Do not make configurable.
+ */
+export const PERSISTENCE_DECAY_FACTORS = {
+  /** Temporal decay: displacement, deferral — fast forgetting */
+  temporal: 0.78,
+  /** Structural decay: oscillation, convergence — slow forgetting */
+  structural: 0.92
 } as const;
 
 /**

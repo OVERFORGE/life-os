@@ -1,9 +1,16 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, Image } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, Image, SafeAreaView } from 'react-native';
 import { Power, Settings as SettingsIcon, Save, RefreshCw, ChevronRight, User as UserIcon } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
+};
+
 export default function SettingsScreen() {
   const router = useRouter();
   
@@ -133,108 +140,112 @@ export default function SettingsScreen() {
 
   if (loading && !userProfile) {
     return (
-      <View className="flex-1 bg-[#0f1115] items-center justify-center">
-        <ActivityIndicator color="#fcd34d" />
+      <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={C.primary} />
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#0f1115]">
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
-      <View className="px-6 pt-12 pb-6 border-b border-[#232632] bg-[#0f1115] flex-row justify-between items-center">
-        <View className="flex-row items-center">
-          <SettingsIcon size={24} color="#fcd34d" />
-          <Text className="text-2xl font-bold text-gray-100 ml-3">System Settings</Text>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+          <SettingsIcon size={24} color={C.text} />
+          <Text style={{ fontSize: 24, fontWeight: '900', color: C.text, marginLeft: 12 }}>System Settings</Text>
         </View>
-        <TouchableOpacity onPress={handleLogout} className="bg-red-500/10 px-3 py-2 rounded-lg border border-red-500/20 flex-row items-center">
+        <TouchableOpacity onPress={handleLogout} style={{ backgroundColor: 'rgba(239,68,68,0.1)', paddingHorizontal: 12, paddingVertical: 8, borderRadius: 12, borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)', flexDirection: 'row', alignItems: 'center' }}>
           <Power size={14} color="#ef4444" />
-          <Text className="text-red-400 font-bold ml-1 text-xs">LOGOUT</Text>
+          <Text style={{ color: '#ef4444', fontWeight: '900', marginLeft: 6, fontSize: 11, letterSpacing: 1 }}>LOGOUT</Text>
         </TouchableOpacity>
       </View>
 
-      <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 150 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 150 }} showsVerticalScrollIndicator={false}>
         
         {/* USER PROFILE CARD */}
         {userProfile && (
           <TouchableOpacity 
             onPress={() => router.push('/profile')}
-            className="bg-[#161922] border border-[#232632] rounded-2xl p-4 mb-6 flex-row items-center active:opacity-70"
+            style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 16, marginBottom: 32, flexDirection: 'row', alignItems: 'center' }}
+            activeOpacity={0.7}
           >
             {userProfile.avatar ? (
               <Image 
                 source={{ uri: userProfile.avatar }} 
-                className="w-14 h-14 rounded-full border-2 border-amber-500/50 mr-4"
+                style={{ width: 56, height: 56, borderRadius: 28, borderWidth: 1, borderColor: C.border, marginRight: 16 }}
               />
             ) : (
-              <View className="w-14 h-14 rounded-full border-2 border-amber-500/50 mr-4 bg-[#1a1d24] items-center justify-center">
-                <UserIcon size={24} color="#fbbf24" />
+              <View style={{ width: 56, height: 56, borderRadius: 28, borderWidth: 1, borderColor: C.border, marginRight: 16, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center' }}>
+                <UserIcon size={24} color={C.subtext} />
               </View>
             )}
             
-            <View className="flex-1 justify-center">
-              <Text className="text-gray-100 font-bold text-lg leading-tight mb-0.5">{userProfile.name}</Text>
-              <Text className="text-gray-500 text-xs">{userProfile.email}</Text>
+            <View style={{ flex: 1, justifyContent: 'center' }}>
+              <Text style={{ color: C.text, fontWeight: '800', fontSize: 18, marginBottom: 2 }}>{userProfile.name}</Text>
+              <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600' }}>{userProfile.email}</Text>
             </View>
             
-            <View className="w-8 h-8 rounded-full bg-white/5 items-center justify-center">
-              <ChevronRight size={18} color="#9ca3af" />
+            <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center' }}>
+              <ChevronRight size={16} color={C.subtext} />
             </View>
           </TouchableOpacity>
         )}
 
         {/* PREFERENCES SECTION */}
-        <Text className="text-gray-400 text-xs font-bold uppercase tracking-wider mb-4 mt-2">Preferences</Text>
+        <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12, marginLeft: 4 }}>Preferences</Text>
 
         <TouchableOpacity
           onPress={() => router.push('/(dashboard)/personalization')}
-          className="bg-[#161922] border border-[#232632] rounded-2xl p-4 mb-4 flex-row items-center active:opacity-70"
+          style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 20, marginBottom: 12, flexDirection: 'row', alignItems: 'center' }}
+          activeOpacity={0.7}
         >
-          <View className="w-12 h-12 rounded-xl bg-emerald-500/10 items-center justify-center mr-4">
-            <SettingsIcon size={22} color="#10b981" />
+          <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+            <SettingsIcon size={24} color={C.text} />
           </View>
-          <View className="flex-1">
-            <Text className="text-gray-100 font-bold text-base leading-tight mb-0.5">Personalization</Text>
-            <Text className="text-gray-500 text-xs">Reminders, rollover hour & preferences</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: C.text, fontWeight: '900', fontSize: 16, marginBottom: 4 }}>Personalization</Text>
+            <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600' }}>Reminders, rollover hour & preferences</Text>
           </View>
-          <View className="w-8 h-8 rounded-full bg-white/5 items-center justify-center">
-            <ChevronRight size={18} color="#9ca3af" />
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center' }}>
+            <ChevronRight size={16} color={C.subtext} />
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => router.push('/(dashboard)/settings/signals')}
-          className="bg-[#161922] border border-[#232632] rounded-2xl p-4 mb-4 flex-row items-center active:opacity-70"
+          style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 20, marginBottom: 12, flexDirection: 'row', alignItems: 'center' }}
+          activeOpacity={0.7}
         >
-          <View className="w-12 h-12 rounded-xl bg-purple-500/10 items-center justify-center mr-4">
-            <SettingsIcon size={22} color="#a855f7" />
+          <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+            <SettingsIcon size={24} color={C.text} />
           </View>
-          <View className="flex-1">
-            <Text className="text-gray-100 font-bold text-base leading-tight mb-0.5">Custom Signals</Text>
-            <Text className="text-gray-500 text-xs">Create & manage category schemas</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: C.text, fontWeight: '900', fontSize: 16, marginBottom: 4 }}>Custom Signals</Text>
+            <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600' }}>Create & manage category schemas</Text>
           </View>
-          <View className="w-8 h-8 rounded-full bg-white/5 items-center justify-center">
-            <ChevronRight size={18} color="#9ca3af" />
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center' }}>
+            <ChevronRight size={16} color={C.subtext} />
           </View>
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => router.push('/(dashboard)/settings/weights')}
-          className="bg-[#161922] border border-[#232632] rounded-2xl p-4 mb-6 flex-row items-center active:opacity-70"
+          style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 20, marginBottom: 24, flexDirection: 'row', alignItems: 'center' }}
+          activeOpacity={0.7}
         >
-          <View className="w-12 h-12 rounded-xl bg-amber-500/10 items-center justify-center mr-4">
-            <SettingsIcon size={22} color="#fbbf24" />
+          <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+            <SettingsIcon size={24} color={C.text} />
           </View>
-          <View className="flex-1">
-            <Text className="text-gray-100 font-bold text-base leading-tight mb-0.5">Algorithm Weights</Text>
-            <Text className="text-gray-500 text-xs">Tune LifeOS V1 Phase & Goal weights</Text>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: C.text, fontWeight: '900', fontSize: 16, marginBottom: 4 }}>Algorithm Weights</Text>
+            <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600' }}>Tune LifeOS V1 Phase & Goal weights</Text>
           </View>
-          <View className="w-8 h-8 rounded-full bg-white/5 items-center justify-center">
-            <ChevronRight size={18} color="#9ca3af" />
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center' }}>
+            <ChevronRight size={16} color={C.subtext} />
           </View>
         </TouchableOpacity>
 
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

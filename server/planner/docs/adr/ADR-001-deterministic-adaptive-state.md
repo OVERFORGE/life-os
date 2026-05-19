@@ -239,6 +239,55 @@ replay ordering guarantee and makes terminal state non-reconstructable.
 **Enforcement:** Phase 7C must add a runtime assertion in the event injection
 path verifying INV-6 before any new event is pushed to the queue.
 
+### INV-7: Persistence Referential Closure
+
+**Invariant:**  
+> Every persisted identifier must resolve internally within the persistence record,
+> resolve within the hydrated topology, or be explicitly tombstoned.
+
+Formally, for any chunk ID, task ID, region ID, or lineage root ID present in a
+persisted memory record:
+1. It must exist in the runtime topology being hydrated into, OR
+2. It must be explicitly tracked in the persistence record's tombstone/eviction list, OR
+3. It must resolve to a fully formed ancestral record within the persistence file itself.
+
+There must be:
+- No dangling lineage references
+- No orphaned region ancestry
+- No unresolved parent chains
+- **No cyclic ancestry** (a lineage record cannot eventually resolve back to itself)
+
+Violations of referential closure mean the memory graph is structurally broken,
+which causes silent corruption during lineage reconstruction. Cyclic ancestry
+in particular creates immortal inheritance chains that break entropy bounds.
+
+**Enforcement:** Hydration must perform a two-pass validation. Pass 1 validates
+closure of all identifiers. Pass 2 performs actual hydration. Any unresolvable
+reference in Pass 1 must fail-fast and reject the entire persistence record.
+
+### INV-8: Hydration Idempotency
+
+**Invariant:**  
+> Hydrating a previously hydrated and then re-serialized record must produce a
+> byte-identical memory state.
+> `hydrate(serialize(hydrate(record))) === hydrate(record)`
+
+Formally, once a record has passed validation and hydrated into memory,
+subsequent serialization and re-hydration passes must not introduce any state drift.
+
+This becomes critical to prevent corruption when:
+- Schema migrations exist
+- Reconstructable fields are omitted in persistence but re-derived in hydration
+- Lineage inheritance rules are evaluated
+- Compaction aging modifies instability scores
+
+Without INV-8, the act of saving and loading the system could continuously alter
+its state, breaking determinism.
+
+**Enforcement:** Adversarial tests must prove this idempotency mechanically
+using the canonical replay hash (`computeConstraintMemoryHash`), rather than just
+deep object equality.
+
 ---
 
 ## Observability Pre-Conditions for Phase 7C
@@ -282,7 +331,7 @@ These are implemented in `MemoryObservabilityTypes.ts` as `analyzeMemoryObservab
   region continuity protocol defined in `ConstraintMemoryTypes.ts` (INV-B, INV-C).
 - New event types that inject further events at the same tick must be proven
   compliant with INV-6 (No Causal Cycles) before introduction.
-- New event types must be proven compliant with all 6 invariants before introduction.
+- New event types must be proven compliant with all 8 invariants before introduction.
 
 ---
 

@@ -1,16 +1,14 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useCallback } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity,
   ActivityIndicator, RefreshControl, TextInput, Modal, Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
-import { useCallback } from 'react';
 
-import { BlurView } from 'expo-blur';
 import {
   Heart, Flame, Dumbbell, ChevronRight,
-  TrendingUp, TrendingDown, Minus, Utensils, MessageCircle, Pencil, X, Check, ArrowLeft
+  TrendingUp, TrendingDown, Minus, Utensils, MessageCircle, Pencil, X, ArrowLeft
 } from 'lucide-react-native';
 import { fetchWithAuth } from '../../../utils/api';
 
@@ -31,7 +29,7 @@ export default function HealthScreen() {
   const [dynamicMaintenance, setDynamicMaintenance] = useState<number | null>(null);
 
   // Edit modal state
-  const [editModal, setEditModal] = useState<{ visible: boolean; field: string; label: string; value: string }>({
+  const [editModal, setEditModal] = useState<{ visible: boolean; field: string; label: string; value: string; date?: string }>({
     visible: false, field: '', label: '', value: ''
   });
   const [editSaving, setEditSaving] = useState(false);
@@ -63,8 +61,8 @@ export default function HealthScreen() {
   useFocusEffect(useCallback(() => { load(); }, [load]));
   const onRefresh = () => { setRefreshing(true); load(); };
 
-  const openEdit = (field: string, label: string, current: any) => {
-    setEditModal({ visible: true, field, label, value: String(current ?? '') });
+  const openEdit = (field: string, label: string, current: any, date?: string) => {
+    setEditModal({ visible: true, field, label, value: String(current ?? ''), date });
   };
 
   const saveEdit = async () => {
@@ -72,11 +70,20 @@ export default function HealthScreen() {
     try {
       const numVal = parseFloat(editModal.value);
       if (isNaN(numVal)) { Alert.alert('Invalid value'); return; }
-      await fetchWithAuth('/user', {
-        method: 'PATCH',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ [editModal.field]: numVal }),
-      });
+      
+      if (editModal.date) {
+        await fetchWithAuth('/health/weight', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ date: editModal.date, weight: numVal }),
+        });
+      } else {
+        await fetchWithAuth('/user', {
+          method: 'PATCH',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ [editModal.field]: numVal }),
+        });
+      }
       setEditModal(p => ({ ...p, visible: false }));
       load();
     } catch (e) {
@@ -86,20 +93,36 @@ export default function HealthScreen() {
     }
   };
 
-  const TrendIcon = ({ trend }: { trend: string }) => {
-    if (trend === 'up') return <TrendingUp color="#ef4444" size={16} />;
-    if (trend === 'down') return <TrendingDown color="#10b981" size={16} />;
-    return <Minus color="#6b7280" size={16} />;
+  const deleteLog = async () => {
+    if (!editModal.date) return;
+    setEditSaving(true);
+    try {
+      await fetchWithAuth(`/health/weight?date=${editModal.date}`, { method: 'DELETE' });
+      setEditModal(p => ({ ...p, visible: false }));
+      load();
+    } catch (e) {
+      Alert.alert('Failed to delete');
+    } finally {
+      setEditSaving(false);
+    }
   };
 
-  const calorieStatusColor = (s: string) =>
-    s === 'deficit' ? '#10b981' : s === 'surplus' ? '#f59e0b' : '#6b7280';
+  const TrendIcon = ({ trend }: { trend: string }) => {
+    if (trend === 'up') return <TrendingUp color="#E8414A" size={14} />;
+    if (trend === 'down') return <TrendingDown color="rgba(236,231,227,0.5)" size={14} />;
+    return <Minus color="rgba(236,231,227,0.3)" size={14} />;
+  };
+
+  const calorieStatusColor = (s: string) => {
+    if (s === 'deficit') return '#ECE7E3';
+    if (s === 'surplus') return '#E8414A';
+    return '#B42129';
+  };
 
   if (loading) {
     return (
-      <View className="flex-1 bg-[#0f1115] items-center justify-center">
-        <ActivityIndicator color="#10b981" size="large" />
-        <Text className="text-gray-500 mt-3 text-sm">Loading Health Hub...</Text>
+      <View style={{ flex: 1, backgroundColor: '#161618', alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color="#E8414A" size="large" />
       </View>
     );
   }
@@ -107,128 +130,139 @@ export default function HealthScreen() {
   const currentWeight = data?.weight.currentWeight ?? data?.biometrics.weight ?? null;
 
   return (
-    <View className="flex-1 bg-[#0f1115]">
+    <View style={{ flex: 1, backgroundColor: '#161618' }}>
       {/* Edit Modal */}
       <Modal visible={editModal.visible} transparent animationType="fade">
-        <View className="flex-1 bg-black/60 items-center justify-center px-6">
-          <View className="bg-[#161922] rounded-2xl border border-[#232632] p-6 w-full">
-            <View className="flex-row items-center justify-between mb-4">
-              <Text className="text-white font-bold text-base">{editModal.label}</Text>
+        <View style={{ flex: 1, backgroundColor: 'rgba(0,0,0,0.8)', alignItems: 'center', justifyContent: 'center', padding: 24 }}>
+          <View style={{ backgroundColor: '#1F2023', borderRadius: 16, borderWidth: 1, borderColor: '#2A2B2F', padding: 24, width: '100%' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 20 }}>
+              <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 16 }}>{editModal.label}</Text>
               <TouchableOpacity onPress={() => setEditModal(p => ({ ...p, visible: false }))}>
-                <X color="#6b7280" size={20} />
+                <X color="rgba(236,231,227,0.5)" size={20} />
               </TouchableOpacity>
             </View>
             <TextInput
-              className="bg-[#0f1115] text-white rounded-xl border border-[#232632] px-4 py-3 text-lg mb-4"
+              style={{ backgroundColor: '#161618', color: '#FFFDFC', borderRadius: 12, borderWidth: 1, borderColor: '#2A2B2F', paddingHorizontal: 16, paddingVertical: 14, fontSize: 16, marginBottom: 20 }}
               value={editModal.value}
               onChangeText={v => setEditModal(p => ({ ...p, value: v }))}
               keyboardType="numeric"
               autoFocus
-              placeholderTextColor="#4b5563"
+              placeholderTextColor="rgba(236,231,227,0.3)"
             />
             <TouchableOpacity
               onPress={saveEdit}
               disabled={editSaving}
-              className="bg-emerald-500 rounded-xl py-3 items-center"
+              style={{ backgroundColor: '#E8414A', borderRadius: 12, paddingVertical: 16, alignItems: 'center' }}
             >
               {editSaving
-                ? <ActivityIndicator color="white" size="small" />
-                : <Text className="text-white font-bold">Save</Text>
+                ? <ActivityIndicator color="#FFFDFC" size="small" />
+                : <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 15 }}>Save</Text>
               }
             </TouchableOpacity>
+            
+            {editModal.date && (
+              <TouchableOpacity
+                onPress={deleteLog}
+                disabled={editSaving}
+                style={{ marginTop: 12, paddingVertical: 12, alignItems: 'center' }}
+              >
+                <Text style={{ color: '#B42129', fontWeight: '800', fontSize: 14 }}>Delete Log</Text>
+              </TouchableOpacity>
+            )}
           </View>
         </View>
       </Modal>
 
       {/* Header */}
-      <BlurView
-        intensity={40} tint="dark"
-        className="flex-row items-center justify-between pt-16 pb-4 px-6 border-b border-[#1e2130] z-10"
-        style={{ backgroundColor: 'rgba(15,17,21,0.85)' }}
-      >
-        <View className="flex-row items-center gap-3">
-          <TouchableOpacity onPress={() => router.push('/(dashboard)/tools')} className="mr-1">
-            <ArrowLeft color="#fff" size={24} />
+      <View style={{ paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#2A2B2F', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 14 }}>
+          <TouchableOpacity onPress={() => router.push('/(dashboard)/tools')} style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', alignItems: 'center', justifyContent: 'center' }}>
+            <ArrowLeft color="rgba(236,231,227,0.7)" size={17} />
           </TouchableOpacity>
-          <View className="w-9 h-9 rounded-xl bg-emerald-500/15 items-center justify-center border border-emerald-500/30">
-            <Heart color="#10b981" size={18} />
-          </View>
           <View>
-            <Text className="text-white font-bold text-[17px]">Health Hub</Text>
-            <Text className="text-gray-500 text-xs">Your body, tracked</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
+              <Heart color="#E8414A" size={16} />
+              <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 16 }}>Health Hub</Text>
+            </View>
+            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginTop: 2 }}>System Tracked</Text>
           </View>
         </View>
-      </BlurView>
+      </View>
 
       <ScrollView
-        className="flex-1"
-        contentContainerStyle={{ padding: 20, paddingBottom: 120 }}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#10b981" />}
+        style={{ flex: 1 }}
+        contentContainerStyle={{ padding: 16, paddingBottom: 120 }}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor="#E8414A" />}
         showsVerticalScrollIndicator={false}
       >
 
         {/* ─── Biometric Card ─── */}
-        <View className="bg-[#161922] rounded-2xl border border-[#232632] p-5 mb-4">
-          <Text className="text-gray-400 text-xs uppercase tracking-widest mb-4">Biometrics</Text>
-          <View className="flex-row flex-wrap gap-3">
+        <View style={{ backgroundColor: '#1F2023', borderRadius: 16, borderWidth: 1, borderColor: '#2A2B2F', padding: 20, marginBottom: 16 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Biometrics & Diet</Text>
+            <TouchableOpacity onPress={() => router.push('/(dashboard)/personalization')}>
+              <Text style={{ color: '#E8414A', fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1 }}>Settings</Text>
+            </TouchableOpacity>
+          </View>
+          
+          <View style={{ flexDirection: 'row', gap: 12, marginBottom: 12 }}>
+            <TouchableOpacity onPress={() => openEdit('weight', 'Update Weight (kg)', currentWeight)} style={{ flex: 1, backgroundColor: '#161618', borderRadius: 14, borderWidth: 1, borderColor: '#2A2B2F', padding: 16 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Weight</Text>
+                <Pencil color="rgba(236,231,227,0.2)" size={12} />
+              </View>
+              <Text style={{ color: '#FFFDFC', fontSize: 22, fontWeight: '900' }}>{currentWeight ? `${currentWeight}` : '—'} <Text style={{ fontSize: 12, color: 'rgba(236,231,227,0.5)', fontWeight: '600' }}>kg</Text></Text>
+            </TouchableOpacity>
+            
+            <TouchableOpacity onPress={() => openEdit('targetCalories', 'Target Calories', data?.biometrics.targetCalories)} style={{ flex: 1, backgroundColor: '#161618', borderRadius: 14, borderWidth: 1, borderColor: '#2A2B2F', padding: 16 }}>
+              <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 6 }}>Target</Text>
+                <Pencil color="rgba(236,231,227,0.2)" size={12} />
+              </View>
+              <Text style={{ color: '#FFFDFC', fontSize: 22, fontWeight: '900' }}>{data?.biometrics.targetCalories ?? 2000} <Text style={{ fontSize: 12, color: 'rgba(236,231,227,0.5)', fontWeight: '600' }}>kcal</Text></Text>
+            </TouchableOpacity>
+          </View>
+
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
             <StatPill
               label="Height"
               value={data?.biometrics.height ? `${data.biometrics.height} ${data.biometrics.heightUnit}` : '—'}
-              color="#6b7280"
               onEdit={() => openEdit('height', 'Update Height (cm)', data?.biometrics.height)}
-            />
-            <StatPill
-              label="Weight"
-              value={currentWeight ? `${currentWeight} kg` : '—'}
-              color="#10b981"
-              onEdit={() => openEdit('weight', 'Update Weight (kg)', currentWeight)}
-            />
-            <StatPill
-              label="Target Cal"
-              value={`${data?.biometrics.targetCalories ?? 2000} kcal`}
-              color="#f59e0b"
-              onEdit={() => openEdit('targetCalories', 'Target Calories', data?.biometrics.targetCalories)}
             />
             <StatPill
               label="Maintenance"
               value={`${Math.round(dynamicMaintenance ?? data?.biometrics.maintenanceCalories ?? 2200)} kcal`}
-              color="#818cf8"
-              onEdit={() => {
-                Alert.alert("Auto-Calculated", "Maintenance calories are now dynamically updated based on your weekly weight trend and calorie logs. You don't need to manually edit this!");
-              }}
+              onEdit={() => Alert.alert("Auto-Calculated", "Maintenance calories are dynamically updated.")}
             />
             <StatPill
-              label="Diet Mode"
-              value={data?.biometrics.dietMode ? `${data.biometrics.dietMode.replace('_', ' ')} (${data.biometrics.dietModeCalorieOffset > 0 ? '+' : ''}${data.biometrics.dietModeCalorieOffset || 0} kcal)` : 'Recomp (0 kcal)'}
-              color={data?.biometrics.dietMode?.includes('cut') ? '#f87171' : data?.biometrics.dietMode?.includes('bulk') ? '#4ade80' : '#60a5fa'}
-              onEdit={() => router.push('/(dashboard)/personalization')}
+              label="Mode"
+              value={data?.biometrics.dietMode ? data.biometrics.dietMode.replace('_', ' ') : 'Recomp'}
             />
           </View>
-          <Text className="text-gray-600 text-[10px] mt-3">Tap any card to edit ✏️</Text>
         </View>
 
         {/* ─── Today's Calories ─── */}
         <TouchableOpacity
           onPress={() => router.push('/(dashboard)/nutrition/calories-chart')}
           activeOpacity={0.85}
-          className="bg-[#161922] rounded-2xl border border-[#232632] p-5 mb-4"
+          style={{ backgroundColor: '#1F2023', borderRadius: 16, borderWidth: 1, borderColor: '#2A2B2F', padding: 20, marginBottom: 16 }}
         >
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-gray-400 text-xs uppercase tracking-widest">Today's Calories</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
+            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Today's Calories</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
-              <Flame color="#f59e0b" size={16} />
-              <ChevronRight color="#374151" size={14} />
+              <Flame color="#E8414A" size={16} />
+              <ChevronRight color="rgba(236,231,227,0.4)" size={14} />
             </View>
           </View>
-          <Text className="text-white text-3xl font-bold mb-1">{Math.round(data?.calories.today ?? 0)}</Text>
-          <View className="flex-row items-center gap-2 mt-1">
-            <View className="px-2 py-0.5 rounded-full" style={{ backgroundColor: calorieStatusColor(data?.calories.status || 'on_track') + '25' }}>
-              <Text style={{ color: calorieStatusColor(data?.calories.status || 'on_track') }} className="text-xs font-semibold capitalize">
+          <Text style={{ color: '#FFFDFC', fontSize: 32, fontWeight: '800', marginBottom: 4 }}>{Math.round(data?.calories.today ?? 0)}</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+            <View style={{ backgroundColor: 'rgba(255,253,252,0.06)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 99, borderWidth: 1, borderColor: 'rgba(255,253,252,0.1)' }}>
+              <Text style={{ color: calorieStatusColor(data?.calories.status || 'on_track'), fontSize: 10, fontWeight: '700', textTransform: 'uppercase' }}>
                 {data?.calories.status?.replace('_', ' ') ?? 'on track'}
               </Text>
             </View>
-            <Text className="text-gray-500 text-xs">
-              {(data?.calories.variance ?? 0) > 0 ? '+' : ''}{data?.calories.variance ?? 0} vs target ({data?.biometrics.targetCalories ?? 2000} kcal)
+            <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 12, fontWeight: '500' }}>
+              {(data?.calories.variance ?? 0) > 0 ? '+' : ''}{data?.calories.variance ?? 0} vs target
             </Text>
           </View>
         </TouchableOpacity>
@@ -237,96 +271,92 @@ export default function HealthScreen() {
         <TouchableOpacity
           onPress={() => router.push('/(dashboard)/health/weight-trend')}
           activeOpacity={0.85}
-          className="bg-[#161922] rounded-2xl border border-[#232632] p-5 mb-4"
+          style={{ backgroundColor: '#1F2023', borderRadius: 16, borderWidth: 1, borderColor: '#2A2B2F', padding: 20, marginBottom: 16 }}
         >
-          <View className="flex-row items-center justify-between mb-4">
-            <Text className="text-gray-400 text-xs uppercase tracking-widest">Weight Trend</Text>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Weight Trend</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <TrendIcon trend={data?.weight.trend || 'stable'} />
-              <ChevronRight color="#374151" size={14} />
+              <ChevronRight color="rgba(236,231,227,0.4)" size={14} />
             </View>
           </View>
-          <View className="flex-row gap-4 mb-4">
+          <View style={{ flexDirection: 'row', gap: 16, marginBottom: 16 }}>
             <View>
-              <Text className="text-gray-500 text-xs mb-1">Current</Text>
-              <Text className="text-white text-xl font-bold">{currentWeight ?? '—'} kg</Text>
+              <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 }}>Current</Text>
+              <Text style={{ color: '#FFFDFC', fontSize: 20, fontWeight: '800' }}>{currentWeight ?? '—'} <Text style={{ fontSize: 12, fontWeight: '500', color: 'rgba(236,231,227,0.5)' }}>kg</Text></Text>
             </View>
             <View>
-              <Text className="text-gray-500 text-xs mb-1">7-Day Avg</Text>
-              <Text className="text-white text-xl font-bold">{data?.weight.last7Avg ?? '—'} kg</Text>
+              <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', textTransform: 'uppercase', marginBottom: 2 }}>7-Day Avg</Text>
+              <Text style={{ color: '#FFFDFC', fontSize: 20, fontWeight: '800' }}>{data?.weight.last7Avg ?? '—'} <Text style={{ fontSize: 12, fontWeight: '500', color: 'rgba(236,231,227,0.5)' }}>kg</Text></Text>
             </View>
           </View>
           {weightHistory.length > 0 ? (
-            <View className="mt-2">
+            <View style={{ paddingTop: 16, borderTopWidth: 1, borderTopColor: '#2A2B2F' }}>
               {weightHistory.slice(0, 3).map((log: any, i: number) => (
-                <View key={i} className="flex-row justify-between items-center py-2.5 border-b border-[#1e2130]">
-                  <Text className="text-gray-400 text-sm">{log.date}</Text>
-                  <Text className="text-emerald-400 font-semibold">{log.weight} kg</Text>
-                </View>
+                <TouchableOpacity key={i} onPress={() => openEdit('weight', 'Edit Log', log.weight, log.date)} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 8 }}>
+                  <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 13, fontWeight: '600' }}>{log.date}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>
+                    <Text style={{ color: '#ECE7E3', fontWeight: '800', fontSize: 14 }}>{log.weight} kg</Text>
+                    <Pencil color="rgba(236,231,227,0.2)" size={12} />
+                  </View>
+                </TouchableOpacity>
               ))}
-              <Text style={{ color: '#6b7280', fontSize: 11, marginTop: 8 }}>Tap to see full trend & maintenance →</Text>
+              <Text style={{ color: 'rgba(236,231,227,0.3)', fontSize: 10, fontWeight: '700', marginTop: 12, letterSpacing: 1, textTransform: 'uppercase' }}>View Full Trend &rarr;</Text>
             </View>
           ) : (
-            <Text className="text-gray-600 text-xs mt-1">No weight history yet. Tell Health AI "I weigh Xkg" to add an entry.</Text>
+            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 12, lineHeight: 18 }}>No weight history yet. Tell Health AI "I weigh Xkg" to add an entry.</Text>
           )}
         </TouchableOpacity>
 
         {/* ─── Gym Stats ─── */}
-        <View className="bg-[#161922] rounded-2xl border border-[#232632] p-5 mb-4">
-          <View className="flex-row items-center justify-between mb-3">
-            <Text className="text-gray-400 text-xs uppercase tracking-widest">Gym Consistency</Text>
-            <Dumbbell color="#818cf8" size={16} />
+        <View style={{ backgroundColor: '#1F2023', borderRadius: 16, borderWidth: 1, borderColor: '#2A2B2F', padding: 20, marginBottom: 24 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Gym Consistency</Text>
+            <Dumbbell color="#E8414A" size={14} />
           </View>
-          <View className="flex-row gap-3 mb-3 flex-wrap">
-            <StatPill label="Last 7 Days" value={`${data?.gym.last7Days ?? 0}x`} color="#818cf8" />
-            <StatPill label="Last 30 Days" value={`${data?.gym.last30Days ?? 0}x`} color="#818cf8" />
-            <StatPill label="Score" value={`${data?.gym.consistencyScore ?? 0}%`} color="#10b981" />
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 16 }}>
+            <StatPill label="Last 7 Days" value={`${data?.gym.last7Days ?? 0}x`} />
+            <StatPill label="Last 30 Days" value={`${data?.gym.last30Days ?? 0}x`} />
+            <StatPill label="Score" value={`${data?.gym.consistencyScore ?? 0}%`} colorOverride="#E8414A" />
           </View>
-          <View className="h-2 rounded-full bg-[#232632] overflow-hidden mt-1">
-            <View
-              className="h-full rounded-full bg-purple-500"
-              style={{ width: `${data?.gym.consistencyScore ?? 0}%` }}
-            />
+          <View style={{ height: 6, borderRadius: 3, backgroundColor: '#161618', overflow: 'hidden' }}>
+            <View style={{ height: '100%', width: `${data?.gym.consistencyScore ?? 0}%`, backgroundColor: '#E8414A', borderRadius: 3 }} />
           </View>
           {(data?.gym.consistencyScore ?? 0) === 0 && (
-            <Text className="text-gray-600 text-[10px] mt-2">Score is based on 16 sessions/month = 100%</Text>
+            <Text style={{ color: 'rgba(236,231,227,0.3)', fontSize: 10, marginTop: 10 }}>Score is based on 16 sessions/month = 100%</Text>
           )}
         </View>
 
         {/* ─── Module Cards ─── */}
-        <Text className="text-gray-400 text-xs uppercase tracking-widest mb-3">Modules</Text>
-        <View className="gap-3 mb-4">
+        <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>Deep Dive Modules</Text>
+        <View style={{ gap: 12, marginBottom: 16 }}>
           <ModuleCard
-            icon={<Dumbbell color="#818cf8" size={20} />}
+            icon={<Dumbbell color="#E8414A" size={18} />}
             title="Gym Tracker"
             subtitle="Routines, splits & sessions"
-            color="#818cf8"
-            onPress={() => router.push('/gym')}
+            onPress={() => router.push('/(dashboard)/gym')}
           />
           <ModuleCard
-            icon={<Utensils color="#f59e0b" size={20} />}
+            icon={<Utensils color="#E8414A" size={18} />}
             title="Nutrition Tracker"
             subtitle="Meals, macros & templates"
-            color="#f59e0b"
-            onPress={() => router.push('/nutrition')}
+            onPress={() => router.push('/(dashboard)/nutrition')}
           />
         </View>
 
         {/* ─── Health AI Card ─── */}
         <TouchableOpacity
-          onPress={() => router.push({ pathname: '/brain', params: { mode: 'health' } })}
-          className="bg-emerald-500/10 rounded-2xl border border-emerald-500/30 p-5"
+          onPress={() => router.push({ pathname: '/(dashboard)/brain', params: { mode: 'health' } })}
+          style={{ backgroundColor: 'rgba(232,65,74,0.06)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(232,65,74,0.2)', padding: 20, flexDirection: 'row', alignItems: 'center', gap: 14 }}
         >
-          <View className="flex-row items-center gap-3">
-            <View className="w-10 h-10 rounded-xl bg-emerald-500/20 items-center justify-center">
-              <MessageCircle color="#10b981" size={20} />
-            </View>
-            <View className="flex-1">
-              <Text className="text-emerald-400 font-bold text-base">Ask Health AI</Text>
-              <Text className="text-gray-400 text-xs mt-0.5">Calorie questions, workout advice & more</Text>
-            </View>
-            <ChevronRight color="#10b981" size={18} />
+          <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(232,65,74,0.1)', alignItems: 'center', justifyContent: 'center' }}>
+            <MessageCircle color="#E8414A" size={18} />
           </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#E8414A', fontWeight: '800', fontSize: 15, marginBottom: 2 }}>Ask Health AI</Text>
+            <Text style={{ color: 'rgba(236,231,227,0.6)', fontSize: 12 }}>Calorie questions, workout advice & more</Text>
+          </View>
+          <ChevronRight color="#E8414A" size={16} />
         </TouchableOpacity>
 
       </ScrollView>
@@ -334,33 +364,33 @@ export default function HealthScreen() {
   );
 }
 
-function StatPill({ label, value, color, onEdit }: { label: string; value: string; color: string; onEdit?: () => void }) {
+function StatPill({ label, value, onEdit, colorOverride }: { label: string; value: string; onEdit?: () => void; colorOverride?: string }) {
   return (
     <TouchableOpacity
       onPress={onEdit}
-      className="bg-[#0f1115] rounded-xl px-3 py-2 border border-[#232632] flex-row items-center gap-1.5"
+      style={{ backgroundColor: '#161618', borderRadius: 12, paddingHorizontal: 14, paddingVertical: 10, borderWidth: 1, borderColor: '#2A2B2F', flexDirection: 'row', alignItems: 'center', gap: 8 }}
       activeOpacity={onEdit ? 0.7 : 1}
     >
       <View>
-        <Text className="text-gray-500 text-[10px] uppercase tracking-wider mb-0.5">{label}</Text>
-        <Text style={{ color }} className="font-bold text-sm">{value}</Text>
+        <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 9, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>{label}</Text>
+        <Text style={{ color: colorOverride || '#FFFDFC', fontWeight: '800', fontSize: 14 }}>{value}</Text>
       </View>
-      {onEdit && <Pencil color="#374151" size={11} style={{ marginTop: 10 }} />}
+      {onEdit && <Pencil color="rgba(236,231,227,0.2)" size={10} style={{ marginLeft: 4, marginTop: 12 }} />}
     </TouchableOpacity>
   );
 }
 
-function ModuleCard({ icon, title, subtitle, color, onPress }: any) {
+function ModuleCard({ icon, title, subtitle, onPress }: any) {
   return (
-    <TouchableOpacity onPress={onPress} className="flex-row items-center bg-[#161922] rounded-2xl border border-[#232632] p-4 gap-4">
-      <View className="w-10 h-10 rounded-xl items-center justify-center" style={{ backgroundColor: color + '20' }}>
+    <TouchableOpacity onPress={onPress} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#1F2023', borderRadius: 16, borderWidth: 1, borderColor: '#2A2B2F', padding: 16, gap: 14 }}>
+      <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: 'rgba(236,231,227,0.04)', alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: 'rgba(236,231,227,0.1)' }}>
         {icon}
       </View>
-      <View className="flex-1">
-        <Text className="text-white font-semibold text-sm">{title}</Text>
-        <Text className="text-gray-500 text-xs mt-0.5">{subtitle}</Text>
+      <View style={{ flex: 1 }}>
+        <Text style={{ color: '#FFFDFC', fontWeight: '700', fontSize: 15, marginBottom: 2 }}>{title}</Text>
+        <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 12 }}>{subtitle}</Text>
       </View>
-      <ChevronRight color="#374151" size={18} />
+      <ChevronRight color="rgba(236,231,227,0.2)" size={16} />
     </TouchableOpacity>
   );
 }

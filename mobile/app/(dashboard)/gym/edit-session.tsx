@@ -1,9 +1,15 @@
-import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, Alert, ActivityIndicator, SafeAreaView } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { ArrowLeft, Check, Dumbbell, Flame } from 'lucide-react-native';
 import { useState, useEffect } from 'react';
 import { fetchWithAuth } from '../../../utils/api';
 import React from 'react';
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
+};
 
 export default function EditSessionWorkout() {
   const router = useRouter();
@@ -104,77 +110,76 @@ export default function EditSessionWorkout() {
   const predefined = getPredefinedExercises();
 
   return (
-    <View className="flex-1 bg-[#0f1115]">
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
-      <View className="flex-row items-center px-5 pt-12 pb-4 border-b border-[#232632] bg-[#0f1115]">
-        <TouchableOpacity onPress={() => router.back()} className="p-2 -ml-2 mr-2 bg-[#1b1f2a] rounded-full">
-          <ArrowLeft size={20} color="#9ca3af" />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ backgroundColor: C.card, padding: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border }}>
+          <ArrowLeft size={20} color={C.subtext} />
         </TouchableOpacity>
-        <Text className="text-xl font-bold text-gray-100 flex-1">Edit Workout</Text>
+        <Text style={{ fontSize: 20, fontWeight: '900', color: C.text, flex: 1, textAlign: 'center' }}>Edit Workout</Text>
+        <View style={{ width: 40 }} />
       </View>
 
       {fetching ? (
-        <View className="flex-1 items-center justify-center">
-          <ActivityIndicator color="#fcd34d" />
+        <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+          <ActivityIndicator color={C.primary} />
         </View>
       ) : (
-        <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
+        <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
           
-          <View className="bg-amber-500/10 border border-amber-500/30 p-4 rounded-xl mb-6">
-             <Text className="text-amber-400 font-bold text-xs uppercase tracking-widest mb-1">Editing Past Session</Text>
-             <Text className="text-amber-500/80 text-sm">Changes will instantly recalculate your volume metrics.</Text>
+          <View style={{ backgroundColor: C.primaryBg, borderWidth: 1, borderColor: 'rgba(232,65,74,0.3)', padding: 16, borderRadius: 16, marginBottom: 24 }}>
+             <Text style={{ color: C.primary, fontWeight: '900', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 4 }}>Editing Past Session</Text>
+             <Text style={{ color: C.text, fontSize: 13, fontWeight: '600' }}>Changes will instantly recalculate your volume metrics.</Text>
           </View>
 
           {/* Split Name Editor */}
-          <View className="mb-8">
-            <Text className="text-lg font-bold text-gray-100 mb-2">Workout Focus</Text>
-            <View className="bg-[#161922] border border-[#232632] rounded-xl flex-row items-center px-4 py-1">
+          <View style={{ marginBottom: 32 }}>
+            <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Workout Focus</Text>
+            <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16 }}>
               <TextInput
                 value={selectedSplit}
                 onChangeText={setSelectedSplit}
-                className="flex-1 text-gray-100 font-bold py-3"
+                style={{ color: C.text, fontWeight: '900', fontSize: 16, paddingVertical: 16 }}
                 placeholder="e.g. Chest & Triceps"
-                placeholderTextColor="#4b5563"
+                placeholderTextColor={C.muted}
               />
             </View>
           </View>
 
           {/* Duration Input */}
-          <View className="mb-8 border-t border-[#232632] pt-6">
-            <View className="flex-row items-center mb-3">
-              <Flame size={18} color="#fcd34d" />
-              <Text className="text-lg font-bold text-gray-100 ml-2">Total Duration</Text>
-            </View>
-            <View className="bg-[#161922] border border-[#232632] rounded-xl flex-row items-center px-4 py-1">
+          <View style={{ marginBottom: 32 }}>
+            <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8, marginLeft: 4 }}>Total Duration</Text>
+            <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16 }}>
+              <Flame size={18} color={C.subtext} />
               <TextInput
                 value={durationMinutes}
                 onChangeText={setDurationMinutes}
                 keyboardType="number-pad"
-                className="flex-1 text-gray-100 text-2xl font-bold py-3"
+                style={{ flex: 1, color: C.text, fontSize: 24, fontWeight: '900', paddingVertical: 16, marginLeft: 12 }}
                 placeholder="e.g. 45"
-                placeholderTextColor="#4b5563"
+                placeholderTextColor={C.muted}
               />
-              <Text className="text-gray-500 font-medium text-base ml-2">minutes</Text>
+              <Text style={{ color: C.subtext, fontWeight: '700', fontSize: 14 }}>minutes</Text>
             </View>
           </View>
 
           {/* Advanced Exercises */}
-          <View className="mb-8 border-t border-[#232632] pt-6">
-            <View className="flex-row items-center justify-between mb-4">
-              <View className="flex-row items-center">
-                <Dumbbell size={18} color="#9ca3af" />
-                <Text className="text-lg font-bold text-gray-100 ml-2">Logged Exercises</Text>
+          <View style={{ marginBottom: 32 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
+              <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                <Dumbbell size={18} color={C.text} />
+                <Text style={{ color: C.text, fontSize: 18, fontWeight: '900', marginLeft: 8 }}>Logged Exercises</Text>
               </View>
               <TouchableOpacity 
                 onPress={() => setExercises([...exercises, { equipmentName: '', sets: [{ repsDone: 0, weightUsed: 0, restSecondsTaken: 60, assisted: false, assistedAtRep: 0 }] }])}
-                className="bg-amber-500/20 px-3 py-1.5 rounded-lg border border-amber-500/50"
+                style={{ backgroundColor: C.bg, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 12, borderWidth: 1, borderColor: C.border }}
               >
-                <Text className="text-amber-400 font-bold text-xs uppercase">+ Custom</Text>
+                <Text style={{ color: C.text, fontWeight: '900', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1 }}>+ Custom</Text>
               </TouchableOpacity>
             </View>
 
             {predefined.length > 0 && (
-              <View className="flex-row flex-wrap gap-2 mb-6 border-b border-[#232632] pb-4">
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8, marginBottom: 24, borderBottomWidth: 1, borderBottomColor: C.border, paddingBottom: 16 }}>
                 {predefined.map((pEx: any, i: number) => (
                   <TouchableOpacity
                     key={`pre-${i}`}
@@ -188,16 +193,16 @@ export default function EditSessionWorkout() {
                       }));
                       setExercises([...exercises, { equipmentName: pEx.equipmentName, sets: defaultSets }]);
                     }}
-                    className="bg-[#1b1f2a] border border-[#232632] rounded-full px-4 py-2 flex-row items-center"
+                    style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 20, paddingHorizontal: 16, paddingVertical: 8 }}
                   >
-                    <Text className="text-amber-500 text-xs font-bold">+ {pEx.equipmentName}</Text>
+                    <Text style={{ color: C.text, fontSize: 12, fontWeight: '900' }}>+ {pEx.equipmentName}</Text>
                   </TouchableOpacity>
                 ))}
               </View>
             )}
 
             {exercises.map((ex, eIdx) => (
-              <View key={eIdx} className="bg-[#1b1f2a] border border-[#232632] rounded-xl p-4 mb-4">
+              <View key={eIdx} style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 20, marginBottom: 16 }}>
                 <TextInput
                   value={ex.equipmentName}
                   onChangeText={(v) => {
@@ -205,30 +210,30 @@ export default function EditSessionWorkout() {
                     n[eIdx].equipmentName = v;
                     setExercises(n);
                   }}
-                  className="text-gray-100 font-bold text-lg mb-3 border-b border-[#232632] pb-2"
+                  style={{ color: C.text, fontWeight: '900', fontSize: 18, marginBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border, paddingBottom: 8 }}
                   placeholder="Exercise Name (e.g. Bench Press)"
-                  placeholderTextColor="#6b7280"
+                  placeholderTextColor={C.muted}
                 />
                 
                 {ex.sets.map((set, sIdx) => (
-                  <View key={sIdx} className="mb-3">
-                    <View className="flex-row items-center justify-between mb-1">
-                      <View className="flex-row items-center">
-                        <Text className="text-gray-500 font-bold text-xs uppercase w-12">Set {sIdx + 1}</Text>
+                  <View key={sIdx} style={{ marginBottom: 16 }}>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        <Text style={{ color: C.subtext, fontWeight: '900', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1, width: 48 }}>Set {sIdx + 1}</Text>
                         <TouchableOpacity 
                           onPress={() => {
                             const n = [...exercises];
                             n[eIdx].sets[sIdx].assisted = !n[eIdx].sets[sIdx].assisted;
                             setExercises(n);
                           }}
-                          className={`px-2 py-1 ml-2 rounded border ${set.assisted ? 'bg-amber-500/20 border-amber-500' : 'border-gray-800'}`}
+                          style={{ paddingHorizontal: 10, paddingVertical: 4, marginLeft: 8, borderRadius: 8, borderWidth: 1, backgroundColor: set.assisted ? C.primaryBg : C.bg, borderColor: set.assisted ? C.primary : C.border }}
                         >
-                          <Text className={`text-[9px] font-bold uppercase ${set.assisted ? 'text-amber-400' : 'text-gray-600'}`}>Assist</Text>
+                          <Text style={{ fontSize: 10, fontWeight: '900', textTransform: 'uppercase', color: set.assisted ? C.primary : C.muted }}>Assist</Text>
                         </TouchableOpacity>
                       </View>
                       
-                      <View className="flex-row space-x-2 items-center justify-end">
-                        <View className="bg-[#161922] rounded-lg px-2 py-1.5 border border-[#232632] w-16 flex-row items-center">
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                        <View style={{ backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border, width: 64, flexDirection: 'row', alignItems: 'center' }}>
                           <TextInput 
                             keyboardType="decimal-pad"
                             value={String(set.weightUsed || '')}
@@ -237,13 +242,13 @@ export default function EditSessionWorkout() {
                               n[eIdx].sets[sIdx].weightUsed = Number(v) || 0;
                               setExercises(n);
                             }}
-                            className="text-gray-200 font-bold text-sm w-full text-center"
+                            style={{ color: C.text, fontWeight: '900', fontSize: 14, width: '100%', textAlign: 'center', paddingVertical: 8 }}
                             placeholder="kg"
-                            placeholderTextColor="#4b5563"
+                            placeholderTextColor={C.muted}
                           />
                         </View>
-                        <Text className="text-gray-600 font-bold text-xs">x</Text>
-                        <View className="bg-[#161922] rounded-lg px-2 py-1.5 border border-[#232632] w-16 flex-row items-center">
+                        <Text style={{ color: C.subtext, fontWeight: '900', fontSize: 12 }}>×</Text>
+                        <View style={{ backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border, width: 64, flexDirection: 'row', alignItems: 'center' }}>
                           <TextInput 
                             keyboardType="decimal-pad"
                             value={String(set.repsDone || '')}
@@ -252,18 +257,18 @@ export default function EditSessionWorkout() {
                               n[eIdx].sets[sIdx].repsDone = Number(v) || 0;
                               setExercises(n);
                             }}
-                            className="text-gray-200 font-bold text-sm w-full text-center"
+                            style={{ color: C.text, fontWeight: '900', fontSize: 14, width: '100%', textAlign: 'center', paddingVertical: 8 }}
                             placeholder="reps"
-                            placeholderTextColor="#4b5563"
+                            placeholderTextColor={C.muted}
                           />
                         </View>
                       </View>
                     </View>
 
                     {set.assisted && (
-                      <View className="flex-row items-center justify-end mt-1 px-1">
-                        <Text className="text-amber-500/80 text-[10px] uppercase font-bold mr-2">Assisted at rep:</Text>
-                        <View className="bg-[#161922] rounded border border-amber-500/30 w-16 items-center flex-row px-2 py-1">
+                      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'flex-end', marginTop: 4 }}>
+                        <Text style={{ color: C.primary, fontSize: 10, textTransform: 'uppercase', fontWeight: '900', marginRight: 8 }}>Assisted at rep:</Text>
+                        <View style={{ backgroundColor: C.bg, borderRadius: 8, borderWidth: 1, borderColor: 'rgba(232,65,74,0.3)', width: 64, flexDirection: 'row', alignItems: 'center' }}>
                           <TextInput 
                             keyboardType="decimal-pad"
                             value={String(set.assistedAtRep || '')}
@@ -272,9 +277,9 @@ export default function EditSessionWorkout() {
                               n[eIdx].sets[sIdx].assistedAtRep = Number(v) || 0;
                               setExercises(n);
                             }}
-                            className="text-amber-400 font-bold text-xs flex-1 text-center"
+                            style={{ color: C.primary, fontWeight: '900', fontSize: 12, flex: 1, textAlign: 'center', paddingVertical: 4 }}
                             placeholder="0"
-                            placeholderTextColor="#78350f"
+                            placeholderTextColor="rgba(232,65,74,0.4)"
                           />
                         </View>
                       </View>
@@ -282,13 +287,13 @@ export default function EditSessionWorkout() {
                   </View>
                 ))}
 
-                <View className="flex-row justify-between items-center mt-3 pt-3 border-t border-[#232632]">
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginTop: 12, paddingTop: 16, borderTopWidth: 1, borderTopColor: C.border }}>
                   <TouchableOpacity onPress={() => {
                     const n = [...exercises];
                     n.splice(eIdx, 1);
                     setExercises(n);
                   }}>
-                    <Text className="text-red-400 font-bold text-xs uppercase">Remove</Text>
+                    <Text style={{ color: C.primary, fontWeight: '900', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>Remove</Text>
                   </TouchableOpacity>
 
                   <TouchableOpacity onPress={() => {
@@ -296,13 +301,13 @@ export default function EditSessionWorkout() {
                     n[eIdx].sets.push({ repsDone: 0, weightUsed: 0, restSecondsTaken: 60, assisted: false, assistedAtRep: 0 });
                     setExercises(n);
                   }}>
-                    <Text className="text-amber-500 font-bold text-xs uppercase">+ Add Set</Text>
+                    <Text style={{ color: C.text, fontWeight: '900', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>+ Add Set</Text>
                   </TouchableOpacity>
                 </View>
               </View>
             ))}
             {exercises.length === 0 && (
-              <Text className="text-gray-500 text-sm text-center py-4">No exercises logged yet. Add some to backfill data.</Text>
+              <Text style={{ color: C.muted, fontSize: 14, textAlign: 'center', paddingVertical: 16, fontWeight: '600' }}>No exercises logged yet. Add some to backfill data.</Text>
             )}
           </View>
 
@@ -310,20 +315,20 @@ export default function EditSessionWorkout() {
           <TouchableOpacity
             onPress={handleSave}
             disabled={loading}
-            className={`flex-row items-center justify-center p-4 rounded-xl mt-4 ${loading ? 'bg-amber-500/50' : 'bg-amber-500'}`}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', padding: 16, borderRadius: 20, backgroundColor: loading ? C.card : C.text, borderWidth: 1, borderColor: loading ? C.border : C.text, marginBottom: 40 }}
           >
             {loading ? (
-              <ActivityIndicator color="#0f1115" />
+              <ActivityIndicator color={C.primary} />
             ) : (
               <>
-                <Check size={20} color="#0f1115" />
-                <Text className="text-black font-bold text-lg ml-2">Update Workout</Text>
+                <Check size={20} color={C.bg} />
+                <Text style={{ color: C.bg, fontWeight: '900', fontSize: 16, marginLeft: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Update Workout</Text>
               </>
             )}
           </TouchableOpacity>
 
         </ScrollView>
       )}
-    </View>
+    </SafeAreaView>
   );
 }

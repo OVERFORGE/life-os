@@ -160,6 +160,11 @@ export async function scheduleAllTaskReminders() {
       if (task.status !== 'pending') continue;
       await scheduleTaskReminders(task);
     }
+    
+    // Refresh persistent assistant with latest upcoming task
+    const { refreshPersistentNotification } = await import('./persistentNotification');
+    await refreshPersistentNotification();
+    
   } catch (e) {
     console.error('Failed to schedule task reminders', e);
   }

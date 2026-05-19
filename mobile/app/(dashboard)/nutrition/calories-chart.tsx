@@ -8,9 +8,9 @@ import { fetchWithAuth } from '../../../utils/api';
 const { width: SCREEN_W } = Dimensions.get('window');
 
 const C = {
-  bg: '#0f1115', card: '#161922', border: '#232632', border2: '#374151',
-  text: '#f3f4f6', subtext: '#9ca3af', muted: '#6b7280',
-  emerald: '#10b981', amber: '#f59e0b', red: '#ef4444',
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
 };
 
 const DAY_NAMES = ['Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat', 'Sun'];
@@ -59,9 +59,13 @@ export default function CaloriesChartScreen() {
         fetchWithAuth(`/nutrition/log?startDate=${startStr}&endDate=${endStr}&_t=${Date.now()}`),
         fetchWithAuth('/health/context'),
       ]);
-      if (logsRes.status === 'fulfilled' && logsRes.value.ok) {
-        const d = await logsRes.value.json();
-        setLogs(d.logs || []);
+      if (logsRes.status === 'fulfilled') {
+        if (logsRes.value.ok) {
+          const d = await logsRes.value.json();
+          setLogs(d.logs || []);
+        } else {
+          console.error('Logs fetch failed:', logsRes.value.status, await logsRes.value.text());
+        }
       }
       if (ctxRes.status === 'fulfilled' && ctxRes.value.ok) {
         const d = await ctxRes.value.json();
@@ -88,11 +92,12 @@ export default function CaloriesChartScreen() {
     d.setDate(weekStart.getDate() + i);
     const dateStr = getLocalDateString(d);
     const log = logs.find(l => l.date === dateStr);
+    const calories = log?.dailyTotals?.calories || log?.meals?.reduce((sum: number, m: any) => sum + (m.macros?.calories || 0), 0) || 0;
     return {
       date: d,
       dateStr,
       dayName: DAY_NAMES[i],
-      calories: log?.dailyTotals?.calories || 0,
+      calories,
       hasData: !!log,
     };
   });
@@ -103,9 +108,9 @@ export default function CaloriesChartScreen() {
 
   const barColor = (cals: number) => {
     if (cals === 0) return C.border;
-    if (cals <= targetCalories * 0.95) return C.emerald;
-    if (cals <= targetCalories * 1.1) return C.amber;
-    return C.red;
+    if (cals <= targetCalories * 0.95) return 'rgba(236,231,227,0.5)';
+    if (cals <= targetCalories * 1.1) return C.primary;
+    return '#B42129';
   };
 
   const todayStr = getLocalDateString(new Date());
@@ -129,7 +134,7 @@ export default function CaloriesChartScreen() {
       <ScrollView
         contentContainerStyle={{ padding: 24, paddingBottom: 60 }}
         showsVerticalScrollIndicator={false}
-        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.emerald} />}
+        refreshControl={<RefreshControl refreshing={refreshing} onRefresh={onRefresh} tintColor={C.primary} />}
       >
 
         {/* Week Navigator */}
@@ -171,12 +176,12 @@ export default function CaloriesChartScreen() {
         {/* Bar Chart */}
         {loading ? (
           <View style={{ height: 250, alignItems: 'center', justifyContent: 'center', backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border }}>
-            <ActivityIndicator color={C.emerald} size="large" />
+            <ActivityIndicator color={C.primary} size="large" />
           </View>
         ) : (
           <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-              <Flame color={C.amber} size={14} />
+              <Flame color={C.primary} size={14} />
               <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', letterSpacing: 3, textTransform: 'uppercase', marginLeft: 8 }}>Daily Calories</Text>
             </View>
 
@@ -190,13 +195,13 @@ export default function CaloriesChartScreen() {
                 height: 1,
                 borderStyle: 'dashed',
                 borderWidth: 1,
-                borderColor: C.amber + '80',
+                borderColor: C.primary + '80',
               }} />
               <Text style={{
                 position: 'absolute',
                 right: 0,
                 top: BAR_H - ((targetCalories || 2000) / safeMax) * BAR_H - 14,
-                color: C.amber,
+                color: C.primary,
                 fontSize: 9,
                 fontWeight: '700',
               }}>{targetCalories} target</Text>
@@ -233,7 +238,7 @@ export default function CaloriesChartScreen() {
                   const isToday = day.dateStr === todayStr;
                   return (
                     <View key={i} style={{ flex: 1, alignItems: 'center' }}>
-                      <Text style={{ color: isToday ? C.emerald : C.muted, fontSize: 9, fontWeight: isToday ? '800' : '600' }}>{day.dayName}</Text>
+                      <Text style={{ color: isToday ? C.primary : C.muted, fontSize: 9, fontWeight: isToday ? '800' : '600' }}>{day.dayName}</Text>
                       <Text style={{ color: C.muted, fontSize: 8 }}>{day.date.getDate()}</Text>
                     </View>
                   );
@@ -243,7 +248,7 @@ export default function CaloriesChartScreen() {
 
             {/* Legend */}
             <View style={{ flexDirection: 'row', gap: 16, marginTop: 12, justifyContent: 'center', flexWrap: 'wrap' }}>
-              {[{ color: C.emerald, label: 'Under target' }, { color: C.amber, label: 'On target' }, { color: C.red, label: 'Over target' }].map(l => (
+              {[{ color: 'rgba(236,231,227,0.5)', label: 'Under target' }, { color: C.primary, label: 'On target' }, { color: '#B42129', label: 'Over target' }].map(l => (
                 <View key={l.label} style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
                   <View style={{ width: 8, height: 8, borderRadius: 2, backgroundColor: l.color }} />
                   <Text style={{ color: C.muted, fontSize: 10 }}>{l.label}</Text>

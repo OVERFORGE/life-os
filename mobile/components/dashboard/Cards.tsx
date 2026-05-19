@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react';
 import { View, Text, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Brain, ArrowRight, Activity, Flame, ChevronRight, Zap, TrendingDown, TrendingUp, Minus } from 'lucide-react-native';
+import { ArrowRight, Activity, ChevronRight } from 'lucide-react-native';
 import { fetchWithAuth } from '../../utils/api';
 
 // ─── TrajectoryCard ──────────────────────────────────────────────────────────
@@ -13,57 +13,57 @@ export function TrajectoryCard({ data }: { data: any }) {
   const confidencePct = Math.round((data.confidence || 0) * 100);
 
   const phaseTheme: Record<string, { color: string; bg: string; border: string }> = {
-    grind:    { color: '#60a5fa', bg: '#1e3a5f22', border: '#2563eb44' },
-    burnout:  { color: '#f87171', bg: '#5f1e1e22', border: '#dc262644' },
-    recovery: { color: '#4ade80', bg: '#1e5f2722', border: '#16a34a44' },
-    slump:    { color: '#facc15', bg: '#5f4e1e22', border: '#ca8a0444' },
-    balanced: { color: '#d1d5db', bg: '#2a2d3a22', border: '#4b556344' },
+    grind:    { color: '#E8414A', bg: 'rgba(232,65,74,0.08)',   border: 'rgba(232,65,74,0.25)'   },
+    burnout:  { color: '#B42129', bg: 'rgba(180,33,41,0.08)',   border: 'rgba(180,33,41,0.25)'   },
+    recovery: { color: '#ECE7E3', bg: 'rgba(236,231,227,0.06)', border: 'rgba(236,231,227,0.2)'  },
+    slump:    { color: '#F9A8AC', bg: 'rgba(249,168,172,0.06)', border: 'rgba(249,168,172,0.2)'  },
+    balanced: { color: '#FFFDFC', bg: 'rgba(255,253,252,0.04)', border: 'rgba(255,253,252,0.1)'  },
   };
   const theme = phaseTheme[data.phase] || phaseTheme.balanced;
+  const insightCount = data.insights?.length || 0;
 
   return (
     <TouchableOpacity
       activeOpacity={0.7}
       onPress={() => router.push('/(dashboard)/trajectory')}
       style={{
-        backgroundColor: '#161922',
+        backgroundColor: '#1F2023',
         borderWidth: 1,
-        borderColor: theme.border,
+        borderColor: '#2A2B2F',
         borderRadius: 16,
         padding: 20,
         marginBottom: 16,
-        borderLeftWidth: 3,
-        borderLeftColor: theme.color,
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Text style={{ fontSize: 10, color: '#6b7280', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' }}>Life State</Text>
-        <Brain size={18} color={theme.color} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Life State</Text>
+        <View style={{ backgroundColor: theme.bg, borderWidth: 1, borderColor: theme.border, borderRadius: 99, paddingHorizontal: 10, paddingVertical: 3 }}>
+          <Text style={{ color: theme.color, fontSize: 10, fontWeight: '700', textTransform: 'capitalize' }}>{phaseLabel}</Text>
+        </View>
       </View>
 
-      <Text style={{ fontSize: 24, fontWeight: '900', color: theme.color, textTransform: 'capitalize', marginBottom: 2 }}>
+      <Text style={{ fontSize: 20, fontWeight: '800', color: '#FFFDFC', marginBottom: 6 }}>
         {phaseLabel}
       </Text>
-      <Text style={{ fontSize: 11, color: '#6b7280', marginBottom: 10 }}>Confidence: {confidencePct}%</Text>
 
-      <Text style={{ fontSize: 13, color: '#9ca3af', lineHeight: 20, marginBottom: 14 }} numberOfLines={2}>
-        {data.reason || 'Analyzing trajectory...'}
+      <Text style={{ fontSize: 13, color: 'rgba(236,231,227,0.65)', lineHeight: 18, marginBottom: 16 }} numberOfLines={2}>
+        {data.reason || 'Analyzing system trajectory...'}
       </Text>
 
-      {data.insights?.length > 0 && (
-        <View style={{ marginBottom: 14, gap: 4 }}>
-          {data.insights.slice(0, 2).map((insight: string, idx: number) => (
-            <View key={idx} style={{ flexDirection: 'row', alignItems: 'flex-start' }}>
-              <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: theme.color, marginTop: 6, marginRight: 8, opacity: 0.7 }} />
-              <Text style={{ fontSize: 12, color: '#6b7280', flex: 1 }}>{insight}</Text>
-            </View>
-          ))}
+      <View style={{ flexDirection: 'row', gap: 10, marginBottom: 16 }}>
+        <View style={{ flex: 1, backgroundColor: '#161618', borderRadius: 10, padding: 12 }}>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: theme.color }}>{confidencePct}%</Text>
+          <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Confidence</Text>
         </View>
-      )}
+        <View style={{ flex: 1, backgroundColor: '#161618', borderRadius: 10, padding: 12 }}>
+          <Text style={{ fontSize: 16, fontWeight: '800', color: '#FFFDFC' }}>{insightCount}</Text>
+          <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Insights</Text>
+        </View>
+      </View>
 
-      <View style={{ paddingTop: 12, borderTopWidth: 1, borderTopColor: '#232632', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
-        <Text style={{ fontSize: 10, color: '#6b7280', fontWeight: '700', letterSpacing: 2 }}>VIEW TIMELINE</Text>
-        <ArrowRight size={14} color="#6b7280" />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingTop: 14, borderTopWidth: 1, borderTopColor: '#2A2B2F' }}>
+        <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', fontWeight: '700', letterSpacing: 1.5 }}>VIEW TRAJECTORY</Text>
+        <ArrowRight size={14} color="rgba(236,231,227,0.5)" />
       </View>
     </TouchableOpacity>
   );
@@ -79,68 +79,82 @@ export function CurrentEraCard() {
       .then(r => r.json())
       .then(d => {
         const eras: any[] = d.eras || [];
-        // Find the current era (the last one, which may be ongoing)
-        const current = eras.find(e => e.phases?.some((p: any) => !p.endDate)) || eras[eras.length - 1];
+        // Determine the most recent era (since backend logic may vary, we take the last generated or active)
+        const sorted = [...eras].reverse();
+        // first one with no 'to' is active, else fallback to just the most recent
+        const current = sorted.find((e: any) => !e.to) || sorted[0];
         setEra(current || null);
       })
       .catch(console.error);
   }, []);
 
   const themeColors: Record<string, string> = {
-    Growth: '#4ade80', Overextension: '#f87171', Contraction: '#facc15',
-    Entropy: '#a78bfa', Restoration: '#60a5fa',
+    Growth: '#E8414A', Overextension: '#B42129', Contraction: '#F3767D',
+    Entropy: '#F9A8AC', Restoration: '#ECE7E3',
   };
-  const themeColor = era ? (themeColors[era.narrative?.theme] || '#f59e0b') : '#f59e0b';
+  const themeColor = era ? (themeColors[era.narrative?.theme] || '#ECE7E3') : '#ECE7E3';
+
+  const activePhases = era?.phases?.filter((p: any) => !p.endDate).length || 0;
+  const totalPhases = era?.phases?.length || 0;
+
+  function formatMonth(dateStr: string | undefined) {
+    if (!dateStr) return '—';
+    try { return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }); }
+    catch { return dateStr; }
+  }
 
   return (
     <TouchableOpacity
       activeOpacity={0.7}
       onPress={() => router.push('/(dashboard)/era/')}
       style={{
-        backgroundColor: '#161922',
+        backgroundColor: '#1F2023',
         borderWidth: 1,
-        borderColor: '#232632',
+        borderColor: '#2A2B2F',
         borderRadius: 16,
         padding: 20,
         marginBottom: 24,
-        borderLeftWidth: 3,
-        borderLeftColor: era ? themeColor : '#f59e0b',
       }}
     >
-      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-        <Text style={{ fontSize: 10, color: '#6b7280', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' }}>Current Era</Text>
-        <Flame size={18} color={themeColor} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
+        <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Current Era</Text>
+        {era?.narrative?.theme && (
+          <View style={{ backgroundColor: themeColor + '18', borderWidth: 1, borderColor: themeColor + '35', borderRadius: 99, paddingHorizontal: 10, paddingVertical: 3 }}>
+            <Text style={{ color: themeColor, fontSize: 10, fontWeight: '700' }}>{era.narrative.theme}</Text>
+          </View>
+        )}
       </View>
 
-      {era ? (
-        <>
-          {era.narrative?.theme && (
-            <View style={{ backgroundColor: themeColor + '20', borderWidth: 1, borderColor: themeColor + '40', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, alignSelf: 'flex-start', marginBottom: 6 }}>
-              <Text style={{ color: themeColor, fontSize: 10, fontWeight: '700' }}>{era.narrative.theme}</Text>
-            </View>
-          )}
-          <Text style={{ fontSize: 22, fontWeight: '900', color: '#f3f4f6', marginBottom: 2 }}>
-            {era.narrative?.title || 'Untitled Era'}
-          </Text>
-          <Text style={{ fontSize: 11, color: '#6b7280', marginBottom: 10 }}>
-            {era.from} → {era.to || 'Now'} · {era.phases?.length || 0} phases
-          </Text>
-          {era.narrative?.subtitle && (
-            <Text style={{ fontSize: 13, color: '#9ca3af', lineHeight: 20, marginBottom: 4 }} numberOfLines={2}>
-              {era.narrative.subtitle}
-            </Text>
-          )}
-        </>
-      ) : (
-        <>
-          <Text style={{ fontSize: 22, fontWeight: '900', color: '#f59e0b', marginBottom: 4 }}>Your Life Eras</Text>
-          <Text style={{ fontSize: 13, color: '#9ca3af' }}>High-level chapters of your life</Text>
-        </>
+      <Text style={{ fontSize: 20, fontWeight: '800', color: '#FFFDFC', marginBottom: 6 }}>
+        {era?.narrative?.title || 'Your Life Eras'}
+      </Text>
+
+      {era?.narrative?.subtitle && (
+        <Text style={{ fontSize: 13, color: 'rgba(236,231,227,0.65)', lineHeight: 18, marginBottom: 16 }} numberOfLines={2}>
+          {era.narrative.subtitle}
+        </Text>
       )}
 
-      <View style={{ paddingTop: 12, borderTopWidth: 1, borderTopColor: '#232632', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginTop: 12 }}>
-        <Text style={{ fontSize: 10, color: '#6b7280', fontWeight: '700', letterSpacing: 2 }}>VIEW ALL ERAS</Text>
-        <ArrowRight size={14} color="#6b7280" />
+      {era && (
+        <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
+          <View style={{ flex: 1, backgroundColor: '#161618', borderRadius: 10, padding: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#FFFDFC' }}>{totalPhases}</Text>
+            <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Phases</Text>
+          </View>
+          <View style={{ flex: 1, backgroundColor: '#161618', borderRadius: 10, padding: 12 }}>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: activePhases > 0 ? '#E8414A' : '#FFFDFC' }}>{activePhases}</Text>
+            <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Active</Text>
+          </View>
+          <View style={{ flex: 1.5, backgroundColor: '#161618', borderRadius: 10, padding: 12 }}>
+            <Text style={{ fontSize: 12, fontWeight: '700', color: '#FFFDFC' }} numberOfLines={1}>{formatMonth(era.from)}</Text>
+            <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', marginTop: 2, textTransform: 'uppercase', letterSpacing: 0.5 }}>Started</Text>
+          </View>
+        </View>
+      )}
+
+      <View style={{ paddingTop: 14, borderTopWidth: 1, borderTopColor: '#2A2B2F', flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+        <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', fontWeight: '700', letterSpacing: 1.5 }}>VIEW ALL ERAS</Text>
+        <ArrowRight size={14} color="rgba(236,231,227,0.5)" />
       </View>
     </TouchableOpacity>
   );
@@ -153,12 +167,12 @@ export function GoalLoadCard({ goalLoad }: { goalLoad: any }) {
   const perGoal = goalLoad.perGoal ?? [];
   if (perGoal.length === 0) {
     return (
-      <View style={{ backgroundColor: '#161922', borderWidth: 1, borderColor: '#232632', borderRadius: 16, padding: 20, marginBottom: 20 }}>
+      <View style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 20 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-          <Text style={{ fontSize: 10, color: '#6b7280', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' }}>Goal Load</Text>
-          <Activity size={18} color="#3b82f6" />
+          <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Goal Load</Text>
+          <Activity size={18} color="#E8414A" />
         </View>
-        <Text style={{ color: '#6b7280', fontSize: 13 }}>No goals yet. Create goals to start tracking pressure.</Text>
+        <Text style={{ color: 'rgba(236,231,227,0.6)', fontSize: 13 }}>No goals yet. Create goals to start tracking pressure.</Text>
       </View>
     );
   }
@@ -172,50 +186,48 @@ export function GoalLoadCard({ goalLoad }: { goalLoad: any }) {
     toxic:      perGoal.filter((g: any) => g.status === 'toxic').length,
   };
 
-  let modeLabel = 'Stable System Load ✅';
-  let modeColor = '#4ade80';
-  if (avgScore > 0.75) { modeLabel = 'Overloaded ⚠️'; modeColor = '#f87171'; }
-  else if (avgScore < 0.35) { modeLabel = 'Underutilized 💤'; modeColor = '#facc15'; }
+  let modeLabel = 'Stable System Load';
+  let modeColor = '#FFFDFC';
+  if (avgScore > 0.75) { modeLabel = 'Overloaded'; modeColor = '#B42129'; }
+  else if (avgScore < 0.35) { modeLabel = 'Underutilized'; modeColor = '#F9A8AC'; }
 
-  const barColor = avgScore > 0.75 ? '#f87171' : avgScore > 0.5 ? '#f59e0b' : '#4ade80';
+  const barColor = avgScore > 0.75 ? '#B42129' : avgScore > 0.5 ? '#E8414A' : '#ECE7E3';
 
   return (
-    <View style={{ backgroundColor: '#161922', borderWidth: 1, borderColor: '#232632', borderRadius: 16, padding: 20, marginBottom: 20 }}>
+    <View style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 20 }}>
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 16 }}>
         <View>
-          <Text style={{ fontSize: 10, color: '#6b7280', fontWeight: '700', letterSpacing: 2, textTransform: 'uppercase' }}>Goal Load</Text>
-          <Text style={{ fontSize: 11, color: '#4b5563', marginTop: 2 }}>Jarvis system-wide goal pressure</Text>
+          <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.4)', fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Goal Load</Text>
+          <Text style={{ fontSize: 11, color: 'rgba(236,231,227,0.3)', marginTop: 2 }}>Jarvis system-wide goal pressure</Text>
         </View>
-        <Activity size={18} color="#3b82f6" />
+        <Activity size={18} color="#E8414A" />
       </View>
 
-      {/* Score */}
       <View style={{ flexDirection: 'row', justifyContent: 'space-between', marginBottom: 6 }}>
-        <Text style={{ fontSize: 13, color: '#9ca3af' }}>Load Score</Text>
-        <Text style={{ fontSize: 13, fontWeight: '700', color: '#f3f4f6' }}>{pct}%</Text>
+        <Text style={{ fontSize: 13, color: 'rgba(236,231,227,0.65)' }}>Load Score</Text>
+        <Text style={{ fontSize: 13, fontWeight: '700', color: '#FFFDFC' }}>{pct}%</Text>
       </View>
-      <View style={{ height: 8, backgroundColor: '#1c1f2a', borderRadius: 4, overflow: 'hidden', marginBottom: 12 }}>
+      <View style={{ height: 6, backgroundColor: '#161618', borderRadius: 4, overflow: 'hidden', marginBottom: 14 }}>
         <View style={{ height: '100%', width: `${pct}%`, backgroundColor: barColor, borderRadius: 4 }} />
       </View>
 
       <Text style={{ fontSize: 14, fontWeight: '700', color: modeColor, marginBottom: 4 }}>{modeLabel}</Text>
-      <Text style={{ fontSize: 12, color: '#6b7280', marginBottom: 16 }}>
+      <Text style={{ fontSize: 12, color: 'rgba(236,231,227,0.5)', marginBottom: 16 }}>
         {avgScore > 0.75 ? 'Too much pressure. Reduce cadence or recover.'
           : avgScore < 0.35 ? 'You have unused capacity. Add more challenge.'
           : 'Your goals are balanced with your life capacity.'}
       </Text>
 
-      {/* Distribution grid */}
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
         {[
-          { label: 'Aligned', count: distribution.aligned, color: '#4ade80' },
-          { label: 'Strained', count: distribution.strained, color: '#facc15' },
-          { label: 'Conflicting', count: distribution.conflicting, color: '#f97316' },
-          { label: 'Toxic', count: distribution.toxic, color: '#f87171' },
+          { label: 'Aligned', count: distribution.aligned, color: '#ECE7E3' },
+          { label: 'Strained', count: distribution.strained, color: '#F9A8AC' },
+          { label: 'Conflicting', count: distribution.conflicting, color: '#E8414A' },
+          { label: 'Toxic', count: distribution.toxic, color: '#B42129' },
         ].map(item => (
-          <View key={item.label} style={{ flex: 1, minWidth: '45%', flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#0f1115', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 8 }}>
-            <Text style={{ fontSize: 12, color: '#6b7280' }}>{item.label}</Text>
-            <Text style={{ fontSize: 13, fontWeight: '700', color: item.count > 0 ? item.color : '#4b5563' }}>{item.count}</Text>
+          <View key={item.label} style={{ flex: 1, minWidth: '45%', flexDirection: 'row', justifyContent: 'space-between', backgroundColor: '#161618', borderRadius: 10, paddingHorizontal: 12, paddingVertical: 10 }}>
+            <Text style={{ fontSize: 12, color: 'rgba(236,231,227,0.6)' }}>{item.label}</Text>
+            <Text style={{ fontSize: 13, fontWeight: '700', color: item.count > 0 ? item.color : 'rgba(236,231,227,0.25)' }}>{item.count}</Text>
           </View>
         ))}
       </View>

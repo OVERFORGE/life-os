@@ -1,11 +1,17 @@
 import React, { useState, useEffect } from 'react';
-import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform } from 'react-native';
+import { View, Text, StyleSheet, TouchableOpacity, Image, ActivityIndicator, TextInput, ScrollView, Alert, KeyboardAvoidingView, Platform, SafeAreaView } from 'react-native';
 import * as ImagePicker from 'expo-image-picker';
-import { Camera, RefreshCcw, Check, ImageIcon, Dna, Activity, X } from 'lucide-react-native';
+import { Camera, RefreshCcw, Check, ImageIcon, Dna, Activity, X, ArrowLeft } from 'lucide-react-native';
 import { BlurView } from 'expo-blur';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { useToast } from '../../../components/ui/Toast';
 import { fetchWithAuth } from '../../../utils/api';
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
+};
 
 export default function NutritionScanScreen() {
   const router = useRouter();
@@ -134,7 +140,6 @@ export default function NutritionScanScreen() {
       toast.success(
         editModeId ? 'Food Updated!' : 'Added to Library!',
         editModeId ? 'Your changes have been saved.' : 'Food added to your personal library.',
-        { label: 'Go Back', onPress: () => router.back() }
       );
       setTimeout(() => router.back(), 1800);
     } catch (e: any) {
@@ -152,167 +157,169 @@ export default function NutritionScanScreen() {
   };
 
   return (
-    <KeyboardAvoidingView className="flex-1 bg-[#0f1115]" behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
-      <ScrollView contentContainerStyle={{ padding: 24, paddingTop: 60, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
-        
-        <View className="mb-8 flex-row items-center justify-between">
-          <View>
-            <Text className="text-3xl font-bold text-gray-100 tracking-tight">{editModeId ? "Edit Food" : "AI Scanner"}</Text>
-            <Text className="text-sm text-gray-500 mt-1 font-medium">{editModeId ? "Modify specific metrics" : "Precision macro detection"}</Text>
-          </View>
-          {editModeId && (
-            <TouchableOpacity onPress={() => router.back()} className="p-2 border border-[#232632] rounded-full bg-[#161922]">
-              <X color="#9ca3af" size={20} />
-            </TouchableOpacity>
-          )}
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+      <KeyboardAvoidingView style={{ flex: 1 }} behavior={Platform.OS === 'ios' ? 'padding' : undefined}>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+          <TouchableOpacity onPress={() => router.back()} style={{ backgroundColor: C.card, padding: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border }}>
+            <ArrowLeft size={20} color={C.subtext} />
+          </TouchableOpacity>
+          <Text style={{ fontSize: 20, fontWeight: '900', color: C.text, flex: 1, textAlign: 'center' }}>{editModeId ? "Edit Food" : "AI Scanner"}</Text>
+          <View style={{ width: 40 }} />
         </View>
 
-        {!imageUri ? (
-          <View className="mt-8">
-            <TouchableOpacity 
-              className="bg-gray-100 rounded-3xl p-6 items-center mb-4 flex-row justify-center" 
-              onPress={takePicture} 
-              activeOpacity={0.8}
-            >
-              <Camera color="#0f1115" size={24} style={{ marginRight: 12 }} />
-              <Text className="text-lg font-bold text-[#0f1115]">Open Camera</Text>
-            </TouchableOpacity>
-
-            <TouchableOpacity 
-              className="flex-row bg-[#161922] rounded-2xl p-5 items-center justify-center border border-[#232632]" 
-              onPress={pickImage} 
-              activeOpacity={0.7}
-            >
-              <ImageIcon color="#9ca3af" size={20} />
-              <Text className="text-sm font-semibold text-gray-300 ml-3">Upload from Gallery</Text>
-            </TouchableOpacity>
+        <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 100 }} showsVerticalScrollIndicator={false}>
+          
+          <View style={{ marginBottom: 32 }}>
+            <Text style={{ color: C.muted, fontSize: 13, fontWeight: '600', textAlign: 'center' }}>{editModeId ? "Modify specific metrics for this food item." : "Scan any food to get precision macro detection."}</Text>
           </View>
-        ) : (
-          <View className="mt-2">
-            <View className="rounded-3xl overflow-hidden h-[350px] border border-[#232632]">
-              <Image source={{ uri: imageUri }} className="w-full h-full bg-[#161922]" />
-              <TouchableOpacity className="absolute top-4 right-4 rounded-xl overflow-hidden border border-white/10" onPress={() => setImageUri(null)}>
-                <BlurView 
-                  intensity={40} 
-                  tint="dark" 
-                  style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 12, paddingVertical: 8 }}
-                >
-                  <RefreshCcw color="white" size={12} />
-                  <Text className="text-white text-xs font-semibold ml-2">Retake</Text>
-                </BlurView>
+
+          {!imageUri ? (
+            <View>
+              <TouchableOpacity 
+                style={{ backgroundColor: C.text, borderRadius: 24, padding: 24, alignItems: 'center', marginBottom: 16, flexDirection: 'row', justifyContent: 'center' }}
+                onPress={takePicture} 
+                activeOpacity={0.8}
+              >
+                <Camera color={C.bg} size={24} style={{ marginRight: 12 }} />
+                <Text style={{ fontSize: 18, fontWeight: '900', color: C.bg, textTransform: 'uppercase', letterSpacing: 1 }}>Open Camera</Text>
+              </TouchableOpacity>
+
+              <TouchableOpacity 
+                style={{ flexDirection: 'row', backgroundColor: C.card, borderRadius: 24, padding: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
+                onPress={pickImage} 
+                activeOpacity={0.7}
+              >
+                <ImageIcon color={C.subtext} size={20} />
+                <Text style={{ fontSize: 14, fontWeight: '700', color: C.subtext, marginLeft: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Upload from Gallery</Text>
               </TouchableOpacity>
             </View>
-
-            {!results && (
-              <View className="mt-6 bg-[#161922] p-5 rounded-3xl border border-[#232632]">
-                <Text className="text-[10px] font-bold text-gray-500 tracking-widest mb-3">CONTEXT (OPTIONAL)</Text>
-                <TextInput
-                  className="bg-[#0f1115] text-gray-100 text-sm p-4 rounded-xl border border-[#232632] h-24"
-                  style={{ textAlignVertical: 'top' }}
-                  placeholder="e.g. Cooked with 1 tbsp olive oil"
-                  placeholderTextColor="#4b5563"
-                  value={description}
-                  onChangeText={setDescription}
-                  multiline
-                />
-                
-                <TouchableOpacity 
-                  className={`mt-4 rounded-xl p-4 items-center ${isAnalyzing ? 'bg-[#232632]' : 'bg-gray-100'}`} 
-                  onPress={analyzeFood} 
-                  disabled={isAnalyzing}
-                >
-                  {isAnalyzing ? (
-                    <ActivityIndicator color="#0f1115" />
-                  ) : (
-                    <Text className="text-[#0f1115] font-bold text-base">Analyze Food Data</Text>
-                  )}
+          ) : (
+            <View>
+              <View style={{ borderRadius: 24, overflow: 'hidden', height: 350, borderWidth: 1, borderColor: C.border }}>
+                <Image source={{ uri: imageUri }} style={{ width: '100%', height: '100%', backgroundColor: C.card }} />
+                <TouchableOpacity style={{ position: 'absolute', top: 16, right: 16, borderRadius: 16, overflow: 'hidden', borderWidth: 1, borderColor: 'rgba(255,255,255,0.1)' }} onPress={() => setImageUri(null)}>
+                  <BlurView 
+                    intensity={40} 
+                    tint="dark" 
+                    style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 16, paddingVertical: 12 }}
+                  >
+                    <RefreshCcw color="white" size={14} />
+                    <Text style={{ color: 'white', fontSize: 12, fontWeight: '900', marginLeft: 8, textTransform: 'uppercase', letterSpacing: 1 }}>Retake</Text>
+                  </BlurView>
                 </TouchableOpacity>
               </View>
-            )}
-          </View>
-        )}
 
-        {results && (
-          <View className="mt-8 bg-[#161922] p-6 rounded-3xl border border-[#232632] shadow-xl">
-            <Text className="text-[10px] font-bold text-gray-500 tracking-widest mb-4 text-center">VERIFICATION OVERRIDE</Text>
-            
-            <TextInput 
-              className="bg-[#0f1115] text-gray-100 text-xl font-bold p-4 rounded-xl text-center mb-6 border border-[#232632] focus:border-[#4b5563]"
-              value={results.name}
-              onChangeText={(text) => setResults({...results, name: text})}
-            />
-
-            <View className="flex-row items-center mb-4 ml-1">
-              <Activity size={16} color="#9ca3af" />
-              <Text className="text-gray-300 text-sm font-bold tracking-wide ml-2">MACROS</Text>
-            </View>
-            
-            <View className="flex-row flex-wrap justify-between mb-2">
-              {[
-                { label: 'Calories', key: 'calories', suffix: 'KCAL' },
-                { label: 'Protein', key: 'protein', suffix: 'g' },
-                { label: 'Carbs', key: 'carbs', suffix: 'g' },
-                { label: 'Fats', key: 'fats', suffix: 'g' }
-              ].map((item) => (
-                <View className="w-[48%] bg-[#0f1115] p-4 rounded-2xl mb-4 border border-[#232632]" key={item.key}>
-                  <Text className="text-[10px] text-gray-500 font-bold tracking-wider mb-2 uppercase">{item.label}</Text>
-                  <View className="flex-row items-end">
-                    <TextInput 
-                      className="text-gray-100 text-2xl font-bold p-0 min-w-[40px] border-b border-[#232632] focus:border-[#4b5563] pb-0.5"
-                      keyboardType="numeric"
-                      value={String(results.macros?.[item.key] || 0)}
-                      onChangeText={(val) => updateMacro(item.key, val)}
-                    />
-                    <Text className="text-gray-500 text-xs font-bold ml-1 mb-1">{item.suffix}</Text>
-                  </View>
+              {!results && (
+                <View style={{ marginTop: 24, backgroundColor: C.card, padding: 24, borderRadius: 24, borderWidth: 1, borderColor: C.border }}>
+                  <Text style={{ fontSize: 10, fontWeight: '900', color: C.muted, textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12 }}>Context (Optional)</Text>
+                  <TextInput
+                    style={{ backgroundColor: C.bg, color: C.text, fontSize: 14, padding: 16, borderRadius: 16, borderWidth: 1, borderColor: C.border, height: 96, textAlignVertical: 'top' }}
+                    placeholder="e.g. Cooked with 1 tbsp olive oil"
+                    placeholderTextColor={C.muted}
+                    value={description}
+                    onChangeText={setDescription}
+                    multiline
+                  />
+                  
+                  <TouchableOpacity 
+                    style={{ marginTop: 16, borderRadius: 16, padding: 16, alignItems: 'center', backgroundColor: isAnalyzing ? C.bg : C.text, borderWidth: 1, borderColor: isAnalyzing ? C.border : C.text }}
+                    onPress={analyzeFood} 
+                    disabled={isAnalyzing}
+                  >
+                    {isAnalyzing ? (
+                      <ActivityIndicator color={C.primary} />
+                    ) : (
+                      <Text style={{ color: C.bg, fontWeight: '900', fontSize: 16, textTransform: 'uppercase', letterSpacing: 1 }}>Analyze Food Data</Text>
+                    )}
+                  </TouchableOpacity>
                 </View>
-              ))}
-            </View>
-
-            <View className="flex-row items-center mb-4 ml-1 mt-2">
-              <Dna size={16} color="#9ca3af" />
-              <Text className="text-gray-300 text-sm font-bold tracking-wide ml-2">MICROS</Text>
-            </View>
-
-            <View className="flex-row flex-wrap justify-between">
-              {[
-                { label: 'Zinc', key: 'zinc' },
-                { label: 'Magnesium', key: 'magnesium' },
-                { label: 'Vitamin C', key: 'vitaminC' },
-                { label: 'Vitamin B', key: 'vitaminB' },
-                { label: 'Iron', key: 'iron' },
-                { label: 'Calcium', key: 'calcium' }
-              ].map((item) => (
-                <View className="w-[48%] bg-[#0f1115] p-3 rounded-xl mb-3 border border-[#232632]" key={item.key}>
-                  <Text className="text-[10px] text-gray-500 font-bold tracking-wider mb-2 uppercase">{item.label}</Text>
-                  <View className="flex-row items-end">
-                    <TextInput 
-                      className="text-gray-100 text-lg font-bold p-0 min-w-[30px] border-b border-[#232632] focus:border-[#4b5563] pb-0.5"
-                      keyboardType="numeric"
-                      value={String(results.micros?.[item.key] || 0)}
-                      onChangeText={(val) => updateMicro(item.key, val)}
-                    />
-                    <Text className="text-gray-500 text-xs font-bold ml-1 mb-1">mg</Text>
-                  </View>
-                </View>
-              ))}
-            </View>
-
-            <TouchableOpacity 
-              className={`mt-6 rounded-xl p-4 items-center ${isSaving ? 'bg-[#232632]' : 'bg-gray-100'}`} 
-              onPress={saveToLibrary} 
-              disabled={isSaving}
-            >
-              {isSaving ? (
-                <ActivityIndicator color="#0f1115" />
-              ) : (
-                <Text className="text-[#0f1115] font-bold text-base">Save to Library</Text>
               )}
-            </TouchableOpacity>
-          </View>
-        )}
+            </View>
+          )}
 
-      </ScrollView>
-    </KeyboardAvoidingView>
+          {results && (
+            <View style={{ marginTop: 32, backgroundColor: C.card, padding: 24, borderRadius: 24, borderWidth: 1, borderColor: C.border, shadowColor: '#000', shadowOffset: { width: 0, height: 10 }, shadowOpacity: 0.5, shadowRadius: 20, elevation: 10 }}>
+              <Text style={{ fontSize: 10, fontWeight: '900', color: C.muted, textTransform: 'uppercase', letterSpacing: 2, marginBottom: 16, textAlign: 'center' }}>Verification Override</Text>
+              
+              <TextInput 
+                style={{ backgroundColor: C.bg, color: C.text, fontSize: 20, fontWeight: '900', padding: 16, borderRadius: 16, textAlign: 'center', marginBottom: 24, borderWidth: 1, borderColor: C.border }}
+                value={results.name}
+                onChangeText={(text) => setResults({...results, name: text})}
+              />
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: 4 }}>
+                <Activity size={16} color={C.primary} />
+                <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginLeft: 8, textTransform: 'uppercase' }}>Macros</Text>
+              </View>
+              
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between', marginBottom: 8 }}>
+                {[
+                  { label: 'Calories', key: 'calories', suffix: 'KCAL' },
+                  { label: 'Protein', key: 'protein', suffix: 'g' },
+                  { label: 'Carbs', key: 'carbs', suffix: 'g' },
+                  { label: 'Fats', key: 'fats', suffix: 'g' }
+                ].map((item) => (
+                  <View style={{ width: '48%', backgroundColor: C.bg, padding: 16, borderRadius: 20, marginBottom: 16, borderWidth: 1, borderColor: C.border }} key={item.key}>
+                    <Text style={{ fontSize: 10, color: C.muted, fontWeight: '900', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' }}>{item.label}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+                      <TextInput 
+                        style={{ color: C.text, fontSize: 24, fontWeight: '900', padding: 0, minWidth: 40, borderBottomWidth: 1, borderBottomColor: C.border, paddingBottom: 2 }}
+                        keyboardType="numeric"
+                        value={String(results.macros?.[item.key] || 0)}
+                        onChangeText={(val) => updateMacro(item.key, val)}
+                      />
+                      <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '900', marginLeft: 4, marginBottom: 4 }}>{item.suffix}</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16, marginLeft: 4, marginTop: 8 }}>
+                <Dna size={16} color={C.primary} />
+                <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '900', letterSpacing: 1, marginLeft: 8, textTransform: 'uppercase' }}>Micros</Text>
+              </View>
+
+              <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
+                {[
+                  { label: 'Zinc', key: 'zinc' },
+                  { label: 'Magnesium', key: 'magnesium' },
+                  { label: 'Vitamin C', key: 'vitaminC' },
+                  { label: 'Vitamin B', key: 'vitaminB' },
+                  { label: 'Iron', key: 'iron' },
+                  { label: 'Calcium', key: 'calcium' }
+                ].map((item) => (
+                  <View style={{ width: '48%', backgroundColor: C.bg, padding: 12, borderRadius: 16, marginBottom: 12, borderWidth: 1, borderColor: C.border }} key={item.key}>
+                    <Text style={{ fontSize: 10, color: C.muted, fontWeight: '900', letterSpacing: 1, marginBottom: 8, textTransform: 'uppercase' }}>{item.label}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'flex-end' }}>
+                      <TextInput 
+                        style={{ color: C.text, fontSize: 18, fontWeight: '900', padding: 0, minWidth: 30, borderBottomWidth: 1, borderBottomColor: C.border, paddingBottom: 2 }}
+                        keyboardType="numeric"
+                        value={String(results.micros?.[item.key] || 0)}
+                        onChangeText={(val) => updateMicro(item.key, val)}
+                      />
+                      <Text style={{ color: C.muted, fontSize: 12, fontWeight: '900', marginLeft: 4, marginBottom: 2 }}>mg</Text>
+                    </View>
+                  </View>
+                ))}
+              </View>
+
+              <TouchableOpacity 
+                style={{ marginTop: 24, borderRadius: 16, padding: 16, alignItems: 'center', backgroundColor: isSaving ? C.bg : C.text, borderWidth: 1, borderColor: isSaving ? C.border : C.text }}
+                onPress={saveToLibrary} 
+                disabled={isSaving}
+              >
+                {isSaving ? (
+                  <ActivityIndicator color={C.primary} />
+                ) : (
+                  <Text style={{ color: C.bg, fontWeight: '900', fontSize: 16, textTransform: 'uppercase', letterSpacing: 1 }}>Save to Library</Text>
+                )}
+              </TouchableOpacity>
+            </View>
+          )}
+
+        </ScrollView>
+      </KeyboardAvoidingView>
+    </SafeAreaView>
   );
 }

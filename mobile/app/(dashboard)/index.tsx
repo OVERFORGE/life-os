@@ -1,12 +1,13 @@
 import { useEffect, useState } from 'react';
 import { ScrollView, View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
-import { Bell, CheckSquare } from 'lucide-react-native';
+import { Bell } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../utils/api';
 import { TrajectoryCard, CurrentEraCard, GoalLoadCard } from '../../components/dashboard/Cards';
 import { SummaryGrid, SystemInsightCard } from '../../components/dashboard/StatCards';
 import { StreakGrid, PersonalRecords, InsightsGrid, Heatmap } from '../../components/dashboard/Lists';
 import { MoodEnergyChart } from '../../components/dashboard/Graphs';
+import { DashboardTaskCard } from '../../components/dashboard/TaskCard';
 
 export default function DashboardFeed() {
   const router = useRouter();
@@ -41,23 +42,23 @@ export default function DashboardFeed() {
 
   if (loading) {
     return (
-      <View className="flex-1 bg-[#0f1115] items-center justify-center">
-        <ActivityIndicator color="#4b5563" />
-        <Text className="text-gray-400 mt-4">Syncing Telemetry...</Text>
+      <View className="flex-1 bg-[#161618] items-center justify-center">
+        <ActivityIndicator color="#D62C35" />
+        <Text className="text-[#ECE7E3]/70 mt-4">Syncing Telemetry...</Text>
       </View>
     );
   }
 
   return (
-    <View className="flex-1 bg-[#0f1115]">
+    <View className="flex-1 bg-[#161618]">
       {/* Dynamic Header */}
       <View className="flex-row items-center justify-between px-6 pt-16 pb-4">
-        <Text className="text-2xl font-bold text-gray-100">Overview</Text>
+        <Text className="text-2xl font-bold tracking-tight text-[#FFFDFC]">Overview</Text>
         <TouchableOpacity 
           onPress={() => router.push('/notifications')}
-          className="w-10 h-10 rounded-full border border-[#232632] bg-[#161922] items-center justify-center relative"
+          className="w-10 h-10 rounded-full border border-[#2A2B2F] bg-[#1F2023] items-center justify-center relative"
         >
-          <Bell color="#f3f4f6" size={18} />
+          <Bell color="#FFFDFC" size={18} />
           {/* Optional: Add a red dot if unread */}
         </TouchableOpacity>
       </View>
@@ -71,21 +72,8 @@ export default function DashboardFeed() {
 
         <GoalLoadCard goalLoad={goalLoad} />
 
-        {/* Task Manager Quick Link */}
-        <TouchableOpacity 
-          onPress={() => router.push('/(dashboard)/tools/tasks')}
-          className="bg-[#161922] p-4 rounded-xl border border-[#232632] mb-4 flex-row items-center justify-between"
-        >
-          <View className="flex-row items-center">
-            <View className="w-10 h-10 bg-[#1e2330] rounded-full items-center justify-center mr-3">
-              <CheckSquare color="#3b82f6" size={20} />
-            </View>
-            <View>
-              <Text className="text-gray-100 font-bold text-lg">Task Manager</Text>
-              <Text className="text-gray-400 text-sm">View and manage today's plan</Text>
-            </View>
-          </View>
-        </TouchableOpacity>
+        {/* Task Manager Card */}
+        <DashboardTaskCard />
 
         <SystemInsightCard />
         

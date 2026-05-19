@@ -10,9 +10,9 @@ import { useToast } from '../../../components/ui/Toast';
 import { fetchWithAuth } from '../../../utils/api';
 
 const C = {
-  bg: '#0f1115', card: '#161922', border: '#232632', border2: '#374151',
-  text: '#f3f4f6', subtext: '#9ca3af', muted: '#6b7280',
-  emerald: '#10b981', emeraldBg: 'rgba(16,185,129,0.1)',
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
 };
 
 function getLocalDateString() {
@@ -187,8 +187,8 @@ export default function NutritionDashboard() {
   if (initialLoading) {
     return (
       <SafeAreaView style={{ flex: 1, backgroundColor: C.bg, justifyContent: 'center', alignItems: 'center' }}>
-        <ActivityIndicator color={C.emerald} size="large" />
-        <Text style={{ color: C.muted, marginTop: 12, fontSize: 13 }}>Loading nutrition data…</Text>
+        <ActivityIndicator color={C.primary} size="large" />
+        <Text style={{ color: C.muted, marginTop: 12, fontSize: 13, fontWeight: '700' }}>Loading telemetry…</Text>
       </SafeAreaView>
     );
   }
@@ -196,14 +196,14 @@ export default function NutritionDashboard() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       <ScrollView
-        contentContainerStyle={{ padding: 24, paddingTop: 16, paddingBottom: 140 }}
+        contentContainerStyle={{ padding: 20, paddingTop: 16, paddingBottom: 140 }}
         showsVerticalScrollIndicator={false}
         refreshControl={
           <RefreshControl
             refreshing={refreshing}
             onRefresh={onRefresh}
-            tintColor={C.emerald}
-            colors={[C.emerald]}
+            tintColor={C.primary}
+            colors={[C.primary]}
           />
         }
       >
@@ -211,32 +211,32 @@ export default function NutritionDashboard() {
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 28, marginTop: 8 }}>
           <TouchableOpacity
             onPress={() => router.push('/(dashboard)/health')}
-            style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center', marginRight: 14 }}
+            style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}
             activeOpacity={0.7}
           >
             <ArrowLeft color={C.subtext} size={18} />
           </TouchableOpacity>
           <View>
-            <Text style={{ fontSize: 32, fontWeight: '900', color: C.text, letterSpacing: -1 }}>Nutrition</Text>
-            <Text style={{ fontSize: 10, fontWeight: '700', color: C.muted, marginTop: 2, letterSpacing: 3, textTransform: 'uppercase' }}>Metabolic Telemetry</Text>
+            <Text style={{ fontSize: 24, fontWeight: '900', color: C.text, letterSpacing: -0.5 }}>Nutrition</Text>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: C.muted, marginTop: 2, letterSpacing: 2, textTransform: 'uppercase' }}>Metabolic Telemetry</Text>
           </View>
         </View>
 
         {/* Today's Intake Widget */}
         <TouchableOpacity
-          onPress={() => router.push('/nutrition/daily-log')}
+          onPress={() => router.push('/(dashboard)/nutrition/daily-log')}
           activeOpacity={0.85}
           style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 32, overflow: 'hidden' }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
-            <Activity color={C.emerald} size={14} />
-            <Text style={{ fontSize: 10, fontWeight: '800', color: C.subtext, letterSpacing: 3, marginLeft: 8, textTransform: 'uppercase' }}>Today's Intake</Text>
+            <Activity color={C.primary} size={14} />
+            <Text style={{ fontSize: 10, fontWeight: '800', color: C.subtext, letterSpacing: 2, marginLeft: 8, textTransform: 'uppercase' }}>Today's Intake</Text>
             <View style={{ flex: 1 }} />
-            <ChevronRight color={C.border2} size={16} />
+            <ChevronRight color={C.muted} size={16} />
           </View>
           <View style={{ flexDirection: 'row', alignItems: 'baseline', marginBottom: 20 }}>
-            <Text style={{ fontSize: 52, fontWeight: '900', color: C.text, letterSpacing: -2 }}>{Math.round(intake.calories || 0)}</Text>
-            <Text style={{ fontSize: 13, fontWeight: '800', color: C.emerald, marginLeft: 8 }}>KCAL</Text>
+            <Text style={{ fontSize: 48, fontWeight: '900', color: C.text, letterSpacing: -2 }}>{Math.round(intake.calories || 0)}</Text>
+            <Text style={{ fontSize: 12, fontWeight: '800', color: C.primary, marginLeft: 6 }}>KCAL</Text>
           </View>
           <View style={{ flexDirection: 'row', justifyContent: 'space-between', paddingTop: 20, borderTopWidth: 1, borderTopColor: C.border }}>
             {[
@@ -245,110 +245,110 @@ export default function NutritionDashboard() {
               { label: 'Fats', value: Math.round(intake.fats || 0) },
             ].map(item => (
               <View key={item.label} style={{ alignItems: 'flex-start' }}>
-                <Text style={{ fontSize: 22, fontWeight: '800', color: C.text }}>{item.value}g</Text>
-                <Text style={{ fontSize: 10, fontWeight: '700', color: C.muted, marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 }}>{item.label}</Text>
+                <Text style={{ fontSize: 20, fontWeight: '900', color: C.text }}>{item.value}g</Text>
+                <Text style={{ fontSize: 10, fontWeight: '800', color: C.muted, marginTop: 4, textTransform: 'uppercase', letterSpacing: 1 }}>{item.label}</Text>
               </View>
             ))}
           </View>
         </TouchableOpacity>
 
         {/* Log Food Section */}
-        <Text style={{ fontSize: 10, fontWeight: '800', color: C.muted, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 14, marginLeft: 4 }}>Log Food</Text>
+        <Text style={{ fontSize: 10, fontWeight: '800', color: C.muted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 14, marginLeft: 4 }}>Log Food</Text>
 
         <TouchableOpacity
-          onPress={() => router.push('/nutrition/scan')}
+          onPress={() => router.push('/(dashboard)/nutrition/scan')}
           activeOpacity={0.8}
-          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#f3f4f6', padding: 18, borderRadius: 20, marginBottom: 10 }}
+          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: '#FFFDFC', padding: 16, borderRadius: 20, marginBottom: 10 }}
         >
-          <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: '#0f1115', justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
-            <Camera color={C.text} size={22} />
+          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: '#161618', justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
+            <Camera color="#FFFDFC" size={20} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '800', color: '#0f1115', marginBottom: 2 }}>AI Meal Scan</Text>
-            <Text style={{ fontSize: 12, color: '#6b7280', fontWeight: '500' }}>Analyze food macros via camera</Text>
+            <Text style={{ fontSize: 16, fontWeight: '800', color: '#161618', marginBottom: 2 }}>AI Meal Scan</Text>
+            <Text style={{ fontSize: 12, color: 'rgba(22,22,24,0.6)', fontWeight: '600' }}>Analyze food macros via camera</Text>
           </View>
-          <ChevronRight color="#6b7280" size={18} />
+          <ChevronRight color="rgba(22,22,24,0.3)" size={18} />
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => setSheetMode('library')}
           activeOpacity={0.8}
-          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, padding: 18, borderRadius: 20, marginBottom: 10, borderWidth: 1, borderColor: C.border }}
+          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, padding: 16, borderRadius: 20, marginBottom: 10, borderWidth: 1, borderColor: C.border }}
         >
-          <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: C.border, justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
-            <BookOpen color={C.subtext} size={20} />
+          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: C.border, justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
+            <BookOpen color={C.subtext} size={18} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: C.text, marginBottom: 2 }}>From Library</Text>
-            <Text style={{ fontSize: 12, color: C.muted, fontWeight: '500' }}>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: C.text, marginBottom: 2 }}>From Library</Text>
+            <Text style={{ fontSize: 12, color: C.muted, fontWeight: '600' }}>
               {library.length > 0 ? `${library.length} foods saved` : 'Pick a saved food & log it'}
             </Text>
           </View>
-          <ChevronRight color={C.border2} size={18} />
+          <ChevronRight color={C.border} size={18} />
         </TouchableOpacity>
 
         <TouchableOpacity
           onPress={() => setSheetMode('template')}
           activeOpacity={0.8}
-          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, padding: 18, borderRadius: 20, marginBottom: 24, borderWidth: 1, borderColor: C.border }}
+          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, padding: 16, borderRadius: 20, marginBottom: 24, borderWidth: 1, borderColor: C.border }}
         >
-          <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: C.emeraldBg, justifyContent: 'center', alignItems: 'center', marginRight: 16, borderWidth: 1, borderColor: C.emerald + '40' }}>
-            <Layers color={C.emerald} size={20} />
+          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: C.primaryBg, justifyContent: 'center', alignItems: 'center', marginRight: 16, borderWidth: 1, borderColor: 'rgba(232,65,74,0.2)' }}>
+            <Layers color={C.primary} size={18} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: C.text, marginBottom: 2 }}>Use Day Template</Text>
-            <Text style={{ fontSize: 12, color: C.muted, fontWeight: '500' }}>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: C.text, marginBottom: 2 }}>Use Day Template</Text>
+            <Text style={{ fontSize: 12, color: C.muted, fontWeight: '600' }}>
               {templates.length > 0 ? `${templates.length} template${templates.length > 1 ? 's' : ''} available` : 'Log an entire day in one tap'}
             </Text>
           </View>
-          <ChevronRight color={C.border2} size={18} />
+          <ChevronRight color={C.border} size={18} />
         </TouchableOpacity>
 
         <View style={{ height: 1, backgroundColor: C.border, marginBottom: 24 }} />
 
-        <Text style={{ fontSize: 10, fontWeight: '800', color: C.muted, letterSpacing: 3, textTransform: 'uppercase', marginBottom: 14, marginLeft: 4 }}>Manage</Text>
+        <Text style={{ fontSize: 10, fontWeight: '800', color: C.muted, letterSpacing: 2, textTransform: 'uppercase', marginBottom: 14, marginLeft: 4 }}>Manage</Text>
         <TouchableOpacity
-          onPress={() => router.push('/nutrition/library')}
+          onPress={() => router.push('/(dashboard)/nutrition/library')}
           activeOpacity={0.8}
-          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, padding: 18, borderRadius: 20, borderWidth: 1, borderColor: C.border, marginBottom: 10 }}
+          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: C.border, marginBottom: 10 }}
         >
-          <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: C.border, justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
-            <BookOpen color={C.subtext} size={20} />
+          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: C.border, justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
+            <BookOpen color={C.subtext} size={18} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: C.text, marginBottom: 2 }}>Food Library</Text>
-            <Text style={{ fontSize: 12, color: C.muted, fontWeight: '500' }}>Custom foods & day templates</Text>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: C.text, marginBottom: 2 }}>Food Library</Text>
+            <Text style={{ fontSize: 12, color: C.muted, fontWeight: '600' }}>Custom foods & day templates</Text>
           </View>
-          <ChevronRight color={C.border2} size={18} />
+          <ChevronRight color={C.border} size={18} />
         </TouchableOpacity>
 
         <TouchableOpacity
-          onPress={() => router.push('/nutrition/history')}
+          onPress={() => router.push('/(dashboard)/nutrition/history')}
           activeOpacity={0.8}
-          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, padding: 18, borderRadius: 20, borderWidth: 1, borderColor: C.border }}
+          style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, padding: 16, borderRadius: 20, borderWidth: 1, borderColor: C.border }}
         >
-          <View style={{ width: 48, height: 48, borderRadius: 14, backgroundColor: C.border, justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
-            <CalendarDays color={C.subtext} size={20} />
+          <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: C.border, justifyContent: 'center', alignItems: 'center', marginRight: 16 }}>
+            <CalendarDays color={C.subtext} size={18} />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ fontSize: 16, fontWeight: '700', color: C.text, marginBottom: 2 }}>History</Text>
-            <Text style={{ fontSize: 12, color: C.muted, fontWeight: '500' }}>View past logs and weekly data</Text>
+            <Text style={{ fontSize: 15, fontWeight: '800', color: C.text, marginBottom: 2 }}>History</Text>
+            <Text style={{ fontSize: 12, color: C.muted, fontWeight: '600' }}>View past logs and weekly data</Text>
           </View>
-          <ChevronRight color={C.border2} size={18} />
+          <ChevronRight color={C.border} size={18} />
         </TouchableOpacity>
       </ScrollView>
 
       {/* ═══════════════ BOTTOM SHEET ═══════════════ */}
       <Modal visible={sheetMode !== null} transparent animationType="slide" statusBarTranslucent>
-        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.72)' }}>
-          <View style={{ backgroundColor: C.card, borderTopLeftRadius: 28, borderTopRightRadius: 28, paddingBottom: 40, maxHeight: '82%', borderTopWidth: 1, borderTopColor: C.border }}>
+        <View style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0, justifyContent: 'flex-end', backgroundColor: 'rgba(0,0,0,0.8)' }}>
+          <View style={{ backgroundColor: C.card, borderTopLeftRadius: 32, borderTopRightRadius: 32, paddingBottom: 40, maxHeight: '85%', borderTopWidth: 1, borderTopColor: C.border }}>
 
             {/* Sheet Header */}
-            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 20, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
-              <Text style={{ color: C.text, fontSize: 17, fontWeight: '800' }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', padding: 24, paddingBottom: 20, borderBottomWidth: 1, borderBottomColor: C.border }}>
+              <Text style={{ color: C.text, fontSize: 18, fontWeight: '900' }}>
                 {sheetMode === 'library' ? 'Log from Library' : 'Use Day Template'}
               </Text>
-              <TouchableOpacity onPress={closeSheet} style={{ padding: 6, backgroundColor: C.border, borderRadius: 14 }}>
+              <TouchableOpacity onPress={closeSheet} style={{ padding: 8, backgroundColor: C.border, borderRadius: 16 }}>
                 <X color={C.subtext} size={16} />
               </TouchableOpacity>
             </View>
@@ -357,22 +357,22 @@ export default function NutritionDashboard() {
             {sheetMode === 'library' && !selectedFood && (
               <ScrollView contentContainerStyle={{ padding: 20 }}>
                 {library.length === 0 ? (
-                  <View style={{ alignItems: 'center', marginTop: 30 }}>
-                    <BookOpen color={C.border2} size={36} />
-                    <Text style={{ color: C.muted, textAlign: 'center', marginTop: 10 }}>Your library is empty. Scan some meals first!</Text>
+                  <View style={{ alignItems: 'center', marginTop: 40 }}>
+                    <BookOpen color={C.muted} size={40} />
+                    <Text style={{ color: C.subtext, textAlign: 'center', marginTop: 16, fontWeight: '600' }}>Your library is empty. Scan some meals first!</Text>
                   </View>
                 ) : (
                   library.map(food => (
                     <TouchableOpacity
                       key={food._id}
                       onPress={() => { setSelectedFood(food); setLogAmount(String(food.baseWeight || 100)); setLogQuantity(1); }}
-                      style={{ backgroundColor: C.bg, borderRadius: 14, padding: 14, marginBottom: 10, borderWidth: 1, borderColor: C.border, flexDirection: 'row', alignItems: 'center' }}
+                      style={{ backgroundColor: C.bg, borderRadius: 16, padding: 16, marginBottom: 12, borderWidth: 1, borderColor: C.border, flexDirection: 'row', alignItems: 'center' }}
                     >
                       <View style={{ flex: 1 }}>
-                        <Text style={{ color: C.text, fontWeight: '700', fontSize: 14, marginBottom: 2 }}>{food.name}</Text>
-                        <Text style={{ color: C.muted, fontSize: 12 }}>{food.macros?.calories} kcal · {food.macros?.protein}g P · base {food.baseWeight}g</Text>
+                        <Text style={{ color: C.text, fontWeight: '800', fontSize: 15, marginBottom: 4 }}>{food.name}</Text>
+                        <Text style={{ color: C.muted, fontSize: 12, fontWeight: '600' }}>{food.macros?.calories} kcal · {food.macros?.protein}g P · base {food.baseWeight}g</Text>
                       </View>
-                      <ChevronRight color={C.border2} size={16} />
+                      <ChevronRight color={C.muted} size={16} />
                     </TouchableOpacity>
                   ))
                 )}
@@ -381,12 +381,12 @@ export default function NutritionDashboard() {
 
             {/* Library: gram selector */}
             {sheetMode === 'library' && selectedFood && (
-              <View style={{ padding: 20 }}>
-                <TouchableOpacity onPress={() => setSelectedFood(null)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
-                  <Text style={{ color: C.emerald, fontSize: 13, fontWeight: '700' }}>← Back</Text>
+              <View style={{ padding: 24 }}>
+                <TouchableOpacity onPress={() => setSelectedFood(null)} style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+                  <Text style={{ color: C.primary, fontSize: 14, fontWeight: '800' }}>← Back</Text>
                 </TouchableOpacity>
-                <Text style={{ color: C.text, fontSize: 18, fontWeight: '800', marginBottom: 4 }}>{selectedFood.name}</Text>
-                <Text style={{ color: C.muted, fontSize: 13, marginBottom: 24 }}>Set the amount to log</Text>
+                <Text style={{ color: C.text, fontSize: 22, fontWeight: '900', marginBottom: 4 }}>{selectedFood.name}</Text>
+                <Text style={{ color: C.muted, fontSize: 13, fontWeight: '600', marginBottom: 24 }}>Set the amount to log</Text>
                 {(() => {
                   const m = scaledMacros(selectedFood.macros, selectedFood.baseWeight, parseInt(logAmount) || 100);
                   const totalM = {
@@ -396,30 +396,30 @@ export default function NutritionDashboard() {
                     fats: Math.round(m.fats * logQuantity * 10) / 10,
                   };
                   return (
-                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: C.bg, borderRadius: 14, padding: 16, marginBottom: 20, borderWidth: 1, borderColor: C.border }}>
+                    <View style={{ flexDirection: 'row', justifyContent: 'space-between', backgroundColor: C.bg, borderRadius: 16, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: C.border }}>
                       {[{ v: totalM.calories, l: 'KCAL' }, { v: totalM.protein, l: 'P' }, { v: totalM.carbs, l: 'C' }, { v: totalM.fats, l: 'F' }].map(({ v, l }) => (
                         <View key={l} style={{ alignItems: 'center' }}>
-                          <Text style={{ color: C.text, fontSize: 18, fontWeight: '800' }}>{v}{l !== 'KCAL' ? 'g' : ''}</Text>
-                          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase' }}>{l}</Text>
+                          <Text style={{ color: C.text, fontSize: 20, fontWeight: '900' }}>{v}{l !== 'KCAL' ? 'g' : ''}</Text>
+                          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', marginTop: 4 }}>{l}</Text>
                         </View>
                       ))}
                     </View>
                   );
                 })()}
-                <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
+                <View style={{ flexDirection: 'row', gap: 16, marginBottom: 32 }}>
                   {/* Grams */}
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: C.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, textAlign: 'center' }}>Grams</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, textAlign: 'center' }}>Grams</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <TouchableOpacity
                         onPress={() => setLogAmount(String(Math.max(10, parseInt(logAmount) - 10)))}
-                        style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
+                        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
                       >
-                        <Minus color={C.subtext} size={18} />
+                        <Minus color={C.subtext} size={16} />
                       </TouchableOpacity>
-                      <View style={{ flex: 1, backgroundColor: C.bg, borderRadius: 14, borderWidth: 1, borderColor: C.border, alignItems: 'center', paddingVertical: 10 }}>
+                      <View style={{ flex: 1, backgroundColor: C.bg, borderRadius: 14, borderWidth: 1, borderColor: C.border, alignItems: 'center', paddingVertical: 8 }}>
                         <TextInput
-                          style={{ color: C.text, fontSize: 20, fontWeight: '800', textAlign: 'center', padding: 0 }}
+                          style={{ color: C.text, fontSize: 18, fontWeight: '900', textAlign: 'center', padding: 0 }}
                           keyboardType="numeric"
                           value={logAmount}
                           onChangeText={setLogAmount}
@@ -427,60 +427,59 @@ export default function NutritionDashboard() {
                       </View>
                       <TouchableOpacity
                         onPress={() => setLogAmount(String((parseInt(logAmount) || 0) + 10))}
-                        style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
+                        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
                       >
-                        <Plus color={C.subtext} size={18} />
+                        <Plus color={C.subtext} size={16} />
                       </TouchableOpacity>
                     </View>
                   </View>
                   
                   {/* Quantity */}
                   <View style={{ flex: 1 }}>
-                    <Text style={{ color: C.muted, fontSize: 11, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, textAlign: 'center' }}>Quantity</Text>
-                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+                    <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, textAlign: 'center' }}>Quantity</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
                       <TouchableOpacity
                         onPress={() => setLogQuantity(q => Math.max(1, q - 1))}
-                        style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
+                        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
                       >
-                        <Minus color={C.subtext} size={18} />
+                        <Minus color={C.subtext} size={16} />
                       </TouchableOpacity>
                       <View style={{ flex: 1, backgroundColor: C.bg, borderRadius: 14, borderWidth: 1, borderColor: C.border, alignItems: 'center', paddingVertical: 10 }}>
-                        <Text style={{ color: C.text, fontSize: 20, fontWeight: '800', textAlign: 'center' }}>
+                        <Text style={{ color: C.text, fontSize: 18, fontWeight: '900', textAlign: 'center' }}>
                           {logQuantity}
                         </Text>
                       </View>
                       <TouchableOpacity
                         onPress={() => setLogQuantity(q => q + 1)}
-                        style={{ width: 44, height: 44, borderRadius: 22, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
+                        style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
                       >
-                        <Plus color={C.subtext} size={18} />
+                        <Plus color={C.subtext} size={16} />
                       </TouchableOpacity>
                     </View>
                   </View>
                 </View>
-
                 <TouchableOpacity
                   onPress={confirmLogFood}
                   disabled={isLogging}
-                  style={{ paddingVertical: 16, borderRadius: 16, alignItems: 'center', backgroundColor: isLogging ? C.border : '#f3f4f6' }}
+                  style={{ paddingVertical: 18, borderRadius: 16, alignItems: 'center', backgroundColor: isLogging ? C.border : C.primary }}
                 >
-                  {isLogging ? <ActivityIndicator color="#0f1115" /> : <Text style={{ color: '#0f1115', fontWeight: '800', fontSize: 15 }}>Log to Today</Text>}
+                  {isLogging ? <ActivityIndicator color="#FFFDFC" /> : <Text style={{ color: '#FFFDFC', fontWeight: '900', fontSize: 16 }}>Log to Today</Text>}
                 </TouchableOpacity>
               </View>
             )}
 
             {/* Template list */}
             {sheetMode === 'template' && (
-              <ScrollView contentContainerStyle={{ padding: 20 }}>
+              <ScrollView contentContainerStyle={{ padding: 24 }}>
                 {templates.length === 0 ? (
-                  <View style={{ alignItems: 'center', marginTop: 30 }}>
-                    <Layers color={C.border2} size={36} />
-                    <Text style={{ color: C.muted, textAlign: 'center', marginTop: 10, marginBottom: 16 }}>No templates yet.</Text>
+                  <View style={{ alignItems: 'center', marginTop: 40 }}>
+                    <Layers color={C.muted} size={40} />
+                    <Text style={{ color: C.subtext, textAlign: 'center', marginTop: 16, marginBottom: 24, fontWeight: '600' }}>No templates yet.</Text>
                     <TouchableOpacity
-                      onPress={() => { closeSheet(); router.push('/nutrition/library'); }}
-                      style={{ paddingVertical: 10, paddingHorizontal: 20, borderRadius: 20, backgroundColor: '#f3f4f6' }}
+                      onPress={() => { closeSheet(); router.push('/(dashboard)/nutrition/library'); }}
+                      style={{ paddingVertical: 12, paddingHorizontal: 24, borderRadius: 16, backgroundColor: C.primary }}
                     >
-                      <Text style={{ color: '#0f1115', fontWeight: '700' }}>Go Create One</Text>
+                      <Text style={{ color: '#FFFDFC', fontWeight: '800' }}>Go Create One</Text>
                     </TouchableOpacity>
                   </View>
                 ) : (
@@ -497,17 +496,17 @@ export default function NutritionDashboard() {
                         key={t._id}
                         onPress={() => logWholeTemplate(t)}
                         disabled={isLogging}
-                        style={{ backgroundColor: C.bg, borderRadius: 14, padding: 16, marginBottom: 10, borderWidth: 1, borderColor: C.border, flexDirection: 'row', alignItems: 'center' }}
+                        style={{ backgroundColor: C.bg, borderRadius: 16, padding: 18, marginBottom: 12, borderWidth: 1, borderColor: C.border, flexDirection: 'row', alignItems: 'center' }}
                       >
                         <View style={{ flex: 1 }}>
-                          <Text style={{ color: C.text, fontWeight: '700', fontSize: 15, marginBottom: 4 }}>{t.name}</Text>
-                          <Text style={{ color: C.muted, fontSize: 12 }}>
+                          <Text style={{ color: C.text, fontWeight: '800', fontSize: 16, marginBottom: 4 }}>{t.name}</Text>
+                          <Text style={{ color: C.muted, fontSize: 12, fontWeight: '600' }}>
                             {t.meals?.length || 0} meals{tplCals > 0 ? ` · ${tplCals} kcal` : ''}
                           </Text>
                         </View>
                         {isLogging
-                          ? <ActivityIndicator color={C.emerald} size="small" />
-                          : <Check color={C.emerald} size={18} />
+                          ? <ActivityIndicator color={C.primary} size="small" />
+                          : <Check color={C.primary} size={20} />
                         }
                       </TouchableOpacity>
                     );

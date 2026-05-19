@@ -123,6 +123,42 @@ corruption), the hydration must either:
 
 Silent acceptance of out-of-bounds values is forbidden.
 
+### H-6: Topology-Monotonic Hydration
+
+Hydration may enrich the current runtime with historical instability context,
+but must **never** mutate, rewrite, reorder, or structurally alter the live topology.
+
+Formally: let `T` be the topology state before hydration, `T'` be the topology
+state after hydration. The following must hold exactly:
+
+```
+T'.chunks    == T.chunks
+T'.edges     == T.edges
+T'.deadlines == T.deadlines
+T'.eventQueue (length and ordering) is unchanged
+```
+
+The only permitted effect of hydration is enriching `PlannerSimulationState.constraintMemory`.
+
+**Enforcement:** `hydrateMemoryFromPersistence(record, topology)` must return
+`ConstraintMemoryState` only — never a modified topology object. The function
+signature itself is the contract: it accepts topology as read-only input and
+produces only a memory state as output. Any hydration function that returns a
+modified topology is an architectural violation.
+
+**Corollary:** If the current topology differs from the persisted topology
+(chunks have been added, removed, or rewired), hydration must adapt the memory
+state to match the current topology — not the other way around. The topology
+is the authority; memory is the dependent.
+
+### H-7: Arbitrary Array Ordering
+
+Hydration must be deterministic under arbitrary array ordering.
+Even if `chunks`, `regions`, `lineageTrace`, or `evictedChunkIds` arrive in randomized
+order, hydration must reconstruct the identical runtime state. Serialization ordering
+is a mechanical guarantee, but hydration logic must never couple its correctness to
+that order (e.g., assuming parents arrive before children).
+
 ---
 
 ## Decision 3: Replay Restoration Guarantees
@@ -144,13 +180,22 @@ replayFrom(
 ```
 
 This guarantee holds **only if** the hydrated memory satisfies all H-1 through
-H-5 invariants. Hydration that violates any invariant voids the replay guarantee.
+H-6 invariants and INV-8 (Hydration Idempotency). Hydration that violates any
+invariant voids the replay guarantee.
+
+To structurally enforce this, we introduce the **Canonical Replay Hash**:
+`computeConstraintMemoryHash(memory)` must produce a canonical hash using
+lexicographically sorted serialization. All persistence replay tests must
+compare this hash instead of relying solely on deep object equality, as future
+schema evolution may preserve semantic equality while changing physical object layout.
 
 **What this guarantee does NOT cover:**
 - Sessions where chunk topology changed between the persistence point and
-  hydration (lineage continuity rules apply — see Decision 6)
+  hydration (lineage continuity rules apply — see Decision 5)
 - Sessions where the `evolveConstraintMemory` evolution constants changed
   (a schema migration event must be recorded in this case)
+- Sessions where compaction was applied between the original run and replay
+  (compaction must satisfy C-7: Replay-Transparent Eviction)
 
 ---
 
@@ -233,6 +278,71 @@ This requires:
 - All thresholds are explicit constants, not runtime parameters
 - Iteration order is always lexicographic (sort by chunkId before processing)
 
+**Rule C-7: Replay-Transparent Eviction**  
+For any entry evicted by rules C-1 through C-6, its absence in the hydrated
+state must not alter the replay outcome for any surviving topology entity.
+
+Formally: for compacted state `M_compact` ⊂ `M_full` (a proper subset of entries),
+and any subsequent event sequence `E` that does not reference evicted chunk IDs:
+
+```
+replay(M_compact, E).terminalMemoryHash
+  == replay(M_full, E).terminalMemoryHash
+```
+
+This invariant must be verified by `test-phase7c-persistence-replay.ts` before
+any compaction rule is used in production.
+
+**Enforcement:** The `PersistentMemoryRecord` must carry an `evictedChunkIds: string[]`
+field listing all evicted chunk IDs. If any evicted chunk ID reappears in a
+subsequent session's topology, it must be re-initialized as a fresh `ConstraintMemoryEntry`
+— not silently resurrected from any zombie state. The eviction record is
+consumed on hydration and then discarded.
+
+---
+
+## Decision 4.5: Instability Decay Classification — Structural vs. Temporal
+
+Not all instability should persist and decay at the same rate. Phase 7C must
+classify instability dimensions into two decay classes:
+
+### Structural Instability (slow decay, persistent)
+
+Instability arising from chronic, topology-rooted constraints — dependency
+fragility, hard constraint violations, resource exclusion zones. These indicate
+problems that will likely recur in future sessions regardless of capacity variation.
+
+**Dimensions:** `oscillationInstability`, `convergenceInstability`  
+**Persistence aging decay factor:** `0.92` per session  
+**Rationale:** Oscillation and convergence failures typically indicate systemic
+architectural conflicts (deep dependency loops, resource exclusion) that do not
+resolve without explicit intervention. Aggressive decay would cause the system
+to forget hard-won structural knowledge.
+
+### Temporal Instability (fast decay, transient)
+
+Instability arising from transient system conditions — temporary resource
+overload, one-off displacement during system initialization, scheduling pressure
+from concurrent high-priority tasks. These frequently resolve without intervention.
+
+**Dimensions:** `displacementInstability`, `deferralInstability`  
+**Persistence aging decay factor:** `0.78` per session  
+**Rationale:** Displacement and deferral frequently result from capacity pressure
+that resolves in future sessions. Preserving these at the same rate as structural
+instability over-penalizes chunks for transient conditions.
+
+### Enforcement in Compaction
+
+Rule C-5 (Memory Aging) must split into two passes:
+```
+Pass 1 — Structural decay (oscillation, convergence): factor = 0.92 ^ sessionsSince
+Pass 2 — Temporal decay  (displacement, deferral):   factor = 0.78 ^ sessionsSince
+```
+
+`aggregateInstabilityScore` is always re-derived after both passes via the fixed
+weighted sum. The decay class of each dimension is an architectural invariant —
+it must not be made configurable or overridable by heuristic state.
+
 ---
 
 ## Decision 5: Lineage Continuity Across Persistence Reloads
@@ -260,9 +370,32 @@ Both `B` and `C` inherit from `A`'s memory entry:
 - Region derivation: `C` inherits the union of A's and B's region memberships
 
 ### Mutation Case 3: Chunk Rechunk (same logical task, new chunk IDs)
-The new chunk ID inherits the old chunk ID's full memory entry verbatim.
-This is the only mutation case where full inheritance is correct, because
-rechunking preserves task identity.
+
+Rechunking is the **highest-risk mutation class** because it grants full
+instability inheritance, creating the risk of immortal instability memory
+persisting through recursive rechunk chains. Three additional invariants apply:
+
+**Lineage Identity Continuity:**  
+A rechunked chunk `C_new` inheriting from `C_old` must satisfy all of:
+- Same `lineageRootId` as `C_old` (or `C_old.id` if `C_old` was itself a root)
+- Monotonically incremented `mutationGeneration` field (`C_new.gen = C_old.gen + 1`)
+- Same logical task identity (same task ID, different chunk ID)
+
+If any condition fails, `C_new` is treated as a **fresh chunk** with no inheritance.
+
+**Lineage Entropy Bounds:**  
+Inheritance chains must not grow unboundedly.
+- `MAX_LINEAGE_DEPTH = 5` generations of rechunk inheritance are permitted.
+- At generation 6 (`mutationGeneration >= MAX_LINEAGE_DEPTH`), the chain is severed:
+  - `instabilityVector` components are **halved** (dilution at depth boundary)
+  - All counters (`repairCount`, `displacementCount`, etc.) are **reset to 0**
+  - A `deepInheritanceFlag: true` marker is recorded for replay audit
+
+**Maximum Inheritance Depth:**  
+The `mutationGeneration` field is the authoritative depth counter. Its value
+must be persisted verbatim and validated during hydration. Any entry where
+`mutationGeneration > MAX_LINEAGE_DEPTH` that was not processed by the depth-
+boundary rule is a hydration violation — reject the entry.
 
 ### Mutation Case 4: Dependency Rewiring
 Region membership is re-derived from the new dependency topology. No prior
@@ -312,21 +445,101 @@ different cluster shapes even with identical inputs.
 
 ---
 
+## Phase 7C Persistence Trust Boundary
+
+Any code that crosses the following operations is a **persistence trust boundary
+site** and must carry the `PHASE_7C_PERSISTENCE_TRUST_BOUNDARY` comment marker:
+
+- Serialization of `ConstraintMemoryState` to persistent storage
+- Deserialization from persistent storage into any runtime type
+- Hydration (`PersistentMemoryRecord` → `ConstraintMemoryState`)
+- Compaction (`ConstraintMemoryState` → `PersistentMemoryRecord`)
+- Lineage reconstruction (applying mutation inheritance rules)
+- Schema migration (transforming one `schemaVersion` record to another)
+
+These are the **highest-risk correctness surfaces in the entire runtime.**
+A bug here can corrupt memory across sessions without any per-session test
+detecting it. All trust boundary code must:
+
+1. Be a **pure function** — no side effects beyond the persistence record
+2. Explicitly enforce all applicable invariants (H-1 through H-6, C-1 through C-7)
+3. Be tested **in isolation** by `test-phase7c-persistence-replay.ts`
+4. **Never be called from within the event-processing loop** (synchronous replay path)
+5. Carry **no implicit fallbacks** — any invariant violation must throw, not degrade
+6. **No trust-boundary function may call another trust-boundary function transitively.**
+
+To ensure invariants can be cleanly attributed during failures, trust boundaries
+must not be nested.
+**BAD:** `hydrate()` calls `compact()` internally.
+**GOOD:** The orchestration caller invokes `hydrate()`, then `compact()`, then `serialize()`.
+
+### Stage Isolation Pipeline
+
+To prevent corruption from coupled assumptions, the persistence lifecycle must
+always follow this strictly isolated pipeline:
+
+```
+deserialize → validate → hydrate → reconstruct lineage → compact
+```
+
+**CRITICAL:** Lineage reconstruction must *never* be implemented inside hydration.
+It operates on already-validated, hydrated state only. Coupling lineage rules
+to schema validation creates opaque edge cases that cause silent state drift.
+
+### Mechanical Purity Tests
+
+Before any actual storage adapter is built, the architecture must prove that
+all trust boundary functions are purely functional.
+
+`test-phase7c-persistence-replay.ts` must enforce this mechanically by calling
+`Object.freeze(input)` on persistence records, topologies, and hydrated memory
+objects before passing them to hydration, compaction, or serialization functions.
+This guarantees early detection of silent mutation corruption.
+
+### Canonical Serialization Rules
+
+Inside the eventual `PersistenceAdapter`, serialization must not be left to
+implicit JSON traversal order. The adapter must enforce:
+- Lexicographic ordering for chunk IDs, region IDs, lineage records, and evictedChunkIds.
+- Stable JSON field ordering.
+- Explicit float precision normalization (e.g., standardizing rounding).
+
+Failure to canonicalize serialization will result in golden snapshot tests
+failing unpredictably across different runtimes.
+
+**TypeScript marker template:**
+```typescript
+// ─────────────────────────────────────────────────────────────────────────────
+// PHASE_7C_PERSISTENCE_TRUST_BOUNDARY
+// Crosses: [serialization | deserialization | hydration | compaction |
+//           lineage reconstruction | schema migration]
+// Invariants enforced: [list applicable H-N / C-N]
+// Replay proof: test-phase7c-persistence-replay.ts Scenario [N]
+// ─────────────────────────────────────────────────────────────────────────────
+```
+
+---
+
 ## Pre-Phase 7C Implementation Checklist
 
 Before any Phase 7C code is written, the following must be true:
 
 - [ ] `ConstraintMemoryEntry` gains `boundaryObservationCount: number` field
-      (resolves the Phase 7B `historicalDeferralRate` approximation boundary)
-- [ ] `PersistentMemoryRecord` type is defined with `schemaVersion: string`
-- [ ] `hydrateMemoryFromPersistence()` function is defined with H-1 through H-5
-      invariant enforcement
-- [ ] Compaction pipeline is defined with C-1 through C-6 rules in correct order
-- [ ] Mutation lineage records are defined and emitted on all chunk mutations
-- [ ] Union-Find invariants UF-1 through UF-4 are implemented and tested
-- [ ] A causal cycle assertion (INV-6 from ADR-001) is added to the event
-      injection path in `simulateExecutionHorizon`
-- [ ] Phase 7B regression tests (32 tests) still pass after all additions
+- [ ] `ConstraintMemoryEntry` gains `mutationGeneration: number` and `deepInheritanceFlag: boolean`
+      fields (rechunk lineage depth tracking)
+- [ ] `PersistentMemoryRecord` type defined with `schemaVersion`, `evictedChunkIds`
+- [ ] `hydrateMemoryFromPersistence()` enforces H-1 through H-6
+- [ ] `hydrateMemoryFromPersistence()` carries `PHASE_7C_PERSISTENCE_TRUST_BOUNDARY` marker
+- [ ] Compaction pipeline implements C-1 through C-7 in correct order
+- [ ] C-5 (Memory Aging) splits into structural (0.92) and temporal (0.78) decay passes
+- [ ] Rechunk inheritance enforces `MAX_LINEAGE_DEPTH = 5` with halving at depth boundary
+- [ ] Mutation lineage records defined and emitted on all chunk mutations
+- [ ] Union-Find invariants UF-1 through UF-4 implemented and tested adversarially
+      via `test-phase7c-union-find-adversarial.ts`
+- [ ] INV-6 causal cycle assertion already in `simulateExecutionHorizon.ts` ✅ (Phase 7B)
+- [ ] `test-phase7c-persistence-replay.ts` proves: byte-identical replay, compaction
+      idempotency, hydration rejection of invalid lineage, schema fail-fast, C-7
+- [ ] Phase 7B regression tests (32 tests) still pass
 
 ---
 
@@ -357,9 +570,11 @@ Before any Phase 7C code is written, the following must be true:
 ## References
 
 - ADR-001 — `ADR-001-deterministic-adaptive-state.md`
-- `ConstraintMemoryTypes.ts` — INV-B, INV-C region continuity invariants
+- `ConstraintMemoryTypes.ts` — INV-B, INV-C region continuity; structural/temporal decay classification
 - `evolveConstraintMemory.ts` — Phase 7B approximation boundary markers
 - `MemoryObservabilityTypes.ts` — Saturation and decay observability
-- `simulateExecutionHorizon.ts` — Event injection site (INV-6 assertion needed)
+- `simulateExecutionHorizon.ts` — INV-6 causal cycle guard (implemented Phase 7B)
 - `hashConstraintMemoryDelta.ts` — Delta hashing (foundation for compaction diffing)
 - `test-phase7b-constraint-memory.ts` — Regression baseline (32 tests)
+- `test-phase7c-persistence-replay.ts` — Persistence/hydration adversarial suite
+- `test-phase7c-union-find-adversarial.ts` — Union-Find determinism adversarial suite

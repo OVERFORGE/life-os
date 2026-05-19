@@ -28,9 +28,9 @@ export function average(values: number[]) {
 
 function StatCard({ title, value }: { title: string; value: string }) {
   return (
-    <View style={{ backgroundColor: '#161922', flex: 1, borderWidth: 1, borderColor: '#232632', borderRadius: 14, padding: 16, margin: 4, minWidth: '45%' }}>
-      <Text style={{ fontSize: 11, color: '#6b7280', marginBottom: 4, textTransform: 'capitalize' }} numberOfLines={1}>{title}</Text>
-      <Text style={{ fontSize: 20, fontWeight: '900', color: '#f3f4f6' }}>{value}</Text>
+    <View style={{ backgroundColor: '#1F2023', flex: 1, borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 14, padding: 16, margin: 4, minWidth: '45%' }}>
+      <Text style={{ fontSize: 11, color: 'rgba(236, 231, 227, 0.5)', marginBottom: 4, textTransform: 'capitalize' }} numberOfLines={1}>{title}</Text>
+      <Text style={{ fontSize: 20, fontWeight: '900', color: '#FFFDFC' }}>{value}</Text>
     </View>
   );
 }
@@ -44,7 +44,7 @@ export function SummaryGrid({ logs }: { logs: Log[] }) {
 
   return (
     <View style={{ marginBottom: 24 }}>
-      <Text style={{ color: '#f3f4f6', fontWeight: '700', marginBottom: 12, fontSize: 17, paddingHorizontal: 4 }}>7-Day Summary</Text>
+      <Text style={{ color: '#FFFDFC', fontWeight: '700', marginBottom: 12, fontSize: 17, paddingHorizontal: 4 }}>7-Day Summary</Text>
       <View style={{ flexDirection: 'row', flexWrap: 'wrap', justifyContent: 'space-between' }}>
         <StatCard title="Avg Mood" value={avgMood.toFixed(1)} />
         <StatCard title="Avg Energy" value={avgEnergy.toFixed(1)} />
@@ -70,21 +70,21 @@ export function SystemInsightCard() {
 
   if (loading) {
     return (
-      <View style={{ backgroundColor: '#161922', borderWidth: 1, borderColor: '#232632', borderRadius: 16, padding: 20, marginBottom: 20, alignItems: 'center', paddingVertical: 32 }}>
-        <ActivityIndicator color="#3b82f6" size="small" />
-        <Text style={{ color: '#4b5563', fontSize: 12, marginTop: 8 }}>Analyzing system...</Text>
+      <View style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 20, alignItems: 'center', paddingVertical: 32 }}>
+        <ActivityIndicator color="#E8414A" size="small" />
+        <Text style={{ color: 'rgba(236, 231, 227, 0.5)', fontSize: 12, marginTop: 8 }}>Analyzing system...</Text>
       </View>
     );
   }
 
   if (!insight) {
     return (
-      <View style={{ backgroundColor: '#161922', borderWidth: 1, borderColor: '#232632', borderRadius: 16, padding: 20, marginBottom: 20 }}>
+      <View style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 20 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 8 }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#3b82f6', marginRight: 8 }} />
-          <Text style={{ fontSize: 14, fontWeight: '700', color: '#d1d5db' }}>Jarvis Insight</Text>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#E8414A', marginRight: 8 }} />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFDFC' }}>Jarvis Insight</Text>
         </View>
-        <Text style={{ color: '#6b7280', fontSize: 13 }}>No daily logs yet. Start logging to get system intelligence.</Text>
+        <Text style={{ color: 'rgba(236, 231, 227, 0.7)', fontSize: 13 }}>No daily logs yet. Start logging to get system intelligence.</Text>
       </View>
     );
   }
@@ -93,29 +93,29 @@ export function SystemInsightCard() {
     <TouchableOpacity
       activeOpacity={0.85}
       onPress={() => router.push('/(dashboard)/brain')}
-      style={{ backgroundColor: '#161922', borderWidth: 1, borderColor: '#232632', borderRadius: 16, padding: 20, marginBottom: 20 }}
+      style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 20 }}
     >
       {/* Header */}
       <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 14 }}>
         <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#3b82f6', marginRight: 8 }} />
-          <Text style={{ fontSize: 14, fontWeight: '700', color: '#d1d5db' }}>Jarvis Insight</Text>
+          <View style={{ width: 8, height: 8, borderRadius: 4, backgroundColor: '#E8414A', marginRight: 8 }} />
+          <Text style={{ fontSize: 14, fontWeight: '700', color: '#FFFDFC' }}>Jarvis Insight</Text>
         </View>
-        <Text style={{ fontSize: 10, color: '#4b5563', fontWeight: '700', letterSpacing: 1 }}>TAP TO CHAT</Text>
+        <Text style={{ fontSize: 10, color: 'rgba(236, 231, 227, 0.5)', fontWeight: '700', letterSpacing: 1 }}>TAP TO CHAT</Text>
       </View>
 
       {/* System State */}
-      <Text style={{ fontSize: 11, color: '#6b7280', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>System State</Text>
-      <Text style={{ fontSize: 18, fontWeight: '800', color: '#f3f4f6', marginBottom: 14 }}>{insight.systemState}</Text>
+      <Text style={{ fontSize: 11, color: 'rgba(236, 231, 227, 0.5)', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>System State</Text>
+      <Text style={{ fontSize: 18, fontWeight: '800', color: '#FFFDFC', marginBottom: 14 }}>{insight.systemState}</Text>
 
       {/* Risks */}
       {insight.risks?.length > 0 && (
         <View style={{ marginBottom: 12 }}>
-          <Text style={{ fontSize: 10, color: '#f87171', textTransform: 'uppercase', letterSpacing: 1, fontWeight: '700', marginBottom: 6 }}>Risks</Text>
+          <Text style={{ fontSize: 10, color: '#E8414A', textTransform: 'uppercase', letterSpacing: 1, fontWeight: '700', marginBottom: 6 }}>Risks</Text>
           {insight.risks.map((r: string, i: number) => (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 4 }}>
-              <Text style={{ color: '#f87171', marginRight: 6 }}>⚠️</Text>
-              <Text style={{ fontSize: 12, color: '#fca5a5', flex: 1 }}>{r}</Text>
+              <Text style={{ color: '#E8414A', marginRight: 6 }}>!</Text>
+              <Text style={{ fontSize: 12, color: '#F9A8AC', flex: 1 }}>{r}</Text>
             </View>
           ))}
         </View>
@@ -124,11 +124,11 @@ export function SystemInsightCard() {
       {/* Observations */}
       {insight.observations?.length > 0 && (
         <View style={{ marginBottom: 12 }}>
-          <Text style={{ fontSize: 10, color: '#9ca3af', textTransform: 'uppercase', letterSpacing: 1, fontWeight: '700', marginBottom: 6 }}>Observations</Text>
+          <Text style={{ fontSize: 10, color: 'rgba(236, 231, 227, 0.5)', textTransform: 'uppercase', letterSpacing: 1, fontWeight: '700', marginBottom: 6 }}>Observations</Text>
           {insight.observations.map((o: string, i: number) => (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 4 }}>
-              <Text style={{ color: '#6b7280', marginRight: 6 }}>•</Text>
-              <Text style={{ fontSize: 12, color: '#d1d5db', flex: 1 }}>{o}</Text>
+              <Text style={{ color: 'rgba(236, 231, 227, 0.5)', marginRight: 6 }}>•</Text>
+              <Text style={{ fontSize: 12, color: 'rgba(236, 231, 227, 0.9)', flex: 1 }}>{o}</Text>
             </View>
           ))}
         </View>
@@ -137,11 +137,11 @@ export function SystemInsightCard() {
       {/* Recommendations */}
       {insight.recommendations?.length > 0 && (
         <View>
-          <Text style={{ fontSize: 10, color: '#4ade80', textTransform: 'uppercase', letterSpacing: 1, fontWeight: '700', marginBottom: 6 }}>Recommendations</Text>
+          <Text style={{ fontSize: 10, color: '#FFFDFC', textTransform: 'uppercase', letterSpacing: 1, fontWeight: '700', marginBottom: 6 }}>Recommendations</Text>
           {insight.recommendations.map((r: string, i: number) => (
             <View key={i} style={{ flexDirection: 'row', alignItems: 'flex-start', marginBottom: 4 }}>
-              <Text style={{ marginRight: 6 }}>💡</Text>
-              <Text style={{ fontSize: 12, color: '#86efac', flex: 1 }}>{r}</Text>
+              <Text style={{ color: '#FFFDFC', marginRight: 6 }}>+</Text>
+              <Text style={{ fontSize: 12, color: '#ECE7E3', opacity: 0.9, flex: 1 }}>{r}</Text>
             </View>
           ))}
         </View>

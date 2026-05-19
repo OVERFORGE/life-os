@@ -1,9 +1,14 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, SafeAreaView } from 'react-native';
 import { Settings as SettingsIcon, Save, RefreshCw, ArrowLeft } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../../utils/api';
-import { BlurView } from 'expo-blur';
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
+};
 
 export default function WeightsScreen() {
   const router = useRouter();
@@ -101,8 +106,8 @@ export default function WeightsScreen() {
 
   if (loading && !data) {
     return (
-      <View className="flex-1 bg-[#0f1115] items-center justify-center">
-        <ActivityIndicator color="#fcd34d" />
+      <View style={{ flex: 1, backgroundColor: C.bg, alignItems: 'center', justifyContent: 'center' }}>
+        <ActivityIndicator color={C.primary} />
       </View>
     );
   }
@@ -113,44 +118,46 @@ export default function WeightsScreen() {
   const goalWeights = effective?.goals?.pressureWeights || {};
 
   return (
-    <View className="flex-1 bg-[#0f1115]">
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
-      <BlurView intensity={20} tint="dark" className="pt-16 pb-4 px-4 border-b border-[#232632] flex-row items-center z-10">
-        <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 items-center justify-center mr-2">
-          <ArrowLeft color="#fff" size={24} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ backgroundColor: C.card, padding: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border }}>
+          <ArrowLeft size={20} color={C.subtext} />
         </TouchableOpacity>
-        <Text className="text-white font-bold text-lg">Algorithm Weights</Text>
-      </BlurView>
+        <Text style={{ fontSize: 20, fontWeight: '900', color: C.text, marginLeft: 16 }}>Algorithm Weights</Text>
+      </View>
 
-      <ScrollView className="flex-1 px-5 pt-6" contentContainerStyle={{ paddingBottom: 150 }}>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 150 }} showsVerticalScrollIndicator={false}>
         
         {/* V2 - SYSTEM LEARNED OPTIMIZATION */}
         {derived && typeof derived === 'object' && Object.keys(derived).length > 0 && (
-          <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-6">
-            <Text className="text-gray-100 font-bold text-base mb-1">System-Learned Optimization (V2)</Text>
-            <Text className="text-gray-400 text-xs mb-4">These values are automatically calibrated by LifeOS from your behavior.</Text>
-            {Object.entries(derived).map(([key, metric]: any) => (
-              <View key={key} className="flex-row justify-between items-center py-3 border-b border-[#232632] last:border-0">
-                <View className="flex-1">
-                  <Text className="text-gray-300 capitalize text-sm font-semibold">{key}</Text>
-                  <Text className="text-gray-500 text-[10px] uppercase tracking-wider">{metric.reason || 'Learned adjustment'}</Text>
+          <View style={{ backgroundColor: C.primaryBg, borderWidth: 1, borderColor: 'rgba(232,65,74,0.2)', borderRadius: 24, padding: 24, marginBottom: 24 }}>
+            <Text style={{ color: C.primary, fontWeight: '900', fontSize: 16, marginBottom: 4 }}>System-Learned Optimization (V2)</Text>
+            <Text style={{ color: 'rgba(232,65,74,0.7)', fontSize: 12, fontWeight: '600', marginBottom: 20 }}>These values are automatically calibrated by LifeOS from your behavior.</Text>
+            {Object.entries(derived).map(([key, metric]: any, index, arr) => (
+              <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', paddingVertical: 12, borderBottomWidth: index === arr.length - 1 ? 0 : 1, borderBottomColor: 'rgba(232,65,74,0.1)' }}>
+                <View style={{ flex: 1 }}>
+                  <Text style={{ color: C.text, textTransform: 'capitalize', fontSize: 14, fontWeight: '700', marginBottom: 2 }}>{key}</Text>
+                  <Text style={{ color: 'rgba(232,65,74,0.6)', fontSize: 10, textTransform: 'uppercase', letterSpacing: 1, fontWeight: '800' }}>{metric.reason || 'Learned adjustment'}</Text>
                 </View>
-                <Text className="text-amber-500 font-mono font-bold">{typeof metric.value === 'number' ? metric.value.toFixed(2) : '—'}</Text>
+                <Text style={{ color: C.text, fontWeight: '900', fontSize: 16 }}>{typeof metric.value === 'number' ? metric.value.toFixed(2) : '—'}</Text>
               </View>
             ))}
           </View>
         )}
 
         {/* PHASE THRESHOLDS */}
-        <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-6">
-          <Text className="text-gray-100 font-bold text-base mb-1">Phase Detection Thresholds</Text>
-          <Text className="text-gray-400 text-xs mb-4">Rules that trigger phase transitions</Text>
+        <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 24, marginBottom: 24 }}>
+          <Text style={{ color: C.text, fontWeight: '900', fontSize: 16, marginBottom: 4 }}>Phase Detection Thresholds</Text>
+          <Text style={{ color: C.muted, fontSize: 12, fontWeight: '600', marginBottom: 24 }}>Rules that trigger phase transitions</Text>
           {Object.entries(phaseThresholds).map(([phase, values]: any) => (
-            <View key={phase} className="mb-4">
-              <Text className="text-gray-300 font-bold capitalize mb-2 bg-[#1b1f2a] px-3 py-1 rounded self-start overflow-hidden">{phase}</Text>
+            <View key={phase} style={{ marginBottom: 20 }}>
+              <View style={{ backgroundColor: C.border, paddingHorizontal: 12, paddingVertical: 4, borderRadius: 8, alignSelf: 'flex-start', marginBottom: 12 }}>
+                <Text style={{ color: C.subtext, fontWeight: '900', textTransform: 'capitalize', fontSize: 12 }}>{phase}</Text>
+              </View>
               {Object.entries(values || {}).map(([key, val]: any) => (
-                <View key={key} className="flex-row justify-between items-center mb-3">
-                  <Text className="text-gray-400 text-sm capitalize">{key}</Text>
+                <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+                  <Text style={{ color: C.subtext, fontSize: 14, textTransform: 'capitalize', fontWeight: '600' }}>{key}</Text>
                   <TextInput
                     keyboardType="decimal-pad"
                     value={String(getVal(['phases', 'thresholds', phase, key], val))}
@@ -158,7 +165,7 @@ export default function WeightsScreen() {
                       const num = parseFloat(v);
                       if (!isNaN(num)) setVal(['phases', 'thresholds', phase, key], num);
                     }}
-                    className="bg-[#0f1115] border border-[#232632] rounded-md px-3 py-1 text-gray-200 font-mono text-center w-20"
+                    style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, color: C.text, fontWeight: '700', textAlign: 'center', width: 80 }}
                   />
                 </View>
               ))}
@@ -167,12 +174,12 @@ export default function WeightsScreen() {
         </View>
 
         {/* PHASE SIGNAL WEIGHTS */}
-        <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-6">
-          <Text className="text-gray-100 font-bold text-base mb-1">Phase Signal Weights</Text>
-          <Text className="text-gray-400 text-xs mb-4">How strongly each signal affects phase scoring.</Text>
+        <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 24, marginBottom: 24 }}>
+          <Text style={{ color: C.text, fontWeight: '900', fontSize: 16, marginBottom: 4 }}>Phase Signal Weights</Text>
+          <Text style={{ color: C.muted, fontSize: 12, fontWeight: '600', marginBottom: 24 }}>How strongly each signal affects phase scoring.</Text>
           {Object.entries(phaseWeights).map(([key, val]: any) => (
-            <View key={key} className="flex-row justify-between items-center mb-3">
-              <Text className="text-gray-400 text-sm capitalize">{key}</Text>
+            <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: C.subtext, fontSize: 14, textTransform: 'capitalize', fontWeight: '600' }}>{key}</Text>
               <TextInput
                 keyboardType="decimal-pad"
                 value={String(getVal(['phases', 'weights', key], val))}
@@ -180,19 +187,19 @@ export default function WeightsScreen() {
                   const num = parseFloat(v);
                   if (!isNaN(num)) setVal(['phases', 'weights', key], num);
                 }}
-                className="bg-[#0f1115] border border-[#232632] rounded-md px-3 py-1 text-gray-200 font-mono text-center w-20"
+                style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, color: C.text, fontWeight: '700', textAlign: 'center', width: 80 }}
               />
             </View>
           ))}
         </View>
 
         {/* GOAL PRESSURE WEIGHTS */}
-        <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 mb-6">
-          <Text className="text-gray-100 font-bold text-base mb-1">Goal Load Pressure Weights</Text>
-          <Text className="text-gray-400 text-xs mb-4">How goal cadence, ambition, and conflicts contribute to pressure.</Text>
+        <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 24, marginBottom: 32 }}>
+          <Text style={{ color: C.text, fontWeight: '900', fontSize: 16, marginBottom: 4 }}>Goal Load Pressure Weights</Text>
+          <Text style={{ color: C.muted, fontSize: 12, fontWeight: '600', marginBottom: 24 }}>How goal cadence, ambition, and conflicts contribute to pressure.</Text>
           {Object.entries(goalWeights).map(([key, val]: any) => (
-            <View key={key} className="flex-row justify-between items-center mb-3">
-              <Text className="text-gray-400 text-sm capitalize">{key}</Text>
+            <View key={key} style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 12 }}>
+              <Text style={{ color: C.subtext, fontSize: 14, textTransform: 'capitalize', fontWeight: '600' }}>{key}</Text>
               <TextInput
                 keyboardType="decimal-pad"
                 value={String(getVal(['goals', 'pressureWeights', key], val))}
@@ -200,33 +207,33 @@ export default function WeightsScreen() {
                   const num = parseFloat(v);
                   if (!isNaN(num)) setVal(['goals', 'pressureWeights', key], num);
                 }}
-                className="bg-[#0f1115] border border-[#232632] rounded-md px-3 py-1 text-gray-200 font-mono text-center w-20"
+                style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 8, paddingHorizontal: 12, paddingVertical: 8, color: C.text, fontWeight: '700', textAlign: 'center', width: 80 }}
               />
             </View>
           ))}
         </View>
 
         {/* Actions */}
-        <View className="flex-row space-x-4 mb-6 pt-4 border-t border-[#232632]">
+        <View style={{ flexDirection: 'row', gap: 12, marginBottom: 24 }}>
           <TouchableOpacity
             onPress={resetDefaults}
             disabled={saving}
-            className="flex-1 bg-[#161922] border border-[#232632] rounded-xl items-center justify-center p-4 flex-row"
+            style={{ flex: 1, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingVertical: 16, flexDirection: 'row' }}
           >
-            <RefreshCw size={16} color="#9ca3af" />
-            <Text className="text-gray-400 font-bold ml-2 text-sm uppercase">Reset</Text>
+            <RefreshCw size={16} color={C.subtext} />
+            <Text style={{ color: C.subtext, fontWeight: '900', marginLeft: 8, fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Reset</Text>
           </TouchableOpacity>
           <TouchableOpacity
             onPress={saveOverrides}
             disabled={saving}
-            className="flex-[2] bg-amber-500 rounded-xl items-center justify-center p-4 flex-row"
+            style={{ flex: 2, backgroundColor: C.text, borderRadius: 16, alignItems: 'center', justifyContent: 'center', paddingVertical: 16, flexDirection: 'row' }}
           >
-            {saving ? <ActivityIndicator color="#0f1115" className="mr-2" /> : <Save size={16} color="#0f1115" />}
-            <Text className="text-black font-bold ml-2 text-sm uppercase">Save Changes</Text>
+            {saving ? <ActivityIndicator color={C.bg} style={{ marginRight: 8 }} /> : <Save size={16} color={C.bg} style={{ marginRight: 8 }} />}
+            <Text style={{ color: C.bg, fontWeight: '900', fontSize: 12, textTransform: 'uppercase', letterSpacing: 1 }}>Save Changes</Text>
           </TouchableOpacity>
         </View>
 
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

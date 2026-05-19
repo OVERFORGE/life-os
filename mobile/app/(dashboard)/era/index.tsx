@@ -1,26 +1,26 @@
 import React, { useEffect, useState, useCallback } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView } from 'react-native';
-import { ArrowLeft } from 'lucide-react-native';
+import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
+import { ArrowLeft, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import { fetchWithAuth } from '../../../utils/api';
 
-const C = {
-  bg: '#0f1115', card: '#161922', border: '#232632',
-  text: '#f3f4f6', subtext: '#9ca3af', muted: '#6b7280',
-};
-
 const THEME_COLORS: Record<string, string> = {
-  Growth: '#4ade80',
-  Overextension: '#f87171',
-  Contraction: '#facc15',
-  Entropy: '#a78bfa',
-  Restoration: '#60a5fa',
+  Growth: '#E8414A', Overextension: '#B42129', Contraction: '#F3767D',
+  Entropy: '#F9A8AC', Restoration: '#ECE7E3',
 };
 
-const DIR_LABELS: Record<string, string> = {
-  up: '📈 Ascending', down: '📉 Declining', flat: '➖ Stable', chaotic: '🌪 Chaotic',
-};
+function DirectionIcon({ dir }: { dir: string }) {
+  if (dir === 'up') return <TrendingUp size={13} color="#E8414A" />;
+  if (dir === 'down') return <TrendingDown size={13} color="rgba(236,231,227,0.5)" />;
+  return <Minus size={13} color="rgba(236,231,227,0.4)" />;
+}
+
+function formatMonth(dateStr: string | undefined) {
+  if (!dateStr) return '—';
+  try { return new Date(dateStr).toLocaleDateString('en-US', { month: 'short', year: 'numeric' }); }
+  catch { return dateStr; }
+}
 
 export default function ErasListScreen() {
   const router = useRouter();
@@ -32,112 +32,111 @@ export default function ErasListScreen() {
     try {
       const res = await fetchWithAuth('/insights/eras');
       const d = await res.json();
-      setEras((d.eras || []).reverse()); // Most recent first
-    } catch (e) {
-      console.error(e);
-    } finally {
-      setLoading(false);
-    }
+      setEras((d.eras || []).reverse());
+    } catch (e) { console.error(e); }
+    finally { setLoading(false); }
   }, []);
 
   useFocusEffect(useCallback(() => { load(); }, [load]));
 
   return (
-    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+    <View style={{ flex: 1, backgroundColor: '#161618' }}>
       {/* Header */}
-      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 24, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
-        <TouchableOpacity onPress={() => router.back()} style={{ padding: 8, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, marginRight: 16 }}>
-          <ArrowLeft color={C.subtext} size={18} />
+      <View style={{ paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#2A2B2F', flexDirection: 'row', alignItems: 'center' }}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', alignItems: 'center', justifyContent: 'center', marginRight: 14 }}
+        >
+          <ArrowLeft color="rgba(236,231,227,0.7)" size={17} />
         </TouchableOpacity>
         <View>
-          <Text style={{ color: C.text, fontSize: 22, fontWeight: '900', letterSpacing: -0.5 }}>Your Life Eras</Text>
-          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 2, marginTop: 1 }}>High-level life chapters</Text>
+          <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 17 }}>Life Eras</Text>
+          <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Life chapters</Text>
         </View>
       </View>
 
       {loading ? (
         <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
-          <ActivityIndicator color="#10b981" size="large" />
+          <ActivityIndicator color="#E8414A" size="large" />
         </View>
       ) : (
-        <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 80 }} showsVerticalScrollIndicator={false}>
+        <ScrollView contentContainerStyle={{ padding: 16, paddingBottom: 80 }}>
           {eras.length === 0 ? (
             <View style={{ alignItems: 'center', paddingTop: 60 }}>
-              <Text style={{ color: C.muted, fontSize: 15, textAlign: 'center' }}>
-                No era data yet.{'\n'}Keep logging your daily data and Jarvis will detect life chapters.
+              <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 14, textAlign: 'center' }}>
+                No era data yet.{'\n'}Keep logging daily data and Jarvis will detect life chapters.
               </Text>
             </View>
           ) : (
             eras.map((era, i) => {
-              const themeColor = THEME_COLORS[era.narrative?.theme] || '#9ca3af';
+              const themeColor = THEME_COLORS[era.narrative?.theme] || '#ECE7E3';
+              // Only first item (most recent) with no endDate is truly current
+              const isCurrent = i === 0 && !era.to;
+
               return (
                 <TouchableOpacity
                   key={era.id || i}
                   activeOpacity={0.8}
                   onPress={() => router.push(`/(dashboard)/era/${encodeURIComponent(era.id)}`)}
-                  style={{
-                    backgroundColor: C.card,
-                    borderRadius: 18,
-                    borderWidth: 1,
-                    borderColor: C.border,
-                    borderLeftWidth: 3,
-                    borderLeftColor: themeColor,
-                    padding: 20,
-                    marginBottom: 14,
-                    overflow: 'hidden',
-                  }}
+                  style={{ backgroundColor: '#1F2023', borderRadius: 16, borderWidth: 1, borderColor: '#2A2B2F', padding: 18, marginBottom: 12 }}
                 >
                   {/* Top row */}
-                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 8 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start', marginBottom: 10 }}>
                     <View style={{ flex: 1 }}>
-                      <Text style={{ color: C.subtext, fontSize: 12, marginBottom: 4 }}>
-                        {era.from} → {era.to || 'Now'}
-                      </Text>
-                      {era.narrative?.theme && (
-                        <View style={{ alignSelf: 'flex-start', backgroundColor: themeColor + '20', borderWidth: 1, borderColor: themeColor + '40', borderRadius: 20, paddingHorizontal: 8, paddingVertical: 3, marginBottom: 6 }}>
-                          <Text style={{ color: themeColor, fontSize: 10, fontWeight: '700' }}>{era.narrative.theme}</Text>
-                        </View>
-                      )}
-                      <Text style={{ color: C.text, fontSize: 18, fontWeight: '800', marginBottom: 2 }}>
+                      {/* Theme + Current badges */}
+                      <View style={{ flexDirection: 'row', gap: 6, marginBottom: 8, flexWrap: 'wrap' }}>
+                        {era.narrative?.theme && (
+                          <View style={{ backgroundColor: themeColor + '18', borderWidth: 1, borderColor: themeColor + '35', borderRadius: 99, paddingHorizontal: 10, paddingVertical: 3 }}>
+                            <Text style={{ color: themeColor, fontSize: 10, fontWeight: '700' }}>{era.narrative.theme}</Text>
+                          </View>
+                        )}
+                        {isCurrent && (
+                          <View style={{ backgroundColor: 'rgba(232,65,74,0.12)', borderWidth: 1, borderColor: 'rgba(232,65,74,0.3)', borderRadius: 99, paddingHorizontal: 8, paddingVertical: 3 }}>
+                            <Text style={{ color: '#E8414A', fontSize: 10, fontWeight: '700' }}>ACTIVE</Text>
+                          </View>
+                        )}
+                      </View>
+                      <Text style={{ color: '#FFFDFC', fontSize: 17, fontWeight: '800', marginBottom: 3 }}>
                         {era.narrative?.title || 'Untitled Era'}
                       </Text>
                       {era.narrative?.subtitle && (
-                        <Text style={{ color: C.subtext, fontSize: 13 }} numberOfLines={2}>{era.narrative.subtitle}</Text>
+                        <Text style={{ color: 'rgba(236,231,227,0.55)', fontSize: 13, lineHeight: 18 }} numberOfLines={2}>
+                          {era.narrative.subtitle}
+                        </Text>
                       )}
                     </View>
-                    <View style={{ backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border, paddingHorizontal: 10, paddingVertical: 5, marginLeft: 12 }}>
-                      <Text style={{ color: C.subtext, fontSize: 11 }}>{DIR_LABELS[era.direction] || '—'}</Text>
-                    </View>
+                    <ChevronRight size={16} color="rgba(236,231,227,0.25)" style={{ marginLeft: 8, marginTop: 2 }} />
                   </View>
 
                   {/* Story snippet */}
                   {era.narrative?.story && (
-                    <Text style={{ color: C.muted, fontSize: 12, lineHeight: 18, marginBottom: 12 }} numberOfLines={2}>
+                    <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 12, lineHeight: 17, marginBottom: 12 }} numberOfLines={2}>
                       {era.narrative.story}
                     </Text>
                   )}
 
-                  {/* Metrics */}
-                  <View style={{ flexDirection: 'row', gap: 20, marginBottom: 10 }}>
-                    <View>
-                      <Text style={{ color: C.muted, fontSize: 10 }}>Stability</Text>
-                      <Text style={{ color: C.text, fontSize: 14, fontWeight: '700' }}>{Math.round((era.stability || 0) * 100)}%</Text>
+                  {/* Stat grid */}
+                  <View style={{ flexDirection: 'row', gap: 8, marginBottom: 10 }}>
+                    <View style={{ flex: 1, backgroundColor: '#161618', borderRadius: 8, padding: 8 }}>
+                      <Text style={{ color: '#FFFDFC', fontSize: 13, fontWeight: '700' }}>{era.phases?.length || 0}</Text>
+                      <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, marginTop: 1 }}>Phases</Text>
                     </View>
-                    <View>
-                      <Text style={{ color: C.muted, fontSize: 10 }}>Volatility</Text>
-                      <Text style={{ color: C.text, fontSize: 14, fontWeight: '700' }}>{Math.round((era.volatility || 0) * 100)}%</Text>
+                    <View style={{ flex: 1, backgroundColor: '#161618', borderRadius: 8, padding: 8 }}>
+                      <Text style={{ color: '#FFFDFC', fontSize: 13, fontWeight: '700' }}>{Math.round((era.stability || 0) * 100)}%</Text>
+                      <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, marginTop: 1 }}>Stability</Text>
                     </View>
-                    <View>
-                      <Text style={{ color: C.muted, fontSize: 10 }}>Phases</Text>
-                      <Text style={{ color: C.text, fontSize: 14, fontWeight: '700' }}>{era.phases?.length || 0}</Text>
+                    <View style={{ flex: 2, backgroundColor: '#161618', borderRadius: 8, padding: 8 }}>
+                      <View style={{ flexDirection: 'row', alignItems: 'center', gap: 4 }}>
+                        <DirectionIcon dir={era.direction} />
+                        <Text style={{ color: '#FFFDFC', fontSize: 11, fontWeight: '600', textTransform: 'capitalize' }}>{era.direction || 'Unknown'}</Text>
+                      </View>
+                      <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, marginTop: 1 }}>Direction</Text>
                     </View>
                   </View>
 
-                  {/* Mood/energy line */}
-                  <Text style={{ color: C.muted, fontSize: 11 }}>
-                    Mood: <Text style={{ color: C.subtext }}>{(era.summaryVector?.avgMood || 0).toFixed(1)}</Text>
-                    {' · '}Energy: <Text style={{ color: C.subtext }}>{(era.summaryVector?.avgEnergy || 0).toFixed(1)}</Text>
-                    {' · '}Stress: <Text style={{ color: C.subtext }}>{(era.summaryVector?.avgStress || 0).toFixed(1)}</Text>
+                  {/* Date footer */}
+                  <Text style={{ color: 'rgba(236,231,227,0.3)', fontSize: 11 }}>
+                    {formatMonth(era.from)} → {isCurrent ? 'Present' : formatMonth(era.to)}
                   </Text>
                 </TouchableOpacity>
               );
@@ -145,6 +144,6 @@ export default function ErasListScreen() {
           )}
         </ScrollView>
       )}
-    </SafeAreaView>
+    </View>
   );
 }

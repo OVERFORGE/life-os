@@ -1,26 +1,34 @@
 import React, { useEffect, useState } from 'react';
-import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Dimensions } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, RefreshControl, Dimensions, SafeAreaView, ActivityIndicator } from 'react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { fetchWithAuth } from '../../../../../../../utils/api';
-import { ArrowLeft, TrendingUp, TrendingDown } from 'lucide-react-native';
+import { ArrowLeft, TrendingUp, TrendingDown, Minus, BarChart2 } from 'lucide-react-native';
 import { LineChart } from 'react-native-chart-kit';
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)',
+};
+
+const SCREEN_W = Dimensions.get('window').width;
 
 export default function SpecificSetProgressScreen() {
   const router = useRouter();
-  const { id, index } = useLocalSearchParams(); // equipmentName, setIndex
+  const { id, index } = useLocalSearchParams();
   const [loading, setLoading] = useState(true);
   const [history, setHistory] = useState<any[]>([]);
 
   const equipmentName = id ? decodeURIComponent(id as string) : '';
-  const setIndex = parseInt((index as string) || "1", 10);
+  const setIndex = parseInt((index as string) || '1', 10);
 
   const loadData = async () => {
     setLoading(true);
     try {
-      const res = await fetchWithAuth(`/gym/exercise-progress/set?equipmentName=${encodeURIComponent(equipmentName)}&setIndex=${setIndex}`);
-      if (res.ok) {
-        setHistory(await res.json());
-      }
+      const res = await fetchWithAuth(
+        `/gym/exercise-progress/set?equipmentName=${encodeURIComponent(equipmentName)}&setIndex=${setIndex}`
+      );
+      if (res.ok) setHistory(await res.json());
     } catch (e) {
       console.error(e);
     } finally {
@@ -28,135 +36,141 @@ export default function SpecificSetProgressScreen() {
     }
   };
 
-  useEffect(() => {
-    if (equipmentName) loadData();
-  }, [equipmentName, setIndex]);
+  useEffect(() => { if (equipmentName) loadData(); }, [equipmentName, setIndex]);
 
-  const getGradeColor = (grade: string) => {
+  // ── Chart: date vs weight ──────────────────────────────────────
+  const chartItems = history.slice(-10);
+  const chartLabels = chartItems.map(h =>
+    new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })
+  );
+  const chartData = chartItems.map(h => h.weight || 0);
+  const hasData = chartData.length > 0 && chartData.some(v => v > 0);
+
+  // ── Grade → Executioners color ─────────────────────────────────
+  const gradeLabel = (grade: string) => {
     switch (grade) {
-      case 'S': return '#8b5cf6'; // Purple
-      case 'A': return '#10b981'; // Green
-      case 'B': return '#3b82f6'; // Blue
-      case 'C': return '#6b7280'; // Gray
-      case 'D': return '#f59e0b'; // Orange
-      case 'F': return '#ef4444'; // Red
-      default: return '#3a3d4a';
+      case 'S': return { label: 'S', color: C.text };
+      case 'A': return { label: 'A', color: C.text };
+      case 'B': return { label: 'B', color: C.subtext };
+      case 'C': return { label: 'C', color: C.muted };
+      case 'D': return { label: 'D', color: C.primary };
+      case 'F': return { label: 'F', color: C.primary };
+      default:  return { label: grade, color: C.border };
     }
   };
 
-  // Prepare chart data
-  const screenWidth = Dimensions.get("window").width - 40; // padding 20 on each side
-  
-  // We want chronological for the chart (history from API is chronological)
-  const chartLabels = history.map(h => new Date(h.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })).slice(-10); // Last 10 sessions
-  const chartData = history.map(h => h.progression?.estimated1RM || h.weight).slice(-10);
-
-  const hasData = chartData.length > 0;
-
   return (
-    <View className="flex-1 bg-[#0a0b0e]">
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
-      <View className="pt-[60px] pb-4 px-5 flex-row items-center justify-between border-b border-[#12141a]">
-        <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 rounded-full bg-[#12141a] border border-[#1e2029] items-center justify-center">
-          <ArrowLeft color="#9ca3af" size={18} />
+      <View style={{ flexDirection: 'row', alignItems: 'center', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ backgroundColor: C.card, padding: 8, borderRadius: 16, borderWidth: 1, borderColor: C.border }}>
+          <ArrowLeft size={20} color={C.subtext} />
         </TouchableOpacity>
-        <View className="items-center">
-          <Text className="text-gray-100 font-bold text-lg">{equipmentName}</Text>
-          <Text className="text-amber-500 font-bold text-xs uppercase tracking-widest">Set {setIndex}</Text>
+        <View style={{ flex: 1, alignItems: 'center' }}>
+          <Text style={{ color: C.text, fontWeight: '900', fontSize: 18 }}>{equipmentName}</Text>
+          <Text style={{ color: C.primary, fontWeight: '900', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 2 }}>Set {setIndex}</Text>
         </View>
-        <View className="w-10" />
+        <View style={{ width: 40 }} />
       </View>
 
-      <ScrollView 
-        className="flex-1 px-5 pt-4"
-        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} tintColor="#a78bfa" />}
+      <ScrollView
+        contentContainerStyle={{ paddingHorizontal: 20, paddingTop: 24, paddingBottom: 100 }}
+        refreshControl={<RefreshControl refreshing={loading} onRefresh={loadData} tintColor={C.primary} />}
+        showsVerticalScrollIndicator={false}
       >
-        {!hasData && !loading ? (
-          <View className="items-center justify-center mt-20">
-            <Text className="text-gray-500">No data found for this specific set.</Text>
+        {loading ? (
+          <View style={{ alignItems: 'center', marginTop: 80 }}>
+            <ActivityIndicator color={C.primary} size="large" />
           </View>
-        ) : hasData ? (
+        ) : !hasData ? (
+          <View style={{ alignItems: 'center', justifyContent: 'center', marginTop: 80, backgroundColor: C.card, padding: 32, borderRadius: 24, borderWidth: 1, borderColor: C.border }}>
+            <BarChart2 color={C.border} size={48} style={{ marginBottom: 16 }} />
+            <Text style={{ color: C.text, fontWeight: '900', fontSize: 18, marginBottom: 8 }}>No data yet</Text>
+            <Text style={{ color: C.muted, textAlign: 'center', fontSize: 14 }}>Complete this set at least once to see your progress chart.</Text>
+          </View>
+        ) : (
           <>
-            {/* Chart Card */}
-            <View className="bg-[#12141a] border border-[#1e2029] rounded-2xl p-5 mb-8">
-              <Text className="text-gray-500 font-bold text-[11px] tracking-widest uppercase mb-4">Estimated 1RM Trend (Last 10)</Text>
-              
+            {/* Weight Chart */}
+            <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 20, marginBottom: 24 }}>
+              <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 16 }}>
+                Weight Over Time (kg)
+              </Text>
               <LineChart
                 data={{
-                  labels: chartLabels.length > 5 ? chartLabels.filter((_, i) => i % 2 === 0) : chartLabels, // sparse labels if too many
-                  datasets: [{ data: chartData }]
+                  labels: chartLabels.length > 5 ? chartLabels.filter((_, i) => i % 2 === 0) : chartLabels,
+                  datasets: [{ data: chartData.length > 0 ? chartData : [0] }],
                 }}
-                width={screenWidth}
-                height={220}
+                width={SCREEN_W - 80}
+                height={180}
                 yAxisSuffix="kg"
                 chartConfig={{
-                  backgroundColor: "#12141a",
-                  backgroundGradientFrom: "#12141a",
-                  backgroundGradientTo: "#12141a",
-                  decimalPlaces: 0,
-                  color: (opacity = 1) => `rgba(252, 211, 77, ${opacity})`, // Amber 500
-                  labelColor: (opacity = 1) => `rgba(156, 163, 175, ${opacity})`, // Gray 400
+                  backgroundColor: C.card,
+                  backgroundGradientFrom: C.card,
+                  backgroundGradientTo: C.card,
+                  decimalPlaces: 1,
+                  color: (opacity = 1) => `rgba(232,65,74,${opacity})`,
+                  labelColor: () => 'rgba(236,231,227,0.4)',
                   style: { borderRadius: 16 },
-                  propsForDots: {
-                    r: "4",
-                    strokeWidth: "2",
-                    stroke: "#b45309"
-                  }
+                  propsForDots: { r: '5', strokeWidth: '2', stroke: C.primary },
+                  propsForBackgroundLines: { stroke: C.border },
                 }}
                 bezier
-                style={{
-                  marginVertical: 8,
-                  borderRadius: 16,
-                  marginLeft: -10
-                }}
+                style={{ marginLeft: -10, borderRadius: 16 }}
               />
             </View>
 
-            {/* Set History Breakdown */}
-            <View className="mb-10">
-              <Text className="text-gray-500 font-bold text-[11px] tracking-widest uppercase mb-3">Performance History</Text>
-              
-              {[...history].reverse().map((set: any, idx: number) => {
-                const grade = set.progression?.overloadGrade || 'N/A';
-                const dateLabel = new Date(set.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-                
-                return (
-                  <View key={idx} className="bg-[#12141a] border border-[#1e2029] rounded-xl p-4 mb-3">
-                    <View className="flex-row justify-between items-center mb-3">
-                      <Text className="text-gray-300 font-bold">{dateLabel}</Text>
-                      
-                      <View className="flex-row items-center px-2.5 py-1 rounded-md" style={{ backgroundColor: getGradeColor(grade) + '20', borderWidth: 1, borderColor: getGradeColor(grade) + '50' }}>
-                        <Text className="font-bold text-xs" style={{ color: getGradeColor(grade) }}>Grade {grade}</Text>
-                      </View>
-                    </View>
+            {/* History list */}
+            <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 2, marginBottom: 12, marginLeft: 4 }}>
+              Performance History
+            </Text>
+            {[...history].reverse().map((set: any, idx: number) => {
+              const grade = set.progression?.overloadGrade || 'N/A';
+              const { label, color } = gradeLabel(grade);
+              const dateLabel = new Date(set.date).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+              const delta = set.progression?.progressionDelta ?? 0;
 
-                    <View className="flex-row justify-between">
-                      <View className="w-[30%]">
-                        <Text className="text-gray-500 text-xs mb-1">Weight</Text>
-                        <Text className="text-gray-100 font-bold">{set.weight}kg</Text>
-                      </View>
-                      
-                      <View className="w-[30%]">
-                        <Text className="text-gray-500 text-xs mb-1">Reps</Text>
-                        <Text className="text-gray-100 font-bold">{set.reps} <Text className="text-gray-600 text-xs font-normal">/ {set.targetReps}</Text></Text>
-                      </View>
-                      
-                      <View className="w-[30%]">
-                        <Text className="text-gray-500 text-xs mb-1">Est. 1RM</Text>
-                        <View className="flex-row items-center">
-                          <Text className="text-gray-100 font-bold mr-1">{set.progression?.estimated1RM || 0}</Text>
-                          {set.progression?.progressionDelta > 0 && <TrendingUp size={12} color="#10b981" />}
-                          {set.progression?.progressionDelta < 0 && <TrendingDown size={12} color="#ef4444" />}
-                        </View>
+              return (
+                <View key={idx} style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 20, padding: 20, marginBottom: 16 }}>
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16, paddingBottom: 16, borderBottomWidth: 1, borderBottomColor: C.border }}>
+                    <Text style={{ color: C.text, fontWeight: '900', fontSize: 14 }}>{dateLabel}</Text>
+                    <View style={{ backgroundColor: `${color}20`, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 10, borderWidth: 1, borderColor: `${color}50` }}>
+                      <Text style={{ color, fontWeight: '900', fontSize: 11, textTransform: 'uppercase', letterSpacing: 1 }}>Grade {label}</Text>
+                    </View>
+                  </View>
+
+                  <View style={{ flexDirection: 'row', justifyContent: 'space-between' }}>
+                    <View>
+                      <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Weight</Text>
+                      <Text style={{ color: C.text, fontWeight: '900', fontSize: 16 }}>{set.weight}kg</Text>
+                    </View>
+                    <View>
+                      <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Reps</Text>
+                      <Text style={{ color: C.text, fontWeight: '900', fontSize: 16 }}>
+                        {set.reps}
+                        <Text style={{ color: C.muted, fontSize: 12, fontWeight: '600' }}> / {set.targetReps}</Text>
+                      </Text>
+                    </View>
+                    <View>
+                      <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 4 }}>Change</Text>
+                      <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                        {delta > 0
+                          ? <TrendingUp size={14} color={C.text} />
+                          : delta < 0
+                          ? <TrendingDown size={14} color={C.primary} />
+                          : <Minus size={14} color={C.muted} />
+                        }
+                        <Text style={{ color: delta > 0 ? C.text : delta < 0 ? C.primary : C.muted, fontWeight: '900', fontSize: 13, marginLeft: 4 }}>
+                          {delta > 0 ? '+' : ''}{delta.toFixed ? delta.toFixed(1) : delta}kg
+                        </Text>
                       </View>
                     </View>
                   </View>
-                );
-              })}
-            </View>
+                </View>
+              );
+            })}
           </>
-        ) : null}
+        )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

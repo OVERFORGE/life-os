@@ -1,9 +1,8 @@
 import React, { useState, useEffect } from 'react';
 import { View, Text, ScrollView, TextInput, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { BlurView } from 'expo-blur';
 import { fetchWithAuth } from '../../../../utils/api';
-import { ArrowLeft } from 'lucide-react-native';
+import { ArrowLeft, Plus } from 'lucide-react-native';
 
 export default function NewGoalScreen() {
   const router = useRouter();
@@ -60,81 +59,104 @@ export default function NewGoalScreen() {
     }
   };
 
-  return (
-    <View className="flex-1 bg-[#0f1115]">
-      {/* Header */}
-      <BlurView intensity={20} tint="dark" className="pt-16 pb-4 px-4 border-b border-[#232632] flex-row justify-between items-center z-10">
-        <TouchableOpacity onPress={() => router.back()} className="w-10 h-10 items-center justify-center">
-          <ArrowLeft color="#fff" size={24} />
-        </TouchableOpacity>
-        <Text className="text-white font-bold text-lg">New Goal</Text>
-        <View className="w-10 h-10" />
-      </BlurView>
+  const sectionLabel = (text: string) => (
+    <Text style={{ color: 'rgba(236,231,227,0.4)', fontWeight: '700', fontSize: 10, letterSpacing: 1.5, textTransform: 'uppercase', marginBottom: 12 }}>{text}</Text>
+  );
 
-      <ScrollView className="flex-1 px-4 pt-6" contentContainerStyle={{ paddingBottom: 100 }}>
+  return (
+    <View style={{ flex: 1, backgroundColor: '#161618' }}>
+      {/* Header */}
+      <View style={{ paddingTop: 60, paddingBottom: 16, paddingHorizontal: 20, borderBottomWidth: 1, borderBottomColor: '#2A2B2F', flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+        <TouchableOpacity
+          onPress={() => router.back()}
+          style={{ width: 38, height: 38, borderRadius: 19, backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', alignItems: 'center', justifyContent: 'center' }}
+        >
+          <ArrowLeft color="rgba(236,231,227,0.7)" size={17} />
+        </TouchableOpacity>
+        <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 16 }}>New Goal</Text>
+        <View style={{ width: 38, height: 38 }} />
+      </View>
+
+      <ScrollView style={{ flex: 1 }} contentContainerStyle={{ padding: 20, paddingBottom: 100 }}>
         {/* Title */}
-        <View className="mb-6">
-          <Text className="text-gray-400 text-xs mb-2">Goal Title</Text>
+        <View style={{ marginBottom: 24 }}>
+          {sectionLabel('Goal Title')}
           <TextInput
-            className="bg-[#161922] border border-[#232632] text-white p-4 rounded-xl"
-            placeholder="e.g. Become a serious Solana developer"
-            placeholderTextColor="#4b5563"
+            style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', color: '#FFFDFC', padding: 16, borderRadius: 14, fontSize: 15 }}
+            placeholder="e.g. Master React Native"
+            placeholderTextColor="rgba(236,231,227,0.3)"
             value={title}
             onChangeText={setTitle}
           />
         </View>
 
         {/* Type */}
-        <View className="mb-8">
-          <Text className="text-gray-400 text-xs mb-2">Goal Type</Text>
-          <View className="flex-row flex-wrap gap-3">
-            {['identity', 'performance', 'maintenance', 'recovery'].map(t => (
-              <TouchableOpacity
-                key={t}
-                onPress={() => setType(t)}
-                className={`px-4 py-2 rounded-lg border ${type === t ? 'border-white bg-[#232632]' : 'border-[#232632] bg-[#161922]'}`}
-              >
-                <Text className={`capitalize ${type === t ? 'text-white font-bold' : 'text-gray-400'}`}>{t}</Text>
-              </TouchableOpacity>
-            ))}
+        <View style={{ marginBottom: 30 }}>
+          {sectionLabel('Goal Type')}
+          <View style={{ flexDirection: 'row', flexWrap: 'wrap', gap: 10 }}>
+            {['identity', 'performance', 'maintenance', 'recovery'].map(t => {
+              const isSelected = type === t;
+              return (
+                <TouchableOpacity
+                  key={t}
+                  onPress={() => setType(t)}
+                  style={{
+                    paddingHorizontal: 16, paddingVertical: 10, borderRadius: 10,
+                    borderWidth: 1,
+                    borderColor: isSelected ? 'rgba(232,65,74,0.4)' : '#2A2B2F',
+                    backgroundColor: isSelected ? 'rgba(232,65,74,0.08)' : '#1F2023',
+                  }}
+                >
+                  <Text style={{ textTransform: 'capitalize', fontWeight: isSelected ? '800' : '600', color: isSelected ? '#E8414A' : 'rgba(236,231,227,0.6)' }}>{t}</Text>
+                </TouchableOpacity>
+              );
+            })}
           </View>
         </View>
 
         {/* Signals */}
-        <View className="mb-8">
-          <Text className="text-white font-semibold text-lg mb-4">Tracked Signals</Text>
+        <View style={{ marginBottom: 30 }}>
+          <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 17, marginBottom: 16 }}>Tracked Signals</Text>
           
           {/* Add Signal Form */}
-          <View className="bg-[#161922] border border-[#232632] rounded-xl p-4 mb-4">
-            <Text className="text-gray-400 text-xs mb-2">Select a signal to track</Text>
-            <ScrollView horizontal showsHorizontalScrollIndicator={false} className="mb-4">
-              {availableSignals.map(s => (
-                <TouchableOpacity
-                  key={s.key}
-                  onPress={() => setSelectedSignalKey(s.key)}
-                  className={`mr-2 px-3 py-1.5 rounded-lg border ${selectedSignalKey === s.key ? 'border-[#10b981] bg-[#10b981]/20' : 'border-[#232632]'}`}
-                >
-                  <Text className={selectedSignalKey === s.key ? 'text-[#10b981] text-sm' : 'text-gray-400 text-sm'}>{s.label || s.key}</Text>
-                </TouchableOpacity>
-              ))}
+          <View style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 14, padding: 16, marginBottom: 16 }}>
+            {sectionLabel('Select Signal')}
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={{ marginBottom: 16 }}>
+              {availableSignals.map(s => {
+                const isSelected = selectedSignalKey === s.key;
+                return (
+                  <TouchableOpacity
+                    key={s.key}
+                    onPress={() => setSelectedSignalKey(s.key)}
+                    style={{
+                      marginRight: 8, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 8, borderWidth: 1,
+                      borderColor: isSelected ? 'rgba(232,65,74,0.4)' : '#2A2B2F',
+                      backgroundColor: isSelected ? 'rgba(232,65,74,0.08)' : '#161618'
+                    }}
+                  >
+                    <Text style={{ color: isSelected ? '#E8414A' : 'rgba(236,231,227,0.5)', fontSize: 13, fontWeight: isSelected ? '700' : '500' }}>{s.label || s.key}</Text>
+                  </TouchableOpacity>
+                );
+              })}
             </ScrollView>
-            <TouchableOpacity onPress={addSignal} className="bg-[#232632] p-3 rounded-lg items-center">
-              <Text className="text-white">+ Add Signal</Text>
+            <TouchableOpacity onPress={addSignal} style={{ backgroundColor: '#161618', borderWidth: 1, borderColor: '#2A2B2F', padding: 14, borderRadius: 10, alignItems: 'center', flexDirection: 'row', justifyContent: 'center', gap: 6 }}>
+              <Plus size={16} color="#ECE7E3" />
+              <Text style={{ color: '#ECE7E3', fontWeight: '700' }}>Add Signal</Text>
             </TouchableOpacity>
           </View>
 
           {/* List of Added Signals */}
           {signals.map((s, idx) => (
-            <View key={s.key} className="bg-[#161922] border border-[#232632] rounded-xl p-4 mb-3 flex-row justify-between items-center">
+            <View key={s.key} style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 14, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
               <View>
-                <Text className="text-white font-medium">{availableSignals.find(a => a.key === s.key)?.label || s.key}</Text>
-                <Text className="text-gray-500 text-xs">{s.key}</Text>
+                <Text style={{ color: '#FFFDFC', fontWeight: '700', fontSize: 14, marginBottom: 2 }}>{availableSignals.find(a => a.key === s.key)?.label || s.key}</Text>
+                <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 11 }}>{s.key}</Text>
               </View>
-              <View className="flex-row items-center gap-4">
-                <View className="flex-row items-center gap-2">
-                  <Text className="text-gray-400 text-xs">Weight</Text>
+              <View style={{ flexDirection: 'row', alignItems: 'center', gap: 16 }}>
+                <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+                  <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 11, fontWeight: '700', textTransform: 'uppercase' }}>Weight</Text>
                   <TextInput
-                    className="bg-[#0f1115] border border-[#232632] text-white px-3 py-1 rounded w-16 text-center"
+                    style={{ backgroundColor: '#161618', borderWidth: 1, borderColor: '#2A2B2F', color: '#FFFDFC', paddingHorizontal: 12, paddingVertical: 6, borderRadius: 6, textAlign: 'center', minWidth: 40 }}
                     keyboardType="numeric"
                     value={String(s.weight)}
                     onChangeText={(v) => {
@@ -145,7 +167,7 @@ export default function NewGoalScreen() {
                   />
                 </View>
                 <TouchableOpacity onPress={() => removeSignal(s.key)}>
-                  <Text className="text-red-400 text-xs">Remove</Text>
+                  <Text style={{ color: '#E8414A', fontSize: 12, fontWeight: '700' }}>Remove</Text>
                 </TouchableOpacity>
               </View>
             </View>
@@ -155,9 +177,9 @@ export default function NewGoalScreen() {
         <TouchableOpacity 
           onPress={createGoal} 
           disabled={creating || !title} 
-          className={`p-4 rounded-xl items-center mb-8 ${creating || !title ? 'bg-gray-600' : 'bg-white'}`}
+          style={{ paddingVertical: 18, borderRadius: 16, alignItems: 'center', marginBottom: 20, backgroundColor: creating || !title ? '#2A2B2F' : '#E8414A' }}
         >
-          <Text className="text-black font-bold text-base">{creating ? 'Creating...' : 'Create Goal'}</Text>
+          <Text style={{ color: creating || !title ? 'rgba(236,231,227,0.4)' : '#FFFDFC', fontWeight: '800', fontSize: 16 }}>{creating ? 'Creating...' : 'Create Goal'}</Text>
         </TouchableOpacity>
       </ScrollView>
     </View>

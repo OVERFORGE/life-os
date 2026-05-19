@@ -1,8 +1,14 @@
 import { useState, useEffect } from 'react';
-import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert } from 'react-native';
+import { View, Text, TouchableOpacity, ScrollView, TextInput, ActivityIndicator, Alert, SafeAreaView } from 'react-native';
 import { ArrowLeft, Check, ChevronDown, ChevronUp } from 'lucide-react-native';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../../utils/api';
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
+};
 
 export default function CreateGymScreen() {
   const router = useRouter();
@@ -103,52 +109,60 @@ export default function CreateGymScreen() {
   };
 
   return (
-    <View className="flex-1 bg-[#0f1115] pt-2">
-      <View className="flex-row items-center justify-between px-6 mb-6">
-        <TouchableOpacity onPress={() => router.back()} className="flex-row items-center">
-          <ArrowLeft size={20} color="#9ca3af" />
-          <Text className="text-gray-400 ml-2 font-medium">Cancel</Text>
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+      <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', paddingHorizontal: 20, paddingTop: 16, paddingBottom: 16 }}>
+        <TouchableOpacity onPress={() => router.back()} style={{ flexDirection: 'row', alignItems: 'center', backgroundColor: C.card, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: C.border }}>
+          <ArrowLeft size={16} color={C.subtext} />
+          <Text style={{ color: C.subtext, marginLeft: 6, fontWeight: '700', fontSize: 13 }}>Cancel</Text>
         </TouchableOpacity>
-        <TouchableOpacity onPress={handleCreate} disabled={saving} className="bg-amber-500 px-4 py-1.5 rounded-full">
-          {saving ? <ActivityIndicator size="small" color="#000" /> : <Text className="text-black font-bold text-sm">Save</Text>}
+        <TouchableOpacity onPress={handleCreate} disabled={saving} style={{ backgroundColor: C.primary, paddingHorizontal: 16, paddingVertical: 8, borderRadius: 20 }}>
+          {saving ? <ActivityIndicator size="small" color="#FFFDFC" /> : <Text style={{ color: '#FFFDFC', fontWeight: '800', fontSize: 13, letterSpacing: 1, textTransform: 'uppercase' }}>Save</Text>}
         </TouchableOpacity>
       </View>
 
-      <ScrollView className="px-6 flex-1" showsVerticalScrollIndicator={false} contentContainerStyle={{ paddingBottom: 120 }}>
-        <Text className="text-2xl font-bold text-gray-100 mb-6">{id ? 'Edit' : 'Create'} Gym Profile</Text>
+      <ScrollView contentContainerStyle={{ paddingHorizontal: 20, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
+        <Text style={{ fontSize: 24, fontWeight: '900', color: C.text, marginBottom: 24 }}>{id ? 'Edit' : 'Create'} Gym Profile</Text>
 
-        <View className="mb-6">
-          <Text className="text-gray-400 text-xs uppercase tracking-wider mb-2 ml-1">Gym Name</Text>
+        <View style={{ marginBottom: 24 }}>
+          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8, marginLeft: 4 }}>Gym Name</Text>
           <TextInput
             placeholder="e.g. Planet Fitness, Garage Gym"
-            placeholderTextColor="#4b5563"
+            placeholderTextColor={C.muted}
             value={name}
             onChangeText={setName}
-            className="bg-[#161922] border border-[#232632] rounded-xl px-4 h-14 text-white font-medium text-base"
+            style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, paddingHorizontal: 16, height: 56, color: C.text, fontWeight: '700', fontSize: 16 }}
           />
         </View>
 
         {/* CUSTOM EQUIPMENT ADDER */}
-        <View className="mb-8 border-t border-[#232632] pt-6">
-          <Text className="text-gray-400 text-xs uppercase tracking-wider mb-2 ml-1">Add Custom Equipment</Text>
-          <View className="bg-[#161922] border border-[#232632] rounded-xl p-4">
+        <View style={{ marginBottom: 32, paddingTop: 24, borderTopWidth: 1, borderTopColor: C.border }}>
+          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginLeft: 4 }}>Add Custom Equipment</Text>
+          <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 20, padding: 20 }}>
             <TextInput
               placeholder="e.g. Special GHD Machine"
-              placeholderTextColor="#4b5563"
+              placeholderTextColor={C.muted}
               value={newCustomName}
               onChangeText={setNewCustomName}
-              className="bg-[#0f1115] border border-[#232632] rounded-lg px-4 h-12 text-white font-medium text-sm mb-3"
+              style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, borderRadius: 12, paddingHorizontal: 16, height: 48, color: C.text, fontWeight: '600', fontSize: 14, marginBottom: 16 }}
             />
-            <View className="flex-row items-center mb-4">
-              <Text className="text-gray-400 text-xs mr-3">Muscle Group:</Text>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
+              <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600', marginRight: 12 }}>Muscle Group:</Text>
               <ScrollView horizontal showsHorizontalScrollIndicator={false}>
                 {['Chest', 'Back', 'Legs', 'Arms', 'Shoulders', 'Core', 'Cardio'].map(cat => (
                   <TouchableOpacity 
                     key={cat}
                     onPress={() => setNewCustomCategory(cat)}
-                    className={`mr-2 px-3 py-1 rounded-full border ${newCustomCategory === cat ? 'bg-amber-500 border-amber-500' : 'bg-transparent border-[#232632]'}`}
+                    style={{
+                      marginRight: 8,
+                      paddingHorizontal: 14,
+                      paddingVertical: 8,
+                      borderRadius: 20,
+                      borderWidth: 1,
+                      backgroundColor: newCustomCategory === cat ? C.primaryBg : 'transparent',
+                      borderColor: newCustomCategory === cat ? 'rgba(232,65,74,0.3)' : C.border
+                    }}
                   >
-                    <Text className={`text-xs font-bold ${newCustomCategory === cat ? 'text-black' : 'text-gray-500'}`}>{cat}</Text>
+                    <Text style={{ fontSize: 12, fontWeight: '800', color: newCustomCategory === cat ? C.primary : C.subtext }}>{cat}</Text>
                   </TouchableOpacity>
                 ))}
               </ScrollView>
@@ -160,19 +174,19 @@ export default function CreateGymScreen() {
                   setNewCustomName('');
                 }
               }}
-              className="bg-gray-800 rounded-lg h-10 items-center justify-center border border-[#232632]"
+              style={{ backgroundColor: C.bg, borderRadius: 12, height: 48, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
             >
-              <Text className="text-amber-500 text-xs font-bold uppercase">+ Add Equipment</Text>
+              <Text style={{ color: C.primary, fontSize: 12, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 }}>+ Add Equipment</Text>
             </TouchableOpacity>
           </View>
           
           {customEquipment.length > 0 && (
-            <View className="mt-4 flex-row flex-wrap">
+            <View style={{ marginTop: 16, flexDirection: 'row', flexWrap: 'wrap', gap: 8 }}>
               {customEquipment.map((eq, i) => (
-                <View key={i} className="bg-amber-500/20 border border-amber-500/30 rounded-xl px-3 py-2 mr-2 mb-2 flex-row items-center">
-                  <Text className="text-amber-400 text-xs font-bold">{eq.name} <Text className="text-gray-500 font-normal">({eq.category})</Text></Text>
-                  <TouchableOpacity onPress={() => setCustomEquipment(customEquipment.filter((_, idx) => idx !== i))} className="ml-2 bg-black/20 p-1 rounded-full">
-                    <Text className="text-red-400 font-black text-[10px]">X</Text>
+                <View key={i} style={{ backgroundColor: C.primaryBg, borderWidth: 1, borderColor: 'rgba(232,65,74,0.2)', borderRadius: 12, paddingHorizontal: 12, paddingVertical: 8, flexDirection: 'row', alignItems: 'center' }}>
+                  <Text style={{ color: C.primary, fontSize: 12, fontWeight: '800' }}>{eq.name} <Text style={{ color: C.subtext, fontWeight: '600' }}>({eq.category})</Text></Text>
+                  <TouchableOpacity onPress={() => setCustomEquipment(customEquipment.filter((_, idx) => idx !== i))} style={{ marginLeft: 8, padding: 4 }}>
+                    <Text style={{ color: '#ef4444', fontWeight: '900', fontSize: 10 }}>X</Text>
                   </TouchableOpacity>
                 </View>
               ))}
@@ -180,63 +194,71 @@ export default function CreateGymScreen() {
           )}
         </View>
 
-        <Text className="text-gray-400 text-xs uppercase tracking-wider mb-3 ml-1">Available Equipment ({selected.size} selected)</Text>
+        <Text style={{ color: C.muted, fontSize: 10, fontWeight: '800', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 12, marginLeft: 4 }}>Available Equipment ({selected.size} selected)</Text>
         
         {loading ? (
-          <ActivityIndicator color="#fcd34d" />
+          <ActivityIndicator color={C.primary} style={{ marginTop: 24 }} />
         ) : (
           Object.entries(categories).map(([cat, items]) => {
             const isExpanded = expandedCat.has(cat);
             const count = getCategoryCount(cat);
             return (
-              <View key={cat} className="mb-3">
+              <View key={cat} style={{ marginBottom: 12 }}>
                 {/* Category Header */}
                 <TouchableOpacity
                   onPress={() => toggleCategory(cat)}
-                  className="bg-[#161922] border border-[#232632] rounded-xl p-4 flex-row items-center justify-between"
+                  style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}
                 >
-                  <View className="flex-row items-center">
-                    <Text className="text-gray-100 font-bold text-base">{cat}</Text>
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                    <Text style={{ color: C.text, fontWeight: '900', fontSize: 16 }}>{cat}</Text>
                     {count > 0 && (
-                      <View className="bg-amber-500/20 px-2 py-0.5 rounded-full ml-3">
-                        <Text className="text-amber-400 text-xs font-bold">{count}</Text>
+                      <View style={{ backgroundColor: C.primaryBg, paddingHorizontal: 8, paddingVertical: 2, borderRadius: 10, marginLeft: 12 }}>
+                        <Text style={{ color: C.primary, fontSize: 11, fontWeight: '900' }}>{count}</Text>
                       </View>
                     )}
                   </View>
-                  <View className="flex-row items-center">
+                  <View style={{ flexDirection: 'row', alignItems: 'center' }}>
                     <TouchableOpacity
                       onPress={() => selectAllInCategory(cat)}
-                      className="mr-3 px-2 py-1 rounded-md bg-white/5"
+                      style={{ marginRight: 12, paddingHorizontal: 10, paddingVertical: 6, borderRadius: 8, backgroundColor: C.bg }}
                     >
-                      <Text className="text-gray-500 text-[10px] font-bold uppercase">
+                      <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 0.5 }}>
                         {items.every(i => selected.has(i)) ? 'None' : 'All'}
                       </Text>
                     </TouchableOpacity>
                     {isExpanded ? (
-                      <ChevronUp size={18} color="#4b5563" />
+                      <ChevronUp size={18} color={C.subtext} />
                     ) : (
-                      <ChevronDown size={18} color="#4b5563" />
+                      <ChevronDown size={18} color={C.subtext} />
                     )}
                   </View>
                 </TouchableOpacity>
 
                 {/* Equipment Items */}
                 {isExpanded && (
-                  <View className="flex-row flex-wrap mt-2 pl-2">
+                  <View style={{ flexDirection: 'row', flexWrap: 'wrap', marginTop: 8, paddingHorizontal: 4, gap: 8 }}>
                     {items.map((item, idx) => {
                       const isSel = selected.has(item);
                       return (
                         <TouchableOpacity
                           key={idx}
                           onPress={() => toggleSelect(item)}
-                          className={`w-[48%] border rounded-xl p-3 mb-2 mr-[2%] flex-row items-center justify-between ${
-                            isSel ? 'bg-amber-500/20 border-amber-500/50' : 'bg-[#1b1f2a] border-[#232632]'
-                          }`}
+                          style={{
+                            width: '48%',
+                            borderWidth: 1,
+                            borderRadius: 12,
+                            padding: 12,
+                            flexDirection: 'row',
+                            alignItems: 'center',
+                            justifyContent: 'space-between',
+                            backgroundColor: isSel ? C.primaryBg : C.card,
+                            borderColor: isSel ? 'rgba(232,65,74,0.3)' : C.border
+                          }}
                         >
-                          <Text className={`text-sm flex-1 ${isSel ? 'text-amber-400 font-semibold' : 'text-gray-400'}`}>
+                          <Text style={{ fontSize: 13, flex: 1, color: isSel ? C.primary : C.subtext, fontWeight: isSel ? '800' : '600' }} numberOfLines={1}>
                             {item}
                           </Text>
-                          {isSel && <Check size={14} color="#fbbf24" />}
+                          {isSel && <Check size={14} color={C.primary} style={{ marginLeft: 8 }} />}
                         </TouchableOpacity>
                       );
                     })}
@@ -247,6 +269,6 @@ export default function CreateGymScreen() {
           })
         )}
       </ScrollView>
-    </View>
+    </SafeAreaView>
   );
 }

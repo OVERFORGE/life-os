@@ -28,7 +28,11 @@ export default function SettingsPage() {
   }, []);
 
   if (!data) {
-    return <div className="p-6 text-gray-400">Loading settings…</div>;
+    return (
+      <div className="min-h-screen bg-[#161618] p-8 text-[#ECE7E3]/70 flex items-center justify-center text-sm font-medium">
+        Loading system state…
+      </div>
+    );
   }
 
   /* ---------------- SAFE DEFAULTS ---------------- */
@@ -87,9 +91,9 @@ export default function SettingsPage() {
   /* ===================================================== */
 
   return (
-    <div className="min-h-screen bg-[#0f1115] text-gray-100">
-      <div className="max-w-4xl mx-auto p-6 space-y-10">
-        <h1 className="text-2xl font-semibold">System Settings</h1>
+    <div className="min-h-screen bg-[#161618] text-[#FFFDFC] selection:bg-[#E8414A]/20 font-sans">
+      <div className="max-w-4xl mx-auto p-8 space-y-10">
+        <h1 className="text-2xl font-medium tracking-tight">System Settings</h1>
 
         {/* ===================================================== */}
         {/* V2 — SYSTEM LEARNED OPTIMIZATION (READ ONLY)           */}
@@ -115,14 +119,14 @@ export default function SettingsPage() {
           description="Rules that trigger phase transitions (burnout, grind, slump, recovery…)."
         >
           {Object.keys(phaseThresholds).length === 0 && (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-[#ECE7E3]/70">
               No thresholds found.
             </div>
           )}
 
           {Object.entries(phaseThresholds).map(([phase, values]: any) => (
-            <div key={phase} className="space-y-2 pt-3">
-              <div className="text-sm font-semibold capitalize text-gray-300">
+            <div key={phase} className="space-y-3 pt-4 border-t border-[#2A2B2F] first:border-0 first:pt-0">
+              <div className="text-xs font-semibold uppercase tracking-wider text-[#ECE7E3]">
                 {phase}
               </div>
 
@@ -152,7 +156,7 @@ export default function SettingsPage() {
           description="How strongly each signal affects phase scoring."
         >
           {Object.keys(phaseWeights).length === 0 && (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-[#ECE7E3]/70">
               No phase weights found.
             </div>
           )}
@@ -177,7 +181,7 @@ export default function SettingsPage() {
           description="How goal cadence, ambition, and conflicts contribute to pressure."
         >
           {Object.keys(goalWeights).length === 0 && (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-[#ECE7E3]/70">
               No goal pressure weights found.
             </div>
           )}
@@ -199,18 +203,18 @@ export default function SettingsPage() {
         {/* ACTIONS                                               */}
         {/* ===================================================== */}
 
-        <div className="flex gap-4 pt-6">
+        <div className="flex gap-4 pt-8 border-t border-[#1F2023]">
           <button
             onClick={save}
             disabled={saving}
-            className="px-5 py-2 rounded-lg bg-white text-black font-medium disabled:opacity-50"
+            className="px-5 py-2 rounded-md bg-[#D62C35] hover:bg-[#E8414A] text-white font-medium text-sm transition-all disabled:opacity-50 disabled:hover:bg-[#D62C35] shadow-sm shadow-[#D62C35]/10"
           >
             {saving ? "Saving…" : "Save Overrides"}
           </button>
 
           <button
             onClick={reset}
-            className="px-5 py-2 rounded-lg border border-[#232632] text-gray-300"
+            className="px-5 py-2 rounded-md border border-[#2A2B2F] hover:bg-[#2A2B2F] text-[#ECE7E3] text-sm font-medium transition-colors"
           >
             Reset to Defaults
           </button>
@@ -234,10 +238,14 @@ function Section({
   children: React.ReactNode;
 }) {
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-5 space-y-4">
-      <div className="font-medium">{title}</div>
-      <div className="text-sm text-gray-400">{description}</div>
-      {children}
+    <div className="bg-[#1F2023] border border-[#2A2B2F] shadow-sm rounded-xl p-6 space-y-6">
+      <div className="space-y-1.5">
+        <div className="font-medium text-[15px]">{title}</div>
+        <div className="text-sm text-[#ECE7E3]/70">{description}</div>
+      </div>
+      <div className="space-y-4">
+        {children}
+      </div>
     </div>
   );
 }
@@ -254,8 +262,8 @@ function EditableNumber({
   onChange: (v: number) => void;
 }) {
   return (
-    <div className="flex justify-between items-center py-1">
-      <div className="text-sm text-gray-300 capitalize">{label}</div>
+    <div className="flex justify-between items-center py-1.5 group">
+      <div className="text-sm text-[#ECE7E3] capitalize transition-colors group-hover:text-[#FFFDFC]">{label}</div>
 
       <input
         type="number"
@@ -263,10 +271,13 @@ function EditableNumber({
         value={value}
         onChange={(e) => onChange(Number(e.target.value))}
         className="
-          w-24 bg-[#0f1115]
-          border border-[#232632]
-          rounded px-2 py-1
-          text-sm text-gray-200
+          w-24 bg-[#161618]
+          border border-[#2A2B2F]
+          rounded-md px-3 py-1.5
+          text-sm text-[#FFFDFC] font-mono
+          transition-all outline-none
+          focus:border-[#E8414A] focus:ring-1 focus:ring-[#E8414A]/20
+          hover:border-[#E8414A]/50
         "
       />
     </div>
@@ -283,15 +294,15 @@ function DerivedRow({
   if (!metric) return null;
 
   return (
-    <div className="flex justify-between items-center py-2 border-b border-[#232632] last:border-none">
-      <div>
-        <div className="text-sm text-gray-300 capitalize">{label}</div>
-        <div className="text-xs text-gray-500">
+    <div className="flex justify-between items-center py-3 border-b border-[#2A2B2F] last:border-none">
+      <div className="space-y-1">
+        <div className="text-sm font-medium text-[#ECE7E3] capitalize">{label}</div>
+        <div className="text-xs text-[#ECE7E3]/50">
           {metric.reason || "Learned adjustment"}
         </div>
       </div>
 
-      <div className="font-mono text-sm text-gray-200">
+      <div className="font-mono text-sm text-[#E8414A]">
         {typeof metric.value === "number"
           ? metric.value.toFixed(2)
           : "—"}

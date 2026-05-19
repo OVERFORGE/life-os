@@ -1,15 +1,20 @@
-import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert } from 'react-native';
+import React, { useState, useCallback } from 'react';
+import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, SafeAreaView } from 'react-native';
 import { useRouter } from 'expo-router';
-import { Dumbbell, Play, ChevronRight, Trash2, ChevronDown, ChevronUp, Clock, Calendar, Flame } from 'lucide-react-native';
-import { useState } from 'react';
+import { Dumbbell, Play, ChevronRight, Trash2, ChevronDown, ChevronUp, Clock, Calendar, Flame, ArrowLeft } from 'lucide-react-native';
 import { fetchWithAuth } from '../../../utils/api';
 import { useFocusEffect } from '@react-navigation/native';
-import React, { useCallback } from 'react';
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)'
+};
 
 function getWeekRange(date: Date) {
   const d = new Date(date);
   const day = d.getDay();
-  const diff = d.getDate() - day + (day === 0 ? -6 : 1); // Monday start
+  const diff = d.getDate() - day + (day === 0 ? -6 : 1);
   const monday = new Date(d.setDate(diff));
   monday.setHours(0, 0, 0, 0);
   const sunday = new Date(monday);
@@ -29,22 +34,15 @@ function formatDuration(sec: number) {
 
 function groupSessionsByWeek(sessions: any[]) {
   const weeks: Record<string, { label: string; monday: Date; sunday: Date; sessions: any[] }> = {};
-
   sessions.forEach(s => {
     const date = new Date(s.date || s.createdAt);
     const { monday, sunday } = getWeekRange(date);
     const key = monday.toISOString();
     if (!weeks[key]) {
-      weeks[key] = {
-        label: `${formatDate(monday)} — ${formatDate(sunday)}`,
-        monday,
-        sunday,
-        sessions: [],
-      };
+      weeks[key] = { label: `${formatDate(monday)} — ${formatDate(sunday)}`, monday, sunday, sessions: [] };
     }
     weeks[key].sessions.push(s);
   });
-
   return Object.values(weeks).sort((a, b) => b.monday.getTime() - a.monday.getTime());
 }
 
@@ -83,11 +81,7 @@ export default function GymHub() {
     }
   }, []);
 
-  useFocusEffect(
-    useCallback(() => {
-      loadGymData();
-    }, [loadGymData])
-  );
+  useFocusEffect(useCallback(() => { loadGymData(); }, [loadGymData]));
 
   const deleteRoutine = (id: string) => {
     Alert.alert("Delete Routine", "Are you sure?", [
@@ -137,203 +131,211 @@ export default function GymHub() {
     ]);
   };
 
-
-
   const weeklyGroups = groupSessionsByWeek(sessions);
   const currentWeekSessions = weeklyGroups.find(w => isCurrentWeek(w.monday))?.sessions || [];
 
   return (
-    <ScrollView className="flex-1 bg-[#0f1115] px-5 pt-4" contentContainerStyle={{ paddingBottom: 120 }}>
-      <View className="flex-row justify-between items-center mb-8">
-        <View className="flex-row items-center">
-          <Dumbbell size={28} color="#fcd34d" />
-          <Text className="text-2xl font-bold text-gray-100 ml-3">Gym Session</Text>
-        </View>
-        <TouchableOpacity 
-          onPress={() => router.push('/(dashboard)/gym/progress')}
-          className="bg-amber-500/20 px-3 py-1.5 rounded-full border border-amber-500/30 flex-row items-center"
-        >
-          <Flame size={14} color="#fcd34d" />
-          <Text className="text-amber-400 font-bold ml-1.5 text-xs">Intelligence</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* Quick Start Live Session */}
-      <View className="mb-8">
-        <View className="flex-row items-center mb-4">
-          <Play size={18} color="#fcd34d" fill="#fcd34d" />
-          <Text className="text-lg font-semibold text-gray-100 ml-2">Quick Start</Text>
-        </View>
-
-        {loading ? <ActivityIndicator color="#fcd34d" /> : routines.length === 0 ? (
-          <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 items-center">
-            <Text className="text-gray-500">Create a routine to start a session.</Text>
-          </View>
-        ) : (
-          routines.map(r => (
-            <View key={r._id} className="bg-[#1b1f2a] border border-[#232632] rounded-xl mb-3 overflow-hidden">
-              <TouchableOpacity 
-                onPress={() => setExpandedRoutine(expandedRoutine === r._id ? null : r._id)}
-                className="p-4 flex-row justify-between items-center bg-[#161922]"
-              >
-                <Text className="text-gray-100 font-bold text-base">{r.routineName}</Text>
-                {expandedRoutine === r._id ? <ChevronUp color="#9ca3af" size={20} /> : <ChevronDown color="#9ca3af" size={20} />}
-              </TouchableOpacity>
-              
-              {expandedRoutine === r._id && (
-                <View className="p-3 bg-[#0f1115]">
-                  {r.splitDays.map((day: any, idx: number) => (
-                    <TouchableOpacity 
-                      key={idx}
-                      onPress={() => router.push({ pathname: '/(dashboard)/gym/live-session', params: { routineId: r._id, dayName: day.dayName } })}
-                      className="bg-amber-500/10 border border-amber-500/20 p-3 rounded-lg mb-2 flex-row justify-between items-center"
-                    >
-                      <View>
-                        <Text className="text-amber-500 font-bold">{day.dayName}</Text>
-                        <Text className="text-amber-500/60 text-xs mt-1">{day.exercises?.length || 0} exercises</Text>
-                      </View>
-                      <View className="bg-amber-500 p-2 rounded-full">
-                        <Play size={14} color="#000" fill="#000" />
-                      </View>
-                    </TouchableOpacity>
-                  ))}
-                </View>
-              )}
-            </View>
-          ))
-        )}
+    <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
+      <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
         
-        <TouchableOpacity
-          onPress={() => router.push('/(dashboard)/gym/log-past')}
-          className="mt-3 bg-[#1b1f2a] border border-[#232632] rounded-xl p-4 flex-row items-center justify-center"
-        >
-          <Calendar size={18} color="#9ca3af" />
-          <Text className="text-gray-300 font-medium ml-2">Log Past Workout</Text>
-        </TouchableOpacity>
-      </View>
-
-      {/* This Week */}
-      <View className="mb-8">
-        <View className="flex-row items-center mb-4">
-          <Flame size={18} color="#f97316" />
-          <Text className="text-lg font-semibold text-gray-100 ml-2">This Week</Text>
-          <View className="bg-amber-500/20 px-2 py-0.5 rounded-full ml-3">
-            <Text className="text-amber-400 text-xs font-bold">{currentWeekSessions.length} sessions</Text>
+        {/* Header */}
+        <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 32, marginTop: 8 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+            <TouchableOpacity onPress={() => router.push('/(dashboard)/health')} style={{ width: 40, height: 40, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+              <ArrowLeft color={C.subtext} size={18} />
+            </TouchableOpacity>
+            <View>
+              <Text style={{ fontSize: 24, fontWeight: '900', color: C.text, letterSpacing: -0.5 }}>Gym Protocol</Text>
+              <Text style={{ fontSize: 10, fontWeight: '800', color: C.muted, marginTop: 2, letterSpacing: 2, textTransform: 'uppercase' }}>Strength Telemetry</Text>
+            </View>
           </View>
+          <TouchableOpacity 
+            onPress={() => router.push('/(dashboard)/gym/progress')}
+            style={{ backgroundColor: C.primaryBg, paddingHorizontal: 12, paddingVertical: 8, borderRadius: 20, borderWidth: 1, borderColor: 'rgba(232,65,74,0.2)', flexDirection: 'row', alignItems: 'center' }}
+          >
+            <Flame size={14} color={C.primary} />
+            <Text style={{ color: C.primary, fontWeight: '800', fontSize: 11, marginLeft: 6, letterSpacing: 1, textTransform: 'uppercase' }}>Intell</Text>
+          </TouchableOpacity>
         </View>
 
-        {currentWeekSessions.length === 0 ? (
-          <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 items-center">
-            <Text className="text-gray-500">No sessions logged this week yet. Start one!</Text>
+        {/* Quick Start */}
+        <View style={{ marginBottom: 32 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+            <Play size={16} color={C.primary} fill={C.primary} />
+            <Text style={{ fontSize: 15, fontWeight: '900', color: C.text, marginLeft: 8 }}>Quick Start</Text>
           </View>
-        ) : (
-          currentWeekSessions.map(s => (
-            <View key={s._id} className="bg-[#161922] border border-[#232632] rounded-xl p-4 mb-3">
-              <View className="flex-row justify-between items-start">
-                <View className="flex-1">
-                  <Text className="text-gray-100 font-semibold text-base">{s.splitDayName || 'Freestyle'}</Text>
-                  <View className="flex-row items-center mt-1.5">
-                    <Calendar size={12} color="#6b7280" />
-                    <Text className="text-gray-500 text-xs ml-1.5">
-                      {new Date(s.date || s.createdAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-                    </Text>
-                    <Clock size={12} color="#6b7280" className="ml-3" />
-                    <Text className="text-gray-500 text-xs ml-1.5">{formatDuration(s.durationSeconds)}</Text>
+
+          {loading ? <ActivityIndicator color={C.primary} /> : routines.length === 0 ? (
+            <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 24, alignItems: 'center' }}>
+              <Text style={{ color: C.subtext, fontSize: 14, fontWeight: '700' }}>Create a routine to start a session.</Text>
+            </View>
+          ) : (
+            routines.map(r => (
+              <View key={r._id} style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, marginBottom: 12, overflow: 'hidden' }}>
+                <TouchableOpacity 
+                  onPress={() => setExpandedRoutine(expandedRoutine === r._id ? null : r._id)}
+                  style={{ padding: 16, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                >
+                  <Text style={{ color: C.text, fontWeight: '800', fontSize: 15 }}>{r.routineName}</Text>
+                  {expandedRoutine === r._id ? <ChevronUp color={C.muted} size={20} /> : <ChevronDown color={C.muted} size={20} />}
+                </TouchableOpacity>
+                
+                {expandedRoutine === r._id && (
+                  <View style={{ padding: 16, paddingTop: 0, backgroundColor: C.card }}>
+                    <View style={{ height: 1, backgroundColor: C.border, marginBottom: 16 }} />
+                    {r.splitDays.map((day: any, idx: number) => (
+                      <TouchableOpacity 
+                        key={idx}
+                        onPress={() => router.push({ pathname: '/(dashboard)/gym/live-session', params: { routineId: r._id, dayName: day.dayName } })}
+                        style={{ backgroundColor: C.bg, borderWidth: 1, borderColor: C.border, padding: 14, borderRadius: 12, marginBottom: 8, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}
+                      >
+                        <View>
+                          <Text style={{ color: C.primary, fontWeight: '800', fontSize: 14 }}>{day.dayName}</Text>
+                          <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '600', marginTop: 4 }}>{day.exercises?.length || 0} exercises</Text>
+                        </View>
+                        <View style={{ backgroundColor: C.primary, padding: 10, borderRadius: 20 }}>
+                          <Play size={14} color="#FFFDFC" fill="#FFFDFC" />
+                        </View>
+                      </TouchableOpacity>
+                    ))}
                   </View>
-                  <Text className="text-gray-600 text-xs mt-1">{s.exercises?.length || 0} exercises</Text>
-                </View>
-                <TouchableOpacity onPress={() => deleteSession(s._id)} className="p-2">
-                  <Trash2 size={16} color="#ef4444" />
-                </TouchableOpacity>
+                )}
               </View>
-            </View>
-          ))
-        )}
-      </View>
-
-      {/* All Sessions History Link */}
-      <View className="mb-8 items-center">
-        <TouchableOpacity
-          onPress={() => router.push('/(dashboard)/gym/history')}
-          className="flex-row items-center justify-center py-3 px-6 rounded-full bg-[#161922] border border-[#232632]"
-        >
-          <Clock size={16} color="#9ca3af" />
-          <Text className="text-gray-300 font-medium ml-2">View Full History</Text>
-          <ChevronRight size={16} color="#9ca3af" className="ml-1" />
-        </TouchableOpacity>
-      </View>
-
-      {/* Routines */}
-      <View className="mb-8">
-        <View className="flex-row justify-between items-end mb-4">
-          <Text className="text-lg font-semibold text-gray-100">Your Routines</Text>
-          <TouchableOpacity onPress={() => router.push('/(dashboard)/gym/create-routine')}>
-            <Text className="text-amber-500 font-medium">+ Add Routine</Text>
+            ))
+          )}
+          
+          <TouchableOpacity
+            onPress={() => router.push('/(dashboard)/gym/log-past')}
+            style={{ marginTop: 12, backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'center' }}
+          >
+            <Calendar size={18} color={C.subtext} />
+            <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginLeft: 8 }}>Log Past Workout</Text>
           </TouchableOpacity>
         </View>
 
-        {loading ? <ActivityIndicator color="#fcd34d" /> : routines.length === 0 ? (
-          <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 items-center">
-            <Text className="text-gray-500">No workout routines created yet.</Text>
-          </View>
-        ) : (
-          routines.map(r => (
-            <View key={r._id} className="bg-[#161922] border border-[#232632] rounded-xl p-4 mb-3 flex-row justify-between items-center">
-              <TouchableOpacity
-                onPress={() => router.push({ pathname: '/(dashboard)/gym/create-routine', params: { id: r._id } })}
-                className="flex-1"
-              >
-                <View>
-                  <Text className="text-gray-100 font-semibold text-base">{r.routineName}</Text>
-                  <Text className="text-gray-500 text-sm mt-1">{r.splitDays?.length || 0} Split Days</Text>
-                </View>
-              </TouchableOpacity>
-              <View className="flex-row items-center">
-                <TouchableOpacity onPress={() => deleteRoutine(r._id)} className="p-2">
-                  <Trash2 size={18} color="#ef4444" />
-                </TouchableOpacity>
-                <ChevronRight color="#4b5563" size={20} />
-              </View>
+        {/* This Week */}
+        <View style={{ marginBottom: 32 }}>
+          <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+            <Flame size={16} color={C.primary} />
+            <Text style={{ fontSize: 15, fontWeight: '900', color: C.text, marginLeft: 8 }}>This Week</Text>
+            <View style={{ backgroundColor: C.primaryBg, paddingHorizontal: 10, paddingVertical: 4, borderRadius: 12, marginLeft: 12 }}>
+              <Text style={{ color: C.primary, fontSize: 10, fontWeight: '900' }}>{currentWeekSessions.length} sessions</Text>
             </View>
-          ))
-        )}
-      </View>
+          </View>
 
-      {/* Gym Environments */}
-      <View className="mb-8">
-        <View className="flex-row justify-between items-end mb-4">
-          <Text className="text-lg font-semibold text-gray-100">Gym Environments</Text>
-          <TouchableOpacity onPress={() => router.push('/(dashboard)/gym/create-gym')}>
-            <Text className="text-amber-500 font-medium">+ Add Gym</Text>
+          {currentWeekSessions.length === 0 ? (
+            <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 24, alignItems: 'center' }}>
+              <Text style={{ color: C.subtext, fontSize: 14, fontWeight: '700' }}>No sessions logged this week yet.</Text>
+            </View>
+          ) : (
+            currentWeekSessions.map(s => (
+              <View key={s._id} style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 16, marginBottom: 12 }}>
+                <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-start' }}>
+                  <View style={{ flex: 1 }}>
+                    <Text style={{ color: C.text, fontWeight: '800', fontSize: 15 }}>{s.splitDayName || 'Freestyle'}</Text>
+                    <View style={{ flexDirection: 'row', alignItems: 'center', marginTop: 8 }}>
+                      <Calendar size={12} color={C.muted} />
+                      <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>
+                        {new Date(s.date || s.createdAt).toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+                      </Text>
+                      <Clock size={12} color={C.muted} style={{ marginLeft: 16 }} />
+                      <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600', marginLeft: 6 }}>{formatDuration(s.durationSeconds)}</Text>
+                    </View>
+                    <Text style={{ color: C.muted, fontSize: 11, fontWeight: '700', marginTop: 8 }}>{s.exercises?.length || 0} EXERCISES</Text>
+                  </View>
+                  <TouchableOpacity onPress={() => deleteSession(s._id)} style={{ padding: 8, backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border }}>
+                    <Trash2 size={16} color="#ef4444" />
+                  </TouchableOpacity>
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* All Sessions History Link */}
+        <View style={{ marginBottom: 32, alignItems: 'center' }}>
+          <TouchableOpacity
+            onPress={() => router.push('/(dashboard)/gym/history')}
+            style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'center', paddingVertical: 14, paddingHorizontal: 24, borderRadius: 20, backgroundColor: C.card, borderWidth: 1, borderColor: C.border }}
+          >
+            <Clock size={16} color={C.subtext} />
+            <Text style={{ color: C.text, fontWeight: '800', fontSize: 14, marginLeft: 8 }}>View Full History</Text>
+            <ChevronRight size={16} color={C.subtext} style={{ marginLeft: 4 }} />
           </TouchableOpacity>
         </View>
 
-        {loading ? <ActivityIndicator color="#fcd34d" /> : gyms.length === 0 ? (
-          <View className="bg-[#161922] border border-[#232632] rounded-xl p-5 items-center">
-            <Text className="text-gray-500 text-center">Define your gym inventory to get customized routines.</Text>
+        {/* Routines */}
+        <View style={{ marginBottom: 32 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
+            <Text style={{ fontSize: 15, fontWeight: '900', color: C.text }}>Your Routines</Text>
+            <TouchableOpacity onPress={() => router.push('/(dashboard)/gym/create-routine')}>
+              <Text style={{ color: C.primary, fontWeight: '800', fontSize: 13 }}>+ Add Routine</Text>
+            </TouchableOpacity>
           </View>
-        ) : (
-          gyms.map(g => (
-            <View key={g._id} className="bg-[#1b1f2a] border border-[#232632] rounded-xl p-4 mb-3 flex-row justify-between items-center">
-              <TouchableOpacity
-                onPress={() => router.push({ pathname: '/(dashboard)/gym/create-gym', params: { id: g._id } })}
-                className="flex-1"
-              >
-                <View>
-                  <Text className="text-gray-200 font-semibold">{g.name}</Text>
-                  <Text className="text-gray-500 text-xs mt-1">{g.selectedPreSeeded?.length || 0} Equipments Available</Text>
-                </View>
-              </TouchableOpacity>
-              <View className="flex-row items-center">
-                <TouchableOpacity onPress={() => deleteGym(g._id)} className="p-2">
-                  <Trash2 size={18} color="#ef4444" />
-                </TouchableOpacity>
-                <ChevronRight color="#4b5563" size={20} />
-              </View>
+
+          {loading ? <ActivityIndicator color={C.primary} /> : routines.length === 0 ? (
+            <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 24, alignItems: 'center' }}>
+              <Text style={{ color: C.subtext, fontSize: 14, fontWeight: '700' }}>No workout routines created yet.</Text>
             </View>
-          ))
-        )}
-      </View>
-    </ScrollView>
+          ) : (
+            routines.map(r => (
+              <View key={r._id} style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: '/(dashboard)/gym/create-routine', params: { id: r._id } })}
+                  style={{ flex: 1 }}
+                >
+                  <View>
+                    <Text style={{ color: C.text, fontWeight: '800', fontSize: 15 }}>{r.routineName}</Text>
+                    <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600', marginTop: 4 }}>{r.splitDays?.length || 0} Split Days</Text>
+                  </View>
+                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity onPress={() => deleteRoutine(r._id)} style={{ padding: 8, backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border, marginRight: 12 }}>
+                    <Trash2 size={16} color="#ef4444" />
+                  </TouchableOpacity>
+                  <ChevronRight color={C.muted} size={18} />
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+
+        {/* Gym Environments */}
+        <View style={{ marginBottom: 32 }}>
+          <View style={{ flexDirection: 'row', justifyContent: 'space-between', alignItems: 'flex-end', marginBottom: 16 }}>
+            <Text style={{ fontSize: 15, fontWeight: '900', color: C.text }}>Gym Environments</Text>
+            <TouchableOpacity onPress={() => router.push('/(dashboard)/gym/create-gym')}>
+              <Text style={{ color: C.primary, fontWeight: '800', fontSize: 13 }}>+ Add Gym</Text>
+            </TouchableOpacity>
+          </View>
+
+          {loading ? <ActivityIndicator color={C.primary} /> : gyms.length === 0 ? (
+            <View style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 24, alignItems: 'center' }}>
+              <Text style={{ color: C.subtext, fontSize: 14, fontWeight: '700', textAlign: 'center' }}>Define your gym inventory to get customized routines.</Text>
+            </View>
+          ) : (
+            gyms.map(g => (
+              <View key={g._id} style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 16, padding: 16, marginBottom: 12, flexDirection: 'row', justifyContent: 'space-between', alignItems: 'center' }}>
+                <TouchableOpacity
+                  onPress={() => router.push({ pathname: '/(dashboard)/gym/create-gym', params: { id: g._id } })}
+                  style={{ flex: 1 }}
+                >
+                  <View>
+                    <Text style={{ color: C.text, fontWeight: '800', fontSize: 15 }}>{g.name}</Text>
+                    <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600', marginTop: 4 }}>{g.selectedPreSeeded?.length || 0} Equipments Available</Text>
+                  </View>
+                </TouchableOpacity>
+                <View style={{ flexDirection: 'row', alignItems: 'center' }}>
+                  <TouchableOpacity onPress={() => deleteGym(g._id)} style={{ padding: 8, backgroundColor: C.bg, borderRadius: 12, borderWidth: 1, borderColor: C.border, marginRight: 12 }}>
+                    <Trash2 size={16} color="#ef4444" />
+                  </TouchableOpacity>
+                  <ChevronRight color={C.muted} size={18} />
+                </View>
+              </View>
+            ))
+          )}
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }

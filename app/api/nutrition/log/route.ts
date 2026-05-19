@@ -16,6 +16,9 @@ export async function GET(req: Request) {
 
     await connectDB();
     
+    // Ensure FoodItem is registered before populate
+    console.log(`[NutritionLog] Models loaded: FoodItem=${FoodItem.modelName}`);
+    
     console.log(`[NutritionLog GET] User: ${session.user.id}, Date: ${date}, Start: ${startDate}, End: ${endDate}`);
 
     if (startDate && endDate) {

@@ -1,43 +1,134 @@
 import { useState, useEffect, useRef } from 'react';
-import { View, Text, TouchableOpacity, TextInput, FlatList, ActivityIndicator, KeyboardAvoidingView, Platform, useWindowDimensions } from 'react-native';
-import { Bot, ArrowUp, Copy, Check, ArrowDown, Leaf } from 'lucide-react-native';
+import {
+  View, Text, TouchableOpacity, TextInput, FlatList,
+  ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard
+} from 'react-native';
+import { Bot, ArrowUp, Copy, Check, ArrowDown, Mic } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithAuth, API_URL } from '../../utils/api';
 import { scheduleAllTaskReminders } from '../../utils/notifications';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
 
-type Message = {
-  role: 'user' | 'assistant';
-  content: string;
+type Message = { role: 'user' | 'assistant'; content: string };
+
+const C = {
+  bg: '#161618', card: '#1F2023', border: '#2A2B2F',
+  text: '#FFFDFC', subtext: 'rgba(236,231,227,0.7)', muted: 'rgba(236,231,227,0.4)',
+  primary: '#E8414A', primaryBg: 'rgba(232,65,74,0.1)',
 };
+
+const GROQ_MODELS = [
+  { id: 'llama-3.3-70b-versatile',                    name: 'Llama 3.3 70B (Best)' },
+  { id: 'qwen/qwen3-32b',                              name: 'Qwen3 32B (Great)' },
+  { id: 'meta-llama/llama-4-scout-17b-16e-instruct',   name: 'Llama 4 Scout 17B' },
+  { id: 'llama-3.1-8b-instant',                        name: 'Llama 3.1 8B (Fastest)' },
+];
+
+// Word-by-word reveal helper
+function useStreamedText(rawText: string, speed = 18) {
+  const [displayed, setDisplayed] = useState('');
+  const prevRawRef = useRef('');
+
+  useEffect(() => {
+    if (!rawText) { setDisplayed(''); return; }
+
+    // Only animate the newly appended portion
+    const prev = prevRawRef.current;
+    prevRawRef.current = rawText;
+
+    if (rawText.startsWith(prev)) {
+      const newPart = rawText.slice(prev.length);
+      const words = newPart.split(' ');
+      let i = 0;
+      const interval = setInterval(() => {
+        i++;
+        setDisplayed(prev + words.slice(0, i).join(' ') + (i < words.length ? ' ' : ''));
+        if (i >= words.length) clearInterval(interval);
+      }, speed);
+      return () => clearInterval(interval);
+    } else {
+      // Full reset (e.g. history load)
+      setDisplayed(rawText);
+    }
+  }, [rawText]);
+
+  return displayed;
+}
+
+function MessageItem({ item, isLast, loading }: { item: Message; isLast: boolean; loading: boolean }) {
+  const isUser = item.role === 'user';
+  const [copied, setCopied] = useState(false);
+
+  const rawContent = (item.content || '').replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+  const displayed = useStreamedText(isLast && !isUser ? rawContent : rawContent, 18);
+  const showContent = isLast && !isUser ? displayed : rawContent;
+  const hasContent = showContent.length > 0;
+
+  const handleCopy = async () => {
+    if (hasContent) {
+      await Clipboard.setStringAsync(showContent);
+      setCopied(true);
+      setTimeout(() => setCopied(false), 2000);
+    }
+  };
+
+  return (
+    <View style={{ marginBottom: 24, flexDirection: 'row', justifyContent: isUser ? 'flex-end' : 'flex-start' }}>
+      {!isUser && (
+        <View style={{ width: 32, height: 32, borderRadius: 16, borderWidth: 1, borderColor: C.border, backgroundColor: C.card, alignItems: 'center', justifyContent: 'center', marginRight: 12, marginTop: 4 }}>
+          <Bot size={16} color={C.primary} />
+        </View>
+      )}
+      <View style={{ flexDirection: 'column', maxWidth: '80%' }}>
+        <View style={{
+          paddingHorizontal: isUser ? 16 : 0,
+          paddingVertical: isUser ? 12 : 0,
+          backgroundColor: isUser ? C.card : 'transparent',
+          borderRadius: 18,
+          borderTopRightRadius: isUser ? 4 : 18,
+          borderWidth: isUser ? 1 : 0,
+          borderColor: C.border,
+        }}>
+          <Text style={{ color: isUser ? C.text : 'rgba(236,231,227,0.9)', fontSize: 16, lineHeight: 24 }}>
+            {showContent || (loading && !isUser && item.content === '' ? '...' : '')}
+          </Text>
+        </View>
+        {hasContent && (
+          <TouchableOpacity
+            onPress={handleCopy}
+            style={{ marginTop: 8, flexDirection: 'row', alignItems: 'center', alignSelf: isUser ? 'flex-end' : 'flex-start', marginRight: isUser ? 4 : 0, marginLeft: isUser ? 0 : 4 }}
+          >
+            {copied ? <Check size={12} color={C.primary} /> : <Copy size={12} color={C.muted} />}
+            <Text style={{ color: copied ? C.primary : C.muted, fontSize: 12, fontWeight: '600', marginLeft: 4 }}>
+              {copied ? 'Copied' : 'Copy'}
+            </Text>
+          </TouchableOpacity>
+        )}
+      </View>
+    </View>
+  );
+}
 
 export default function BrainScreen() {
   const { mode } = useLocalSearchParams<{ mode?: string }>();
-  const isHealthMode = mode === 'health';
-  const accentColor = isHealthMode ? '#10b981' : '#fbbf24';
-
   const [messages, setMessages] = useState<Message[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile');
+  const [displayCount, setDisplayCount] = useState(20);
+
   const flatListRef = useRef<FlatList>(null);
-  
-  // Track if user is scrolling up to prevent auto-scroll jumps
   const isUserScrolling = useRef(false);
-
-  const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
-
-  const GROQ_MODELS = [
-    { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B (Best)" },
-    { id: "qwen/qwen3-32b", name: "Qwen3 32B (Great)" },
-    { id: "meta-llama/llama-4-scout-17b-16e-instruct", name: "Llama 4 Scout 17B" },
-    { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B (Fastest)" },
-  ];
+  const [keyboardVisible, setKeyboardVisible] = useState(false);
 
   useEffect(() => {
     loadHistory();
+    const showSub = Keyboard.addListener('keyboardDidShow', () => setKeyboardVisible(true));
+    const hideSub = Keyboard.addListener('keyboardDidHide', () => setKeyboardVisible(false));
+    return () => { showSub.remove(); hideSub.remove(); };
   }, []);
 
   const loadHistory = async () => {
@@ -52,10 +143,7 @@ export default function BrainScreen() {
       console.error('Failed to load chat history:', e);
     } finally {
       setHistoryLoading(false);
-      // Wait a tick then scroll to bottom initially
-      setTimeout(() => {
-        flatListRef.current?.scrollToEnd({ animated: false });
-      }, 100);
+      setTimeout(() => flatListRef.current?.scrollToEnd({ animated: false }), 100);
     }
   };
 
@@ -63,39 +151,30 @@ export default function BrainScreen() {
     const text = input.trim();
     if (!text || loading) return;
 
-    const userMessage: Message = { role: 'user', content: text };
-    
-    // Add user message and empty placeholder for assistant
-    setMessages(prev => [...prev, userMessage, { role: 'assistant', content: '' }]);
+    setMessages(prev => [...prev, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
     setInput('');
     setLoading(true);
-    isUserScrolling.current = false; // Force scroll down for new message
+    isUserScrolling.current = false;
 
     try {
       const token = await AsyncStorage.getItem('user_token');
       const xhr = new XMLHttpRequest();
       xhr.open('POST', `${API_URL}/conversation`);
       xhr.setRequestHeader('Content-Type', 'application/json');
-      if (token) {
-        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
-      }
+      if (token) xhr.setRequestHeader('Authorization', `Bearer ${token}`);
 
       xhr.onreadystatechange = () => {
-        if (xhr.readyState === 3 || xhr.readyState === 4) {
-          if (xhr.responseText) {
-            setMessages(prev => {
-              const updated = [...prev];
-              // Update only the last message
-              updated[updated.length - 1].content = xhr.responseText;
-              return updated;
-            });
-          }
+        if ((xhr.readyState === 3 || xhr.readyState === 4) && xhr.responseText) {
+          setMessages(prev => {
+            const updated = [...prev];
+            updated[updated.length - 1] = { role: 'assistant', content: xhr.responseText };
+            return updated;
+          });
         }
       };
 
       xhr.onload = () => {
         setLoading(false);
-        // Resync reminders in case the AI created/updated a task
         scheduleAllTaskReminders().catch(console.error);
       };
 
@@ -103,101 +182,60 @@ export default function BrainScreen() {
         setLoading(false);
         setMessages(prev => {
           const updated = [...prev];
-          updated[updated.length - 1].content = 'Network error. Make sure the server is running.';
+          updated[updated.length - 1] = { role: 'assistant', content: 'Network error. Make sure the server is running.' };
           return updated;
         });
       };
 
       xhr.send(JSON.stringify({ message: text, model: selectedModel, mode: mode || 'general' }));
-
     } catch (e) {
       setLoading(false);
       setMessages(prev => [...prev, { role: 'assistant', content: 'Network error. Make sure the server is running.' }]);
     }
   };
 
-  const MessageItem = ({ item, loading }: { item: Message; loading: boolean }) => {
-    const isUser = item.role === 'user';
-    const [copied, setCopied] = useState(false);
-    
-    // Clean up <think> tags from model reasoning
-    const displayContent = (item.content || '').replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
-    const hasContent = displayContent.length > 0;
-
-    const handleCopy = async () => {
-      if (hasContent) {
-        await Clipboard.setStringAsync(displayContent);
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
-      }
-    };
-
-    return (
-      <View className={`mb-6 flex-row ${isUser ? 'justify-end' : 'justify-start'}`}>
-        {!isUser && (
-          <View className="w-8 h-8 rounded-full border border-[#232632] bg-[#161922] items-center justify-center mr-3 mt-1">
-            <Bot size={16} color="#fbbf24" />
-          </View>
-        )}
-        
-        <View className="flex-col max-w-[80%]">
-          <View
-            className={`px-4 py-3 ${
-              isUser
-                ? 'bg-[#232632] rounded-2xl rounded-tr-sm'
-                : 'bg-transparent'
-            }`}
-          >
-            <Text className={`text-[16px] leading-[24px] ${isUser ? 'text-gray-100' : 'text-gray-300'}`}>
-              {displayContent || (loading && !isUser && item.content === '' ? '...' : displayContent)}
-            </Text>
-          </View>
-
-          {/* Copy Icon */}
-          {hasContent && (
-            <TouchableOpacity 
-              onPress={handleCopy} 
-              className={`mt-2 flex-row items-center gap-1.5 ${isUser ? 'self-end mr-2' : 'ml-2'}`}
-            >
-              {copied ? <Check size={12} color="#10b981" /> : <Copy size={12} color="#6b7280" />}
-              <Text className={`${copied ? 'text-emerald-500' : 'text-gray-500'} text-xs font-medium`}>{copied ? 'Copied' : 'Copy'}</Text>
-            </TouchableOpacity>
-          )}
-        </View>
-      </View>
-    );
-  };
+  const visibleMessages = messages.slice(-displayCount);
 
   return (
     <KeyboardAvoidingView
-      behavior="padding"
-      className="flex-1 bg-[#0f1115]"
-      keyboardVerticalOffset={Platform.OS === 'ios' ? 90 : 80}
+      behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
+      style={{ flex: 1, backgroundColor: C.bg }}
+      keyboardVerticalOffset={Platform.OS === 'ios' ? 0 : 0}
     >
-      <View className="flex-1">
-        {/* Messages */}
+      {/* Messages area */}
+      <View style={{ flex: 1 }}>
         {historyLoading ? (
-          <View className="flex-1 items-center justify-center">
-            <ActivityIndicator color="#fcd34d" size="large" />
-            <Text className="text-gray-500 mt-4 text-sm">Loading conversation...</Text>
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center' }}>
+            <ActivityIndicator color={C.primary} size="large" />
+            <Text style={{ color: C.muted, marginTop: 16, fontSize: 12, fontWeight: '700', textTransform: 'uppercase', letterSpacing: 1 }}>
+              Loading conversation...
+            </Text>
           </View>
         ) : messages.length === 0 ? (
-          <View className="flex-1 items-center justify-center px-10">
-            <View className="w-16 h-16 rounded-full bg-amber-500/10 items-center justify-center mb-6">
-              <Bot size={32} color="#fbbf24" />
+          <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}>
+            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginBottom: 24, borderWidth: 1, borderColor: 'rgba(232,65,74,0.3)' }}>
+              <Bot size={32} color={C.primary} />
             </View>
-            <Text className="text-gray-300 text-lg font-bold text-center mb-2">Talk to LifeOS</Text>
-            <Text className="text-gray-500 text-sm text-center leading-5">
+            <Text style={{ color: C.text, fontSize: 18, fontWeight: '900', textAlign: 'center', marginBottom: 8 }}>
+              Talk to LifeOS
+            </Text>
+            <Text style={{ color: C.muted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
               Ask me anything about your goals, habits, daily logs, or let me help you plan your next move.
             </Text>
           </View>
         ) : (
-          <View className="flex-1 relative">
+          <View style={{ flex: 1 }}>
             <FlatList
               ref={flatListRef}
-              data={messages}
+              data={visibleMessages}
               keyExtractor={(_, i) => String(i)}
-              renderItem={({ item }) => <MessageItem item={item} loading={loading} />}
+              renderItem={({ item, index }) => (
+                <MessageItem
+                  item={item}
+                  isLast={index === visibleMessages.length - 1}
+                  loading={loading}
+                />
+              )}
               contentContainerStyle={{ padding: 20, paddingTop: 40 }}
               showsVerticalScrollIndicator={false}
               onScroll={(e) => {
@@ -205,6 +243,9 @@ export default function BrainScreen() {
                 const isScrolledUp = contentSize.height - layoutMeasurement.height - contentOffset.y > 150;
                 isUserScrolling.current = isScrolledUp;
                 setShowScrollButton(isScrolledUp);
+                if (contentOffset.y < 50 && displayCount < messages.length) {
+                  setDisplayCount(prev => prev + 20);
+                }
               }}
               scrollEventThrottle={16}
               onContentSizeChange={() => {
@@ -220,64 +261,79 @@ export default function BrainScreen() {
                   setShowScrollButton(false);
                   isUserScrolling.current = false;
                 }}
-                className="absolute bottom-4 right-4 w-10 h-10 bg-[#232632]/90 rounded-full items-center justify-center border border-white/10 shadow-lg"
+                style={{ position: 'absolute', bottom: 16, right: 16, width: 40, height: 40, backgroundColor: C.card, borderRadius: 20, alignItems: 'center', justifyContent: 'center', borderWidth: 1, borderColor: C.border }}
               >
-                <ArrowDown size={20} color="#fbbf24" style={{ transform: [{ translateY: 1 }] }} />
+                <ArrowDown size={20} color={C.primary} />
               </TouchableOpacity>
             )}
           </View>
         )}
+      </View>
 
-        {/* Input Bar */}
-        <View className="px-4 pb-6 pt-3 bg-[#0f1115]">
-          <View className="mb-3">
-              <FlatList
-                horizontal
-                showsHorizontalScrollIndicator={false}
-                data={GROQ_MODELS}
-                keyExtractor={(item) => item.id}
-                renderItem={({ item }) => {
-                  const isSelected = selectedModel === item.id;
-                  return (
-                    <TouchableOpacity
-                      onPress={() => setSelectedModel(item.id)}
-                      className={`mr-2 px-3 py-1.5 rounded-full border ${
-                        isSelected ? 'bg-amber-500/20 border-amber-500/50' : 'bg-[#1a1d24] border-[#2a2d36]'
-                      }`}
-                    >
-                      <Text className={`text-xs ${isSelected ? 'text-amber-400 font-medium' : 'text-gray-400'}`}>
-                        {item.name}
-                      </Text>
-                    </TouchableOpacity>
-                  );
+      {/* Input bar — anchored above keyboard */}
+      <View style={{ backgroundColor: C.bg, paddingHorizontal: 16, paddingTop: 12, paddingBottom: keyboardVisible ? (Platform.OS === 'ios' ? 28 : 44) : 100, borderTopWidth: 1, borderTopColor: C.border }}>
+        {/* Model selector */}
+        <FlatList
+          horizontal
+          showsHorizontalScrollIndicator={false}
+          data={GROQ_MODELS}
+          keyExtractor={item => item.id}
+          style={{ marginBottom: 10 }}
+          renderItem={({ item }) => {
+            const isSelected = selectedModel === item.id;
+            return (
+              <TouchableOpacity
+                onPress={() => setSelectedModel(item.id)}
+                style={{
+                  marginRight: 8, paddingHorizontal: 12, paddingVertical: 6, borderRadius: 99,
+                  backgroundColor: isSelected ? C.primaryBg : C.card,
+                  borderWidth: 1,
+                  borderColor: isSelected ? 'rgba(232,65,74,0.5)' : C.border,
                 }}
-              />
-          </View>
-          <View className="flex-row items-end bg-[#1a1d24] rounded-[24px] border border-[#2a2d36] pl-5 pr-2 py-2">
-            <TextInput
-              value={input}
-              onChangeText={setInput}
-              placeholder="Message LifeOS..."
-              placeholderTextColor="#6b7280"
-              className="flex-1 text-white text-[16px] py-1.5 max-h-32 min-h-[30px]"
-              multiline={true}
-              onSubmitEditing={sendMessage}
-              editable={!loading}
-            />
-            <TouchableOpacity
-              onPress={sendMessage}
-              disabled={loading || !input.trim()}
-              className={`w-[36px] h-[36px] rounded-full items-center justify-center ml-2 mb-0.5 ${
-                input.trim() ? 'bg-white' : 'bg-gray-800'
-              }`}
-            >
-              {loading && !input.trim() ? (
-                 <ActivityIndicator size="small" color="#0f1115" />
-              ) : (
-                 <ArrowUp size={18} color={input.trim() ? '#0f1115' : '#4b5563'} strokeWidth={3} />
-              )}
-            </TouchableOpacity>
-          </View>
+              >
+                <Text style={{ fontSize: 12, color: isSelected ? C.primary : C.muted, fontWeight: isSelected ? '700' : '500' }}>
+                  {item.name}
+                </Text>
+              </TouchableOpacity>
+            );
+          }}
+        />
+
+        {/* Text input row */}
+        <View style={{ flexDirection: 'row', alignItems: 'flex-end', backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, paddingLeft: 18, paddingRight: 8, paddingVertical: 8 }}>
+          <TextInput
+            value={input}
+            onChangeText={setInput}
+            placeholder="Message LifeOS..."
+            placeholderTextColor={C.muted}
+            style={{ flex: 1, color: C.text, fontSize: 16, paddingVertical: 6, maxHeight: 120, minHeight: 30 }}
+            multiline
+            onSubmitEditing={sendMessage}
+            editable={!loading}
+          />
+
+          {/* Mic icon (placeholder) */}
+          <TouchableOpacity
+            style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6, marginBottom: 1 }}
+          >
+            <Mic size={18} color={C.muted} />
+          </TouchableOpacity>
+
+          {/* Send button */}
+          <TouchableOpacity
+            onPress={sendMessage}
+            disabled={loading || !input.trim()}
+            style={{
+              width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
+              marginLeft: 4, marginBottom: 1,
+              backgroundColor: input.trim() ? C.primary : 'transparent',
+            }}
+          >
+            {loading && !input.trim()
+              ? <ActivityIndicator size="small" color={C.text} />
+              : <ArrowUp size={18} color={input.trim() ? C.text : C.muted} strokeWidth={3} />
+            }
+          </TouchableOpacity>
         </View>
       </View>
     </KeyboardAvoidingView>
