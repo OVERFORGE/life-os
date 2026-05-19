@@ -60,8 +60,9 @@ export function superviseExecutionHorizon(
           carryMetadataLog.push({
             chunkId,
             carryReason: "repair_displacement",
-            sourceTick: step.event.tick,
-            deferredDayIndex: -1 // Phase 6B.5 temporary approximation boundary: precise target day requires full timeline mapping
+            fromDayIndex: -1,
+            toDayIndex: -1, // Phase 6B.5 temporary approximation boundary
+            deferredMinutes: 0
           });
         }
       }

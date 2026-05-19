@@ -153,8 +153,8 @@ export function simulateExecutionHorizon(
       // Derive oscillating chunks from repair events that fired multiple times on same chunks
       const repairChunkCounts = new Map<string, number>();
       for (const re of dayRepairEvents) {
-        if (re.type === "repair_triggered" && re.trigger?.chunkId) {
-          const cid = re.trigger.chunkId;
+        if (re.type === "repair_triggered" && re.trigger?.sourceChunkId) {
+          const cid = re.trigger.sourceChunkId;
           repairChunkCounts.set(cid, (repairChunkCounts.get(cid) ?? 0) + 1);
         }
       }

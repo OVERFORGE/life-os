@@ -38,6 +38,8 @@ import {
   SimulationOptions,
 } from "../types/SimulationTypes";
 import { applyPlannerEvent } from "./applyPlannerEvent";
+import { INITIAL_HEURISTIC_STATE } from "../heuristics/HeuristicTypes";
+import { INITIAL_CONSTRAINT_MEMORY } from "../heuristics/ConstraintMemoryTypes";
 
 // ─── Public API ───────────────────────────────────────────────────────────────
 
@@ -73,6 +75,8 @@ export function simulateExecutionDay(
     repairGeneration: 0,
     logicalTick: 0,
     eventLog: [],
+    heuristicState: INITIAL_HEURISTIC_STATE,
+    constraintMemory: INITIAL_CONSTRAINT_MEMORY
   };
 
   // Canonically sort all events before application
@@ -125,6 +129,8 @@ export function simulateExecutionDay(
     snapshots,
     terminationReason,
     totalRepairCycles: currentState.repairGeneration,
+    heuristicSnapshots: [],
+    memoryEvolutionHistory: []
   };
 }
 

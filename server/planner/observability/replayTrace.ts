@@ -135,6 +135,7 @@ export function* replayCompactTrace(trace: CompactExecutionTrace): Generator<Rep
       stateAfter,
       topologyChanged: hashBefore !== hashAfter,
       repairTriggered: stateAfter.repairGeneration > stateBefore.repairGeneration,
+      memoryChanged: (stateAfter.constraintMemory?.evolutionTick ?? 0) !== (stateBefore.constraintMemory?.evolutionTick ?? 0),
     };
 
     currentState = stateAfter;

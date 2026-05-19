@@ -284,14 +284,15 @@ If nothing actionable is present, return: { "actions": [] }
             model
         });
         const cleanRes = cleanLLMResponse(res);
+        const parsed = JSON.parse(cleanRes);
         let extracted = Array.isArray(parsed.actions) ? parsed.actions : [];
         
         // Filter out redundant goal creations if we auto-handled it
         if (intent === "create_goal") {
-            extracted = extracted.filter(a => a.type !== "create_goal" && a.type !== "propose_goal");
+            extracted = extracted.filter((a: any) => a.type !== "create_goal" && a.type !== "propose_goal");
         }
         if (intent === "confirm_goal") {
-            extracted = extracted.filter(a => a.type !== "confirm_goal" && a.type !== "create_goal");
+            extracted = extracted.filter((a: any) => a.type !== "confirm_goal" && a.type !== "create_goal");
         }
         
         console.log(`📋 [EXTRACTOR] Raw LLM output: ${res.slice(0, 200)}`);

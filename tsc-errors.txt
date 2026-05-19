@@ -1,0 +1,22 @@
+﻿server/planner/horizon/applyDayBoundaryTransition.ts(67,5): error TS2322: Type '{ dayOfWeek: number; sleepWindow: TemporalWindow | undefined; availabilityWindows: AvailabilityWindow[]; recurringConstraints: RecurringConstraint[]; ... 6 more ...; reverseDependencyGraph?: Map<string, string[]>; }' is not assignable to type 'PlacementAnalysisContext'.
+  Types of property 'sleepWindow' are incompatible.
+    Type 'TemporalWindow | undefined' is not assignable to type 'SleepWindow | null'.
+      Type 'undefined' is not assignable to type 'SleepWindow | null'.
+server/planner/observability/replayTrace.ts(131,11): error TS2741: Property 'memoryChanged' is missing in type '{ stepIndex: number; event: PlannerEvent; stateBefore: PlannerSimulationState; stateAfter: PlannerSimulationState; topologyChanged: boolean; repairTriggered: boolean; }' but required in type 'ReplayStep'.
+server/planner/simulation/simulateExecutionDay.ts(66,9): error TS2739: Type '{ schedule: CandidateSchedule; units: SchedulableUnit[]; context: PlacementAnalysisContext; activeChunkIds: Set<string>; ... 4 more ...; eventLog: never[]; }' is missing the following properties from type 'PlannerSimulationState': heuristicState, constraintMemory
+server/planner/simulation/simulateExecutionDay.ts(122,3): error TS2739: Type '{ initialState: PlannerSimulationState; events: PlannerEvent[]; snapshots: PlannerSimulationState[]; terminationReason: "unresolvable_conflict" | ... 2 more ... | "event_sequence_exhausted"; totalRepairCycles: number; }' is missing the following properties from type 'ExecutionTrace': heuristicSnapshots, memoryEvolutionHistory
+server/planner/simulation/simulateExecutionHorizon.ts(156,59): error TS2339: Property 'chunkId' does not exist on type 'RepairTrigger'.
+server/planner/simulation/simulateExecutionHorizon.ts(157,34): error TS2339: Property 'chunkId' does not exist on type 'RepairTrigger'.
+test-phase6b-governance.ts(94,25): error TS2554: Expected 3 arguments, but got 2.
+test-phase6b-governance.ts(97,63): error TS2339: Property 'stormingChunkId' does not exist on type 'RepairStormReport'.
+test-phase7a-adaptive-heuristics.ts(3,10): error TS2459: Module '"./server/planner/types/SimulationTypes"' declares 'HeuristicEvolutionSnapshot' locally, but it is not exported.
+test-phase7c-canonical-hashing.ts(126,59): error TS2345: Argument of type 'readonly string[]' is not assignable to parameter of type 'string[]'.
+  The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type 'string[]'.
+test-phase7c-canonical-hashing.ts(130,50): error TS2345: Argument of type 'readonly PersistedConstraintMemoryEntry[]' is not assignable to parameter of type 'PersistedConstraintMemoryEntry[]'.
+  The type 'readonly PersistedConstraintMemoryEntry[]' is 'readonly' and cannot be assigned to the mutable type 'PersistedConstraintMemoryEntry[]'.
+test-phase7c-canonical-hashing.ts(136,22): error TS2345: Argument of type 'readonly PersistedTopologyRegionMemory[]' is not assignable to parameter of type 'PersistedTopologyRegionMemory[]'.
+  The type 'readonly PersistedTopologyRegionMemory[]' is 'readonly' and cannot be assigned to the mutable type 'PersistedTopologyRegionMemory[]'.
+test-phase7c-canonical-hashing.ts(136,84): error TS2345: Argument of type 'readonly string[]' is not assignable to parameter of type 'string[]'.
+  The type 'readonly string[]' is 'readonly' and cannot be assigned to the mutable type 'string[]'.
+test-phase7c-canonical-hashing.ts(141,56): error TS2345: Argument of type 'readonly MutationLineageRecord[]' is not assignable to parameter of type 'MutationLineageRecord[]'.
+  The type 'readonly MutationLineageRecord[]' is 'readonly' and cannot be assigned to the mutable type 'MutationLineageRecord[]'.

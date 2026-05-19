@@ -91,10 +91,10 @@ async function runTests() {
       { chunkId: "stuck_chunk", fromDayIndex: 2, toDayIndex: 3, carryReason: "repair_displacement", deferredMinutes: 30 } as any,
     ];
 
-    const stormReport = detectRepairStorm(carryLog, guards.maxCarryForwardChains);
+    const stormReport = detectRepairStorm(carryLog, [], guards.maxCarryForwardChains);
     
     assert("Repair storm detected successfully", stormReport.isStorm);
-    assert("Storming chunk identified correctly", stormReport.stormingChunkId === "stuck_chunk");
+    assert("Storming chunk identified correctly", stormReport.stormingLineageRootId === "stuck_chunk");
   }
 
   // ── Scenario 3: Memory Governance / Horizon Exhaustion ─────────────

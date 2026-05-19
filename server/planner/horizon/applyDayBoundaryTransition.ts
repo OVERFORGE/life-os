@@ -35,7 +35,7 @@ export function applyDayBoundaryTransition(
     ...currentState.context,
     dayOfWeek: nextBoundary.dayIndex,
     // Reset temporal metrics that are day-scoped
-    sleepWindow: nextBoundary.sleepWindow
+    sleepWindow: nextBoundary.sleepWindow ? { window: nextBoundary.sleepWindow, confidence: 1.0 } : null
   };
 
   // 3. Create fresh CandidateSchedule for the new day
@@ -52,7 +52,12 @@ export function applyDayBoundaryTransition(
     focusScore: 0,
     fragmentationScore: 0,
     recoverySafetyScore: 0,
-    completionRatio: 0
+    coverageRatio: 0,
+    confidence: 1.0,
+    seedStrategy: "urgency_first" as const,
+    reasoning: [],
+    penaltiesApplied: [],
+    boostsApplied: []
   };
 
   // 4. Return new state

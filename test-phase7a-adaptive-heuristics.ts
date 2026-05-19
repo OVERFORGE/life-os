@@ -1,9 +1,8 @@
 import { CandidateSchedule } from "./server/planner/types/ScheduleGraphTypes";
 import { PlannerEvent } from "./server/planner/types/PlannerEventTypes";
-import { HeuristicEvolutionSnapshot } from "./server/planner/types/SimulationTypes";
 import { simulateExecutionHorizon } from "./server/planner/simulation/simulateExecutionHorizon";
 import { replayTrace } from "./server/planner/observability/replayTrace";
-import { INITIAL_HEURISTIC_STATE } from "./server/planner/heuristics/HeuristicTypes";
+import { INITIAL_HEURISTIC_STATE, HeuristicEvolutionSnapshot } from "./server/planner/heuristics/HeuristicTypes";
 import { evolveHeuristicState } from "./server/planner/heuristics/evolveHeuristicState";
 import { GovernanceMetrics } from "./server/planner/types/GovernanceTypes";
 import { calculateGovernanceMetrics } from "./server/planner/governance/calculateGovernanceMetrics";

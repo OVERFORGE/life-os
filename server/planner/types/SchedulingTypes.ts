@@ -227,6 +227,7 @@ export interface SleepWindow {
  * Used to score and validate placements.
  */
 export interface PlacementAnalysisContext {
+  dayOfWeek?: number;
   availabilityWindows: AvailabilityWindow[];
   recurringConstraints: RecurringConstraint[];
   recoveryWindows: RecoveryWindow[];

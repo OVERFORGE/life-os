@@ -245,7 +245,10 @@ function evolveChunkEntry(
     averagePropagationDepth: Math.max(0, newAvgPropagationDepth),
     instabilityVector: vec,
     aggregateInstabilityScore,
-    lastEvolvedTick: signals.logicalTick
+    lastEvolvedTick: signals.logicalTick,
+    boundaryObservationCount: (prev.boundaryObservationCount || 0) + 1,
+    mutationGeneration: prev.mutationGeneration || 0,
+    deepInheritanceFlag: prev.deepInheritanceFlag || false
   };
 }
 
@@ -262,7 +265,10 @@ function createInitialEntry(chunkId: string, tick: number): ConstraintMemoryEntr
     averagePropagationDepth: 0.0,
     instabilityVector: { ...INITIAL_INSTABILITY_VECTOR },
     aggregateInstabilityScore: 0.0,
-    lastEvolvedTick: tick
+    lastEvolvedTick: tick,
+    boundaryObservationCount: 0,
+    mutationGeneration: 0,
+    deepInheritanceFlag: false
   };
 }
 
