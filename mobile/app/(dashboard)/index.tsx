@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { ScrollView, View, Text, ActivityIndicator, TouchableOpacity } from 'react-native';
+import { ScrollView, View, Text, ActivityIndicator, TouchableOpacity, Image } from 'react-native';
 import { Bell } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../utils/api';
@@ -53,7 +53,14 @@ export default function DashboardFeed() {
     <View className="flex-1 bg-[#161618]">
       {/* Dynamic Header */}
       <View className="flex-row items-center justify-between px-6 pt-16 pb-4">
-        <Text className="text-2xl font-bold tracking-tight text-[#FFFDFC]">Overview</Text>
+        <View style={{ flexDirection: 'row', alignItems: 'center', gap: 10 }}>
+          <Image
+            source={require('../../assets/images/logo.png')}
+            style={{ width: 32, height: 32, borderRadius: 8 }}
+            resizeMode="contain"
+          />
+          <Text className="text-2xl font-bold tracking-tight text-[#FFFDFC]">Overview</Text>
+        </View>
         <TouchableOpacity 
           onPress={() => router.push('/notifications')}
           className="w-10 h-10 rounded-full border border-[#2A2B2F] bg-[#1F2023] items-center justify-center relative"

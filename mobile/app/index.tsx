@@ -1,5 +1,5 @@
 import { useEffect } from 'react';
-import { View, Text } from 'react-native';
+import { View, Text, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -36,6 +36,13 @@ export default function SplashScreen() {
   return (
     <View style={{ flex: 1, backgroundColor: '#161618', alignItems: 'center', justifyContent: 'center' }}>
       <Animated.View entering={FadeIn.duration(1000)} exiting={FadeOut.duration(500)} style={{ alignItems: 'center' }}>
+        <View style={{ width: 100, height: 100, borderRadius: 24, backgroundColor: 'rgba(232,65,74,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 32, borderWidth: 1, borderColor: 'rgba(232,65,74,0.3)' }}>
+          <Image 
+            source={require('../assets/images/logo.png')} 
+            style={{ width: 70, height: 70 }} 
+            resizeMode="contain"
+          />
+        </View>
         <View style={{ flexDirection: 'row', alignItems: 'baseline' }}>
           <Text style={{ fontSize: 32, fontWeight: 'bold', letterSpacing: 2, color: '#FFFDFC', textTransform: 'uppercase' }}>
             Life
@@ -45,7 +52,7 @@ export default function SplashScreen() {
           </Text>
         </View>
         <Text style={{ fontSize: 10, color: 'rgba(236,231,227,0.5)', letterSpacing: 4, textTransform: 'uppercase', marginTop: 8 }}>
-          Syncing...
+          Syncing Telemetry...
         </Text>
       </Animated.View>
     </View>

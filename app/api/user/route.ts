@@ -110,6 +110,7 @@ export async function PUT(req: Request) {
       if (p.weightReminderDay !== undefined) updatePayload['preferences.weightReminderDay'] = Number(p.weightReminderDay);
       if (p.weightReminderHour !== undefined) updatePayload['preferences.weightReminderHour'] = Number(p.weightReminderHour);
       if (p.dayRolloverHour !== undefined) updatePayload['preferences.dayRolloverHour'] = Number(p.dayRolloverHour);
+      if (p.ambientFocusEnabled !== undefined) updatePayload['preferences.ambientFocusEnabled'] = Boolean(p.ambientFocusEnabled);
     }
     
     // Settings

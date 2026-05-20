@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef } from 'react';
 import {
   View, Text, TouchableOpacity, TextInput, FlatList,
-  ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard
+  ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, Image
 } from 'react-native';
 import { Bot, ArrowUp, Copy, Check, ArrowDown, Mic } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -213,8 +213,12 @@ export default function BrainScreen() {
           </View>
         ) : messages.length === 0 ? (
           <View style={{ flex: 1, alignItems: 'center', justifyContent: 'center', paddingHorizontal: 40 }}>
-            <View style={{ width: 64, height: 64, borderRadius: 32, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginBottom: 24, borderWidth: 1, borderColor: 'rgba(232,65,74,0.3)' }}>
-              <Bot size={32} color={C.primary} />
+            <View style={{ width: 72, height: 72, borderRadius: 16, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginBottom: 24, borderWidth: 1, borderColor: 'rgba(232,65,74,0.3)' }}>
+              <Image
+                source={require('../../assets/images/logo.png')}
+                style={{ width: 50, height: 50, borderRadius: 10 }}
+                resizeMode="contain"
+              />
             </View>
             <Text style={{ color: C.text, fontSize: 18, fontWeight: '900', textAlign: 'center', marginBottom: 8 }}>
               Talk to LifeOS

@@ -33,6 +33,7 @@ const UserSchema = new Schema(
       weightReminderDay:     { type: Number, default: 0 },   // 0=Sun, 1=Mon...6=Sat
       weightReminderHour:    { type: Number, default: 9 },   // 9 = 9:00 AM local time
       dayRolloverHour:       { type: Number, default: 4 },   // 4 = 4:00 AM (hours before count as prev day)
+      ambientFocusEnabled:   { type: Boolean, default: false },
     },
   },
   { timestamps: true }

@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react';
-import { View, Text, TouchableOpacity, ActivityIndicator, TextInput } from 'react-native';
+import { View, Text, TouchableOpacity, ActivityIndicator, TextInput, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -153,13 +153,20 @@ export default function LoginScreen() {
   };
 
   return (
-    <View className="flex-1 bg-[#161618] items-center justify-center px-6">
-      <Animated.View entering={FadeInDown.duration(800)} className="w-full max-w-sm items-center">
-        <View className="flex-row items-baseline justify-center mb-2">
-          <Text className="text-4xl font-bold tracking-widest text-[#FFFDFC] uppercase">Life</Text>
-          <Text className="text-4xl font-bold tracking-widest text-[#ECE7E3]/50 uppercase">OS</Text>
+    <View style={{ flex: 1, backgroundColor: '#161618', alignItems: 'center', justifyContent: 'center', paddingHorizontal: 24 }}>
+      <Animated.View entering={FadeInDown.duration(800)} style={{ width: '100%', maxWidth: 400, alignItems: 'center' }}>
+        <View style={{ width: 80, height: 80, borderRadius: 20, backgroundColor: 'rgba(232,65,74,0.1)', alignItems: 'center', justifyContent: 'center', marginBottom: 24, borderWidth: 1, borderColor: 'rgba(232,65,74,0.3)' }}>
+          <Image 
+            source={require('../assets/images/logo.png')} 
+            style={{ width: 56, height: 56 }} 
+            resizeMode="contain"
+          />
         </View>
-        <Text className="text-sm text-[#ECE7E3]/50 text-center mb-10">
+        <View style={{ flexDirection: 'row', alignItems: 'baseline', justifyContent: 'center', marginBottom: 8 }}>
+          <Text style={{ fontSize: 36, fontWeight: 'bold', letterSpacing: 1, color: '#FFFDFC', textTransform: 'uppercase' }}>Life</Text>
+          <Text style={{ fontSize: 36, fontWeight: 'bold', letterSpacing: 1, color: 'rgba(236,231,227,0.5)', textTransform: 'uppercase' }}>OS</Text>
+        </View>
+        <Text style={{ fontSize: 12, color: 'rgba(236,231,227,0.5)', textAlign: 'center', marginBottom: 40, letterSpacing: 2, textTransform: 'uppercase', fontWeight: '600' }}>
           Personal Analytics Engine
         </Text>
 

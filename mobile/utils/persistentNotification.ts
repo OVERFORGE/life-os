@@ -18,27 +18,37 @@ import * as Notifications from 'expo-notifications';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const CHANNEL_ID = 'lifeos-persistent';
+const CHANNEL_ID = 'lifeos-persistent-v3';
 const NOTIF_ID = 'lifeos-persistent-notif';
 const ACTION_REPLY_ID = 'LIFEOS_CHAT_REPLY';
+const ACTION_MIC_ID = 'LIFEOS_MIC_INPUT';
 let revertTimer: ReturnType<typeof setTimeout> | null = null;
+let rotationInterval: ReturnType<typeof setInterval> | null = null;
+let currentTaskIndex = 0;
 
 // ─── Channel & category setup ─────────────────────────────────────────────────
 
 async function ensureChannel() {
   if (Platform.OS !== 'android') return;
   await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-    name: 'LifeOS Assistant',
+    name: 'LifeOS System',
     importance: Notifications.AndroidImportance.LOW,
     lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
     showBadge: false,
     enableVibrate: false,
-    sound: null,
+    sound: null, // explicit silent
   });
 }
 
 async function registerCategories() {
-  await Notifications.setNotificationCategoryAsync('lifeos-persistent', [
+  await Notifications.setNotificationCategoryAsync(CHANNEL_ID, [
+    {
+      identifier: ACTION_MIC_ID,
+      buttonTitle: 'Mic',
+      options: {
+        opensAppToForeground: true, // Mic might need app open for recording
+      },
+    },
     {
       identifier: ACTION_REPLY_ID,
       buttonTitle: 'Chat',
@@ -69,6 +79,29 @@ export async function setupPersistentNotification() {
   await ensureChannel();
   await registerCategories();
   await refreshPersistentNotification();
+  startTaskRotation();
+}
+
+/** 
+ * Starts a 15-second loop that cycles through today's tasks 
+ * to keep the persistent notification "alive" and useful.
+ */
+export function startTaskRotation() {
+  if (rotationInterval) clearInterval(rotationInterval);
+
+  rotationInterval = setInterval(async () => {
+    // If something is currently showing (like a bot response), don't rotate
+    if (revertTimer) return;
+
+    await refreshPersistentNotification();
+  }, 30_000); // 30 seconds to be safer on battery
+}
+
+export function stopTaskRotation() {
+  if (rotationInterval) {
+    clearInterval(rotationInterval);
+    rotationInterval = null;
+  }
 }
 
 /** Dismiss + reschedule the notification with the latest task data. */
@@ -90,16 +123,17 @@ export async function refreshPersistentNotification(taskText?: string, customTit
   }
 
   await Notifications.scheduleNotificationAsync({
-    identifier: NOTIF_ID, // Use fixed identifier to update in place
+    identifier: NOTIF_ID,
     content: {
       title,
       body,
-      categoryIdentifier: 'lifeos-persistent',
+      categoryIdentifier: CHANNEL_ID,
       sticky: true,
       autoDismiss: false,
+      color: '#E8414A', // Brand theme color
       data: { type: 'persistent' },
     },
-    trigger: null, // show immediately
+    trigger: null,
   });
 }
 
@@ -127,6 +161,13 @@ export async function updateNotificationWithResponse(response: string) {
  */
 export async function handleNotificationResponse(response: Notifications.NotificationResponse) {
   const { actionIdentifier, userText } = response as any;
+
+  if (actionIdentifier === ACTION_MIC_ID) {
+    // App will foreground automatically due to 'opensAppToForeground: true'
+    console.log('Mic action triggered');
+    return;
+  }
+
   if (actionIdentifier !== ACTION_REPLY_ID || !userText?.trim()) return;
 
   const prompt = userText.trim();
@@ -164,18 +205,21 @@ async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
       const pendingToday = data.today?.filter((t: any) => t.status === 'pending') || [];
       const pendingOverdue = data.overdue?.filter((t: any) => t.status === 'pending') || [];
       const pendingUpcoming = data.upcoming?.filter((t: any) => t.status === 'pending') || [];
-      
+
       const allPending = [...pendingOverdue, ...pendingToday, ...pendingUpcoming];
-      
+
       if (allPending.length > 0) {
-        const task = allPending[0];
+        // Cycle through tasks
+        const task = allPending[currentTaskIndex % allPending.length];
+        currentTaskIndex++;
+
         const timeStr = task.dueTime || '';
         return {
-          title: 'Upcoming Task',
+          title: `Focus: ${allPending.length} Tasks`,
           text: `${task.title}${timeStr ? `  ·  ${timeStr}` : ''}`
         };
       }
     }
-  } catch {}
-  return { title: 'LifeOS Assistant', text: 'No upcoming tasks. Tap Chat to talk.' };
+  } catch { }
+  return { title: 'LifeOS Assistant', text: 'All caught up! Tap Chat to plan more.' };
 }

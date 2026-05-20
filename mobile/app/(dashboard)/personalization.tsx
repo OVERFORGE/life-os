@@ -8,7 +8,6 @@ import { useRouter } from 'expo-router';
 import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithAuth } from '../../utils/api';
-import { setupPersistentNotification, refreshPersistentNotification } from '../../utils/persistentNotification';
 import * as Notifications from 'expo-notifications';
 
 const C = {
@@ -61,7 +60,7 @@ export default function PersonalizationScreen() {
   const [reminderDay, setReminderDay] = useState(0);     // 0=Sun
   const [reminderHour, setReminderHour] = useState(9);   // 9am
   const [rolloverHour, setRolloverHour] = useState(4);   // 4am
-  const [persistentNotifEnabled, setPersistentNotifEnabled] = useState(true);
+  const [ambientFocusEnabled, setAmbientFocusEnabled] = useState(false);
 
   // Diet mode state
   const [dietMode, setDietMode] = useState('recomp');
@@ -72,15 +71,10 @@ export default function PersonalizationScreen() {
   const loadPrefs = async () => {
     setLoading(true);
     try {
-      const [userRes, weightRes, notifSetting] = await Promise.all([
+        const [userRes, weightRes] = await Promise.all([
         fetchWithAuth('/user'),
-        fetchWithAuth('/health/weight-trend'),
-        AsyncStorage.getItem('@persistent_notif_enabled')
+        fetchWithAuth('/health/weight-trend')
       ]);
-      
-      if (notifSetting !== null) {
-        setPersistentNotifEnabled(notifSetting !== 'false');
-      }
       
       let dynamicMaintenance = null;
       if (weightRes.ok) {
@@ -99,6 +93,7 @@ export default function PersonalizationScreen() {
         setReminderDay(prefs.weightReminderDay ?? 0);
         setReminderHour(prefs.weightReminderHour ?? 9);
         setRolloverHour(prefs.dayRolloverHour ?? 4);
+        setAmbientFocusEnabled(prefs.ambientFocusEnabled === true);
         if (d.dietMode) setDietMode(d.dietMode);
         
         const baseMaintenance = dynamicMaintenance || d.maintenanceCalories || 2200;
@@ -125,18 +120,22 @@ export default function PersonalizationScreen() {
             weightReminderDay: reminderDay,
             weightReminderHour: reminderHour,
             dayRolloverHour: rolloverHour,
+            ambientFocusEnabled,
           },
         }),
       });
       
-      await AsyncStorage.setItem('@persistent_notif_enabled', persistentNotifEnabled ? 'true' : 'false');
-      
-      if (persistentNotifEnabled) {
-        setupPersistentNotification();
+      // Attempt to launch ambient focus if enabled
+      if (ambientFocusEnabled) {
+        import('../../utils/audioManager').then(am => {
+          if (am.checkNativeAudioAvailable()) {
+             am.playAmbientFocus('LifeOS Ambient Focus', 'Swipe down for tasks.');
+          }
+        });
       } else {
-        const prevId = await AsyncStorage.getItem('@persistent_notif_id');
-        if (prevId) await Notifications.dismissNotificationAsync(prevId);
+        import('../../utils/audioManager').then(am => am.pauseAmbientFocus());
       }
+
       if (res.ok) {
         setSaved(true);
         setTimeout(() => setSaved(false), 2500);
@@ -187,23 +186,31 @@ export default function PersonalizationScreen() {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
 
-          {/* ── Persistent Notification ── */}
+          {/* ── Ambient Focus Audio ── */}
           <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 24 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center' }}>
               <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
-                <Bell color={C.primary} size={20} />
+                <Text style={{fontSize: 20}}>🎧</Text>
               </View>
               <View style={{ flex: 1 }}>
-                <Text style={{ color: C.text, fontSize: 16, fontWeight: '900' }}>Persistent Assistant</Text>
-                <Text style={{ color: C.muted, fontSize: 12, marginTop: 4, fontWeight: '600' }}>Quick chat access from notification shade</Text>
+                <Text style={{ color: C.text, fontSize: 16, fontWeight: '900' }}>Ambient Focus Player</Text>
+                <Text style={{ color: C.muted, fontSize: 12, marginTop: 4, fontWeight: '600' }}>Spotify-style media widget (Requires APK)</Text>
               </View>
               <Switch
-                value={persistentNotifEnabled}
-                onValueChange={setPersistentNotifEnabled}
+                value={ambientFocusEnabled}
+                onValueChange={setAmbientFocusEnabled}
                 trackColor={{ false: C.bg, true: 'rgba(232,65,74,0.4)' }}
-                thumbColor={persistentNotifEnabled ? C.primary : C.subtext}
+                thumbColor={ambientFocusEnabled ? C.primary : C.subtext}
               />
             </View>
+            {ambientFocusEnabled && (
+              <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)', padding: 16, marginTop: 20 }}>
+                <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Notice</Text>
+                <Text style={{ color: C.subtext, fontSize: 12, lineHeight: 18, fontWeight: '600' }}>
+                  This creates a background media player to display tasks in the Quick Settings. It will <Text style={{fontWeight: '900', color: C.text}}>crash Expo Go</Text> if you enable it without building natively (`npx expo run:android`).
+                </Text>
+              </View>
+            )}
           </View>
 
           {/* ── Weight Reminder ── */}

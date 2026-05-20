@@ -6,18 +6,22 @@ import '../global.css';
 import { useEffect } from 'react';
 import { ToastProvider } from '../components/ui/Toast';
 import { registerForPushNotificationsAsync, scheduleDailyReminder } from '../utils/notifications';
-import { setupPersistentNotification, handleNotificationResponse } from '../utils/persistentNotification';
 import * as Notifications from 'expo-notifications';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 
 export default function RootLayout() {
   useEffect(() => {
     registerForPushNotificationsAsync().then(() => {
       scheduleDailyReminder();
-      setupPersistentNotification();
     });
-    // Handle chat replies sent from the notification shade
-    const sub = Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
-    return () => sub.remove();
+    
+    // Clean up the old persistent notification if it exists
+    AsyncStorage.getItem('@persistent_notif_id').then(id => {
+      if (id) {
+        Notifications.dismissNotificationAsync(id).catch(() => {});
+        AsyncStorage.removeItem('@persistent_notif_id');
+      }
+    });
   }, []);
 
   return (
@@ -27,6 +31,7 @@ export default function RootLayout() {
           <Stack.Screen name="index" options={{ headerShown: false }} />
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="(dashboard)" options={{ headerShown: false }} />
+          <Stack.Screen name="chat-modal" options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
         </Stack>
         <StatusBar style="light" />
       </ToastProvider>
