@@ -1,21 +1,24 @@
-import { AppState, Platform } from 'react-native';
+import { AppState, Platform, Linking, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-// Store references to TrackPlayer only if it loads successfully
 let TrackPlayer: any = null;
-let isInitialized = false;
+let Capability: any = null;
+let AppKilledPlaybackBehavior: any = null;
+let Event: any = null;
 let isNativeModuleAvailable = false;
 
-// Attempt dynamic import to avoid crashing Expo Go
 try {
-    // If we're in Expo Go without the native module, this will fail gracefully
-    TrackPlayer = require('react-native-track-player').default;
-    const { Capability, AppKilledPlaybackBehavior } = require('react-native-track-player');
+    const tp = require('react-native-track-player');
+    TrackPlayer = tp.default;
+    Capability = tp.Capability;
+    AppKilledPlaybackBehavior = tp.AppKilledPlaybackBehavior;
+    Event = tp.Event;
     isNativeModuleAvailable = !!TrackPlayer;
-} catch (e) {
-    isNativeModuleAvailable = false;
-    console.log("react-native-track-player native module not found. Ambient Media features disabled.");
+} catch (e: any) {
+    Alert.alert("TrackPlayer Import Error", String(e));
 }
+
+let isInitialized = false;
 
 export const checkNativeAudioAvailable = () => isNativeModuleAvailable;
 
@@ -24,8 +27,6 @@ export const setupAmbientAudio = async () => {
     if (isInitialized) return true;
 
     try {
-        const { Capability, AppKilledPlaybackBehavior } = require('react-native-track-player');
-
         await TrackPlayer.setupPlayer();
         await TrackPlayer.updateOptions({
             android: {
@@ -46,8 +47,6 @@ export const setupAmbientAudio = async () => {
                 Capability.SkipToPrevious,
                 Capability.SkipToNext,
             ],
-            nextIcon: require('../assets/images/notification-icon.png'),
-            previousIcon: require('../assets/images/notification-icon.png'),
         });
 
         // Add a dummy track to serve as the background session
@@ -172,9 +171,6 @@ export const pauseAmbientFocus = async () => {
 // Register Playback Service for background event handling
 if (isNativeModuleAvailable) {
     try {
-        const { Event } = require('react-native-track-player');
-        const { Linking } = require('react-native');
-        
         TrackPlayer.registerPlaybackService(() => async function () {
             TrackPlayer.addEventListener(Event.RemotePlay, () => TrackPlayer.play());
             TrackPlayer.addEventListener(Event.RemotePause, () => TrackPlayer.pause());

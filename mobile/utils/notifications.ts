@@ -161,10 +161,8 @@ export async function scheduleAllTaskReminders() {
       await scheduleTaskReminders(task);
     }
     
-    // Refresh persistent assistant with latest upcoming task
-    const { refreshPersistentNotification } = await import('./persistentNotification');
-    await refreshPersistentNotification();
-    
+    // (Removed persistent notification scheduling here)
+
   } catch (e) {
     console.error('Failed to schedule task reminders', e);
   }
