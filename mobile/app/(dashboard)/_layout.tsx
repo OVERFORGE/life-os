@@ -18,6 +18,8 @@ export default function DashboardLayout() {
 
     // Re-schedule all task reminders on app boot
     scheduleAllTaskReminders().catch(e => console.log('Task reminder sync failed', e));
+
+    import('../../utils/persistentNotification').then(n => n.setupPersistentNotification());
   }, []);
 
   return (

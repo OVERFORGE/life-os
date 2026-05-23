@@ -10,7 +10,8 @@ function StatCard({ title, value }: { title: string; value: string }) {
 }
 
 export function SummaryGrid({ logs }: { logs: Log[] }) {
-  const last7 = logs.slice(-7);
+  const safeLogs = Array.isArray(logs) ? logs : [];
+  const last7 = safeLogs.slice(-7);
 
   const avgMood = average(last7.map((l) => l.mental?.mood || 0));
   const avgEnergy = average(last7.map((l) => l.mental?.energy || 0));

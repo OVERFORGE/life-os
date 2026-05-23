@@ -23,7 +23,11 @@ export default function DashboardPage() {
   useEffect(() =>  {
     fetch("/api/daily-log/dashboard")
       .then((res) => res.json())
-      .then((data) => setLogs(data))
+      .then((data) => {
+        // API may return an array directly, or wrap it in { logs: [...] }
+        const arr = Array.isArray(data) ? data : Array.isArray(data?.logs) ? data.logs : [];
+        setLogs(arr);
+      })
       .finally(() => setLoading(false));
     fetch("/api/insights/trajectory")
   .then((r) => r.json())

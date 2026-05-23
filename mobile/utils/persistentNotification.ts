@@ -1,200 +1,39 @@
-/**
- * persistentNotification.ts
- *
- * Manages a persistent "foreground task reminder" notification.
- * Shows the user's next upcoming task and provides a text-input action
- * so they can send a message to the LifeOS chatbot directly from the
- * notification shade.
- *
- * Architecture:
- *  - A single persistent notification channel ("lifeos-persistent")
- *  - The notification body shows the next upcoming task + due time
- *  - A text-input notification action lets the user type a prompt
- *  - The notification response handler sends the text to /conversation
- *  - The response updates the notification body for 60s, then reverts
- */
-
-import * as Notifications from 'expo-notifications';
+import notifee, { AndroidImportance, AndroidVisibility, EventType } from '@notifee/react-native';
 import { Platform } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 
-const CHANNEL_ID = 'lifeos-persistent-v3';
-const NOTIF_ID = 'lifeos-persistent-notif';
-const ACTION_REPLY_ID = 'LIFEOS_CHAT_REPLY';
-const ACTION_MIC_ID = 'LIFEOS_MIC_INPUT';
-let revertTimer: ReturnType<typeof setTimeout> | null = null;
-let rotationInterval: ReturnType<typeof setInterval> | null = null;
-let currentTaskIndex = 0;
+const CHANNEL_ID = 'lifeos-exe-v6';
+const NOTIF_ID = 'lifeos-executioner-notif';
+export const ACTION_CHAT_ID = 'LIFEOS_CHAT_ACTION';
+export const ACTION_MIC_ID = 'LIFEOS_MIC_ACTION';
 
-// ─── Channel & category setup ─────────────────────────────────────────────────
+let currentTaskIndex = 0;
+let isAssistantResponding = false;
+let assistantRevertTimer: ReturnType<typeof setTimeout> | null = null;
+let fgServiceInterval: ReturnType<typeof setInterval> | null = null;
 
 async function ensureChannel() {
   if (Platform.OS !== 'android') return;
-  await Notifications.setNotificationChannelAsync(CHANNEL_ID, {
-    name: 'LifeOS System',
-    importance: Notifications.AndroidImportance.LOW,
-    lockscreenVisibility: Notifications.AndroidNotificationVisibility.PUBLIC,
-    showBadge: false,
-    enableVibrate: false,
-    sound: null, // explicit silent
+  await notifee.createChannel({
+    id: CHANNEL_ID,
+    name: 'LifeOS Command Center',
+    importance: AndroidImportance.DEFAULT,
+    visibility: AndroidVisibility.PUBLIC,
   });
 }
 
-async function registerCategories() {
-  await Notifications.setNotificationCategoryAsync(CHANNEL_ID, [
-    {
-      identifier: ACTION_MIC_ID,
-      buttonTitle: 'Mic',
-      options: {
-        opensAppToForeground: true, // Mic might need app open for recording
-      },
-    },
-    {
-      identifier: ACTION_REPLY_ID,
-      buttonTitle: 'Chat',
-      textInput: {
-        submitButtonTitle: 'Send',
-        placeholder: 'Ask LifeOS...',
-      },
-      options: {
-        opensAppToForeground: false,
-      },
-    },
-  ]);
-}
-
-// ─── Public API ───────────────────────────────────────────────────────────────
-
-/** Call once on app boot (after permissions granted). */
-export async function setupPersistentNotification() {
-  const enabled = await AsyncStorage.getItem('@persistent_notif_enabled');
-  if (enabled === 'false') return;
-
-  const { status } = await Notifications.getPermissionsAsync();
-  if (status !== 'granted') {
-    const { status: newStatus } = await Notifications.requestPermissionsAsync();
-    if (newStatus !== 'granted') return;
-  }
-
-  await ensureChannel();
-  await registerCategories();
-  await refreshPersistentNotification();
-  startTaskRotation();
-}
-
-/** 
- * Starts a 15-second loop that cycles through today's tasks 
- * to keep the persistent notification "alive" and useful.
- */
-export function startTaskRotation() {
-  if (rotationInterval) clearInterval(rotationInterval);
-
-  rotationInterval = setInterval(async () => {
-    // If something is currently showing (like a bot response), don't rotate
-    if (revertTimer) return;
-
-    await refreshPersistentNotification();
-  }, 30_000); // 30 seconds to be safer on battery
-}
-
-export function stopTaskRotation() {
-  if (rotationInterval) {
-    clearInterval(rotationInterval);
-    rotationInterval = null;
-  }
-}
-
-/** Dismiss + reschedule the notification with the latest task data. */
-export async function refreshPersistentNotification(taskText?: string, customTitle?: string) {
-  // Check if disabled by user
-  const enabled = await AsyncStorage.getItem('@persistent_notif_enabled');
-  if (enabled === 'false') {
-    await Notifications.dismissNotificationAsync(NOTIF_ID);
-    return;
-  }
-
-  let body = taskText;
-  let title = customTitle || 'Upcoming Task';
-
-  if (!body) {
-    const summary = await getNextTaskSummary();
-    body = summary.text;
-    title = summary.title;
-  }
-
-  await Notifications.scheduleNotificationAsync({
-    identifier: NOTIF_ID,
-    content: {
-      title,
-      body,
-      categoryIdentifier: CHANNEL_ID,
-      sticky: true,
-      autoDismiss: false,
-      color: '#E8414A', // Brand theme color
-      data: { type: 'persistent' },
-    },
-    trigger: null,
-  });
-}
-
-/**
- * Replace notification body with the bot's response for 60s,
- * then revert to the task summary.
- */
-export async function updateNotificationWithResponse(response: string) {
-  if (revertTimer) clearTimeout(revertTimer);
-
-  const cleanResponse = response.slice(0, 150) + (response.length > 150 ? '…' : '');
-  await refreshPersistentNotification(cleanResponse, 'Assistant Response');
-
-  revertTimer = setTimeout(async () => {
-    await refreshPersistentNotification();
-    revertTimer = null;
-  }, 60_000);
-}
-
-// ─── Notification response handler ───────────────────────────────────────────
-
-/**
- * Wire this up in your root _layout.tsx:
- *   Notifications.addNotificationResponseReceivedListener(handleNotificationResponse);
- */
-export async function handleNotificationResponse(response: Notifications.NotificationResponse) {
-  const { actionIdentifier, userText } = response as any;
-
-  if (actionIdentifier === ACTION_MIC_ID) {
-    // App will foreground automatically due to 'opensAppToForeground: true'
-    console.log('Mic action triggered');
-    return;
-  }
-
-  if (actionIdentifier !== ACTION_REPLY_ID || !userText?.trim()) return;
-
-  const prompt = userText.trim();
-
-  // Optimistic update
-  await refreshPersistentNotification('Thinking...', 'Assistant');
-
+// Global foreground service runner — keeps the notification alive
+if (Platform.OS === 'android') {
   try {
-    const { fetchWithAuth } = await import('./api');
-    const res = await fetchWithAuth('/conversation', {
-      method: 'POST',
-      body: JSON.stringify({ message: prompt, model: 'llama-3.3-70b-versatile', mode: 'general' }),
+    notifee.registerForegroundService((_notification) => {
+      return new Promise(() => {
+        // Runs forever until notifee.stopForegroundService()
+      });
     });
-
-    if (res.ok) {
-      const text = await res.text();
-      const clean = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
-      await updateNotificationWithResponse(clean);
-    } else {
-      await updateNotificationWithResponse('Sorry, something went wrong. Try again.');
-    }
   } catch (e) {
-    await updateNotificationWithResponse('Network error. Make sure the app is running.');
+    console.log('Notifee FG service registration failed', e);
   }
 }
-
-// ─── Helpers ──────────────────────────────────────────────────────────────────
 
 async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
   try {
@@ -209,17 +48,200 @@ async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
       const allPending = [...pendingOverdue, ...pendingToday, ...pendingUpcoming];
 
       if (allPending.length > 0) {
-        // Cycle through tasks
         const task = allPending[currentTaskIndex % allPending.length];
         currentTaskIndex++;
-
         const timeStr = task.dueTime || '';
         return {
-          title: `Focus: ${allPending.length} Tasks`,
-          text: `${task.title}${timeStr ? `  ·  ${timeStr}` : ''}`
+          title: `PENDING: ${allPending.length}`,
+          text: `${task.title.toUpperCase()}${timeStr ? `  |  ${timeStr}` : ''}`,
         };
       }
     }
-  } catch { }
-  return { title: 'LifeOS Assistant', text: 'All caught up! Tap Chat to plan more.' };
+  } catch {}
+  return { title: 'ALL CLEAR', text: 'No pending targets.' };
 }
+
+/**
+ * Send a chat command to the API and return the assistant's response.
+ */
+async function sendChatCommand(message: string): Promise<string> {
+  try {
+    const { fetchWithAuth } = await import('./api');
+    const res = await fetchWithAuth('/conversation', {
+      method: 'POST',
+      body: JSON.stringify({
+        message: message.trim(),
+        model: 'llama-3.3-70b-versatile',
+        mode: 'general',
+      }),
+    });
+    if (res.ok) {
+      const text = await res.text();
+      // Strip <think> tags that some models produce
+      return text.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+    }
+    return 'Request failed. Try again.';
+  } catch {
+    return 'Network error.';
+  }
+}
+
+export async function displayExecutionerNotification(title?: string, body?: string) {
+  if (Platform.OS !== 'android') return;
+  await ensureChannel();
+
+  let finalTitle = title;
+  let finalBody = body;
+
+  if (!finalTitle || !finalBody) {
+    const summary = await getNextTaskSummary();
+    finalTitle = summary.title;
+    finalBody = summary.text;
+  }
+
+  const notifConfig: any = {
+    id: NOTIF_ID,
+    title: finalTitle,
+    body: finalBody,
+    android: {
+      channelId: CHANNEL_ID,
+      asForegroundService: true,
+      colorized: true,
+      color: '#B71C1C', // Darker red so Android forces white text
+      ongoing: true,
+      autoCancel: false,
+      onlyAlertOnce: true,
+      visibility: AndroidVisibility.PUBLIC,
+      smallIcon: 'ic_launcher',
+      actions: [
+        {
+          title: '[ CHAT ]',
+          pressAction: {
+            id: ACTION_CHAT_ID,
+          },
+          input: {
+            allowFreeFormInput: true,
+            placeholder: 'Type a command...',
+          },
+        },
+        {
+          title: '[ MIC ]',
+          pressAction: {
+            id: ACTION_MIC_ID,
+          },
+        },
+      ],
+    },
+  };
+
+  await notifee.displayNotification(notifConfig);
+}
+
+export async function setupPersistentNotification() {
+  if (Platform.OS !== 'android') return;
+  const enabled = await AsyncStorage.getItem('@persistent_notif_enabled');
+  if (enabled === 'false') {
+    await stopTaskRotation();
+    return;
+  }
+
+  await displayExecutionerNotification();
+  startTaskRotation();
+}
+
+export function startTaskRotation() {
+  if (fgServiceInterval) clearInterval(fgServiceInterval);
+  fgServiceInterval = setInterval(async () => {
+    if (isAssistantResponding) return;
+    await displayExecutionerNotification();
+  }, 15_000);
+}
+
+export async function stopTaskRotation() {
+  if (fgServiceInterval) clearInterval(fgServiceInterval);
+  if (Platform.OS === 'android') {
+    await notifee.stopForegroundService();
+    await notifee.cancelNotification(NOTIF_ID);
+  }
+}
+
+/**
+ * Handle a chat command typed inline in the notification.
+ */
+async function handleChatInput(inputText: string) {
+  if (!inputText || !inputText.trim()) return;
+
+  isAssistantResponding = true;
+  if (assistantRevertTimer) clearTimeout(assistantRevertTimer);
+
+  // Show processing state
+  await displayExecutionerNotification(
+    'PROCESSING...',
+    `"${inputText.trim().toUpperCase()}"`
+  );
+
+  // Call the API
+  const response = await sendChatCommand(inputText);
+
+  // Truncate for notification display (max ~300 chars)
+  const truncated = response.length > 300 ? response.slice(0, 297) + '...' : response;
+
+  // Show the response
+  await displayExecutionerNotification(
+    'RESPONSE',
+    truncated
+  );
+
+  // Revert back to task rotation after 60 seconds
+  assistantRevertTimer = setTimeout(async () => {
+    isAssistantResponding = false;
+    await displayExecutionerNotification();
+    assistantRevertTimer = null;
+  }, 60_000);
+}
+
+export async function updateNotificationWithResponse(response: string) {
+  isAssistantResponding = true;
+  if (assistantRevertTimer) clearTimeout(assistantRevertTimer);
+
+  const cleanResponse = response.slice(0, 200) + (response.length > 200 ? '...' : '');
+  await displayExecutionerNotification('RESPONSE', cleanResponse);
+
+  assistantRevertTimer = setTimeout(async () => {
+    isAssistantResponding = false;
+    await displayExecutionerNotification();
+    assistantRevertTimer = null;
+  }, 60_000);
+}
+
+// ─── Event Handlers ────────────────────────────────────────────────────────────
+
+async function handleEvent(type: number, detail: any) {
+  if (type === EventType.ACTION_PRESS && detail.pressAction) {
+    const actionId = detail.pressAction.id;
+
+    if (actionId === ACTION_CHAT_ID && detail.input) {
+      // User typed a command in the notification's inline input
+      await handleChatInput(detail.input);
+    } else if (actionId === ACTION_MIC_ID) {
+      // MIC pressed — for now just acknowledge
+      console.log('Mic pressed from notification');
+    }
+  } else if (type === EventType.DISMISSED) {
+    // Respawn the notification if it gets dismissed
+    const enabled = await AsyncStorage.getItem('@persistent_notif_enabled');
+    if (enabled !== 'false') {
+      setTimeout(() => displayExecutionerNotification(), 1000);
+    }
+  }
+}
+
+// Foreground: app is open
+notifee.onForegroundEvent(({ type, detail }) => {
+  handleEvent(type, detail);
+});
+
+// Background: app is in background or killed
+notifee.onBackgroundEvent(async ({ type, detail }) => {
+  await handleEvent(type, detail);
+});

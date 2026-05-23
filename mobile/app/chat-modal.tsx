@@ -3,7 +3,7 @@ import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform
 import { useRouter } from 'expo-router';
 import { X, Send } from 'lucide-react-native';
 import { fetchWithAuth } from '../utils/api';
-import { playAmbientFocus } from '../utils/audioManager';
+
 
 export default function ChatModalScreen() {
   const router = useRouter();
@@ -25,7 +25,6 @@ export default function ChatModalScreen() {
     setResponse('');
     
     // Optimistic update to track metadata
-    playAmbientFocus('Thinking...', 'Assistant is typing');
 
     try {
       const res = await fetchWithAuth('/conversation', {
@@ -38,14 +37,11 @@ export default function ChatModalScreen() {
         const clean = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
         setResponse(clean);
         // Show AI response in notification for next 30 seconds
-        playAmbientFocus('Assistant', clean.slice(0, 100));
       } else {
         setResponse('Sorry, something went wrong.');
-        playAmbientFocus('Assistant', 'Error occurred');
       }
     } catch (e) {
       setResponse('Network error.');
-      playAmbientFocus('Assistant', 'Network error');
     } finally {
       setLoading(false);
     }

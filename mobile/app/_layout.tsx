@@ -3,7 +3,7 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import '../global.css';
-import '../utils/audioManager'; // Ensure TrackPlayer service is registered on boot
+import '../utils/persistentNotification';
 import { useEffect } from 'react';
 import { ToastProvider } from '../components/ui/Toast';
 import { registerForPushNotificationsAsync, scheduleDailyReminder } from '../utils/notifications';

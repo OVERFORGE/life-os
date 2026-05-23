@@ -84,21 +84,7 @@ export default function ToolsHubScreen() {
           <ChevronRight size={20} color="rgba(236,231,227,0.3)" />
         </TouchableOpacity>
 
-        {/* ─── Ambient Focus Card ─── */}
-        <TouchableOpacity
-          activeOpacity={0.8}
-          onPress={() => router.push('/(dashboard)/tools/ambient')}
-          className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-5 mb-4 flex-row items-center"
-        >
-          <View className="w-12 h-12 rounded-xl bg-[#2A2B2F] items-center justify-center mr-4">
-            <Clock size={24} color="#ECE7E3" />
-          </View>
-          <View className="flex-1">
-            <Text className="text-[#FFFDFC] font-semibold text-base">Ambient Focus</Text>
-            <Text className="text-[#ECE7E3]/50 text-sm mt-0.5">Focus music & media notification</Text>
-          </View>
-          <ChevronRight size={20} color="rgba(236,231,227,0.3)" />
-        </TouchableOpacity>
+
 
       </ScrollView>
     </View>

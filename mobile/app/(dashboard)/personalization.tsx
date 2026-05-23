@@ -60,7 +60,7 @@ export default function PersonalizationScreen() {
   const [reminderDay, setReminderDay] = useState(0);     // 0=Sun
   const [reminderHour, setReminderHour] = useState(9);   // 9am
   const [rolloverHour, setRolloverHour] = useState(4);   // 4am
-  const [ambientFocusEnabled, setAmbientFocusEnabled] = useState(false);
+
 
   // Diet mode state
   const [dietMode, setDietMode] = useState('recomp');
@@ -93,7 +93,7 @@ export default function PersonalizationScreen() {
         setReminderDay(prefs.weightReminderDay ?? 0);
         setReminderHour(prefs.weightReminderHour ?? 9);
         setRolloverHour(prefs.dayRolloverHour ?? 4);
-        setAmbientFocusEnabled(prefs.ambientFocusEnabled === true);
+
         if (d.dietMode) setDietMode(d.dietMode);
         
         const baseMaintenance = dynamicMaintenance || d.maintenanceCalories || 2200;
@@ -120,21 +120,12 @@ export default function PersonalizationScreen() {
             weightReminderDay: reminderDay,
             weightReminderHour: reminderHour,
             dayRolloverHour: rolloverHour,
-            ambientFocusEnabled,
+
           },
         }),
       });
       
-      // Attempt to launch ambient focus if enabled
-      if (ambientFocusEnabled) {
-        import('../../utils/audioManager').then(am => {
-          if (am.checkNativeAudioAvailable()) {
-             am.playAmbientFocus('LifeOS Ambient Focus', 'Swipe down for tasks.');
-          }
-        });
-      } else {
-        import('../../utils/audioManager').then(am => am.pauseAmbientFocus());
-      }
+
 
       if (res.ok) {
         setSaved(true);
@@ -186,32 +177,7 @@ export default function PersonalizationScreen() {
       ) : (
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
 
-          {/* ── Ambient Focus Audio ── */}
-          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 24 }}>
-            <View style={{ flexDirection: 'row', alignItems: 'center' }}>
-              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
-                <Text style={{fontSize: 20}}>🎧</Text>
-              </View>
-              <View style={{ flex: 1 }}>
-                <Text style={{ color: C.text, fontSize: 16, fontWeight: '900' }}>Ambient Focus Player</Text>
-                <Text style={{ color: C.muted, fontSize: 12, marginTop: 4, fontWeight: '600' }}>Spotify-style media widget (Requires APK)</Text>
-              </View>
-              <Switch
-                value={ambientFocusEnabled}
-                onValueChange={setAmbientFocusEnabled}
-                trackColor={{ false: C.bg, true: 'rgba(232,65,74,0.4)' }}
-                thumbColor={ambientFocusEnabled ? C.primary : C.subtext}
-              />
-            </View>
-            {ambientFocusEnabled && (
-              <View style={{ backgroundColor: 'rgba(239,68,68,0.1)', borderRadius: 16, borderWidth: 1, borderColor: 'rgba(239,68,68,0.2)', padding: 16, marginTop: 20 }}>
-                <Text style={{ color: '#ef4444', fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Notice</Text>
-                <Text style={{ color: C.subtext, fontSize: 12, lineHeight: 18, fontWeight: '600' }}>
-                  This creates a background media player to display tasks in the Quick Settings. It will <Text style={{fontWeight: '900', color: C.text}}>crash Expo Go</Text> if you enable it without building natively (`npx expo run:android`).
-                </Text>
-              </View>
-            )}
-          </View>
+
 
           {/* ── Weight Reminder ── */}
           <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 24 }}>
