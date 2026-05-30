@@ -1,8 +1,11 @@
-import notifee, { AndroidImportance, AndroidVisibility, EventType } from '@notifee/react-native';
-import { Platform } from 'react-native';
+import notifee, { AndroidImportance, AndroidVisibility, EventType, AndroidForegroundServiceType } from '@notifee/react-native';
+import { Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { VoiceRecorder, transcribeAudio } from './audioCapture';
 
-const CHANNEL_ID = 'lifeos-exe-v6';
+const voiceRecorder = new VoiceRecorder();
+
+const CHANNEL_ID = 'lifeos-exe-v7';
 const NOTIF_ID = 'lifeos-executioner-notif';
 export const ACTION_CHAT_ID = 'LIFEOS_CHAT_ACTION';
 export const ACTION_MIC_ID = 'LIFEOS_MIC_ACTION';
@@ -10,7 +13,11 @@ export const ACTION_MIC_ID = 'LIFEOS_MIC_ACTION';
 let currentTaskIndex = 0;
 let isAssistantResponding = false;
 let assistantRevertTimer: ReturnType<typeof setTimeout> | null = null;
-let fgServiceInterval: ReturnType<typeof setInterval> | null = null;
+let isFgServiceRunning = false;
+let fgTaskResolve: (() => void) | null = null;
+
+let lastDisplayedText: string | null = null;
+let noTasksCounter = 0;
 
 async function ensureChannel() {
   if (Platform.OS !== 'android') return;
@@ -26,8 +33,21 @@ async function ensureChannel() {
 if (Platform.OS === 'android') {
   try {
     notifee.registerForegroundService((_notification) => {
-      return new Promise(() => {
-        // Runs forever until notifee.stopForegroundService()
+      return new Promise((resolve) => {
+        isFgServiceRunning = true;
+        fgTaskResolve = resolve;
+
+        // Android suspends main thread setIntervals. By running the loop 
+        // inside the headless task promise, it is guaranteed to stay awake!
+        const interval = setInterval(async () => {
+          if (!isFgServiceRunning) {
+            clearInterval(interval);
+            resolve();
+            return;
+          }
+          if (isAssistantResponding) return;
+          await displayExecutionerNotification();
+        }, 15_000);
       });
     });
   } catch (e) {
@@ -51,6 +71,7 @@ async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
         const task = allPending[currentTaskIndex % allPending.length];
         currentTaskIndex++;
         const timeStr = task.dueTime || '';
+        noTasksCounter = 0;
         return {
           title: `PENDING: ${allPending.length}`,
           text: `${task.title.toUpperCase()}${timeStr ? `  |  ${timeStr}` : ''}`,
@@ -58,6 +79,8 @@ async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
       }
     }
   } catch {}
+  
+  noTasksCounter++;
   return { title: 'ALL CLEAR', text: 'No pending targets.' };
 }
 
@@ -99,6 +122,22 @@ export async function displayExecutionerNotification(title?: string, body?: stri
     finalBody = summary.text;
   }
 
+  const newDisplayText = `${finalTitle}::${finalBody}`;
+
+  // If there's no change, and we're not currently processing a chat command, do NOT update notification.
+  // Also, if no tasks exist (ALL CLEAR) and we already showed it, skip refreshing.
+  if (!isAssistantResponding && lastDisplayedText === newDisplayText && noTasksCounter > 1) {
+    return;
+  }
+
+  // If the text is the exact same and it's just a rotation loop, don't flash the screen.
+  // Wait, if it's identical text, Notifee might still trigger a system redraw. We skip it entirely.
+  if (!isAssistantResponding && lastDisplayedText === newDisplayText) {
+    return;
+  }
+  
+  lastDisplayedText = newDisplayText;
+
   const notifConfig: any = {
     id: NOTIF_ID,
     title: finalTitle,
@@ -106,13 +145,17 @@ export async function displayExecutionerNotification(title?: string, body?: stri
     android: {
       channelId: CHANNEL_ID,
       asForegroundService: true,
+      foregroundServiceTypes: [
+        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
+        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE
+      ],
       colorized: true,
       color: '#B71C1C', // Darker red so Android forces white text
       ongoing: true,
       autoCancel: false,
       onlyAlertOnce: true,
       visibility: AndroidVisibility.PUBLIC,
-      smallIcon: 'ic_launcher',
+      smallIcon: 'notification_icon',
       actions: [
         {
           title: '[ CHAT ]',
@@ -134,31 +177,49 @@ export async function displayExecutionerNotification(title?: string, body?: stri
     },
   };
 
-  await notifee.displayNotification(notifConfig);
+  try {
+    await notifee.displayNotification(notifConfig);
+  } catch (error: any) {
+    console.log("NOTIFEE ERROR:", error);
+  }
 }
 
 export async function setupPersistentNotification() {
   if (Platform.OS !== 'android') return;
-  const enabled = await AsyncStorage.getItem('@persistent_notif_enabled');
-  if (enabled === 'false') {
-    await stopTaskRotation();
-    return;
-  }
+  
+  try {
+    // Android 13+ absolutely requires requesting POST_NOTIFICATIONS at runtime
+    const settings = await notifee.requestPermission();
+    if (settings.authorizationStatus === 0) { // 0 = DENIED
+      console.log('User denied notification permissions.');
+      Alert.alert("Permissions Missing", "Please grant notification permissions in Android settings for the Command Center to work.");
+      return;
+    }
 
-  await displayExecutionerNotification();
-  startTaskRotation();
+    const enabled = await AsyncStorage.getItem('@persistent_notif_enabled');
+    // Default is false/null. Only start if explicitly 'true' to protect Expo Go users
+    if (enabled !== 'true') {
+      await stopTaskRotation();
+      return;
+    }
+
+    await displayExecutionerNotification();
+    startTaskRotation();
+  } catch (error: any) {
+    Alert.alert("Setup Error", error?.message || String(error));
+  }
 }
 
 export function startTaskRotation() {
-  if (fgServiceInterval) clearInterval(fgServiceInterval);
-  fgServiceInterval = setInterval(async () => {
-    if (isAssistantResponding) return;
-    await displayExecutionerNotification();
-  }, 15_000);
+  isFgServiceRunning = true;
 }
 
 export async function stopTaskRotation() {
-  if (fgServiceInterval) clearInterval(fgServiceInterval);
+  isFgServiceRunning = false;
+  if (fgTaskResolve) {
+    fgTaskResolve();
+    fgTaskResolve = null;
+  }
   if (Platform.OS === 'android') {
     await notifee.stopForegroundService();
     await notifee.cancelNotification(NOTIF_ID);
@@ -224,8 +285,31 @@ async function handleEvent(type: number, detail: any) {
       // User typed a command in the notification's inline input
       await handleChatInput(detail.input);
     } else if (actionId === ACTION_MIC_ID) {
-      // MIC pressed — for now just acknowledge
-      console.log('Mic pressed from notification');
+      // MIC pressed — start headless background recording!
+      await displayExecutionerNotification('LISTENING...', 'Speak your command now...');
+      
+      const success = await voiceRecorder.startRecording(async (uri) => {
+        await displayExecutionerNotification('PROCESSING...', 'Transcribing voice...');
+        const { text, error } = await transcribeAudio(uri);
+        
+        if (text) {
+          await handleChatInput(text);
+        } else {
+          await displayExecutionerNotification('ERROR', error || 'Failed to hear command.');
+          setTimeout(() => {
+            lastDisplayedText = null;
+            displayExecutionerNotification();
+          }, 4000);
+        }
+      });
+
+      if (!success) {
+        await displayExecutionerNotification('ERROR', 'Mic permission denied or failed.');
+        setTimeout(() => {
+            lastDisplayedText = null;
+            displayExecutionerNotification();
+        }, 3000);
+      }
     }
   } else if (type === EventType.DISMISSED) {
     // Respawn the notification if it gets dismissed

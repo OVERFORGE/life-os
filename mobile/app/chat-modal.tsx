@@ -1,8 +1,9 @@
 import React, { useState, useEffect, useRef } from 'react';
 import { View, Text, TextInput, TouchableOpacity, KeyboardAvoidingView, Platform, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { X, Send } from 'lucide-react-native';
+import { X, Send, Mic } from 'lucide-react-native';
 import { fetchWithAuth } from '../utils/api';
+import { VoiceRecorder, transcribeAudio } from '../utils/audioCapture';
 
 
 export default function ChatModalScreen() {
@@ -10,6 +11,8 @@ export default function ChatModalScreen() {
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
   const [response, setResponse] = useState('');
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceRecorder] = useState(() => new VoiceRecorder());
   const inputRef = useRef<TextInput>(null);
 
   useEffect(() => {
@@ -19,8 +22,9 @@ export default function ChatModalScreen() {
     }, 100);
   }, []);
 
-  const sendPrompt = async () => {
-    if (!input.trim()) return;
+  const sendPrompt = async (forcedText?: string) => {
+    const text = (forcedText || input).trim();
+    if (!text) return;
     setLoading(true);
     setResponse('');
     
@@ -29,7 +33,7 @@ export default function ChatModalScreen() {
     try {
       const res = await fetchWithAuth('/conversation', {
         method: 'POST',
-        body: JSON.stringify({ message: input.trim(), model: 'llama-3.3-70b-versatile', mode: 'general' }),
+        body: JSON.stringify({ message: text, model: 'llama-3.3-70b-versatile', mode: 'general' }),
       });
 
       if (res.ok) {
@@ -44,6 +48,32 @@ export default function ChatModalScreen() {
       setResponse('Network error.');
     } finally {
       setLoading(false);
+    }
+  };
+
+  const startVoiceInput = async () => {
+    if (loading) return;
+    setIsRecording(true);
+    setInput('Listening...');
+    
+    const success = await voiceRecorder.startRecording(async (uri) => {
+      setIsRecording(false);
+      setInput('Transcribing...');
+      const { text, error } = await transcribeAudio(uri);
+      
+      if (text) {
+        setInput('');
+        await sendPrompt(text);
+      } else {
+        setInput('');
+        setResponse(error || 'Failed to transcribe audio.');
+      }
+    });
+
+    if (!success) {
+      setIsRecording(false);
+      setInput('');
+      setResponse('Mic permission denied.');
     }
   };
 
@@ -112,11 +142,25 @@ export default function ChatModalScreen() {
             multiline={false}
             returnKeyType="send"
           />
+          {/* Mic Button */}
           <TouchableOpacity 
-            onPress={sendPrompt} 
-            disabled={!input.trim() || loading}
+            onPress={startVoiceInput}
+            disabled={loading}
             style={{ 
               marginLeft: 10, 
+              backgroundColor: isRecording ? 'rgba(232,65,74,0.2)' : '#2A2B2F', 
+              padding: 10, 
+              borderRadius: 16 
+            }}
+          >
+            {isRecording ? <ActivityIndicator size="small" color="#E8414A" /> : <Mic size={18} color={isRecording ? '#E8414A' : '#FFFDFC'} />}
+          </TouchableOpacity>
+          {/* Send Button */}
+          <TouchableOpacity 
+            onPress={() => sendPrompt()} 
+            disabled={!input.trim() || loading}
+            style={{ 
+              marginLeft: 8, 
               backgroundColor: input.trim() ? '#E8414A' : '#2A2B2F', 
               padding: 10, 
               borderRadius: 16 

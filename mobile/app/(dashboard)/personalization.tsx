@@ -60,6 +60,7 @@ export default function PersonalizationScreen() {
   const [reminderDay, setReminderDay] = useState(0);     // 0=Sun
   const [reminderHour, setReminderHour] = useState(9);   // 9am
   const [rolloverHour, setRolloverHour] = useState(4);   // 4am
+  const [persistentNotifEnabled, setPersistentNotifEnabled] = useState(false); // Default false for Expo Go safety
 
 
   // Diet mode state
@@ -99,6 +100,10 @@ export default function PersonalizationScreen() {
         const baseMaintenance = dynamicMaintenance || d.maintenanceCalories || 2200;
         setMaintenanceCals(Math.round(baseMaintenance / 50) * 50);
       }
+
+      // Load local notification setting
+      const notifSetting = await AsyncStorage.getItem('@persistent_notif_enabled');
+      setPersistentNotifEnabled(notifSetting === 'true');
     } catch (e) {
       console.error('Load prefs error:', e);
     } finally {
@@ -120,10 +125,18 @@ export default function PersonalizationScreen() {
             weightReminderDay: reminderDay,
             weightReminderHour: reminderHour,
             dayRolloverHour: rolloverHour,
-
           },
         }),
       });
+      
+      // Save local notification setting
+      await AsyncStorage.setItem('@persistent_notif_enabled', persistentNotifEnabled ? 'true' : 'false');
+      
+      if (persistentNotifEnabled) {
+        import('../../utils/persistentNotification').then(n => n.setupPersistentNotification());
+      } else {
+        import('../../utils/persistentNotification').then(n => n.stopTaskRotation());
+      }
       
 
 
@@ -178,6 +191,30 @@ export default function PersonalizationScreen() {
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
 
 
+          {/* ── Command Center (Persistent Notification) ── */}
+          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 12 }}>
+              <View style={{ width: 40, height: 40, borderRadius: 12, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+                <Bell color={C.primary} size={20} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.text, fontSize: 16, fontWeight: '900' }}>Command Center</Text>
+                <Text style={{ color: C.muted, fontSize: 12, marginTop: 4, fontWeight: '600' }}>Persistent background notification</Text>
+              </View>
+              <Switch
+                value={persistentNotifEnabled}
+                onValueChange={setPersistentNotifEnabled}
+                trackColor={{ false: C.bg, true: 'rgba(232,65,74,0.4)' }}
+                thumbColor={persistentNotifEnabled ? C.primary : C.subtext}
+              />
+            </View>
+            <View style={{ backgroundColor: C.primaryBg, borderRadius: 16, borderWidth: 1, borderColor: 'rgba(232,65,74,0.2)', padding: 16 }}>
+              <Text style={{ color: C.primary, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Danger Zone</Text>
+              <Text style={{ color: C.subtext, fontSize: 12, lineHeight: 20, fontWeight: '600' }}>
+                Only enable this when running the <Text style={{ color: C.text, fontWeight: '900' }}>compiled APK build</Text>. Enabling this inside Expo Go will cause an immediate native crash because it requires compiled background services.
+              </Text>
+            </View>
+          </View>
 
           {/* ── Weight Reminder ── */}
           <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 24 }}>

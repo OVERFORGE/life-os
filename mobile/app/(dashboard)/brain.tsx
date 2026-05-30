@@ -9,6 +9,7 @@ import { fetchWithAuth, API_URL } from '../../utils/api';
 import { scheduleAllTaskReminders } from '../../utils/notifications';
 import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
+import { VoiceRecorder, transcribeAudio } from '../../utils/audioCapture';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
@@ -123,6 +124,8 @@ export default function BrainScreen() {
   const flatListRef = useRef<FlatList>(null);
   const isUserScrolling = useRef(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
+  const [isRecording, setIsRecording] = useState(false);
+  const [voiceRecorder] = useState(() => new VoiceRecorder());
 
   useEffect(() => {
     loadHistory();
@@ -147,8 +150,8 @@ export default function BrainScreen() {
     }
   };
 
-  const sendMessage = async () => {
-    const text = input.trim();
+  const sendMessage = async (forcedText?: string) => {
+    const text = (forcedText || input).trim();
     if (!text || loading) return;
 
     setMessages(prev => [...prev, { role: 'user', content: text }, { role: 'assistant', content: '' }]);
@@ -191,6 +194,32 @@ export default function BrainScreen() {
     } catch (e) {
       setLoading(false);
       setMessages(prev => [...prev, { role: 'assistant', content: 'Network error. Make sure the server is running.' }]);
+    }
+  };
+
+  const startVoiceInput = async () => {
+    if (loading) return;
+    setIsRecording(true);
+    setInput('Listening...');
+    
+    const success = await voiceRecorder.startRecording(async (uri) => {
+      setIsRecording(false);
+      setInput('Transcribing...');
+      const { text, error } = await transcribeAudio(uri);
+      
+      if (text) {
+        setInput('');
+        await sendMessage(text);
+      } else {
+        setInput('');
+        setMessages(prev => [...prev, { role: 'assistant', content: error || 'Failed to transcribe audio. Please try again.' }]);
+      }
+    });
+
+    if (!success) {
+      setIsRecording(false);
+      setInput('');
+      setMessages(prev => [...prev, { role: 'assistant', content: 'Microphone permission denied.' }]);
     }
   };
 
@@ -316,16 +345,18 @@ export default function BrainScreen() {
             editable={!loading}
           />
 
-          {/* Mic icon (placeholder) */}
+          {/* Mic button */}
           <TouchableOpacity
-            style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6, marginBottom: 1 }}
+            onPress={startVoiceInput}
+            disabled={loading}
+            style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6, marginBottom: 1, backgroundColor: isRecording ? 'rgba(232,65,74,0.2)' : 'transparent' }}
           >
-            <Mic size={18} color={C.muted} />
+            {isRecording ? <ActivityIndicator size="small" color={C.primary} /> : <Mic size={18} color={isRecording ? C.primary : C.muted} />}
           </TouchableOpacity>
 
           {/* Send button */}
           <TouchableOpacity
-            onPress={sendMessage}
+            onPress={() => sendMessage()}
             disabled={loading || !input.trim()}
             style={{
               width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center',
