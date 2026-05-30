@@ -2,10 +2,12 @@ import notifee, { AndroidImportance, AndroidVisibility, EventType, AndroidForegr
 import { Platform, Alert } from 'react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { VoiceRecorder, transcribeAudio } from './audioCapture';
+import { isVoiceAssistantEnabledAtCurrentLocation } from './locationManager';
+import { playChime, speakAndListen } from './ttsManager';
 
 const voiceRecorder = new VoiceRecorder();
 
-const CHANNEL_ID = 'lifeos-exe-v7';
+const CHANNEL_ID = 'lifeos-exe-v8';
 const NOTIF_ID = 'lifeos-executioner-notif';
 export const ACTION_CHAT_ID = 'LIFEOS_CHAT_ACTION';
 export const ACTION_MIC_ID = 'LIFEOS_MIC_ACTION';
@@ -26,6 +28,8 @@ async function ensureChannel() {
     name: 'LifeOS Command Center',
     importance: AndroidImportance.DEFAULT,
     visibility: AndroidVisibility.PUBLIC,
+    vibration: false,
+    sound: 'default', // Using default sound but setting vibration false; actually, let's omit sound to be fully silent. Wait, if it's DEFAULT importance, Android requires a sound setting or it assigns default.
   });
 }
 
@@ -55,6 +59,7 @@ if (Platform.OS === 'android') {
   }
 }
 
+
 async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
   try {
     const { fetchWithAuth } = await import('./api');
@@ -66,6 +71,31 @@ async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
       const pendingUpcoming = data.upcoming?.filter((t: any) => t.status === 'pending') || [];
 
       const allPending = [...pendingOverdue, ...pendingToday, ...pendingUpcoming];
+      
+      // Check Reminders
+      const now = Date.now();
+      for (const task of allPending) {
+        if (task.reminders && Array.isArray(task.reminders)) {
+          for (const remStr of task.reminders) {
+            const remTime = new Date(remStr).getTime();
+            if (remTime <= now && now - remTime < 15000) {
+              const isVoiceAllowed = await isVoiceAssistantEnabledAtCurrentLocation();
+              if (isVoiceAllowed) {
+                await playChime();
+                speakAndListen(`Reminder: ${task.title}`, () => {
+                  if (Platform.OS === 'android' || Platform.OS === 'ios') {
+                    voiceRecorder.startRecording(async (uri: string) => {
+                      const { transcribeAudio } = await import('./audioCapture');
+                      const { text } = await transcribeAudio(uri);
+                      if (text) handleChatInput(text);
+                    });
+                  }
+                });
+              }
+            }
+          }
+        }
+      }
 
       if (allPending.length > 0) {
         const task = allPending[currentTaskIndex % allPending.length];
@@ -252,6 +282,19 @@ async function handleChatInput(inputText: string) {
     'RESPONSE',
     truncated
   );
+
+  const isVoiceAllowed = await isVoiceAssistantEnabledAtCurrentLocation();
+  if (isVoiceAllowed) {
+    speakAndListen(response.trim(), () => {
+       if (Platform.OS === 'android' || Platform.OS === 'ios') {
+         voiceRecorder.startRecording(async (uri: string) => {
+           const { transcribeAudio } = await import('./audioCapture');
+           const { text } = await transcribeAudio(uri);
+           if (text) handleChatInput(text);
+         });
+       }
+    });
+  }
 
   // Revert back to task rotation after 60 seconds
   assistantRevertTimer = setTimeout(async () => {

@@ -4,6 +4,8 @@ import { useRouter } from 'expo-router';
 import { X, Send, Mic } from 'lucide-react-native';
 import { fetchWithAuth } from '../utils/api';
 import { VoiceRecorder, transcribeAudio } from '../utils/audioCapture';
+import { isVoiceAssistantEnabledAtCurrentLocation } from '../utils/locationManager';
+import { speakAndListen, stopSpeaking } from '../utils/ttsManager';
 
 
 export default function ChatModalScreen() {
@@ -20,6 +22,10 @@ export default function ChatModalScreen() {
     setTimeout(() => {
       inputRef.current?.focus();
     }, 100);
+
+    return () => {
+      stopSpeaking();
+    };
   }, []);
 
   const sendPrompt = async (forcedText?: string) => {
@@ -37,10 +43,17 @@ export default function ChatModalScreen() {
       });
 
       if (res.ok) {
-        const text = await res.text();
-        const clean = text.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
-        setResponse(clean);
-        // Show AI response in notification for next 30 seconds
+        const data = await res.json();
+        const textResponse = data.message?.content || data.response;
+        setResponse(textResponse);
+        
+        // Handle TTS and auto-listen
+        const isVoiceAllowed = await isVoiceAssistantEnabledAtCurrentLocation();
+        if (isVoiceAllowed && textResponse?.trim().length > 0) {
+          speakAndListen(textResponse.trim(), () => {
+             startVoiceInput();
+          });
+        }
       } else {
         setResponse('Sorry, something went wrong.');
       }

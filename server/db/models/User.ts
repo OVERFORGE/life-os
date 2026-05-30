@@ -34,6 +34,15 @@ const UserSchema = new Schema(
       weightReminderHour:    { type: Number, default: 9 },   // 9 = 9:00 AM local time
       dayRolloverHour:       { type: Number, default: 4 },   // 4 = 4:00 AM (hours before count as prev day)
       ambientFocusEnabled:   { type: Boolean, default: false },
+      savedLocations: [
+        {
+          name: String,
+          lat: Number,
+          lng: Number,
+          radius: Number,
+          voiceAssistantEnabled: Boolean,
+        }
+      ]
     },
   },
   { timestamps: true }

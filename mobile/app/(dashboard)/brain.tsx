@@ -7,9 +7,10 @@ import { Bot, ArrowUp, Copy, Check, ArrowDown, Mic } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithAuth, API_URL } from '../../utils/api';
 import { scheduleAllTaskReminders } from '../../utils/notifications';
-import * as Clipboard from 'expo-clipboard';
 import { useLocalSearchParams } from 'expo-router';
 import { VoiceRecorder, transcribeAudio } from '../../utils/audioCapture';
+import { isVoiceAssistantEnabledAtCurrentLocation } from '../../utils/locationManager';
+import { speakAndListen, stopSpeaking } from '../../utils/ttsManager';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
@@ -126,6 +127,13 @@ export default function BrainScreen() {
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
   const [voiceRecorder] = useState(() => new VoiceRecorder());
+  
+  // Cleanup speech on unmount
+  useEffect(() => {
+    return () => {
+      stopSpeaking();
+    };
+  }, []);
 
   useEffect(() => {
     loadHistory();
@@ -176,9 +184,34 @@ export default function BrainScreen() {
         }
       };
 
-      xhr.onload = () => {
+      xhr.onload = async () => {
         setLoading(false);
-        scheduleAllTaskReminders().catch(console.error);
+        if (xhr.status === 200) {
+          const raw = xhr.responseText;
+          const parsed = parseChunkedResponse(raw);
+          setMessages(prev => {
+            const copy = [...prev];
+            copy[copy.length - 1].content = parsed;
+            return copy;
+          });
+          
+          // Handle TTS and auto-listen if in voice-enabled location
+          const isVoiceAllowed = await isVoiceAssistantEnabledAtCurrentLocation();
+          if (isVoiceAllowed && parsed.trim().length > 0) {
+            speakAndListen(parsed.trim(), () => {
+              if (Platform.OS === 'android' || Platform.OS === 'ios') {
+                startVoiceInput();
+              }
+            });
+          }
+          scheduleAllTaskReminders().catch(console.error);
+        } else {
+          setMessages(prev => {
+            const copy = [...prev];
+            copy[copy.length - 1].content = 'Failed to get a valid response from the server.';
+            return copy;
+          });
+        }
       };
 
       xhr.onerror = () => {

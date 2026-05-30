@@ -382,6 +382,27 @@ export default function PersonalizationScreen() {
             );
           })()}
 
+          {/* Locations Settings Card */}
+          <View style={{ backgroundColor: C.bg, borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 20 }}>
+            <Text style={{ color: C.text, fontSize: 16, fontWeight: '700', marginBottom: 8 }}>Geofenced AI Voice Assistant</Text>
+            <Text style={{ color: C.muted, fontSize: 13, marginBottom: 16 }}>Set up locations where the AI assistant is allowed to speak out loud and listen continuously.</Text>
+            
+            <TouchableOpacity 
+              onPress={() => router.push('/(dashboard)/settings/locations')}
+              style={{
+                flexDirection: 'row',
+                justifyContent: 'space-between',
+                alignItems: 'center',
+                backgroundColor: C.border,
+                padding: 16,
+                borderRadius: 16,
+              }}
+            >
+              <Text style={{ color: C.text, fontSize: 14, fontWeight: '600' }}>Manage Saved Locations</Text>
+              <ChevronRight size={18} color={C.muted} />
+            </TouchableOpacity>
+          </View>
+
           {/* Notification Note */}
           <View style={{ backgroundColor: C.bg, borderRadius: 20, borderWidth: 1, borderColor: C.border, padding: 20 }}>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 12 }}>

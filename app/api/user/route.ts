@@ -111,6 +111,15 @@ export async function PUT(req: Request) {
       if (p.weightReminderHour !== undefined) updatePayload['preferences.weightReminderHour'] = Number(p.weightReminderHour);
       if (p.dayRolloverHour !== undefined) updatePayload['preferences.dayRolloverHour'] = Number(p.dayRolloverHour);
       if (p.ambientFocusEnabled !== undefined) updatePayload['preferences.ambientFocusEnabled'] = Boolean(p.ambientFocusEnabled);
+      if (p.savedLocations !== undefined && Array.isArray(p.savedLocations)) {
+        updatePayload['preferences.savedLocations'] = p.savedLocations.map((loc: any) => ({
+          name: loc.name,
+          lat: Number(loc.lat),
+          lng: Number(loc.lng),
+          radius: Number(loc.radius),
+          voiceAssistantEnabled: Boolean(loc.voiceAssistantEnabled),
+        }));
+      }
     }
     
     // Settings
