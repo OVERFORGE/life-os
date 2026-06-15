@@ -26,10 +26,18 @@ export async function speakAndListen(text: string, onFinish: () => void) {
       shouldDuckAndroid: true,
     });
     
-    Speech.speak(text, {
+    // Strip markdown formatting to make the speech sound natural and fluent
+    const cleanText = text
+      .replace(/\*/g, '')
+      .replace(/#/g, '')
+      .replace(/`/g, '')
+      .replace(/\[([^\]]+)\]\([^\)]+\)/g, '$1') // replace links with just their text
+      .trim();
+
+    Speech.speak(cleanText, {
       language: 'en-US',
-      rate: 1.0,
-      pitch: 1.0,
+      rate: 1.0, // Normal speaking rate
+      pitch: 1.0, // Normal pitch
       onDone: () => {
         // Wait half a second before triggering listen to avoid mic feedback
         setTimeout(onFinish, 500);

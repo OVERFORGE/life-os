@@ -3,7 +3,7 @@ import {
   View, Text, TouchableOpacity, TextInput, FlatList,
   ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, Image
 } from 'react-native';
-import { Bot, ArrowUp, Copy, Check, ArrowDown, Mic } from 'lucide-react-native';
+import { Bot, ArrowUp, Copy, Check, ArrowDown, Mic, X, MicOff } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import { fetchWithAuth, API_URL } from '../../utils/api';
 import { scheduleAllTaskReminders } from '../../utils/notifications';
@@ -126,7 +126,10 @@ export default function BrainScreen() {
   const isUserScrolling = useRef(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
   const [isRecording, setIsRecording] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [voiceRecorder] = useState(() => new VoiceRecorder());
+  // A ref so the cancel flag is always up-to-date inside async callbacks
+  const voiceCancelledRef = useRef(false);
   
   // Cleanup speech on unmount
   useEffect(() => {
@@ -176,9 +179,17 @@ export default function BrainScreen() {
 
       xhr.onreadystatechange = () => {
         if ((xhr.readyState === 3 || xhr.readyState === 4) && xhr.responseText) {
+          let partialText = xhr.responseText;
+          try {
+            const data = JSON.parse(xhr.responseText);
+            partialText = data.message?.content || data.response || partialText;
+          } catch (e) {
+            // Probably incomplete JSON chunk, leave as is or show a loading indicator
+            partialText = "Thinking...";
+          }
           setMessages(prev => {
             const updated = [...prev];
-            updated[updated.length - 1] = { role: 'assistant', content: xhr.responseText };
+            updated[updated.length - 1] = { role: 'assistant', content: partialText };
             return updated;
           });
         }
@@ -188,7 +199,14 @@ export default function BrainScreen() {
         setLoading(false);
         if (xhr.status === 200) {
           const raw = xhr.responseText;
-          const parsed = parseChunkedResponse(raw);
+          let parsed = raw;
+          try {
+            const data = JSON.parse(raw);
+            parsed = data.message?.content || data.response || raw;
+          } catch (e) {
+            // If it's not JSON, assume it's plain text or already parsed
+          }
+          
           setMessages(prev => {
             const copy = [...prev];
             copy[copy.length - 1].content = parsed;
@@ -198,8 +216,12 @@ export default function BrainScreen() {
           // Handle TTS and auto-listen if in voice-enabled location
           const isVoiceAllowed = await isVoiceAssistantEnabledAtCurrentLocation();
           if (isVoiceAllowed && parsed.trim().length > 0) {
+            voiceCancelledRef.current = false;
+            setIsSpeaking(true);
             speakAndListen(parsed.trim(), () => {
-              if (Platform.OS === 'android' || Platform.OS === 'ios') {
+              setIsSpeaking(false);
+              // Only auto-listen if user hasn't cancelled
+              if (!voiceCancelledRef.current && (Platform.OS === 'android' || Platform.OS === 'ios')) {
                 startVoiceInput();
               }
             });
@@ -230,29 +252,51 @@ export default function BrainScreen() {
     }
   };
 
+  const cancelVoice = () => {
+    voiceCancelledRef.current = true;
+    setIsSpeaking(false);
+    setIsRecording(false);
+    setInput('');
+    stopSpeaking();
+    voiceRecorder.stopRecording();
+  };
+
   const startVoiceInput = async () => {
     if (loading) return;
+    // Reset cancel flag on every manual OR auto-triggered start
+    voiceCancelledRef.current = false;
     setIsRecording(true);
     setInput('Listening...');
     
     const success = await voiceRecorder.startRecording(async (uri) => {
       setIsRecording(false);
+      // null means recording was cancelled or no speech detected — silently ignore
+      if (!uri || voiceCancelledRef.current) {
+        setInput('');
+        return;
+      }
       setInput('Transcribing...');
       const { text, error } = await transcribeAudio(uri);
       
       if (text) {
+        // Filter junk: ignore empty strings, single punctuation, single chars
+        const cleaned = text.trim();
+        const isJunk = cleaned.length <= 2 || /^[.\s,!?]+$/.test(cleaned);
+        if (isJunk) {
+          setInput('');
+          return; // Silently ignore — don't send, don't re-listen
+        }
         setInput('');
         await sendMessage(text);
       } else {
         setInput('');
-        setMessages(prev => [...prev, { role: 'assistant', content: error || 'Failed to transcribe audio. Please try again.' }]);
+        // Don't show error on auto-listen — just silently stop
       }
     });
 
     if (!success) {
       setIsRecording(false);
       setInput('');
-      setMessages(prev => [...prev, { role: 'assistant', content: 'Microphone permission denied.' }]);
     }
   };
 
@@ -316,7 +360,9 @@ export default function BrainScreen() {
               scrollEventThrottle={16}
               onContentSizeChange={() => {
                 if (!isUserScrolling.current) {
-                  flatListRef.current?.scrollToEnd({ animated: true });
+                  // Use animated: false here because rapid layout changes during text streaming 
+                  // cause the physics engine to bounce endlessly if animated: true is spammed.
+                  flatListRef.current?.scrollToEnd({ animated: false });
                 }
               }}
             />
@@ -378,14 +424,25 @@ export default function BrainScreen() {
             editable={!loading}
           />
 
-          {/* Mic button */}
-          <TouchableOpacity
-            onPress={startVoiceInput}
-            disabled={loading}
-            style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6, marginBottom: 1, backgroundColor: isRecording ? 'rgba(232,65,74,0.2)' : 'transparent' }}
-          >
-            {isRecording ? <ActivityIndicator size="small" color={C.primary} /> : <Mic size={18} color={isRecording ? C.primary : C.muted} />}
-          </TouchableOpacity>
+          {/* Mic / Cancel button */}
+          {(isSpeaking || isRecording) ? (
+            <TouchableOpacity
+              onPress={cancelVoice}
+              style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6, marginBottom: 1, backgroundColor: 'rgba(232,65,74,0.25)' }}
+            >
+              {isRecording
+                ? <MicOff size={18} color={C.primary} />
+                : <X size={18} color={C.primary} />}
+            </TouchableOpacity>
+          ) : (
+            <TouchableOpacity
+              onPress={startVoiceInput}
+              disabled={loading}
+              style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6, marginBottom: 1 }}
+            >
+              <Mic size={18} color={C.muted} />
+            </TouchableOpacity>
+          )}
 
           {/* Send button */}
           <TouchableOpacity

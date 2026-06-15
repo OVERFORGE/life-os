@@ -4,6 +4,8 @@ import { FloatingTabBar } from '../../components/navigation/FloatingTabBar';
 import { useEffect } from 'react';
 import { fetchWithAuth } from '../../utils/api';
 import { scheduleAllTaskReminders } from '../../utils/notifications';
+import * as Notifications from 'expo-notifications';
+import { handleSpontaneousSpeech } from '../../utils/voiceAssistant';
 
 export default function DashboardLayout() {
   useEffect(() => {
@@ -20,6 +22,27 @@ export default function DashboardLayout() {
     scheduleAllTaskReminders().catch(e => console.log('Task reminder sync failed', e));
 
     import('../../utils/persistentNotification').then(n => n.setupPersistentNotification());
+
+    // Listen for foreground push notifications to trigger voice
+    const sub1 = Notifications.addNotificationReceivedListener(notification => {
+      const title = notification.request.content.title || 'Reminder';
+      const body = notification.request.content.body || 'You have a new reminder.';
+      const speechText = `${title}. ${body}`;
+      handleSpontaneousSpeech(speechText).catch(console.error);
+    });
+
+    // Listen for user tapping the notification when the app is in the background
+    const sub2 = Notifications.addNotificationResponseReceivedListener(response => {
+      const title = response.notification.request.content.title || 'Reminder';
+      const body = response.notification.request.content.body || 'You have a new reminder.';
+      const speechText = `${title}. ${body}`;
+      handleSpontaneousSpeech(speechText).catch(console.error);
+    });
+
+    return () => {
+      sub1.remove();
+      sub2.remove();
+    };
   }, []);
 
   return (

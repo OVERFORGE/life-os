@@ -68,18 +68,26 @@ export default function ChatModalScreen() {
     if (loading) return;
     setIsRecording(true);
     setInput('Listening...');
-    
     const success = await voiceRecorder.startRecording(async (uri) => {
       setIsRecording(false);
+      if (!uri) {
+        setInput('');
+        return;
+      }
       setInput('Transcribing...');
       const { text, error } = await transcribeAudio(uri);
       
       if (text) {
+        const cleaned = text.trim();
+        const isJunk = cleaned.length <= 2 || /^[.\s,!?]+$/.test(cleaned);
+        if (isJunk) {
+          setInput('');
+          return;
+        }
         setInput('');
         await sendPrompt(text);
       } else {
         setInput('');
-        setResponse(error || 'Failed to transcribe audio.');
       }
     });
 

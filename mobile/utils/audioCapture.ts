@@ -4,11 +4,16 @@ import { Platform } from 'react-native';
 export class VoiceRecorder {
   private recording: Audio.Recording | null = null;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
-  private onSilenceCb: ((uri: string) => void) | null = null;
+  private onSilenceCb: ((uri: string | null) => void) | null = null;
+  private hasDetectedSpeech = false;
+  // Track peak metering to decide if the user actually spoke
+  private peakMetering = -160;
 
-  async startRecording(onSilence: (uri: string) => void): Promise<boolean> {
+  async startRecording(onSilence: (uri: string | null) => void): Promise<boolean> {
     try {
       this.onSilenceCb = onSilence;
+      this.hasDetectedSpeech = false;
+      this.peakMetering = -160;
       
       let perm = await Audio.getPermissionsAsync();
       if (perm.status !== 'granted') {
@@ -41,17 +46,28 @@ export class VoiceRecorder {
 
   private onStatusUpdate(status: Audio.RecordingStatus) {
     if (status.isRecording && status.metering !== undefined) {
-      // Metering is usually between -160 (silence) and 0 (loudest)
-      if (status.metering > -45) {
+      const db = status.metering;
+      if (db > this.peakMetering) this.peakMetering = db;
+      
+      // -35 dB is a confident voice threshold. Anything louder = speech detected.
+      if (db > -35) {
+        this.hasDetectedSpeech = true;
         if (this.silenceTimer) {
           clearTimeout(this.silenceTimer);
           this.silenceTimer = null;
         }
       } else {
-        if (!this.silenceTimer) {
+        // Only start silence countdown AFTER actual speech was detected
+        if (this.hasDetectedSpeech && !this.silenceTimer) {
           this.silenceTimer = setTimeout(() => {
             this.stopRecording();
-          }, 2500); // 2.5 seconds of silence ends recording
+          }, 2000); // 2s of silence after speech ends recording
+        } else if (!this.hasDetectedSpeech && !this.silenceTimer) {
+          // No speech detected yet — start a max-wait timer of 6 seconds
+          this.silenceTimer = setTimeout(() => {
+            // If still no speech detected, cancel (don't transcribe)
+            this.cancelRecording();
+          }, 6000);
         }
       }
     }
@@ -69,14 +85,39 @@ export class VoiceRecorder {
       const uri = this.recording.getURI();
       this.recording = null;
       
-      if (uri && this.onSilenceCb) {
-        this.onSilenceCb(uri);
-        this.onSilenceCb = null; // Prevent double-trigger
+      if (this.onSilenceCb) {
+        if (this.hasDetectedSpeech && uri) {
+          // Only transcribe if we actually detected meaningful speech
+          this.onSilenceCb(uri);
+        } else {
+          // No speech detected — signal caller with null so it can reset silently
+          this.onSilenceCb(null);
+        }
+        this.onSilenceCb = null;
       }
       return uri;
     } catch (err) {
       console.error('Failed to stop recording', err);
       return null;
+    }
+  }
+
+  async cancelRecording() {
+    if (!this.recording) return;
+    try {
+      if (this.silenceTimer) {
+        clearTimeout(this.silenceTimer);
+        this.silenceTimer = null;
+      }
+      await this.recording.stopAndUnloadAsync();
+      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
+      this.recording = null;
+      if (this.onSilenceCb) {
+        this.onSilenceCb(null); // null = cancelled / no speech
+        this.onSilenceCb = null;
+      }
+    } catch (err) {
+      console.error('Failed to cancel recording', err);
     }
   }
 }

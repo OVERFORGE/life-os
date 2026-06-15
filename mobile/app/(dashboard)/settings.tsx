@@ -1,6 +1,6 @@
 import React, { useEffect, useState } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, Alert, TextInput, Image, SafeAreaView } from 'react-native';
-import { Power, Settings as SettingsIcon, Save, RefreshCw, ChevronRight, User as UserIcon } from 'lucide-react-native';
+import { Power, Settings as SettingsIcon, Save, RefreshCw, ChevronRight, User as UserIcon, MapPin } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
@@ -205,6 +205,23 @@ export default function SettingsScreen() {
           <View style={{ flex: 1 }}>
             <Text style={{ color: C.text, fontWeight: '900', fontSize: 16, marginBottom: 4 }}>Personalization</Text>
             <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600' }}>Reminders, rollover hour & preferences</Text>
+          </View>
+          <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center' }}>
+            <ChevronRight size={16} color={C.subtext} />
+          </View>
+        </TouchableOpacity>
+
+        <TouchableOpacity
+          onPress={() => router.push('/(dashboard)/settings/locations')}
+          style={{ backgroundColor: C.card, borderWidth: 1, borderColor: C.border, borderRadius: 24, padding: 20, marginBottom: 12, flexDirection: 'row', alignItems: 'center' }}
+          activeOpacity={0.7}
+        >
+          <View style={{ width: 48, height: 48, borderRadius: 16, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+            <MapPin size={24} color={C.primary} />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: C.text, fontWeight: '900', fontSize: 16, marginBottom: 4 }}>Locations</Text>
+            <Text style={{ color: C.subtext, fontSize: 12, fontWeight: '600' }}>Voice assistant zones & geofencing</Text>
           </View>
           <View style={{ width: 32, height: 32, borderRadius: 16, backgroundColor: C.border, alignItems: 'center', justifyContent: 'center' }}>
             <ChevronRight size={16} color={C.subtext} />
