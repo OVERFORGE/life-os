@@ -107,9 +107,12 @@ export default function SettingsScreen() {
         onPress: async () => {
           await AsyncStorage.removeItem('user_token');
           try {
-            const GM = require('@react-native-google-signin/google-signin');
-            if (GM.GoogleSignin) {
-              await GM.GoogleSignin.signOut();
+            const { NativeModules } = require('react-native');
+            if (NativeModules.RNGoogleSignin) {
+              const GM = require('@react-native-google-signin/google-signin');
+              if (GM.GoogleSignin) {
+                await GM.GoogleSignin.signOut();
+              }
             }
           } catch (e) {
             console.log('Skipped Native Google Signout (Unsupported in Expo Go).');

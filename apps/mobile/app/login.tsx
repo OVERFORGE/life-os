@@ -54,6 +54,10 @@ export default function LoginScreen() {
       setLoading(true);
       let GoogleSignin, statusCodes;
       try {
+        const { NativeModules } = require('react-native');
+        if (!NativeModules.RNGoogleSignin) {
+          throw new Error('Not available');
+        }
         const GM = require('@react-native-google-signin/google-signin');
         GoogleSignin = GM.GoogleSignin;
         statusCodes = GM.statusCodes;
