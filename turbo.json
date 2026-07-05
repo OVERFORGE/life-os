@@ -4,6 +4,7 @@
     "build": {
       "dependsOn": ["^build"],
       "env": [
+        "MONGODB_URI",
         "NEXTAUTH_SECRET",
         "NEXTAUTH_URL",
         "GOOGLE_CLIENT_ID",
