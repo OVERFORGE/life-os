@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Play, Timer, Save, ChevronRight, ChevronLeft, Zap, Camera, X, TrendingUp, AlertCircle, Image as ImageIcon } from "lucide-react";
 
-export default function LiveSessionPage() {
+function LiveSessionInner() {
   const searchParams = useSearchParams();
   const routineId = searchParams.get("routineId");
   const dayName = searchParams.get("dayName");
@@ -699,5 +699,13 @@ export default function LiveSessionPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function LiveSessionPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-400">Loading...</div>}>
+      <LiveSessionInner />
+    </Suspense>
   );
 }

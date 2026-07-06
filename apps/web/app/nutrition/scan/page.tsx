@@ -1,13 +1,13 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, Suspense } from 'react';
 import { useRouter, useSearchParams } from 'next/navigation';
 import { 
   Camera, RefreshCcw, ImageIcon, Dna, Activity, X, ArrowLeft 
 } from 'lucide-react';
 import Image from 'next/image';
 
-export default function NutritionScanPage() {
+function NutritionScanInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const editFoodParam = searchParams.get('editFood');
@@ -304,5 +304,13 @@ export default function NutritionScanPage() {
 
       </div>
     </div>
+  );
+}
+
+export default function NutritionScanPage() {
+  return (
+    <Suspense fallback={<div className="flex-1 flex justify-center items-center h-screen"><div className="w-8 h-8 rounded-full border-2 border-[#E8414A] border-t-transparent animate-spin" /></div>}>
+      <NutritionScanInner />
+    </Suspense>
   );
 }

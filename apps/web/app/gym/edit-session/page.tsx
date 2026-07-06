@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Check, Dumbbell, Flame } from "lucide-react";
 
-export default function EditSessionWorkoutPage() {
+function EditSessionWorkoutInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
@@ -335,5 +335,13 @@ export default function EditSessionWorkoutPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function EditSessionWorkoutPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-400">Loading...</div>}>
+      <EditSessionWorkoutInner />
+    </Suspense>
   );
 }

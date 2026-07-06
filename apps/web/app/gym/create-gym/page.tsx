@@ -1,10 +1,10 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { ArrowLeft, Check, ChevronDown, ChevronUp } from "lucide-react";
 
-export default function CreateGymPage() {
+function CreateGymInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
   const id = searchParams.get("id");
@@ -238,7 +238,7 @@ export default function CreateGymPage() {
                         <div className="flex items-center gap-3">
                           <h3 className="text-base font-bold text-gray-100">{cat}</h3>
                           {count > 0 && (
-                            <div className="bg-[#E8414A]/15 px-2.5 py-1 rounded-lg">
+                           <div className="bg-[#E8414A]/15 px-2.5 py-1 rounded-lg">
                               <span className="text-[10px] font-bold text-[#E8414A]">{count}</span>
                             </div>
                           )}
@@ -293,5 +293,13 @@ export default function CreateGymPage() {
         </div>
       </div>
     </div>
+  );
+}
+
+export default function CreateGymPage() {
+  return (
+    <Suspense fallback={<div className="p-8 text-gray-400">Loading...</div>}>
+      <CreateGymInner />
+    </Suspense>
   );
 }
