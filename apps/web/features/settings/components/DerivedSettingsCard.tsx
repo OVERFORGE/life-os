@@ -23,7 +23,7 @@ export function DerivedSettingsCard({
       : "→";
 
   return (
-    <div className="border border-[#232632] rounded-xl p-4 bg-[#161922]">
+    <div className="border border-[#2A2B2F] rounded-xl p-4 bg-[#1F2023]">
       <div className="text-sm text-gray-400">{title}</div>
 
       <div className="flex items-center gap-2 mt-1">
@@ -33,7 +33,7 @@ export function DerivedSettingsCard({
         <div className="text-sm text-gray-400">{arrow}</div>
       </div>
 
-      <div className="text-xs text-gray-500 mt-2">
+      <div className="text-xs text-[#9ca3af] mt-2">
         {metric.reason}
       </div>
 

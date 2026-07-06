@@ -18,7 +18,7 @@ export function MoodEnergyChart({ logs }: { logs: Log[] }) {
   }));
 
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 h-[300px]">
+    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-4 h-[300px]">
       <div className="mb-2 font-medium">Mood & Energy (Last 14 Days)</div>
 
       <ResponsiveContainer width="100%" height="100%">

@@ -14,7 +14,7 @@ export function PlanningReadOnlyCard({ data }: { data: any }) {
       {p.reasonNotCompleted && (
         <div className="mt-4">
           <div className="text-xs text-gray-400 mb-1">Reason</div>
-          <div className="bg-[#0f1115] border border-[#232632] rounded-lg p-3 text-sm">
+          <div className="bg-[#161618] border border-[#2A2B2F] rounded-lg p-3 text-sm">
             {p.reasonNotCompleted}
           </div>
         </div>
@@ -25,7 +25,7 @@ export function PlanningReadOnlyCard({ data }: { data: any }) {
 
 function Item({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-[#0f1115] border border-[#232632] rounded-lg p-3">
+    <div className="bg-[#161618] border border-[#2A2B2F] rounded-lg p-3">
       <div className="text-xs text-gray-400">{label}</div>
       <div className="text-base">{value}</div>
     </div>

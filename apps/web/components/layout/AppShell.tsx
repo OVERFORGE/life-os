@@ -19,7 +19,7 @@ export function AppShell({ children }: { children: React.ReactNode }) {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1115] text-gray-100 flex">
+    <div className="min-h-screen bg-[#161618] text-gray-100 flex">
       {/* Desktop Sidebar */}
       <div className="hidden md:block">
         <Sidebar />

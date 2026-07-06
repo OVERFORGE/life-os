@@ -17,7 +17,7 @@ export function GoalLoadCard({ goalLoad }: { goalLoad: any }) {
   if (perGoal.length === 0) {
     return (
       <Card title="Goal Load" subtitle="Jarvis system-wide goal pressure">
-        <p className="text-sm text-gray-500">No goals yet.</p>
+        <p className="text-sm text-[#9ca3af]">No goals yet.</p>
       </Card>
     );
   }
@@ -36,14 +36,14 @@ export function GoalLoadCard({ goalLoad }: { goalLoad: any }) {
   };
 
   // ✅ Mode logic
-  let modeLabel = "Stable System Load ✅";
+  let modeLabel = "Stable System Load";
   let explanation = "Your goals are balanced with your life capacity.";
 
   if (avgScore > 0.75) {
-    modeLabel = "Overloaded ⚠️";
+    modeLabel = "Overloaded";
     explanation = "Too much pressure. Reduce cadence or recover.";
   } else if (avgScore < 0.35) {
-    modeLabel = "Underutilized 💤";
+    modeLabel = "Underutilized";
     explanation = "You have unused capacity. Add challenge.";
   }
 
@@ -53,12 +53,12 @@ export function GoalLoadCard({ goalLoad }: { goalLoad: any }) {
         {/* Meter */}
         <div className="flex justify-between text-sm">
           <span className="text-gray-400">Load Score</span>
-          <span className="font-semibold">{percent(avgScore)}%</span>
+          <span className="font-semibold text-gray-100">{percent(avgScore)}%</span>
         </div>
 
-        <div className="w-full h-3 rounded-full bg-[#1c1f2a] overflow-hidden">
+        <div className="w-full h-2.5 rounded-full bg-[#2A2B2F] overflow-hidden">
           <div
-            className="h-full bg-white transition-all"
+            className={`h-full transition-all ${avgScore > 0.75 ? 'bg-[#E8414A]' : 'bg-gray-300'}`}
             style={{ width: `${percent(avgScore)}%` }}
           />
         </div>
@@ -66,7 +66,7 @@ export function GoalLoadCard({ goalLoad }: { goalLoad: any }) {
         {/* Mode */}
         <div className="text-sm font-medium">{modeLabel}</div>
 
-        <p className="text-xs text-gray-500 leading-relaxed">{explanation}</p>
+        <p className="text-xs text-[#9ca3af] leading-relaxed">{explanation}</p>
 
         {/* Distribution */}
         <div className="grid grid-cols-2 gap-3 pt-2 text-sm">

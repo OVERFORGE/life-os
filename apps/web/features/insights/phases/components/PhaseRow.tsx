@@ -25,7 +25,7 @@ export function PhaseRow({ phase }: { phase: any }) {
         {/* Header */}
         <div className="flex justify-between text-xs text-gray-400">
           <span className="tracking-wide">
-            {label} · <span className="text-gray-500">{shapeLabel}</span>
+            {label} · <span className="text-[#9ca3af]">{shapeLabel}</span>
           </span>
 
           <span>
@@ -34,7 +34,7 @@ export function PhaseRow({ phase }: { phase: any }) {
           </span>
           
         </div>
-        <div className="text-xs text-gray-500">
+        <div className="text-xs text-[#9ca3af]">
             Risk Index: {Math.round(phase.intelligence.scores.load * 100)}%
         </div>
         {phase.riskLevel !== "low" && (
@@ -50,7 +50,7 @@ export function PhaseRow({ phase }: { phase: any }) {
       )}
 
         {/* Timeline Bar */}
-        <div className="h-3 bg-[#0f1115] rounded-full overflow-hidden border border-[#232632]">
+        <div className="h-3 bg-[#161618] rounded-full overflow-hidden border border-[#2A2B2F]">
           <div
             className={`h-full ${color} transition-all`}
             style={{ width: `${phase.widthPercent}%` }}
@@ -58,7 +58,7 @@ export function PhaseRow({ phase }: { phase: any }) {
         </div>
 
         {/* Meta line */}
-        <div className="text-[11px] text-gray-500">
+        <div className="text-[11px] text-[#9ca3af]">
           Confidence: {Math.round((phase.confidence || 0.7) * 100)}% · Shape score:{" "}
           {(phase.shapeScore || 0).toFixed(2)}
         </div>

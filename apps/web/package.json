@@ -12,6 +12,8 @@
   "dependencies": {
     "@google/genai": "^1.49.0",
     "@gsap/react": "^2.1.2",
+    "@hello-pangea/dnd": "^18.0.1",
+    "@life-os/design-system": "workspace:*",
     "bcryptjs": "^3.0.3",
     "cloudinary": "^2.9.0",
     "dotenv": "^17.2.3",
@@ -27,7 +29,8 @@
     "react-dom": "19.2.3",
     "react-markdown": "^10.1.0",
     "recharts": "^3.7.0",
-    "zod": "^4.3.5"
+    "zod": "^4.3.5",
+    "zustand": "^5.0.14"
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",

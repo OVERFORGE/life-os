@@ -1,7 +1,8 @@
 "use client";
 
 import { useState } from "react";
-import  {ArrowBigUp} from "lucide-react";
+import { Send, Mic } from "lucide-react";
+
 type Props = {
   onSend: (text: string) => void;
   loading: boolean;
@@ -25,51 +26,53 @@ export default function ChatInput({ onSend, loading }: Props) {
   }
 
   return (
-    <div className="w-full px-58">
-      <div className="flex items-end gap-4 py-2 pl-4 pr-2 rounded-3xl bg-gray-800 border border-white/5 focus-within:border-white/10 transition-colors">
+    <div className="w-full max-w-3xl mx-auto px-4 pb-6">
+      <div className="flex items-center gap-2 bg-[#161618] rounded-2xl border border-[#2A2B2F] px-4 py-3 shadow-lg focus-within:border-gray-600 transition-colors">
         <textarea
           value={text}
           onChange={(e) => {
             setText(e.target.value);
             e.target.style.height = "auto";
-            e.target.style.height = `${Math.min(e.target.scrollHeight, 200)}px`;
+            e.target.style.height = `${Math.min(e.target.scrollHeight, 150)}px`;
           }}
           onKeyDown={handleKeyDown}
-          placeholder="Message LifeOS..."
+          placeholder="Type your command..."
           rows={1}
-          style={{ maxHeight: "200px" }}
+          style={{ maxHeight: "150px" }}
           className="
             flex-1
             w-full
             bg-transparent
             resize-none
-            text-md
+            text-base
             text-gray-100
             placeholder-gray-500
-            py-3
+            py-1
             outline-none
             scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent
           "
         />
 
+        {/* Mic Button (Visual Parity) */}
+        <button
+          disabled={loading}
+          className="ml-2 p-2.5 rounded-xl bg-[#2A2B2F] transition-all hover:bg-[#3A3C42] disabled:opacity-50"
+        >
+          <Mic size={18} className="text-gray-100" />
+        </button>
+
+        {/* Send Button */}
         <button
           onClick={handleSend}
           disabled={loading || !text.trim()}
-          className="
-          p-2.5
-          mb-1
-          rounded-xl
-          bg-[#2a2d36]
-          disabled:opacity-30
-          transition-all
-          hover:bg-[#333744]
-          active:scale-95
-          "
+          className={`
+            ml-2 p-2.5 rounded-xl transition-all active:scale-95 disabled:opacity-50
+            ${text.trim() ? 'bg-[#E8414A] hover:bg-[#D62C35]' : 'bg-[#2A2B2F]'}
+          `}
         >
-          <ArrowBigUp 
-            className="w-5 h-5" 
-            fill={text.trim() ? "#fbbf24" : "transparent"} 
-            stroke={text.trim() ? "#fbbf24" : "#6b7280"} 
+          <Send 
+            size={18} 
+            className={text.trim() ? "text-white" : "text-gray-500"} 
           />
         </button>
       </div>

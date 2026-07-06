@@ -6,11 +6,13 @@ import { DailyLogForm } from "../types";
 export function PlanningCard({ form, setForm }: { form: DailyLogForm; setForm: (f: DailyLogForm) => void }) {
   return (
     <Card title="Planning vs Reality" subtitle="How honest were you with your plan?">
-      <InputField label="Planned tasks" type="number" value={form?.planning?.plannedTasks ?? 0}
-        onChange={(v) => setForm({ ...form, planning: { ...form.planning, plannedTasks: Number(v) } })} />
+      <div className="grid grid-cols-2 gap-4">
+        <InputField label="Planned tasks" type="number" value={form?.planning?.plannedTasks ?? 0}
+          onChange={(v) => setForm({ ...form, planning: { ...form.planning, plannedTasks: Number(v) } })} />
 
-      <InputField label="Completed tasks" type="number" value={form?.planning?.completedTasks ?? 0}
-        onChange={(v) => setForm({ ...form, planning: { ...form.planning, completedTasks: Number(v) } })} />
+        <InputField label="Completed tasks" type="number" value={form?.planning?.completedTasks ?? 0}
+          onChange={(v) => setForm({ ...form, planning: { ...form.planning, completedTasks: Number(v) } })} />
+      </div>
 
       <TextareaField label="Why didn't you complete them?" value={form?.planning?.reasonNotCompleted ?? ""}
         onChange={(v) => setForm({ ...form, planning: { ...form.planning, reasonNotCompleted: v } })} />

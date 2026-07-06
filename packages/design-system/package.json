@@ -1,0 +1,20 @@
+{
+  "name": "@life-os/design-system",
+  "version": "0.1.0",
+  "private": true,
+  "main": "index.ts",
+  "types": "index.ts",
+  "exports": {
+    ".": "./index.ts",
+    "./styles.css": "./dist/tokens.css"
+  },
+  "scripts": {
+    "build": "tsx scripts/generate-css.ts",
+    "lint": "eslint \"**/*.ts*\"",
+    "typecheck": "tsc --noEmit"
+  },
+  "devDependencies": {
+    "tsx": "^4.7.1",
+    "typescript": "^5.4.5"
+  }
+}

@@ -18,7 +18,7 @@ function IntelBlock({ title, items }: { title: string; items?: string[] }) {
   if (!items || items.length === 0) return null;
 
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-5">
+    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-5">
       <div className="text-sm text-gray-400 mb-2">{title}</div>
       <ul className="list-disc pl-5 text-gray-300 space-y-1 text-sm">
         {items.map((i, idx) => (

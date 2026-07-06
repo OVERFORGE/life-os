@@ -54,7 +54,7 @@ export default function CategoriesPage() {
   /* ---------------- UI ---------------- */
 
   return (
-    <div className="min-h-screen bg-[#0f1115] text-gray-100">
+    <div className="min-h-screen bg-[#161618] text-gray-100">
       <div className="max-w-4xl mx-auto p-6 space-y-8">
         <h1 className="text-2xl font-semibold">Life Categories</h1>
 
@@ -106,7 +106,7 @@ export default function CategoriesPage() {
           subtitle="These will appear in your check-in form"
         >
           {categories.length === 0 && (
-            <div className="text-sm text-gray-500">
+            <div className="text-sm text-[#9ca3af]">
               No categories yet. Create your first one above.
             </div>
           )}
@@ -115,11 +115,11 @@ export default function CategoriesPage() {
             {categories.map((c) => (
               <div
                 key={c.key}
-                className="flex justify-between items-center bg-[#0f1115] border border-[#232632] rounded-xl p-3"
+                className="flex justify-between items-center bg-[#161618] border border-[#2A2B2F] rounded-xl p-3"
               >
                 <div>
                   <div className="font-medium">{c.label}</div>
-                  <div className="text-xs text-gray-500">
+                  <div className="text-xs text-[#9ca3af]">
                     key: {c.key} · order: {c.order}
                   </div>
                 </div>

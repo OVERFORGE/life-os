@@ -4,7 +4,7 @@ export function EraSummary({ era }: any) {
   const stress = era.summaryVector.avgStress.toFixed(1);
 
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-6 text-gray-300 leading-relaxed">
+    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-6 text-gray-300 leading-relaxed">
       During this period, your life was mostly dominated by{" "}
       <b>{era.dominantPhase}</b>. Your average mood was{" "}
       <b>{mood}</b>, energy <b>{energy}</b>, and stress <b>{stress}</b>.

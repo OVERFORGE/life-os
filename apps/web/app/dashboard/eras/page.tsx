@@ -20,7 +20,7 @@ export default function ErasPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1115] text-gray-100">
+    <div className="min-h-screen bg-[#161618] text-gray-100">
       <div className="max-w-5xl mx-auto p-6 space-y-6">
         <h1 className="text-2xl font-semibold">Your Life Eras</h1>
 
@@ -32,7 +32,7 @@ export default function ErasPage() {
           {eras.map((era) => (
   <div
     key={era.id}
-    className="relative bg-[#0f1115] border border-[#232632] rounded-2xl p-6 overflow-hidden cursor-pointer hover:bg-[#1b1f2a] transition"
+    className="relative bg-[#161618] border border-[#2A2B2F] rounded-2xl p-6 overflow-hidden cursor-pointer hover:bg-[#1b1f2a] transition"
     onClick={() => router.push(`/dashboard/eras/${era.id}`)}
   >
     {/* Left accent */}
@@ -76,7 +76,7 @@ export default function ErasPage() {
             )}
         </div>
 
-      <div className="text-xs px-3 py-1 rounded-full bg-[#161922] border border-[#232632] text-gray-300">
+      <div className="text-xs px-3 py-1 rounded-full bg-[#1F2023] border border-[#2A2B2F] text-gray-300">
         {era.direction === "up" && "📈 Ascending"}
         {era.direction === "down" && "📉 Declining"}
         {era.direction === "flat" && "➖ Stable"}
@@ -87,21 +87,21 @@ export default function ErasPage() {
     {/* Meta */}
     <div className="mt-4 grid grid-cols-3 gap-4 text-xs text-gray-400">
       <div>
-        <div className="text-gray-500">Stability</div>
+        <div className="text-[#9ca3af]">Stability</div>
         <div className="text-gray-200">
           {Math.round(era.stability * 100)}%
         </div>
       </div>
 
       <div>
-        <div className="text-gray-500">Volatility</div>
+        <div className="text-[#9ca3af]">Volatility</div>
         <div className="text-gray-200">
           {Math.round(era.volatility * 100)}%
         </div>
       </div>
 
       <div>
-        <div className="text-gray-500">Phases</div>
+        <div className="text-[#9ca3af]">Phases</div>
         <div className="text-gray-200">{era.phases.length}</div>
       </div>
     </div>
@@ -112,7 +112,7 @@ export default function ErasPage() {
     )}
 
     {/* Mood line */}
-    <div className="mt-4 text-xs text-gray-500">
+    <div className="mt-4 text-xs text-[#9ca3af]">
       Mood:{" "}
       <span className="text-gray-300">
         {era.summaryVector.avgMood.toFixed(1)}

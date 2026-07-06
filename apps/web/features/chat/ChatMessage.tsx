@@ -22,34 +22,31 @@ export default function ChatMessage({ role, content }: Props) {
   };
 
   return (
-    <div className={`flex ${isUser ? "justify-end" : "justify-start"} md:px-48`}>
-      <div className={`flex flex-col group max-w-[720px] w-full ${isUser ? 'items-end' : 'items-start'}`}>
+    <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
+      <div className={`flex flex-col group w-full ${isUser ? 'items-end max-w-[60%]' : 'items-start'}`}>
         <div
           className={`
-          px-6
-          py-5
-          rounded-3xl
           text-[15px]
           leading-relaxed
           whitespace-pre-wrap
           break-words
-          w-auto
+          w-full
           ${
             isUser
-              ? "bg-[#232632] text-gray-100 rounded-tr-sm"
-              : "text-gray-300"
+              ? "bg-[#1F2023] border border-[#2A2B2F] text-gray-100 rounded-2xl rounded-tr-sm px-5 py-4 shadow-sm"
+              : "bg-transparent text-gray-200 py-2"
           }
           `}
         >
           <ReactMarkdown
             components={{
               ul: ({ children }) => (
-                <ul className="list-disc ml-5 space-y-2 mt-3 mb-3">
+                <ul className="list-disc ml-5 space-y-2 mt-3 mb-3 text-gray-200">
                   {children}
                 </ul>
               ),
               p: ({ children }) => (
-                <p className="mb-3 last:mb-0">{children}</p>
+                <p className="mb-3 last:mb-0 text-gray-200">{children}</p>
               ),
             }}
           >
@@ -61,9 +58,9 @@ export default function ChatMessage({ role, content }: Props) {
         <div className={`mt-2 ${isUser ? 'mr-2' : 'ml-2'} opacity-0 group-hover:opacity-100 transition-opacity duration-200`}>
           <button 
             onClick={handleCopy}
-            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-gray-500 hover:text-gray-300 hover:bg-white/5 transition-colors text-xs font-medium"
+            className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[#9ca3af] hover:text-gray-300 hover:bg-white/5 transition-colors text-xs font-medium"
           >
-             {copied ? <Check size={14} className="text-green-500" /> : <Copy size={14} />}
+             {copied ? <Check size={14} className="text-[#E8414A]" /> : <Copy size={14} />}
              {copied ? 'Copied' : 'Copy'}
           </button>
         </div>

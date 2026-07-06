@@ -17,7 +17,7 @@ export function PhaseTimeline({ phases }: { phases: any[] }) {
   const normalized = normalizeWidths(phases) as PhaseSegment[];
 
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-5 space-y-6">
+    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-5 space-y-6">
       <div className="flex justify-between items-center">
         <div className="font-medium text-gray-200">Life Phases</div>
       </div>

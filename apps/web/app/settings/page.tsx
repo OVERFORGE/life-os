@@ -1,311 +1,152 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { useRouter } from "next/navigation";
+import { User as UserIcon, ChevronRight, Settings, MapPin, Power, Activity } from "lucide-react";
 
-/* ===================================================== */
-/* SETTINGS PAGE — V1 Overrides + V2 Learned Sensitivity */
-/* ===================================================== */
-
-export default function SettingsPage() {
-  const [data, setData] = useState<any>(null);
-  const [derived, setDerived] = useState<any>(null);
-  const [overrides, setOverrides] = useState<any>({});
-  const [saving, setSaving] = useState(false);
-
-  /* ---------------- Load Settings ---------------- */
+export default function SettingsDashboard() {
+  const router = useRouter();
+  const [userProfile, setUserProfile] = useState<any>(null);
+  const [loading, setLoading] = useState(true);
 
   useEffect(() => {
-    fetch("/api/settings")
-      .then((r) => r.json())
-      .then((d) => {
-        setData(d);
-        setOverrides(d.overrides || {});
-      });
-
-    fetch("/api/settings/derived")
-      .then((r) => r.json())
-      .then((d) => setDerived(d?.derived || null));
+    fetch("/api/user")
+      .then(res => res.json())
+      .then(data => {
+        if (!data.error) {
+          setUserProfile(data);
+        }
+      })
+      .catch(console.error)
+      .finally(() => setLoading(false));
   }, []);
 
-  if (!data) {
-    return (
-      <div className="min-h-screen bg-[#161618] p-8 text-[#ECE7E3]/70 flex items-center justify-center text-sm font-medium">
-        Loading system state…
-      </div>
-    );
-  }
-
-  /* ---------------- SAFE DEFAULTS ---------------- */
-
-  const effective = data?.effective || {};
-
-  const phaseThresholds = effective?.phases?.thresholds || {};
-  const phaseWeights = effective?.phases?.weights || {};
-
-  const goalWeights = effective?.goals?.pressureWeights || {};
-
-  /* ---------------- Save Overrides ---------------- */
-
-  async function save() {
-    setSaving(true);
-
-    await fetch("/api/settings", {
-      method: "PUT",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(overrides),
-    });
-
-    setSaving(false);
-  }
-
-  async function reset() {
-    await fetch("/api/settings", { method: "DELETE" });
-    window.location.reload();
-  }
-
-  /* ---------------- Override Helpers ---------------- */
-
-  function set(path: string[], value: number) {
-    setOverrides((o: any) => {
-      const copy = structuredClone(o);
-      let ref = copy;
-
-      for (let i = 0; i < path.length - 1; i++) {
-        ref[path[i]] ||= {};
-        ref = ref[path[i]];
-      }
-
-      ref[path[path.length - 1]] = value;
-      return copy;
-    });
-  }
-
-  function get(path: string[], fallback: number) {
-    let ref = overrides;
-    for (const p of path) ref = ref?.[p];
-    return ref ?? fallback;
-  }
-
-  /* ===================================================== */
-  /* UI                                                     */
-  /* ===================================================== */
+  const handleLogout = () => {
+    if (confirm("Are you sure you want to sign out?")) {
+      window.location.href = "/api/auth/signout"; // Default NextAuth signout route
+    }
+  };
 
   return (
-    <div className="min-h-screen bg-[#161618] text-[#FFFDFC] selection:bg-[#E8414A]/20 font-sans">
-      <div className="max-w-4xl mx-auto p-8 space-y-10">
-        <h1 className="text-2xl font-medium tracking-tight">System Settings</h1>
+    <div className="h-full flex flex-col animate-in fade-in duration-300 max-w-3xl mx-auto w-full">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-100">System Settings</h1>
+          <p className="text-sm text-gray-400 mt-1">Manage personalization, algorithms, and active zones.</p>
+        </div>
+        
+        <button 
+          onClick={handleLogout}
+          className="flex items-center gap-2 px-3 py-2 bg-red-500/10 border border-red-500/20 rounded-lg text-xs font-bold tracking-wider text-red-500 hover:bg-red-500/20 transition-colors uppercase"
+        >
+          <Power size={14} /> Logout
+        </button>
+      </div>
 
-        {/* ===================================================== */}
-        {/* V2 — SYSTEM LEARNED OPTIMIZATION (READ ONLY)           */}
-        {/* ===================================================== */}
-
-        {derived && typeof derived === "object" && (
-          <Section
-            title="System-Learned Optimization (V2)"
-            description="These values are automatically calibrated by LifeOS from your behavior."
+      <div className="flex-1 pb-20 space-y-8">
+        
+        {/* User Profile Card */}
+        {loading ? (
+          <div className="h-28 bg-[#1F2023] border border-[#2A2B2F] rounded-3xl animate-pulse" />
+        ) : userProfile && (
+          <div 
+            onClick={() => router.push('/profile')}
+            className="group flex items-center bg-[#1F2023] border border-[#2A2B2F] hover:border-gray-500/30 rounded-3xl p-5 cursor-pointer transition-all shadow-sm"
           >
-            {Object.entries(derived || {}).map(([key, metric]: any) => (
-              <DerivedRow key={key} label={key} metric={metric} />
-            ))}
-          </Section>
+            <div className="w-16 h-16 rounded-full bg-[#2A2B2F] border border-[#3A3C42] flex items-center justify-center overflow-hidden mr-5 shrink-0">
+              {userProfile.image ? (
+                <img src={userProfile.image} alt={userProfile.name} className="w-full h-full object-cover" />
+              ) : (
+                <UserIcon size={28} className="text-gray-400" />
+              )}
+            </div>
+            
+            <div className="flex-1">
+              <h2 className="text-xl font-bold text-gray-100 mb-0.5">{userProfile.name || "User Profile"}</h2>
+              <p className="text-sm font-semibold text-gray-400">{userProfile.email}</p>
+            </div>
+            
+            <div className="w-10 h-10 rounded-full bg-[#2A2B2F] group-hover:bg-[#3A3C42] flex items-center justify-center transition-colors">
+              <ChevronRight size={20} className="text-gray-400 group-hover:text-white" />
+            </div>
+          </div>
         )}
 
-        {/* ===================================================== */}
-        {/* PHASE THRESHOLDS                                     */}
-        {/* ===================================================== */}
-
-        <Section
-          title="Phase Detection Thresholds"
-          description="Rules that trigger phase transitions (burnout, grind, slump, recovery…)."
-        >
-          {Object.keys(phaseThresholds).length === 0 && (
-            <div className="text-sm text-[#ECE7E3]/70">
-              No thresholds found.
-            </div>
-          )}
-
-          {Object.entries(phaseThresholds).map(([phase, values]: any) => (
-            <div key={phase} className="space-y-3 pt-4 border-t border-[#2A2B2F] first:border-0 first:pt-0">
-              <div className="text-xs font-semibold uppercase tracking-wider text-[#ECE7E3]">
-                {phase}
-              </div>
-
-              {Object.entries(values || {}).map(([key, val]: any) => (
-                <EditableNumber
-                  key={`${phase}-${key}`}
-                  label={key}
-                  value={get(
-                    ["phases", "thresholds", phase, key],
-                    val
-                  )}
-                  onChange={(v) =>
-                    set(["phases", "thresholds", phase, key], v)
-                  }
-                />
-              ))}
-            </div>
-          ))}
-        </Section>
-
-        {/* ===================================================== */}
-        {/* PHASE SIGNAL WEIGHTS                                 */}
-        {/* ===================================================== */}
-
-        <Section
-          title="Phase Signal Weights"
-          description="How strongly each signal affects phase scoring."
-        >
-          {Object.keys(phaseWeights).length === 0 && (
-            <div className="text-sm text-[#ECE7E3]/70">
-              No phase weights found.
-            </div>
-          )}
-
-          {Object.entries(phaseWeights).map(([key, val]: any) => (
-            <EditableNumber
-              key={key}
-              label={key}
-              value={get(["phases", "weights", key], val)}
-              step={0.05}
-              onChange={(v) => set(["phases", "weights", key], v)}
+        {/* Preferences Section */}
+        <div>
+          <div className="text-[10px] font-bold tracking-widest text-gray-500 uppercase mb-3 ml-2">Preferences</div>
+          
+          <div className="space-y-3">
+            <RoutingCard
+              title="Personalization"
+              description="Reminders, rollover hour & diet preferences"
+              icon={<Settings size={22} className="text-gray-300" />}
+              iconBg="bg-[#2A2B2F]"
+              onClick={() => router.push('/settings/personalization')}
             />
-          ))}
-        </Section>
-
-        {/* ===================================================== */}
-        {/* GOAL LOAD PRESSURE WEIGHTS                            */}
-        {/* ===================================================== */}
-
-        <Section
-          title="Goal Load Pressure Weights"
-          description="How goal cadence, ambition, and conflicts contribute to pressure."
-        >
-          {Object.keys(goalWeights).length === 0 && (
-            <div className="text-sm text-[#ECE7E3]/70">
-              No goal pressure weights found.
-            </div>
-          )}
-
-          {Object.entries(goalWeights).map(([key, val]: any) => (
-            <EditableNumber
-              key={key}
-              label={key}
-              value={get(["goals", "pressureWeights", key], val)}
-              step={0.05}
-              onChange={(v) =>
-                set(["goals", "pressureWeights", key], v)
-              }
+            
+            <RoutingCard
+              title="Locations"
+              description="Voice assistant zones & geofencing"
+              icon={<MapPin size={22} className="text-[#E8414A]" />}
+              iconBg="bg-[#E8414A]/15"
+              onClick={() => router.push('/settings/locations')}
             />
-          ))}
-        </Section>
-
-        {/* ===================================================== */}
-        {/* ACTIONS                                               */}
-        {/* ===================================================== */}
-
-        <div className="flex gap-4 pt-8 border-t border-[#1F2023]">
-          <button
-            onClick={save}
-            disabled={saving}
-            className="px-5 py-2 rounded-md bg-[#D62C35] hover:bg-[#E8414A] text-white font-medium text-sm transition-all disabled:opacity-50 disabled:hover:bg-[#D62C35] shadow-sm shadow-[#D62C35]/10"
-          >
-            {saving ? "Saving…" : "Save Overrides"}
-          </button>
-
-          <button
-            onClick={reset}
-            className="px-5 py-2 rounded-md border border-[#2A2B2F] hover:bg-[#2A2B2F] text-[#ECE7E3] text-sm font-medium transition-colors"
-          >
-            Reset to Defaults
-          </button>
+            
+            <RoutingCard
+              title="Custom Signals"
+              description="Create & manage category schemas"
+              icon={<Activity size={22} className="text-gray-300" />}
+              iconBg="bg-[#2A2B2F]"
+              onClick={() => router.push('/settings/signals')}
+            />
+            
+            <RoutingCard
+              title="Algorithm Weights"
+              description="Tune LifeOS V1 Phase & Goal weights"
+              icon={<Settings size={22} className="text-gray-300" />}
+              iconBg="bg-[#2A2B2F]"
+              onClick={() => router.push('/settings/weights')}
+            />
+          </div>
         </div>
+
       </div>
     </div>
   );
 }
 
-/* ===================================================== */
-/* COMPONENTS                                             */
-/* ===================================================== */
-
-function Section({
-  title,
-  description,
-  children,
-}: {
-  title: string;
-  description: string;
-  children: React.ReactNode;
+function RoutingCard({ 
+  title, 
+  description, 
+  icon, 
+  iconBg, 
+  onClick 
+}: { 
+  title: string; 
+  description: string; 
+  icon: React.ReactNode; 
+  iconBg: string;
+  onClick: () => void;
 }) {
   return (
-    <div className="bg-[#1F2023] border border-[#2A2B2F] shadow-sm rounded-xl p-6 space-y-6">
-      <div className="space-y-1.5">
-        <div className="font-medium text-[15px]">{title}</div>
-        <div className="text-sm text-[#ECE7E3]/70">{description}</div>
+    <div 
+      onClick={onClick}
+      className="group flex items-center bg-[#1F2023] border border-[#2A2B2F] hover:border-gray-500/30 rounded-3xl p-5 cursor-pointer transition-all shadow-sm"
+    >
+      <div className={`w-12 h-12 rounded-2xl flex items-center justify-center mr-5 shrink-0 ${iconBg}`}>
+        {icon}
       </div>
-      <div className="space-y-4">
-        {children}
+      
+      <div className="flex-1">
+        <h3 className="text-base font-bold text-gray-100 mb-1">{title}</h3>
+        <p className="text-sm font-semibold text-gray-400">{description}</p>
       </div>
-    </div>
-  );
-}
-
-function EditableNumber({
-  label,
-  value,
-  step = 0.1,
-  onChange,
-}: {
-  label: string;
-  value: number;
-  step?: number;
-  onChange: (v: number) => void;
-}) {
-  return (
-    <div className="flex justify-between items-center py-1.5 group">
-      <div className="text-sm text-[#ECE7E3] capitalize transition-colors group-hover:text-[#FFFDFC]">{label}</div>
-
-      <input
-        type="number"
-        step={step}
-        value={value}
-        onChange={(e) => onChange(Number(e.target.value))}
-        className="
-          w-24 bg-[#161618]
-          border border-[#2A2B2F]
-          rounded-md px-3 py-1.5
-          text-sm text-[#FFFDFC] font-mono
-          transition-all outline-none
-          focus:border-[#E8414A] focus:ring-1 focus:ring-[#E8414A]/20
-          hover:border-[#E8414A]/50
-        "
-      />
-    </div>
-  );
-}
-
-function DerivedRow({
-  label,
-  metric,
-}: {
-  label: string;
-  metric: any;
-}) {
-  if (!metric) return null;
-
-  return (
-    <div className="flex justify-between items-center py-3 border-b border-[#2A2B2F] last:border-none">
-      <div className="space-y-1">
-        <div className="text-sm font-medium text-[#ECE7E3] capitalize">{label}</div>
-        <div className="text-xs text-[#ECE7E3]/50">
-          {metric.reason || "Learned adjustment"}
-        </div>
-      </div>
-
-      <div className="font-mono text-sm text-[#E8414A]">
-        {typeof metric.value === "number"
-          ? metric.value.toFixed(2)
-          : "—"}
+      
+      <div className="w-9 h-9 rounded-full bg-[#2A2B2F] group-hover:bg-[#3A3C42] flex items-center justify-center transition-colors">
+        <ChevronRight size={18} className="text-gray-400 group-hover:text-white" />
       </div>
     </div>
   );

@@ -24,13 +24,13 @@ export function AddSignalModal({
       />
 
       {/* Modal */}
-      <div className="relative w-full max-w-lg bg-[#0f1115] border border-[#232632] rounded-2xl p-6 space-y-6 shadow-2xl">
+      <div className="relative w-full max-w-lg bg-[#161618] border border-[#2A2B2F] rounded-2xl p-6 space-y-6 shadow-2xl">
         <div className="text-lg font-semibold">Add Signal</div>
 
         <div className="space-y-4 max-h-[50vh] overflow-y-auto pr-2">
           {Object.entries(SIGNAL_CATALOG).map(([group, keys]) => (
             <div key={group} className="space-y-2">
-              <div className="text-xs uppercase text-gray-500 tracking-wider">
+              <div className="text-xs uppercase text-[#9ca3af] tracking-wider">
                 {group}
               </div>
 
@@ -45,12 +45,12 @@ export function AddSignalModal({
                       onClick={() => setSelectedKey(key)}
                       className={`text-left px-3 py-2 rounded-lg border transition ${
                         selectedKey === key
-                          ? "border-white bg-[#161922]"
-                          : "border-[#232632] bg-[#0f1115]"
+                          ? "border-white bg-[#1F2023]"
+                          : "border-[#2A2B2F] bg-[#161618]"
                       } ${
                         disabled
                           ? "opacity-40 cursor-not-allowed"
-                          : "hover:bg-[#161922]"
+                          : "hover:bg-[#1F2023]"
                       }`}
                     >
                       {key}
@@ -63,7 +63,7 @@ export function AddSignalModal({
         </div>
 
         {/* Footer */}
-        <div className="flex justify-between items-center pt-4 border-t border-[#232632]">
+        <div className="flex justify-between items-center pt-4 border-t border-[#2A2B2F]">
           <div className="flex items-center gap-2">
             <span className="text-sm text-gray-400">Weight</span>
             <input
@@ -72,14 +72,14 @@ export function AddSignalModal({
               max={10}
               value={weight}
               onChange={(e) => setWeight(Number(e.target.value))}
-              className="w-20 bg-[#0f1115] border border-[#232632] rounded px-2 py-1 text-sm"
+              className="w-20 bg-[#161618] border border-[#2A2B2F] rounded px-2 py-1 text-sm"
             />
           </div>
 
           <div className="flex gap-3">
             <button
               onClick={onClose}
-              className="px-4 py-2 rounded-lg border border-[#232632] text-gray-300"
+              className="px-4 py-2 rounded-lg border border-[#2A2B2F] text-gray-300"
             >
               Cancel
             </button>

@@ -8,7 +8,7 @@ export function ReflectionReadOnlyCard({ data }: { data: any }) {
     value ? (
       <div>
         <div className="text-xs text-gray-400 mb-1">{label}</div>
-        <div className="bg-[#0f1115] border border-[#232632] rounded-lg p-3 text-sm">
+        <div className="bg-[#161618] border border-[#2A2B2F] rounded-lg p-3 text-sm">
           {value}
         </div>
       </div>

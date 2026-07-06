@@ -1,0 +1,4 @@
+@import "tailwindcss";
+@import "@life-os/design-system/styles.css";
+
+/* Additional desktop-specific utility overrides can go here if needed */

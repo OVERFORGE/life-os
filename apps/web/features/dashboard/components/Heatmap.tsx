@@ -5,7 +5,7 @@ export function Heatmap({ logs }: { logs: Log[] }) {
   const days = buildHeatmapDays(logs);
 
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 space-y-4">
+    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-4 space-y-4">
       <div className="font-medium">Consistency Heatmap (Last 90 Days)</div>
 
       <div className="grid grid-cols-[repeat(15,20px)] gap-[3px]">
@@ -31,7 +31,7 @@ export function Heatmap({ logs }: { logs: Log[] }) {
 function LegendItem({ label, color }: { label: string; color: string }) {
   return (
     <div className="flex items-center gap-2">
-      <div className={`w-3 h-3 rounded-sm border border-[#232632] ${color}`} />
+      <div className={`w-3 h-3 rounded-sm border border-[#2A2B2F] ${color}`} />
       <span>{label}</span>
     </div>
   );

@@ -20,13 +20,13 @@ function RecordCard({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 flex items-center gap-4">
-      <div className="w-10 h-10 rounded-lg bg-[#0f1115] border border-[#232632] flex items-center justify-center text-yellow-400">
+    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-4 flex items-center gap-4 shadow-sm">
+      <div className="w-10 h-10 rounded-lg bg-[#161618] border border-[#2A2B2F] flex items-center justify-center text-[#E8414A]">
         {icon}
       </div>
       <div>
-        <div className="text-sm text-gray-400">{title}</div>
-        <div className="text-xl font-bold">{value}</div>
+        <div className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-0.5">{title}</div>
+        <div className="text-lg font-bold text-gray-100">{value}</div>
       </div>
     </div>
   );
@@ -37,8 +37,8 @@ export function PersonalRecords({ logs }: { logs: Log[] }) {
 
   return (
     <div className="space-y-4">
-      <div className="flex items-center gap-2 font-medium">
-        <Trophy className="w-5 h-5 text-yellow-400" />
+      <div className="flex items-center gap-2 font-bold uppercase tracking-widest text-xs text-gray-400 pl-1">
+        <Trophy className="w-4 h-4 text-[#E8414A]" />
         <span>Personal Records</span>
       </div>
 

@@ -11,78 +11,73 @@ import { Heatmap } from "@/features/dashboard/components/Heatmap";
 import { TrajectoryCard } from "@/features/dashboard/components/TrajectoryCard";
 import { CurrentEraCard } from "@/features/insights/eras/components/CurrentEraCard";
 import { GoalLoadCard } from "@/features/dashboard/components/GoalLoadCard";
-import { useRouter } from "next/navigation";
 import { SystemInsightCard } from "@/features/dashboard/components/SystemInsightCard";
+import Image from "next/image";
 
 export default function DashboardPage() {
   const [logs, setLogs] = useState<Log[]>([]);
   const [loading, setLoading] = useState(true);
   const [phase, setPhase] = useState<any>(null);
-  const [goalLoad , setGoalLoad] = useState<any>(null);
-  const router = useRouter();
+  const [goalLoad, setGoalLoad] = useState<any>(null);
+
   useEffect(() =>  {
-    fetch("/api/daily-log/dashboard")
-      .then((res) => res.json())
-      .then((data) => {
-        // API may return an array directly, or wrap it in { logs: [...] }
-        const arr = Array.isArray(data) ? data : Array.isArray(data?.logs) ? data.logs : [];
-        setLogs(arr);
-      })
-      .finally(() => setLoading(false));
-    fetch("/api/insights/trajectory")
-  .then((r) => r.json())
-  .then((d) => {
-    console.log("PHASE API RESPONSE:", d);
-    setPhase(d);
-  
-  });
-
-  fetch("/api/dashboard/goal-load")
-  .then((r) => r.json())
-  .then((d) => {
-    console.log("GOAL LOAD API RESPONSE:", d);
-    setGoalLoad(d);
-  });
-
+    Promise.all([
+      fetch("/api/daily-log/dashboard").then(r => r.json()),
+      fetch("/api/insights/trajectory").then(r => r.json()),
+      fetch("/api/dashboard/goal-load").then(r => r.json())
+    ]).then(([dashData, trajData, goalData]) => {
+      setLogs(Array.isArray(dashData) ? dashData : Array.isArray(dashData?.logs) ? dashData.logs : []);
+      setPhase(trajData);
+      setGoalLoad(goalData?.goalLoad ?? goalData);
+    }).finally(() => setLoading(false));
   }, []);
   
   if (loading) {
-    return <div className="p-6 text-gray-400">Loading dashboard...</div>;
+    return (
+      <div className="flex-1 flex flex-col items-center justify-center min-h-screen">
+        <div className="w-8 h-8 rounded-full border-2 border-[#E8414A] border-t-transparent animate-spin" />
+        <div className="text-gray-400 mt-4 text-sm font-medium">Syncing Telemetry...</div>
+      </div>
+    );
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1115] text-gray-100">
-      <div className="max-w-5xl mx-auto p-4 space-y-6">
-        <h1 className="text-2xl font-bold">Dashboard</h1>
-            {phase && (
-            <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 flex items-center justify-between">
-                <div>
-                <div className="text-sm text-gray-400">Current Life Phase</div>
-                <div className="text-xl font-semibold capitalize">
-                    {phase.phase?.replace("_", " ") || "Unknown"}
-                </div>
-                <div className="text-xs text-gray-400 mt-1">
-                    Confidence: {Math.round(phase.confidence * 100)}%
-                </div>
+    <div className="flex-1 w-full px-6 md:px-12 pt-8 animate-in fade-in duration-300">
+      
+      {/* Dynamic Header */}
+      <div className="flex items-center gap-3 mb-8">
+        <div className="w-10 h-10 rounded-lg bg-[#E8414A] flex items-center justify-center text-white font-bold text-xl shadow-sm">
+          L
+        </div>
+        <h1 className="text-3xl font-bold tracking-tight text-white">Overview</h1>
+      </div>
 
-                <div className="text-xs text-gray-500 mt-1 max-w-md">
-                    {phase.reason}
-                </div>
-                </div>
-
-                <PhaseBadge phase={phase.phase} />
+      <div className="space-y-6 pb-20">
+        
+        {/* Phase Context */}
+        {phase && phase.phase && (
+          <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-6 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-sm">
+            <div>
+              <div className="text-xs font-bold uppercase tracking-widest text-gray-500 mb-1">Current Life Phase</div>
+              <div className="text-xl font-semibold text-gray-100 capitalize">
+                {phase.phase?.replace("_", " ")}
+              </div>
+              <div className="text-sm text-gray-400 mt-1">
+                Confidence: {Math.round(phase.confidence * 100)}%
+              </div>
             </div>
-            )}
+            <PhaseBadge phase={phase.phase} />
+          </div>
+        )}
+
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
-          <TrajectoryCard />
+          <TrajectoryCard data={phase} />
           <CurrentEraCard />
         </div>
-        <GoalLoadCard goalLoad={goalLoad?.goalLoad ?? goalLoad} />
-        <div>
-          <SystemInsightCard />
-        </div>
         
+        <GoalLoadCard goalLoad={goalLoad} />
         
+        <SystemInsightCard />
         
         <SummaryGrid logs={logs} />
         <StreakGrid logs={logs} />
@@ -90,26 +85,25 @@ export default function DashboardPage() {
         <MoodEnergyChart logs={logs} />
         <InsightsGrid logs={logs} />
         <Heatmap logs={logs} />
+        
       </div>
     </div>
   );
 }
+
 function PhaseBadge({ phase }: { phase: string }) {
+  // Only use Red (#E8414A) and Gray as per user request
   const map: Record<string, string> = {
-    grind: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    burnout: "bg-red-500/20 text-red-400 border-red-500/30",
-    recovery: "bg-green-500/20 text-green-400 border-green-500/30",
-    slump: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-    balanced: "bg-gray-500/20 text-gray-300 border-gray-500/30",
+    burnout: "bg-[#E8414A]/10 text-[#E8414A] border-[#E8414A]/20",
+    grind: "bg-[#2A2B2F] text-gray-200 border-[#3A3C42]",
+    recovery: "bg-[#2A2B2F] text-gray-200 border-[#3A3C42]",
+    slump: "bg-[#2A2B2F] text-gray-200 border-[#3A3C42]",
+    balanced: "bg-[#2A2B2F] text-gray-200 border-[#3A3C42]",
   };
 
   return (
-    <div
-      className={`px-3 py-1 rounded-full border text-sm ${
-        map[phase] || "bg-gray-500/10 text-gray-400 border-gray-500/20"
-      }`}
-    >
-      {phase}
+    <div className={`px-4 py-1.5 rounded-full border text-xs font-bold uppercase tracking-wider w-fit ${map[phase] || "bg-[#2A2B2F] text-gray-400 border-[#3A3C42]"}`}>
+      {phase.replace("_", " ")}
     </div>
   );
 }

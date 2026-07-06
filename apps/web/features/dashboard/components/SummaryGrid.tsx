@@ -2,7 +2,7 @@ import { Log, average } from "../utils/stats";
 
 function StatCard({ title, value }: { title: string; value: string }) {
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-4">
+    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-4">
       <div className="text-sm text-gray-400">{title}</div>
       <div className="text-2xl font-bold">{value}</div>
     </div>

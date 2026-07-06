@@ -41,7 +41,7 @@ export default function EraDetailPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0f1115] text-gray-100">
+    <div className="min-h-screen bg-[#161618] text-gray-100">
       <div className="max-w-5xl mx-auto p-6 space-y-10">
 
         <EraHero era={era} totalDays={totalDays} />

@@ -1,7 +1,10 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import Link from "next/link";
+import { Plus, ListFilter } from "lucide-react";
+import { GoalList } from "@/features/goals/components/GoalList";
+
+import { useRouter } from "next/navigation";
 
 type Goal = {
   _id: string;
@@ -23,41 +26,38 @@ type GoalPressure = {
 };
 
 export default function GoalsPage() {
+  const router = useRouter();
   const [goals, setGoals] = useState<Goal[]>([]);
   const [loading, setLoading] = useState(true);
   const [bootstrapping, setBootstrapping] = useState(false);
 
   async function loadGoals() {
-  setLoading(true);
+    setLoading(true);
+    try {
+      const [goalsRes, pressureRes] = await Promise.all([
+        fetch("/api/goals/list"),
+        fetch("/api/insights/goal-adaptations"),
+      ]);
 
-  try {
-    const [goalsRes, pressureRes] = await Promise.all([
-      fetch("/api/goals/list"),
-      fetch("/api/insights/goal-adaptations"),
-    ]);
+      const goalsData = await goalsRes.json();
+      const pressureData = await pressureRes.json();
 
-    const goalsData = await goalsRes.json();
-    const pressureData = await pressureRes.json();
+      const suggestions = pressureData?.suggestions || [];
+      const pressureMap = new Map<string, GoalPressure>(
+        suggestions.map((s: GoalPressure) => [s.goalId, s])
+      );
 
-    const suggestions = pressureData?.suggestions || [];
+      const merged = goalsData.map((g: any) => ({
+        ...g,
+        pressure: pressureMap.get(g._id as string)?.pressure || null,
+      }));
 
-    // Map pressure by goalId
-    const pressureMap = new Map<string, GoalPressure>(
-      suggestions.map((s: GoalPressure) => [s.goalId, s])
-    );
-
-    const merged = goalsData.map((g: any) => ({
-      ...g,
-      pressure: pressureMap.get(g._id as string)?.pressure || null,
-    }));
-
-    setGoals(merged);
-  } catch (err) {
-    console.error("Failed to load goals", err);
+      setGoals(merged);
+    } catch (err) {
+      console.error("Failed to load goals", err);
+    }
+    setLoading(false);
   }
-
-  setLoading(false);
-}
 
   useEffect(() => {
     loadGoals();
@@ -70,126 +70,51 @@ export default function GoalsPage() {
     setBootstrapping(false);
   }
 
-  if (loading) {
-    return <div className="p-6 text-gray-400">Loading goals...</div>;
-  }
-
   return (
-    <div className="min-h-screen bg-[#0f1115] text-gray-100">
-      <div className="max-w-5xl mx-auto p-6 space-y-6">
-        <div className="flex justify-between items-center">
-        <h1 className="text-2xl font-bold">Goals</h1>
-
-        <Link
-            href="/goals/new"
-            className="px-4 py-2 rounded-xl bg-white text-black font-semibold active:scale-[0.98] transition"
-        >
-            + New Goal
-        </Link>
+    <div className="h-full flex flex-col animate-in fade-in duration-300 max-w-5xl mx-auto w-full">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight text-gray-100">Goals</h1>
+          <p className="text-sm text-gray-400 mt-1">Define outcomes, build identity, and track progress.</p>
         </div>
+        
+        <div className="flex items-center gap-3">
+          <button className="flex items-center gap-2 px-3 py-2 bg-[#1F2023] border border-[#2A2B2F] rounded-lg text-sm text-gray-300 hover:bg-[#2A2B2F] transition-colors">
+            <ListFilter size={16} /> Filters
+          </button>
+          <button 
+            onClick={() => router.push("/goals/new")}
+            className="flex items-center gap-2 px-4 py-2 bg-[#E8414A] hover:bg-[#D62C35] text-white rounded-lg text-sm font-medium transition-colors shadow-sm"
+          >
+            <Plus size={16} /> New Goal
+          </button>
+        </div>
+      </div>
 
-        {/* Empty State */}
-        {goals.length === 0 && (
-          <div className="bg-[#161922] border border-[#232632] rounded-xl p-8 text-center space-y-4">
-            <div className="text-gray-300">
+      {/* Main Workspace Area */}
+      <div className="flex-1 pb-10">
+        
+        {loading ? (
+          <div className="text-sm text-gray-400">Loading goals...</div>
+        ) : goals.length === 0 ? (
+          <div className="p-8 rounded-xl bg-[#1F2023] border border-dashed border-[#2A2B2F] flex flex-col items-center justify-center text-center space-y-4">
+            <div className="text-base text-gray-400">
               You don't have any goals yet.
             </div>
-
             <button
               onClick={bootstrap}
               disabled={bootstrapping}
-              className="px-5 py-3 rounded-xl bg-white text-black font-semibold active:scale-[0.98] transition"
+              className="px-4 py-2 bg-[#2A2B2F] text-gray-200 rounded-lg text-sm font-medium hover:bg-[#3A3C42] transition-colors"
             >
               {bootstrapping ? "Creating..." : "Create Starter Goals"}
             </button>
           </div>
+        ) : (
+          <GoalList items={goals} />
         )}
-
-        {/* Goals Grid */}
-        {goals.length > 0 && (
-  <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-    {goals.map((g) => {
-      const score = g.stats?.currentScore ?? 0;
-      const state = g.stats?.state ?? "unknown";
-      const id = g._id?.toString();
-
-      
-      return (
-        <Link key={id} href={`/goals/${id}`}>
-          <div className="bg-[#161922] border border-[#232632] rounded-xl p-5 space-y-4 hover:border-gray-600 transition cursor-pointer">
-            <div className="flex justify-between items-start">
-              <div className="space-y-1">
-                <div className="font-semibold text-lg">{g.title}</div>
-
-                {g.pressure?.status && g.pressure.status !== "aligned" && (
-                <div className="text-xs text-gray-400">
-                {pressureLabel(g.pressure.status)}
-                </div>
-    )}
-  </div>
-
-  <StateBadge state={state} />
-</div>
-
-
-            {/* Progress Bar */}
-            <div className="space-y-1">
-              <div className="flex justify-between text-xs text-gray-400">
-                <span>Progress</span>
-                <span>{score}%</span>
-              </div>
-              <div className="h-2 bg-[#0f1115] rounded-full overflow-hidden">
-                <div
-                  className="h-full bg-white transition-all"
-                  style={{ width: `${score}%` }}
-                />
-              </div>
-            </div>
-          </div>
-        </Link>
-      );
-    })}
-  </div>
-)}
-
       </div>
     </div>
   );
-}
-
-/* ---------- UI Bits ---------- */
-
-function StateBadge({ state }: { state: string }) {
-  const map: Record<string, string> = {
-    on_track: "bg-green-500/20 text-green-400 border-green-500/30",
-    slow: "bg-yellow-500/20 text-yellow-400 border-yellow-500/30",
-    drifting: "bg-red-500/20 text-red-400 border-red-500/30",
-    stalled: "bg-gray-500/20 text-gray-400 border-gray-500/30",
-    recovering: "bg-blue-500/20 text-blue-400 border-blue-500/30",
-    unknown: "bg-gray-500/10 text-gray-500 border-gray-500/20",
-  };
-
-  return (
-    <span
-      className={`text-xs px-2.5 py-1 rounded-full border ${
-        map[state] || map.unknown
-      }`}
-    >
-      {state.replace("_", " ")}
-    </span>
-  );
-}
-
-
-function pressureLabel(status: string) {
-  switch (status) {
-    case "strained":
-      return "Slightly heavy for current phase";
-    case "conflicting":
-      return "Conflicts with current life phase";
-    case "toxic":
-      return "Actively increasing life pressure";
-    default:
-      return "";
-  }
 }

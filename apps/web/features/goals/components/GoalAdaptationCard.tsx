@@ -38,7 +38,7 @@ export default function GoalAdaptationCard({ suggestion }: Props) {
       relative overflow-hidden
       rounded-xl
       border border-[#262a35]
-      bg-gradient-to-br from-[#0f1115] to-[#0b0d11]
+      bg-gradient-to-br from-[#161618] to-[#0b0d11]
       p-6
       transition-all
       hover:border-[#3a3f4b]

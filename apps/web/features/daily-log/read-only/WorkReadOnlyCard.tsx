@@ -16,7 +16,7 @@ export function WorkReadOnlyCard({ data }: { data: any }) {
       {w.mainWork && (
         <div className="mt-4">
           <div className="text-xs text-gray-400 mb-1">Main Work</div>
-          <div className="bg-[#0f1115] border border-[#232632] rounded-lg p-3 text-sm">
+          <div className="bg-[#161618] border border-[#2A2B2F] rounded-lg p-3 text-sm">
             {w.mainWork}
           </div>
         </div>
@@ -27,7 +27,7 @@ export function WorkReadOnlyCard({ data }: { data: any }) {
 
 function Item({ label, value }: { label: string; value: string }) {
   return (
-    <div className="bg-[#0f1115] border border-[#232632] rounded-lg p-3">
+    <div className="bg-[#161618] border border-[#2A2B2F] rounded-lg p-3">
       <div className="text-xs text-gray-400">{label}</div>
       <div className="text-base">{value}</div>
     </div>

@@ -77,52 +77,78 @@ export default function CheckinPage() {
   if (loading) return <div className="p-8">Loading...</div>;
 
   return (
-    <div className="min-h-screen bg-[#0f1115] text-gray-100">
-      <div className="max-w-xl mx-auto p-4 space-y-6 pb-28">
-        {/* ✅ Core System Signals */}
-        <CoreCategorySections date={todayDate} />
+    <div className="min-h-screen bg-[#161618] text-gray-100 flex flex-col">
+      
+      {/* Header */}
+      <div className="flex items-center justify-between px-6 md:px-12 pt-8 pb-6 border-b border-[#2A2B2F]">
+        <div>
+          <h1 className="text-3xl font-bold tracking-tight">Daily Log</h1>
+          <p className="text-sm text-gray-400 mt-1">Check-in for {todayDate}</p>
+        </div>
+        <div className="w-10 h-10" />
+      </div>
 
-        {/* ✅ Dynamic Category Cards */}
-        <CategorySignalCard
-          categoryKey="physical"
-          title="Physical Health"
-          subtitle="Body, movement, food, pain"
-          date={todayDate}
-        />
-
-        <CategorySignalCard
-          categoryKey="habits"
-          title="Habits & Discipline"
-          subtitle="Daily discipline signals"
-          date={todayDate}
-        />
-
-        <CategorySignalCard
-          categoryKey="work"
-          title="Work & Execution"
-          subtitle="Deep work + progress"
-          date={todayDate}
-        />
-
-        {/* Static Cards */}
-        <PlanningCard form={form} setForm={setForm} />
-        <ReflectionCard form={form} setForm={setForm} />
-
-        {/* ✅ Save Button */}
-        <div className="pt-4">
-          <button
-            onClick={save}
-            disabled={saving}
-            className="w-full bg-white text-black py-3 rounded-xl font-semibold active:scale-[0.98] transition"
-          >
-            {saving ? "Saving..." : "Save Check-in"}
-          </button>
-
-          {status && (
-            <div className="text-center text-sm text-gray-400 mt-2">
-              {status}
+      <div className="flex-1 overflow-y-auto px-6 md:px-12 py-8 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
+        <div className="max-w-5xl mx-auto space-y-8 pb-28">
+          
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+            {/* ✅ Core System Signals */}
+            <div className="col-span-1 md:col-span-2">
+              <CoreCategorySections date={todayDate} />
             </div>
-          )}
+
+            {/* ✅ Dynamic Category Cards */}
+            <CategorySignalCard
+              categoryKey="physical"
+              title="Physical Health"
+              subtitle="Body, movement, food, pain"
+              date={todayDate}
+            />
+
+            <CategorySignalCard
+              categoryKey="habits"
+              title="Habits & Discipline"
+              subtitle="Daily discipline signals"
+              date={todayDate}
+            />
+
+            <CategorySignalCard
+              categoryKey="work"
+              title="Work & Execution"
+              subtitle="Deep work + progress"
+              date={todayDate}
+            />
+
+            {/* Static Cards */}
+            <PlanningCard form={form} setForm={setForm} />
+            
+            <div className="col-span-1 md:col-span-2">
+              <ReflectionCard form={form} setForm={setForm} />
+            </div>
+          </div>
+
+          {/* ✅ Save Button */}
+          <div className="pt-6">
+            <button
+              onClick={save}
+              disabled={saving}
+              className={`w-full py-4 rounded-2xl flex items-center justify-center text-[15px] font-bold transition-all shadow-sm ${
+                saving 
+                  ? 'bg-[#2A2B2F] text-gray-500 cursor-not-allowed border border-[#2A2B2F]' 
+                  : 'bg-[#E8414A] hover:bg-[#D62C35] border border-[#E8414A] text-white hover:shadow-lg hover:-translate-y-0.5'
+              }`}
+            >
+              {saving ? "Saving..." : "Save Check-in"}
+            </button>
+
+            {status && (
+              <div className="text-center text-sm font-bold mt-4 transition-all">
+                <span className={status.includes('Error') ? 'text-[#E8414A]' : 'text-green-500'}>
+                  {status}
+                </span>
+              </div>
+            )}
+          </div>
         </div>
       </div>
     </div>

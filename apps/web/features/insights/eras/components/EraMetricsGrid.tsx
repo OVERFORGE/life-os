@@ -16,7 +16,7 @@ export function EraMetricsGrid({ era, totalDays }: any) {
       {stats.map(([label, value]) => (
         <div
           key={label}
-          className="bg-[#161922] border border-[#232632] rounded-xl p-4"
+          className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-4"
         >
           <div className="text-xs text-gray-400">{label}</div>
           <div className="text-lg font-semibold text-gray-100">{value}</div>

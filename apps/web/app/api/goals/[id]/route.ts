@@ -115,6 +115,8 @@ export async function PUT(
   const goal = await Goal.findOneAndUpdate(
     { _id: id, userId: session.user.id },
     {
+      title: body.title,
+      type: body.type,
       signals: body.signals,
       rules: body.rules,
     },

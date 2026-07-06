@@ -193,7 +193,7 @@ export function InterfaceCinema() {
         </div>
 
         {/* Floating UI Fragment - Left */}
-        <div className="float-frag-1 hidden md:flex absolute left-[3%] top-[15%] z-10 w-56 flex-col gap-3 bg-[#161922]/90 backdrop-blur-md border border-lifeos-dark-3/60 rounded-xl shadow-2xl p-5 opacity-50 hover:opacity-80 transition-opacity">
+        <div className="float-frag-1 hidden md:flex absolute left-[3%] top-[15%] z-10 w-56 flex-col gap-3 bg-[#1F2023]/90 backdrop-blur-md border border-lifeos-dark-3/60 rounded-xl shadow-2xl p-5 opacity-50 hover:opacity-80 transition-opacity">
           <div className="flex items-center justify-between">
             <div className="text-[10px] font-mono text-lifeos-red-3 tracking-widest uppercase">NODE_SYNC</div>
             <div className="w-1.5 h-1.5 rounded-full bg-lifeos-red-3 animate-pulse"></div>
@@ -207,7 +207,7 @@ export function InterfaceCinema() {
         </div>
 
         {/* Floating UI Fragment - Right */}
-        <div className="float-frag-2 hidden md:flex absolute right-[3%] bottom-[20%] z-10 w-64 flex-col gap-2 bg-[#161922]/90 backdrop-blur-xl border border-lifeos-dark-3/60 rounded-xl shadow-2xl p-5 opacity-50 hover:opacity-80 transition-opacity">
+        <div className="float-frag-2 hidden md:flex absolute right-[3%] bottom-[20%] z-10 w-64 flex-col gap-2 bg-[#1F2023]/90 backdrop-blur-xl border border-lifeos-dark-3/60 rounded-xl shadow-2xl p-5 opacity-50 hover:opacity-80 transition-opacity">
           <div className="flex items-center justify-between mb-1">
             <div className="text-[10px] font-mono text-lifeos-light-1/50 tracking-widest uppercase">SYSTEM LOG</div>
             <div className="w-1.5 h-1.5 rounded-full bg-green-500 shadow-[0_0_6px_#22c55e] animate-pulse"></div>
@@ -225,7 +225,7 @@ export function InterfaceCinema() {
         {features.map((f, i) => (
           <div
             key={i}
-            className="feature-card group rounded-xl border border-lifeos-dark-3/50 bg-[#161922]/60 backdrop-blur-md p-8 hover:border-lifeos-red-3/30 hover:bg-[#161922]/80 transition-all duration-300 opacity-0"
+            className="feature-card group rounded-xl border border-lifeos-dark-3/50 bg-[#1F2023]/60 backdrop-blur-md p-8 hover:border-lifeos-red-3/30 hover:bg-[#1F2023]/80 transition-all duration-300 opacity-0"
           >
             <div className="text-[10px] font-mono text-lifeos-red-3 tracking-[0.3em] uppercase mb-4">{f.label}</div>
             <h3 className="text-xl font-bold text-lifeos-light-3 mb-3 tracking-tight group-hover:text-white transition-colors">{f.title}</h3>

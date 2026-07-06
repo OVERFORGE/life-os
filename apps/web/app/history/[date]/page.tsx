@@ -43,27 +43,27 @@ export default function HistoryDayPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#0f1115] text-gray-100">
-      <div className="max-w-xl mx-auto p-4 space-y-6">
-        <div className="flex items-center justify-between">
-          <h1 className="text-xl font-bold">{date}</h1>
+    <div className="min-h-screen bg-[#161618] text-gray-100">
+      <div className="w-full max-w-5xl px-6 md:px-12 pt-8 mx-auto space-y-6">
+        <div className="flex items-center justify-between mb-8">
+          <h1 className="text-3xl font-bold tracking-tight">{date}</h1>
           <button
-            className="text-sm text-gray-400 underline"
+            className="flex items-center gap-2 px-4 py-2 bg-[#1F2023] hover:bg-[#2A2B2F] border border-[#2A2B2F] rounded-lg text-sm text-gray-300 font-medium transition-colors"
             onClick={() => router.push("/history")}
           >
-            ← Back
+            ← Back to History
           </button>
         </div>
 
-        <MentalReadOnlyCard data={log} />
-        <SleepReadOnlyCard data={log} />
-        <PhysicalReadOnlyCard data={log} />
-        <WorkReadOnlyCard data={log} />
-        <HabitsReadOnlyCard data={log} />
-        <PlanningReadOnlyCard data={log} />
-        <ReflectionReadOnlyCard data={log} />
-
-
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6 pb-20">
+          <MentalReadOnlyCard data={log} />
+          <SleepReadOnlyCard data={log} />
+          <PhysicalReadOnlyCard data={log} />
+          <WorkReadOnlyCard data={log} />
+          <HabitsReadOnlyCard data={log} />
+          <PlanningReadOnlyCard data={log} />
+          <ReflectionReadOnlyCard data={log} />
+        </div>
       </div>
     </div>
   );

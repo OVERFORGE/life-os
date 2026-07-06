@@ -10,13 +10,13 @@ export function TextareaField({
   onChange: (v: string) => void;
 }) {
   return (
-    <div className="space-y-1">
-      <div className="font-medium">{label}</div>
-      {description && <div className="text-sm text-gray-400">{description}</div>}
+    <div className="space-y-1.5 mb-4">
+      <div className="text-[11px] font-semibold text-gray-400 capitalize">{label}</div>
+      {description && <div className="text-[10px] text-gray-500">{description}</div>}
       <textarea
         value={value}
         onChange={(e) => onChange(e.target.value)}
-        className="w-full bg-[#0f1115] border border-[#232632] rounded-lg p-2 min-h-[80px]"
+        className="w-full bg-[#161618] border border-[#2A2B2F] text-gray-100 rounded-xl px-4 py-3 text-sm min-h-[80px] resize-none focus:border-[#E8414A] focus:outline-none transition-colors"
       />
     </div>
   );

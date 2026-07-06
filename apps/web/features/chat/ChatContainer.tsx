@@ -52,20 +52,20 @@ export default function ChatContainer() {
       <div className="absolute top-4 left-1/2 -translate-x-1/2 z-10 w-[220px]">
         <div 
           onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-          className="bg-[#1a1d24]/90 border border-white/10 rounded-full px-4 py-2.5 shadow-xl backdrop-blur-xl flex items-center justify-between gap-3 transition-all hover:border-white/20 cursor-pointer"
+          className="bg-[#1F2023]/90 border border-[#2A2B2F] rounded-full px-4 py-2.5 shadow-xl backdrop-blur-xl flex items-center justify-between gap-3 transition-all hover:border-gray-500 cursor-pointer"
         >
           <div className="flex items-center gap-2">
-            <div className="w-2 h-2 rounded-full bg-amber-400 animate-pulse" />
+            <div className="w-2 h-2 rounded-full bg-[#E8414A] animate-pulse" />
             <span className="text-gray-200 font-medium text-xs">
               {GROQ_MODELS.find(m => m.id === selectedModel)?.name}
             </span>
           </div>
-          <div className={`text-gray-500 text-[10px] transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`}>▼</div>
+          <div className={`text-[#9ca3af] text-[10px] transition-transform duration-300 ${isDropdownOpen ? 'rotate-180' : ''}`}>▼</div>
         </div>
 
         {/* Dropdown Menu */}
         {isDropdownOpen && (
-          <div className="absolute top-12 left-0 w-full bg-[#1a1d24]/95 border border-white/10 rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
+          <div className="absolute top-12 left-0 w-full bg-[#1F2023]/95 border border-[#2A2B2F] rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200">
             {GROQ_MODELS.map(model => (
               <div 
                 key={model.id} 
@@ -73,7 +73,7 @@ export default function ChatContainer() {
                   setSelectedModel(model.id);
                   setIsDropdownOpen(false);
                 }}
-                className={`px-4 py-3 text-xs cursor-pointer transition-colors ${selectedModel === model.id ? 'bg-amber-500/10 text-amber-400' : 'text-gray-300 hover:bg-white/5'}`}
+                className={`px-4 py-3 text-xs cursor-pointer transition-colors ${selectedModel === model.id ? 'bg-[#E8414A]/10 text-[#E8414A]' : 'text-gray-300 hover:bg-white/5'}`}
               >
                 {model.name}
               </div>
@@ -86,16 +86,18 @@ export default function ChatContainer() {
       <div 
         ref={scrollContainerRef}
         onScroll={handleScroll}
-        className="flex-1 overflow-y-auto p-6 space-y-4 pt-20 relative scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
+        className="flex-1 overflow-y-auto p-6 md:p-12 space-y-6 pt-24 relative scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
       >
-        {messages.map((m, i) => (
-          <ChatMessage
-            key={i}
-            role={m.role}
-            content={m.content}
-          />
-        ))}
-        <div ref={messagesEndRef} />
+        <div className="max-w-3xl mx-auto space-y-8 pb-10">
+          {messages.map((m, i) => (
+            <ChatMessage
+              key={i}
+              role={m.role}
+              content={m.content}
+            />
+          ))}
+          <div ref={messagesEndRef} />
+        </div>
       </div>
 
       {/* Scroll to Bottom Button */}
@@ -103,7 +105,7 @@ export default function ChatContainer() {
         <div className="absolute bottom-24 left-1/2 -translate-x-1/2 z-20">
           <button
             onClick={() => scrollToBottom()}
-            className="w-8 h-8 bg-gray-600/80 hover:bg-gray-500 backdrop-blur-md rounded-full flex items-center justify-center border border-white/10 shadow-lg text-white transition-all transform hover:scale-105"
+            className="w-8 h-8 bg-[#2A2B2F]/80 hover:bg-[#3A3C42] backdrop-blur-md rounded-full flex items-center justify-center border border-[#2A2B2F] shadow-lg text-white transition-all transform hover:scale-105"
           >
             <ArrowDown size={16} />
           </button>

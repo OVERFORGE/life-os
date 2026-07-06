@@ -12,7 +12,7 @@ export function EraPhaseTimeline({ phases }: any) {
             <span>{p.durationDays} days</span>
           </div>
 
-          <div className="h-2 bg-[#0f1115] rounded-full overflow-hidden border border-[#232632]">
+          <div className="h-2 bg-[#161618] rounded-full overflow-hidden border border-[#2A2B2F]">
             <div
               className="h-full bg-white/40"
               style={{ width: `${(p.durationDays / max) * 100}%` }}

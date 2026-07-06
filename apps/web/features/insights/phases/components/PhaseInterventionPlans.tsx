@@ -12,7 +12,7 @@ export function PhaseInterventionPlans({ plans }: { plans: any[] }) {
         {plans.map(plan => (
           <div
             key={plan.id}
-            className="bg-[#161922] border border-[#232632] rounded-xl p-5 space-y-3"
+            className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-5 space-y-3"
           >
             <div className="flex justify-between items-center">
               <div className="font-medium text-gray-200">
@@ -33,7 +33,7 @@ export function PhaseInterventionPlans({ plans }: { plans: any[] }) {
               </div>
             )}
 
-            <div className="text-xs text-gray-500 pt-2 border-t border-[#232632]">
+            <div className="text-xs text-[#9ca3af] pt-2 border-t border-[#2A2B2F]">
               Confidence: {Math.round(plan.confidence * 100)}%
             </div>
           </div>

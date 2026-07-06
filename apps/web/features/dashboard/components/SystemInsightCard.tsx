@@ -42,14 +42,14 @@ export function SystemInsightCard() {
       subtitle="Current system intelligence"
       
     >
-      <div className="space-y-5">
+      <div className="space-y-6">
 
         {/* System State */}
-        <div>
-          <div className="text-xs text-gray-400 mb-1">
+        <div className="pb-4 border-b border-[#2A2B2F]/50">
+          <div className="text-xs font-bold tracking-widest text-gray-500 mb-1 uppercase">
             System State
           </div>
-          <div className="text-lg font-semibold text-white">
+          <div className="text-lg font-semibold text-gray-100">
             {insight.systemState}
           </div>
         </div>
@@ -57,17 +57,17 @@ export function SystemInsightCard() {
         {/* Risks */}
         {insight.risks.length > 0 && (
           <div>
-            <div className="text-xs text-red-400 mb-2 uppercase tracking-wide">
+            <div className="text-xs font-bold text-[#E8414A] mb-2 uppercase tracking-widest">
               Risks
             </div>
 
-            <ul className="space-y-1">
+            <ul className="space-y-1.5">
               {insight.risks.map((r, i) => (
                 <li
                   key={i}
-                  className="text-sm text-red-300 flex items-start gap-2"
+                  className="text-sm text-gray-300 flex items-start gap-2 leading-relaxed"
                 >
-                  <span>⚠️</span>
+                  <span className="text-[#E8414A] mt-0.5">•</span>
                   <span>{r}</span>
                 </li>
               ))}
@@ -78,17 +78,17 @@ export function SystemInsightCard() {
         {/* Observations */}
         {insight.observations.length > 0 && (
           <div>
-            <div className="text-xs text-gray-400 mb-2 uppercase tracking-wide">
+            <div className="text-xs font-bold text-gray-500 mb-2 uppercase tracking-widest">
               Observations
             </div>
 
-            <ul className="space-y-1">
+            <ul className="space-y-1.5">
               {insight.observations.map((o, i) => (
                 <li
                   key={i}
-                  className="text-sm text-gray-300 flex items-start gap-2"
+                  className="text-sm text-gray-300 flex items-start gap-2 leading-relaxed"
                 >
-                  <span>•</span>
+                  <span className="text-gray-500 mt-0.5">•</span>
                   <span>{o}</span>
                 </li>
               ))}
@@ -99,17 +99,17 @@ export function SystemInsightCard() {
         {/* Recommendations */}
         {insight.recommendations.length > 0 && (
           <div>
-            <div className="text-xs text-green-400 mb-2 uppercase tracking-wide">
+            <div className="text-xs font-bold text-gray-300 mb-2 uppercase tracking-widest">
               Recommendations
             </div>
 
-            <ul className="space-y-1">
+            <ul className="space-y-1.5">
               {insight.recommendations.map((r, i) => (
                 <li
                   key={i}
-                  className="text-sm text-green-300 flex items-start gap-2"
+                  className="text-sm text-gray-300 flex items-start gap-2 leading-relaxed"
                 >
-                  <span>💡</span>
+                  <span className="text-gray-400 mt-0.5">↳</span>
                   <span>{r}</span>
                 </li>
               ))}

@@ -1,7 +1,7 @@
 import type { Metadata } from "next";
 import { Geist, Geist_Mono } from "next/font/google";
 import "./globals.css";
-import { AppShell } from "@/components/layout/AppShell";
+import { DesktopShell } from "@/components/layout/DesktopShell";
 
 import { Providers } from "@/components/providers/Providers";
 const geistSans = Geist({
@@ -16,7 +16,7 @@ const geistMono = Geist_Mono({
 
 export const metadata: Metadata = {
   title: "Life OS",
-  description: "",
+  description: "Desktop Operating System",
 };
 
 export default function RootLayout({
@@ -28,7 +28,7 @@ export default function RootLayout({
     <html lang="en">
       <body
         className={`${geistSans.variable} ${geistMono.variable} antialiased`}
-      ><Providers><AppShell>{children}</AppShell></Providers>
+      ><Providers><DesktopShell>{children}</DesktopShell></Providers>
         
       </body>
     </html>

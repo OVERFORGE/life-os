@@ -37,14 +37,14 @@ function InsightCard({
   const TrendIcon = value >= 0 ? TrendingUp : TrendingDown;
 
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 space-y-3">
+    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-4 space-y-3">
       <div className="flex items-center justify-between">
         <div className="flex items-center gap-2">
-          <div className="w-8 h-8 rounded-lg bg-[#0f1115] border border-[#232632] flex items-center justify-center">
+          <div className="w-8 h-8 rounded-lg bg-[#161618] border border-[#2A2B2F] flex items-center justify-center">
             {iconLeft}
           </div>
-          <span className="text-gray-500">→</span>
-          <div className="w-8 h-8 rounded-lg bg-[#0f1115] border border-[#232632] flex items-center justify-center">
+          <span className="text-[#9ca3af]">→</span>
+          <div className="w-8 h-8 rounded-lg bg-[#161618] border border-[#2A2B2F] flex items-center justify-center">
             {iconRight}
           </div>
         </div>

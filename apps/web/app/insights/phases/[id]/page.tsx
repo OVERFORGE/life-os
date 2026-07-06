@@ -69,7 +69,7 @@ function Bar({ label, value }: { label: string; value: number }) {
         <span>{label}</span>
         <span>{pct}%</span>
       </div>
-      <div className="h-2 bg-[#0f1115] border border-[#232632] rounded-full">
+      <div className="h-2 bg-[#161618] border border-[#2A2B2F] rounded-full">
         <div
           className="h-full bg-indigo-400/70 rounded-full"
           style={{ width: `${pct}%` }}
@@ -114,7 +114,7 @@ export default function PhaseDetailPage() {
   );
 
   return (
-    <div className="min-h-screen bg-[#0f1115] text-gray-100">
+    <div className="min-h-screen bg-[#161618] text-gray-100">
       <div className="max-w-5xl mx-auto p-6 space-y-10">
 
         {/* Back */}
@@ -132,7 +132,7 @@ export default function PhaseDetailPage() {
           <h1 className="text-3xl font-bold capitalize">
             {phase.phase.replaceAll("_", " ")}
           </h1>
-          <div className="text-sm text-gray-500">
+          <div className="text-sm text-[#9ca3af]">
             {phase.startDate} → {phase.endDate || "Present"}
           </div>
 
@@ -142,7 +142,7 @@ export default function PhaseDetailPage() {
         </div>
 
         {/* System State */}
-        <div className="bg-[#161922] border border-[#232632] rounded-xl p-6">
+        <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-6">
           <div className="flex items-center gap-2 text-gray-300 font-medium mb-4">
             <Gauge className="w-5 h-5" />
             System State
@@ -160,7 +160,7 @@ export default function PhaseDetailPage() {
 
         {/* Signals */}
         {selfExplanation.signals?.length > 0 && (
-          <div className="bg-[#161922] border border-[#232632] rounded-xl p-6">
+          <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-6">
             <div className="flex items-center gap-2 font-medium mb-3">
               <Activity className="w-5 h-5" />
               Key Signals
@@ -180,7 +180,7 @@ export default function PhaseDetailPage() {
         )}
 
         {/* Exit Paths */}
-        <div className="bg-[#161922] border border-[#232632] rounded-xl p-6">
+        <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-6">
           <div className="flex items-center gap-2 font-medium mb-4">
             <Compass className="w-5 h-5" />
             What Actually Moves You Out
@@ -199,7 +199,7 @@ export default function PhaseDetailPage() {
               {escapePaths.slice(0, 3).map((s: any, i: number) => (
                 <div
                   key={i}
-                  className="bg-[#0f1115] border border-[#232632] rounded-lg p-4"
+                  className="bg-[#161618] border border-[#2A2B2F] rounded-lg p-4"
                 >
                   <div className="text-gray-200 font-medium">
                     If you {humanizeActions(s.actions)}
@@ -267,7 +267,7 @@ function InterventionSimulator({ phaseId }: { phaseId: string }) {
   }
 
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-6">
+    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-6">
       <div className="flex items-center gap-2 font-medium mb-4">
         <Beaker className="w-5 h-5" />
         Try Your Own Intervention
@@ -293,7 +293,7 @@ function InterventionSimulator({ phaseId }: { phaseId: string }) {
       </button>
 
       {result && (
-        <div className="mt-4 bg-[#0f1115] border border-[#232632] rounded-lg p-4">
+        <div className="mt-4 bg-[#161618] border border-[#2A2B2F] rounded-lg p-4">
           <div className="text-sm text-gray-400">Result</div>
           <div className="text-lg font-semibold">{result.candidatePhase}</div>
           <div className="text-sm text-gray-400">

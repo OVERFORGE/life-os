@@ -11,8 +11,8 @@ function IconStatCard({
   icon: React.ReactNode;
 }) {
   return (
-    <div className="bg-[#161922] border border-[#232632] rounded-xl p-4 flex items-center gap-4">
-      <div className="w-10 h-10 rounded-lg bg-[#0f1115] border border-[#232632] flex items-center justify-center">
+    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-4 flex items-center gap-4">
+      <div className="w-10 h-10 rounded-lg bg-[#161618] border border-[#2A2B2F] flex items-center justify-center">
         {icon}
       </div>
       <div>

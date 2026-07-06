@@ -74,7 +74,7 @@ export function FinalCTA() {
       </div>
 
       {/* Premium SaaS Footer */}
-      <footer className="relative w-full z-10 border-t border-lifeos-dark-3/30 bg-[#0f1115]/90 backdrop-blur-md mt-32">
+      <footer className="relative w-full z-10 border-t border-lifeos-dark-3/30 bg-[#161618]/90 backdrop-blur-md mt-32">
         <div className="max-w-7xl mx-auto px-8 py-12 flex flex-col md:flex-row justify-between items-center gap-6">
           <div className="flex items-center gap-3 opacity-80 hover:opacity-100 transition-opacity">
              <div className="w-5 h-5 rounded-sm border border-lifeos-red-3 rotate-45 flex items-center justify-center">
