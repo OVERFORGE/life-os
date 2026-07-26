@@ -80,7 +80,8 @@
         {
           "locationAlwaysAndWhenInUsePermission": "Allow Life OS to use your location to provide geofenced AI voice assistance."
         }
-      ]
+      ],
+      "./withNotifeeForegroundService.js"
     ],
     "experiments": {
       "typedRoutes": true,

@@ -193,8 +193,7 @@ export async function displayExecutionerNotification(title?: string, body?: stri
       channelId: CHANNEL_ID,
       asForegroundService: true,
       foregroundServiceTypes: [
-        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_DATA_SYNC,
-        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_MICROPHONE
+        AndroidForegroundServiceType.FOREGROUND_SERVICE_TYPE_DATA_SYNC
       ],
       colorized: true,
       color: '#B71C1C', // Darker red so Android forces white text

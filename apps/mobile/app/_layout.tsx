@@ -10,6 +10,22 @@ import { ToastProvider } from '../components/ui/Toast';
 import { registerForPushNotificationsAsync, scheduleDailyReminder } from '../utils/notifications';
 import * as Notifications from 'expo-notifications';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { Alert } from 'react-native';
+
+// Global Error Handler to catch fatal crashes
+const defaultErrorHandler = (global as any).ErrorUtils?.getGlobalHandler();
+(global as any).ErrorUtils?.setGlobalHandler((error: Error, isFatal: boolean) => {
+  if (isFatal) {
+    Alert.alert(
+      'Fatal Error Captured',
+      `Message: ${error.message}\n\nStack: ${error.stack?.substring(0, 500)}`,
+      [{ text: 'OK' }]
+    );
+  }
+  if (defaultErrorHandler) {
+    defaultErrorHandler(error, isFatal);
+  }
+});
 
 export default function RootLayout() {
   useEffect(() => {
@@ -33,5 +49,16 @@ export default function RootLayout() {
         <StatusBar style="light" />
       </ToastProvider>
     </ThemeProvider>
+  );
+}
+
+import { View, Text, Button } from 'react-native';
+export function ErrorBoundary(props: any) {
+  return (
+    <View style={{ flex: 1, justifyContent: 'center', alignItems: 'center', backgroundColor: '#660000', padding: 20 }}>
+      <Text style={{ color: 'white', fontSize: 24, fontWeight: 'bold' }}>UI CRASH!</Text>
+      <Text style={{ color: 'white', marginVertical: 20, textAlign: 'center' }}>{props.error?.message || 'Unknown Error'}</Text>
+      <Button title="Try Again" onPress={props.retry} color="white" />
+    </View>
   );
 }

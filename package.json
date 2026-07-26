@@ -10,6 +10,7 @@
     "build:mobile": "cd apps/mobile && eas build -p android --profile preview"
   },
   "devDependencies": {
+    "babel-preset-expo": "~13.0.0",
     "turbo": "^2.0.0"
   }
 }
