@@ -5,7 +5,9 @@
   "packageManager": "pnpm@10.27.0",
   "scripts": {
     "dev": "turbo dev",
-    "build": "turbo build",
+    "build": "pnpm --filter web build",
+    "build-desktop": "powershell.exe -ExecutionPolicy Bypass -File ./scripts/build-desktop.ps1",
+    "dev:desktop": "pnpm --filter desktop dev",
     "lint": "turbo lint",
     "build:mobile": "cd apps/mobile && eas build -p android --profile preview"
   },

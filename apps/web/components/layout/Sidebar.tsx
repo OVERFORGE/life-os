@@ -108,7 +108,7 @@ export function Sidebar({ mobile, onClose }: { mobile?: boolean; onClose?: () =>
           <div className="px-3 py-2 text-[var(--text-xs)] text-[var(--color-text-muted)]">Loading...</div>
         ) : session?.user ? (
           <button
-            onClick={() => signOut()}
+            onClick={() => signOut({ callbackUrl: "/login" })}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-[var(--text-sm)] font-[var(--font-medium)] text-[var(--color-status-error)] hover:bg-[var(--color-alpha-white5)] transition-all duration-200"
           >
             <LogOut size={16} />
@@ -116,7 +116,7 @@ export function Sidebar({ mobile, onClose }: { mobile?: boolean; onClose?: () =>
           </button>
         ) : (
           <button
-            onClick={() => signIn("google")}
+            onClick={() => window.location.href = "/login"}
             className="w-full flex items-center gap-3 px-3 py-2 rounded-[var(--radius-md)] text-[var(--text-sm)] font-[var(--font-medium)] text-[var(--color-text-secondary)] hover:bg-[var(--color-alpha-white5)] hover:text-[var(--color-text-primary)] transition-all duration-200"
           >
             <LogIn size={16} className="text-[var(--color-text-muted)]" />

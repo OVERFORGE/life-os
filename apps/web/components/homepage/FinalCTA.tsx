@@ -4,7 +4,6 @@ import React, { useRef } from "react";
 import gsap from "gsap";
 import { useGSAP } from "@gsap/react";
 import { ScrollTrigger } from "gsap/ScrollTrigger";
-import { signIn } from "next-auth/react";
 
 gsap.registerPlugin(ScrollTrigger, useGSAP);
 
@@ -59,7 +58,7 @@ export function FinalCTA() {
 
         <div className="flex flex-col sm:flex-row gap-8 w-full sm:w-auto mt-12 relative z-20 items-center">
           <button
-            onClick={() => signIn("google")}
+            onClick={() => window.location.href = "/login"}
             className="group relative flex items-center justify-center px-10 py-4 bg-lifeos-red-3 text-white font-mono text-xs tracking-[0.2em] font-bold uppercase transition-all duration-300 hover:bg-white hover:text-black shadow-[0_0_30px_rgba(232,65,74,0.3)] hover:shadow-[0_0_40px_rgba(255,255,255,0.4)]"
           >
             <span>Initialize OS</span>

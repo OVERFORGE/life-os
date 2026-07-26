@@ -1,0 +1,62 @@
+<!DOCTYPE html>
+<html>
+<head>
+    <style>
+        body {
+            margin: 0;
+            padding: 0;
+            background-color: #161618;
+            color: #ffffff;
+            font-family: system-ui, -apple-system, sans-serif;
+            display: flex;
+            flex-direction: column;
+            align-items: center;
+            justify-content: center;
+            height: 100vh;
+            user-select: none;
+        }
+        .logo {
+            font-size: 32px;
+            font-weight: 800;
+            letter-spacing: 2px;
+            margin-bottom: 24px;
+        }
+        .logo span.os {
+            color: #888;
+            font-weight: 500;
+        }
+        .status {
+            font-size: 14px;
+            color: #aaa;
+            margin-bottom: 8px;
+        }
+        .spinner {
+            width: 24px;
+            height: 24px;
+            border: 3px solid rgba(255,255,255,0.1);
+            border-radius: 50%;
+            border-top-color: #fff;
+            animation: spin 1s ease-in-out infinite;
+        }
+        @keyframes spin {
+            to { transform: rotate(360deg); }
+        }
+    </style>
+</head>
+<body>
+    <div class="logo">LIFE<span class="os">OS</span></div>
+    <div class="status" id="status">Initializing Native Runtime...</div>
+    <div class="spinner" id="spinner"></div>
+
+    <script>
+        // Tauri backend can call this function to update status
+        window.setStatus = function(text, isError) {
+            document.getElementById('status').innerText = text;
+            if (isError) {
+                document.getElementById('status').style.color = '#ff6b6b';
+                document.getElementById('spinner').style.display = 'none';
+            }
+        };
+    </script>
+</body>
+</html>

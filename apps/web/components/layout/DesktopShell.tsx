@@ -9,8 +9,8 @@ import { usePathname } from "next/navigation";
 export function DesktopShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
 
-  // On the landing page, we don't want the authenticated layout
-  if (pathname === "/") {
+  // On the landing page and login page, we don't want the authenticated layout
+  if (pathname === "/" || pathname === "/login" || pathname === "/desktop-login" || pathname === "/desktop-callback") {
     return (
       <div className="flex flex-col min-h-screen bg-[#161618] text-gray-100">
         {children}
