@@ -61,8 +61,8 @@ export default function DevicesPage() {
   const [revoking, setRevoking] = useState<string | null>(null);
   const [revokingAll, setRevokingAll] = useState(false);
 
-  const fetchSessions = useCallback(async () => {
-    setLoading(true);
+  const fetchSessions = useCallback(async (silent = false) => {
+    if (!silent) setLoading(true);
     try {
       const res = await fetch("/api/sessions");
       const data = await res.json();
@@ -70,12 +70,19 @@ export default function DevicesPage() {
     } catch (e) {
       console.error(e);
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, []);
 
   useEffect(() => {
-    fetchSessions();
+    fetchSessions(); // initial load
+    
+    // Auto-poll every 5 seconds for real-time updates
+    const interval = setInterval(() => {
+      fetchSessions(true);
+    }, 5000);
+    
+    return () => clearInterval(interval);
   }, [fetchSessions]);
 
   const revokeSession = async (id: string) => {
@@ -128,7 +135,7 @@ export default function DevicesPage() {
         </div>
 
         <button
-          onClick={fetchSessions}
+          onClick={() => fetchSessions(false)}
           disabled={loading}
           className="flex items-center justify-center w-10 h-10 rounded-full bg-[#1F2023] border border-[#2A2B2F] hover:bg-[#2A2B2F] transition-colors shadow-sm"
         >
