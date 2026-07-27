@@ -1,8 +1,11 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { User } from "@/server/db/models/User";
+import { Session } from "@/server/db/models/Session";
+import { parseUserAgent } from "@/server/utils/deviceDetect";
 import jwt from "jsonwebtoken";
 import bcrypt from "bcryptjs";
+import crypto from "crypto";
 
 export const runtime = "nodejs"; // ✅ VERY IMPORTANT (fixes Vercel issues)
 
@@ -59,14 +62,44 @@ export async function POST(req: Request) {
       throw new Error("NEXTAUTH_SECRET not set");
     }
 
+    const sessionId = crypto.randomUUID();
+
     const token = jwt.sign(
       {
         id: dbUser._id.toString(),
         email: dbUser.email,
+        sessionId,
       },
       secret,
       { expiresIn: "30d" }
     );
+
+    // Register mobile session
+    try {
+      const ua = req.headers.get("user-agent") || "";
+      const ip =
+        req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+        req.headers.get("x-real-ip") ||
+        "";
+        
+      let deviceInfo = parseUserAgent(ua);
+      // Ensure we explicitly flag as Mobile App since this is the mobile-auth endpoint
+      if (deviceInfo.platform === "Web Browser" || deviceInfo.platform === "Unknown") {
+        deviceInfo.platform = "Mobile App";
+        deviceInfo.deviceType = "mobile";
+      }
+
+      await Session.create({
+        userId: dbUser._id,
+        sessionToken: sessionId,
+        lastActive: new Date(),
+        ...deviceInfo,
+        ipAddress: ip,
+        isRevoked: false,
+      });
+    } catch (err) {
+      console.warn("Failed to record mobile session:", err);
+    }
 
     return NextResponse.json({
       token,

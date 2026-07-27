@@ -19,12 +19,26 @@ export async function getAuthSession() {
       const decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET || "fallback-secret-key-12345") as any;
       
       if (decoded && decoded.id) {
+        if (decoded.sessionId) {
+          const { connectDB } = require("@/server/db/connect");
+          const { Session } = require("@/server/db/models/Session");
+          await connectDB();
+          const sessionRecord = await Session.findOne({ sessionToken: decoded.sessionId, isRevoked: true }).lean();
+          if (sessionRecord) {
+            return null; // Session revoked
+          }
+          
+          // Optionally update lastActive
+          Session.updateOne({ sessionToken: decoded.sessionId }, { $set: { lastActive: new Date() } }).catch(() => {});
+        }
+
         return {
           user: {
             id: decoded.id,
             email: decoded.email,
             name: decoded.name || "Mobile User"
-          }
+          },
+          sessionId: decoded.sessionId,
         };
       }
     }
