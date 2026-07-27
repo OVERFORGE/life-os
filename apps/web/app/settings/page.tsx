@@ -2,7 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
-import { User as UserIcon, ChevronRight, Settings, MapPin, Power, Activity } from "lucide-react";
+import { User as UserIcon, ChevronRight, Settings, MapPin, Power, Activity, Laptop } from "lucide-react";
 
 export default function SettingsDashboard() {
   const router = useRouter();
@@ -109,6 +109,14 @@ export default function SettingsDashboard() {
               icon={<Settings size={22} className="text-gray-300" />}
               iconBg="bg-[#2A2B2F]"
               onClick={() => router.push('/settings/weights')}
+            />
+
+            <RoutingCard
+              title="Devices"
+              description="Manage active sessions & remote logout"
+              icon={<Laptop size={22} className="text-[#E8414A]" />}
+              iconBg="bg-[#E8414A]/15"
+              onClick={() => router.push('/settings/devices')}
             />
           </div>
         </div>

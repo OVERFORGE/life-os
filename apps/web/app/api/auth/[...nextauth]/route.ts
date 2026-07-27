@@ -3,8 +3,17 @@ import GoogleProvider from "next-auth/providers/google";
 import CredentialsProvider from "next-auth/providers/credentials";
 import { connectDB } from "@/server/db/connect";
 import { User } from "@/server/db/models/User";
+import { Session } from "@/server/db/models/Session";
 import bcrypt from "bcryptjs";
 import jwt from "jsonwebtoken";
+import crypto from "crypto";
+import { headers } from "next/headers";
+import { parseUserAgent } from "@/server/utils/deviceDetect";
+
+// Stable hash from a JWT token string — used as the session identity key.
+function hashToken(token: string): string {
+  return crypto.createHash("sha256").update(token).digest("hex");
+}
 
 export const authOptions: NextAuthOptions = {
   providers: [
@@ -90,13 +99,68 @@ export const authOptions: NextAuthOptions = {
       return true;
     },
 
-    async session({ session }) {
+    async jwt({ token, trigger, account }) {
+      // On initial sign-in, assign a unique session ID
+      if (trigger === "signIn" || !token.sessionId) {
+        token.sessionId = crypto.randomUUID();
+      }
+      return token;
+    },
+
+    async session({ session, token }) {
       await connectDB();
 
       const dbUser = await User.findOne({ email: session.user?.email });
 
       if (dbUser && session.user) {
         (session.user as any).id = dbUser._id.toString();
+      }
+
+      // Propagate sessionId so the client can detect "this device"
+      if (token?.sessionId) {
+        (session as any).sessionId = token.sessionId;
+      }
+
+      // Check revocation: if this session has been remotely logged out, clear it
+      if (token?.sessionId) {
+        const sessionRecord = await Session.findOne({
+          sessionToken: token.sessionId as string,
+          isRevoked: true,
+        });
+        if (sessionRecord) {
+          // Return a minimal session that will force re-login
+          return { ...session, user: undefined, expires: new Date(0).toISOString() };
+        }
+
+        // Record/update session metadata on each token refresh
+        try {
+          const headersList = await headers();
+          const ua = headersList.get("user-agent") || "";
+          const ip =
+            headersList.get("x-forwarded-for")?.split(",")[0].trim() ||
+            headersList.get("x-real-ip") ||
+            "";
+          const deviceInfo = parseUserAgent(ua);
+
+          await Session.findOneAndUpdate(
+            { sessionToken: token.sessionId as string },
+            {
+              $set: {
+                userId: dbUser?._id,
+                lastActive: new Date(),
+                ...deviceInfo,
+                ipAddress: ip,
+              },
+              $setOnInsert: {
+                sessionToken: token.sessionId as string,
+                isRevoked: false,
+              },
+            },
+            { upsert: true }
+          );
+        } catch {
+          // Non-fatal: don't block auth if session recording fails
+        }
       }
 
       return session;
