@@ -27,10 +27,10 @@ export default function Homepage() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
-    if (status === "authenticated") {
+    if (status === "authenticated" && session?.user) {
       router.push("/dashboard");
     }
-  }, [status, router]);
+  }, [status, session, router]);
 
   // Lenis Smooth Scrolling Setup
   useEffect(() => {

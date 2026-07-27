@@ -1,21 +1,42 @@
 "use client";
 
-import { ReactNode } from "react";
+import { ReactNode, useEffect } from "react";
 import { Sidebar } from "./Sidebar";
 import { TopNavigation } from "./TopNavigation";
 import { CommandPalette } from "../ui/CommandPalette";
-import { usePathname } from "next/navigation";
+import { usePathname, useRouter } from "next/navigation";
+import { useSession } from "next-auth/react";
+
+const PUBLIC_PATHS = ["/", "/login", "/desktop-login", "/desktop-callback"];
 
 export function DesktopShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();
+  const router = useRouter();
+  const { data: session, status } = useSession();
+
+  const isPublic = PUBLIC_PATHS.some(
+    (p) => pathname === p || pathname.startsWith("/desktop-")
+  );
+
+  // Client-side auth guard — redirect unauthenticated users on protected pages
+  useEffect(() => {
+    if (!isPublic && (status === "unauthenticated" || (status === "authenticated" && !session?.user))) {
+      router.replace("/login");
+    }
+  }, [status, session, isPublic, router]);
 
   // On the landing page and login page, we don't want the authenticated layout
-  if (pathname === "/" || pathname === "/login" || pathname === "/desktop-login" || pathname === "/desktop-callback") {
+  if (isPublic) {
     return (
       <div className="flex flex-col min-h-screen bg-[#161618] text-gray-100">
         {children}
       </div>
     );
+  }
+
+  // While session is loading on a protected route, show nothing to avoid flicker
+  if (status === "loading" || status === "unauthenticated") {
+    return <div className="h-screen w-full bg-[#0A0A0B]" />;
   }
 
   return (
@@ -43,3 +64,4 @@ export function DesktopShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
+
