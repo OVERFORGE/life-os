@@ -12,6 +12,7 @@
     "windows": [
       {
         "title": "LifeOS",
+        "userAgent": "LifeOS-Desktop Windows",
         "width": 1024,
         "height": 768,
         "minWidth": 800,

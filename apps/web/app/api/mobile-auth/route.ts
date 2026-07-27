@@ -83,11 +83,23 @@ export async function POST(req: Request) {
         "";
         
       let deviceInfo = parseUserAgent(ua);
+      
+      // Override with explicit device details from React Native payload if provided
+      const bodyDeviceOs = reqBody.deviceOs;
+      const bodyDeviceModel = reqBody.deviceModel;
+
       // Ensure we explicitly flag as Mobile App since this is the mobile-auth endpoint.
-      // React Native / Expo UAs are often misidentified as "Web Browser", so override here.
-      if (deviceInfo.platform === "Web Browser") {
+      // React Native / Expo UAs are often misidentified as "Web Browser".
+      if (deviceInfo.platform === "Web Browser" || bodyDeviceOs) {
         deviceInfo.platform = "Mobile App";
         deviceInfo.deviceType = "mobile";
+        
+        if (bodyDeviceOs && bodyDeviceOs !== "Unknown") {
+          deviceInfo.os = bodyDeviceOs;
+        }
+        if (bodyDeviceModel && bodyDeviceModel !== "Unknown") {
+          deviceInfo.browser = bodyDeviceModel; // Maps to the specific device model
+        }
       }
 
       await Session.create({

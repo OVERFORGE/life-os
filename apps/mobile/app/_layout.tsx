@@ -35,6 +35,30 @@ export default function RootLayout() {
     
     // Clean up the old persistent notification if it exists
     Notifications.dismissNotificationAsync('lifeos-persistent-notif').catch(() => {});
+
+    // Polling for real-time remote logout
+    const interval = setInterval(async () => {
+      try {
+        const token = await AsyncStorage.getItem('user_token');
+        if (!token) return;
+
+        // Using fetch directly because we can't easily import router into fetchWithAuth
+        const { API_URL } = require('../utils/api');
+        const res = await fetch(`${API_URL}/user`, {
+          headers: { Authorization: `Bearer ${token}` }
+        });
+
+        if (res.status === 401 || res.status === 403) {
+          await AsyncStorage.removeItem('user_token');
+          const { router } = require('expo-router');
+          router.replace('/login');
+        }
+      } catch (e) {
+        // Network error, ignore
+      }
+    }, 5000); // Check every 5 seconds
+
+    return () => clearInterval(interval);
   }, []);
 
   return (

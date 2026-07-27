@@ -4,6 +4,7 @@ import { View, Text, TouchableOpacity, ActivityIndicator, TextInput, Image } fro
 import { useRouter } from 'expo-router';
 import Animated, { FadeInDown } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Device from 'expo-device';
 import { API_URL } from '../utils/api';
 
 export default function LoginScreen() {
@@ -31,6 +32,8 @@ export default function LoginScreen() {
         body: JSON.stringify({
           email: email.toLowerCase().trim(),
           password: password,
+          deviceOs: Device.osName || "Unknown",
+          deviceModel: Device.modelName || "Unknown",
         }),
       });
 
@@ -100,6 +103,8 @@ export default function LoginScreen() {
           email: userInfo.email,
           name: userInfo.name,
           image: userInfo.picture,
+          deviceOs: Device.osName || "Unknown",
+          deviceModel: Device.modelName || "Unknown",
         }),
       });
 
