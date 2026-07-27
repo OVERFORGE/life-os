@@ -83,8 +83,9 @@ export async function POST(req: Request) {
         "";
         
       let deviceInfo = parseUserAgent(ua);
-      // Ensure we explicitly flag as Mobile App since this is the mobile-auth endpoint
-      if (deviceInfo.platform === "Web Browser" || deviceInfo.platform === "Unknown") {
+      // Ensure we explicitly flag as Mobile App since this is the mobile-auth endpoint.
+      // React Native / Expo UAs are often misidentified as "Web Browser", so override here.
+      if (deviceInfo.platform === "Web Browser") {
         deviceInfo.platform = "Mobile App";
         deviceInfo.deviceType = "mobile";
       }
