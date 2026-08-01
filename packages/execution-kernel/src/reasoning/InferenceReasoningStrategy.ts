@@ -1,4 +1,5 @@
 import { DefaultLLMProvider, LLMProvider } from "../shared/llmAdapter";
+import { ConversationSemantics, ConversationIntent, SemanticEntityReference } from "../kernel/ConversationSemantics";
 
 export type InferenceIntent =
   | "log_activity"
@@ -18,6 +19,7 @@ export type InferenceIntent =
 export interface InferenceResult {
   intent: InferenceIntent;
   confidence: number;
+  semantics: ConversationSemantics;
 }
 
 const INTENT_DESCRIPTIONS = `
@@ -36,6 +38,17 @@ const INTENT_DESCRIPTIONS = `
 - casual_chat: General conversation, greetings, questions, or vague/unclear messages.
 `.trim();
 
+const CONVERSATION_INTENT_DESCRIPTIONS = `
+- confirm_pending_action: User is agreeing to, confirming, or accepting a pending proposal or action.
+- cancel_pending_action: User is cancelling, rejecting, or saying "never mind" to a pending proposal.
+- update_entity: User wants to modify or change an existing entity (e.g. "make it 7.5 hours", "rename the goal").
+- delete_entity: User wants to delete or remove an entity (e.g. "delete that goal", "remove task").
+- reference_entity: User mentions or asks about a specific entity without changing it.
+- continue_workflow: User wants to proceed with the ongoing workflow.
+- new_request: User is starting a completely new, unrelated topic or task.
+- null: No conversational meta-intent (regular domain message).
+`.trim();
+
 export class InferenceReasoningStrategy {
   constructor(private llmProvider: LLMProvider = DefaultLLMProvider.getInstance()) {}
 
@@ -47,37 +60,77 @@ export class InferenceReasoningStrategy {
     message: string,
     history: string = "",
     model?: string,
-    hasPendingProposal: boolean = false
+    hasPendingProposal: boolean = false,
+    activeEntityName?: string
   ): Promise<InferenceResult> {
-    // Stage 1: Hard guard check for pending goal confirmation
-    if (hasPendingProposal) {
-      const msgLower = message.toLowerCase();
-      const acceptWords = ["yes", "yeah", "yep", "sure", "ok", "go ahead", "do it", "create", "make it", "looks good", "perfect", "approved", "sounds good", "correct", "fine"];
-      const rejectWords = ["no", "nope", "don't", "change", "modify", "instead", "different"];
-      if (acceptWords.some((kw) => msgLower.includes(kw)) || rejectWords.some((kw) => msgLower.includes(kw))) {
-        return { intent: "confirm_goal", confidence: 0.95 };
-      }
-    }
+    const systemPrompt = `You are a precision natural language understanding subsystem for LifeOS.
+Your job is to analyze the user's input and extract BOTH the domain intent AND conversational semantics.
+Return ONLY valid JSON matching this schema:
+{
+  "intent": "<domain_intent_key>",
+  "confidence": <0.0-1.0>,
+  "conversationIntent": "<conversation_intent_key or null>",
+  "isMutation": <true if intent modifies or deletes user state, otherwise false>,
+  "entityMention": "<natural language entity description or null>",
+  "entityType": "<goal|task|meal|workout|weight|diet_mode|null>"
+}
 
-    // Stage 2: LLM semantic interpretation
-    const systemPrompt = `You are a precision intent classifier for a personal life-tracking assistant called LifeOS.
-Your ONLY job is to classify the user's message into exactly one intent from the list below.
-Return ONLY valid JSON: {"intent": "<intent_key>", "confidence": <0.0-1.0>}
+## Domain Intents:
+${INTENT_DESCRIPTIONS}
 
-## Intent Options:
-${INTENT_DESCRIPTIONS}`;
+## Conversational Intents:
+${CONVERSATION_INTENT_DESCRIPTIONS}
+${activeEntityName ? `Currently active entity in discussion: "${activeEntityName}"` : ""}`;
 
-    const userPrompt = `History:\n${history}\n\nUser Message:\n${message}`;
+    const userPrompt = `History:\n${history}\n\nUser Message:\n"${message}"`;
 
     try {
       const responseText = await this.llmProvider.chat(userPrompt, systemPrompt, model);
       const parsed = JSON.parse(responseText);
+
+      const domainIntent = (parsed.intent as InferenceIntent) || "casual_chat";
+      const confidence = typeof parsed.confidence === "number" ? Math.min(Math.max(parsed.confidence, 0), 1) : 0.85;
+
+      const conversationIntent: ConversationIntent =
+        parsed.conversationIntent && parsed.conversationIntent !== "null"
+          ? (parsed.conversationIntent as ConversationIntent)
+          : null;
+
+      const entityReference: SemanticEntityReference | null =
+        parsed.entityMention
+          ? {
+              type: parsed.entityType || "entity",
+              mention: parsed.entityMention,
+              recency: activeEntityName && parsed.entityMention.toLowerCase().includes("it") ? "active" : "recent",
+            }
+          : null;
+
+      const isMutation = Boolean(parsed.isMutation) || ["update_entity", "delete_entity", "delete_task", "delete_goal", "complete_task"].includes(domainIntent);
+
+      const semantics: ConversationSemantics = {
+        conversationIntent,
+        entityReference,
+        confidence,
+        isMutation,
+      };
+
       return {
-        intent: (parsed.intent as InferenceIntent) || "casual_chat",
-        confidence: typeof parsed.confidence === "number" ? parsed.confidence : 0.7,
+        intent: domainIntent,
+        confidence,
+        semantics,
       };
     } catch {
-      return { intent: "casual_chat", confidence: 0.5 };
+      // Fallback
+      return {
+        intent: "casual_chat",
+        confidence: 0.5,
+        semantics: {
+          conversationIntent: null,
+          entityReference: null,
+          confidence: 0.5,
+          isMutation: false,
+        },
+      };
     }
   }
 }

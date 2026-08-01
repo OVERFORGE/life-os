@@ -1,32 +1,59 @@
 "use client";
 
-import { useState ,useEffect } from "react";
+import { useState, useEffect } from "react";
 
 type Message = {
   role: "user" | "assistant";
   content: string;
 };
 
-export function useChat() {
+interface UseChatOptions {
+  conversationId?: string | null;
+  onMessageSent?: () => void;
+}
+
+export function useChat(options?: UseChatOptions) {
+  const conversationId = options?.conversationId;
+  const onMessageSent = options?.onMessageSent;
+
   const [messages, setMessages] = useState<Message[]>([]);
   const [loading, setLoading] = useState(false);
   const [selectedModel, setSelectedModel] = useState("llama-3.3-70b-versatile");
 
   useEffect(() => {
-  async function loadHistory() {
-    const res = await fetch("/api/conversation/history");
-    const data = await res.json();
+    async function loadHistory() {
+      if (!conversationId) {
+        // Fallback to legacy single conversation
+        const res = await fetch("/api/conversation/history");
+        if (!res.ok) return;
+        const data = await res.json();
+        setMessages(
+          Array.isArray(data)
+            ? data.map((m: any) => ({ role: m.role, content: m.content }))
+            : []
+        );
+        return;
+      }
 
-    setMessages(
-      data.map((m:any)=>({
-        role:m.role,
-        content:m.content
-      }))
-    );
-  }
+      // Fetch per-conversation history
+      try {
+        const res = await fetch(`/api/conversations/${conversationId}`);
+        if (!res.ok) return;
+        const data = await res.json();
 
-  loadHistory();
-}, []);
+        setMessages(
+          Array.isArray(data.messages)
+            ? data.messages.map((m: any) => ({ role: m.role, content: m.content }))
+            : []
+        );
+      } catch (err) {
+        console.error("Error loading conversation history:", err);
+      }
+    }
+
+    loadHistory();
+  }, [conversationId]);
+
   async function sendMessage(text: string) {
     if (!text.trim()) return;
 
@@ -35,10 +62,16 @@ export function useChat() {
       content: text,
     };
 
+    const isFirstMessage = messages.length === 0;
+
     setMessages((prev) => [...prev, userMessage]);
     setLoading(true);
 
-    const res = await fetch("/api/conversation", {
+    const endpoint = conversationId
+      ? `/api/conversations/${conversationId}/messages`
+      : "/api/conversation";
+
+    const res = await fetch(endpoint, {
       method: "POST",
       headers: {
         "Content-Type": "application/json",
@@ -78,6 +111,20 @@ export function useChat() {
     }
 
     setLoading(false);
+
+    // Auto-generate title if this was the first message in a conversation
+    if (conversationId && isFirstMessage) {
+      const autoTitle = text.trim().slice(0, 30) + (text.length > 30 ? "..." : "");
+      fetch(`/api/conversations/${conversationId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ title: autoTitle }),
+      }).catch((e) => console.error("Error auto-titling conversation:", e));
+    }
+
+    if (onMessageSent) {
+      onMessageSent();
+    }
   }
 
   return {
@@ -85,6 +132,6 @@ export function useChat() {
     loading,
     sendMessage,
     selectedModel,
-    setSelectedModel
+    setSelectedModel,
   };
 }

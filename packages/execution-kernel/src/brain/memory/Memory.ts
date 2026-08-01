@@ -51,6 +51,10 @@ export class MemorySystem {
     );
   }
 
+  getAllRecords(): MemoryRecord[] {
+    return Array.from(this.records.values());
+  }
+
   clearCategory(category: MemoryCategory): void {
     for (const [id, record] of this.records.entries()) {
       if (record.category === category) {

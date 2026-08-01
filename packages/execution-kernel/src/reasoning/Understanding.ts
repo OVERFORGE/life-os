@@ -1,4 +1,5 @@
 import { generateId } from "../shared/ids";
+import { ConversationSemantics } from "../kernel/ConversationSemantics";
 
 /**
  * Understanding Model
@@ -14,6 +15,7 @@ export interface Understanding {
   inferredContext: Record<string, any>; // Context fetched/derived from Brain state
   priorities: string[];                // E.g. ['rest', 'recovery']
   requiresPlanning: boolean;           // True if strategic action is needed
+  conversationSemantics?: ConversationSemantics; // NEW — emitted by Reasoner for STM/Entity resolution
 }
 
 export function createUnderstanding(
@@ -22,7 +24,8 @@ export function createUnderstanding(
   detectedConditions: string[] = [],
   inferredContext: Record<string, any> = {},
   priorities: string[] = [],
-  requiresPlanning: boolean = true
+  requiresPlanning: boolean = true,
+  conversationSemantics?: ConversationSemantics
 ): Understanding {
   return {
     understandingId: generateId("und"),
@@ -32,5 +35,6 @@ export function createUnderstanding(
     inferredContext,
     priorities,
     requiresPlanning,
+    conversationSemantics,
   };
 }

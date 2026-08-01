@@ -3,12 +3,15 @@ import { ExecutionContext } from "../runtime/ExecutionContext";
 import { Understanding, createUnderstanding } from "./Understanding";
 import { InferenceReasoningStrategy } from "./InferenceReasoningStrategy";
 import { WorldSnapshot } from "../world/WorldSnapshot";
+import { ConversationSemantics } from "../kernel/ConversationSemantics";
 
 export interface InterpretInput {
   message: string;
   historyText?: string;
+  conversationSummary?: string;
   model?: string;
   hasPendingProposal?: boolean;
+  activeEntityName?: string;
 }
 
 export class Reasoner {
@@ -31,82 +34,34 @@ export class Reasoner {
     // 1. Fetch current WorldSnapshot from Brain facade
     const snapshot = this.brain.world.getSnapshot();
 
-    // 2. Try Deterministic Reasoning Strategy first
-    const deterministicUnderstanding = this.evaluateDeterministicStrategy(input, context, snapshot);
-    if (deterministicUnderstanding) {
-      return deterministicUnderstanding;
-    }
-
-    // 3. Fallback to Native Inference Reasoning Strategy (LLM-based interpretation)
+    // 2. Evaluate Inference Reasoning Strategy (LLM-based natural language understanding)
     return await this.evaluateInferenceStrategy(input, context, snapshot);
   }
 
   /**
-   * Deterministic Reasoning Strategy
-   * Evaluates explicit hard guards and combines WorldSnapshot predictions & insights with conversational context.
-   */
-  private evaluateDeterministicStrategy(
-    input: InterpretInput,
-    context: ExecutionContext,
-    snapshot: WorldSnapshot
-  ): Understanding | null {
-    const trimmed = input.message.trim().toLowerCase();
-
-    // Consume prediction types directly from WorldSnapshot
-    const detectedConditions: string[] = snapshot.predictions.map((p) => p.type);
-
-    // Hard Guard: Confirm Goal Proposal
-    if (
-      input.hasPendingProposal &&
-      ["yes", "yeah", "yep", "sure", "ok", "confirm", "accept", "do it"].includes(trimmed)
-    ) {
-      return createUnderstanding(
-        "confirm_goal",
-        1.0,
-        [...detectedConditions, "pending_proposal_active"],
-        {
-          pendingProposalConfirmed: true,
-          predictions: snapshot.predictions,
-          insights: snapshot.insights,
-          suggestions: snapshot.suggestions,
-        },
-        ["goal_tracking"]
-      );
-    }
-
-    // Hard Guard: Direct single-word clear
-    if (["clear", "reset"].includes(trimmed)) {
-      return createUnderstanding(
-        "general_chat",
-        1.0,
-        detectedConditions,
-        {
-          predictions: snapshot.predictions,
-          insights: snapshot.insights,
-          suggestions: snapshot.suggestions,
-        },
-        [],
-        false
-      );
-    }
-
-    return null;
-  }
-
-  /**
    * Native Inference Reasoning Strategy
-   * Leverages decoupled LLMProvider for ambiguous natural language interpretation, enriched with WorldSnapshot.
+   * Leverages decoupled LLMProvider for ambiguous natural language interpretation,
+   * enriched with conversation summary & history, emitting ConversationSemantics.
    */
   private async evaluateInferenceStrategy(
     input: InterpretInput,
     context: ExecutionContext,
     snapshot: WorldSnapshot
   ): Promise<Understanding> {
-    const { intent, confidence } = await this.inferenceStrategy.infer(
+    // Combine conversation summary and recent history for complete context
+    const fullHistoryContext = [
+      input.conversationSummary ? `[Conversation Summary]: ${input.conversationSummary}` : "",
+      input.historyText ? `[Recent Dialogue]:\n${input.historyText}` : "",
+    ]
+      .filter(Boolean)
+      .join("\n\n");
+
+    const { intent, confidence, semantics } = await this.inferenceStrategy.infer(
       input.message,
-      input.historyText || "",
+      fullHistoryContext,
       input.model,
-      input.hasPendingProposal
+      input.hasPendingProposal,
+      input.activeEntityName
     );
 
     const detectedConditions: string[] = snapshot.predictions.map((p) => p.type);
@@ -122,7 +77,8 @@ export class Reasoner {
         suggestions: snapshot.suggestions,
       },
       [],
-      intent !== "casual_chat"
+      intent !== "casual_chat",
+      semantics
     );
   }
 }
