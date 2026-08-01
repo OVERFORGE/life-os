@@ -85,8 +85,8 @@ export async function POST(req: Request) {
       let deviceInfo = parseUserAgent(ua);
       
       // Override with explicit device details from React Native payload if provided
-      const bodyDeviceOs = reqBody.deviceOs;
-      const bodyDeviceModel = reqBody.deviceModel;
+      const bodyDeviceOs = body.deviceOs;
+      const bodyDeviceModel = body.deviceModel;
 
       // Ensure we explicitly flag as Mobile App since this is the mobile-auth endpoint.
       // React Native / Expo UAs are often misidentified as "Web Browser".

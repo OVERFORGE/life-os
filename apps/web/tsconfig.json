@@ -25,6 +25,9 @@
     "paths": {
       "@/*": [
         "./*"
+      ],
+      "@life-os/execution-kernel": [
+        "../../packages/execution-kernel/src/index.ts"
       ]
     }
   },

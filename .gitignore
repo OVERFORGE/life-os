@@ -58,4 +58,7 @@ apps/desktop/.env.local
 # Misc
 # ============================================
 .DS_Store
-Thumbs.db
+Thumbs.db
+
+
+*.md

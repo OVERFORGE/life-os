@@ -3,7 +3,7 @@ import { User } from "@/server/db/models/User";
 import { WorkoutSession } from "@/server/db/models/WorkoutSession";
 import { NutritionLog } from "@/server/db/models/NutritionLog";
 import { WeightLog } from "@/server/db/models/WeightLog";
-import { getActiveDate } from "@/server/automation/timeUtils";
+import { getActiveDate } from "@life-os/execution-kernel";
 
 export async function buildHealthContext(userId: string) {
     const user = await User.findById(userId)

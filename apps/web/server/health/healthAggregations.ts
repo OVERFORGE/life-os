@@ -2,7 +2,7 @@ import { NutritionLog } from "@/server/db/models/NutritionLog";
 import { WorkoutSession } from "@/server/db/models/WorkoutSession";
 import { WeightLog } from "@/server/db/models/WeightLog";
 import { User } from "@/server/db/models/User";
-import { getActiveDate } from "@/server/automation/timeUtils";
+import { getActiveDate } from "@life-os/execution-kernel";
 
 // Retrieves current total macro intake
 export async function getTodayCalories(userId: string) {

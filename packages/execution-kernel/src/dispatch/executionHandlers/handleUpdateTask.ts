@@ -1,0 +1,92 @@
+// server/llm/executionHandlers/handleUpdateTask.ts
+import { findTaskByTitle, updateTask } from "@/features/tasks/engine/taskEngine";
+import { Task } from "@/server/db/models/Task";
+import { User } from "@/server/db/models/User";
+import { getActiveDate, parseLocalToUTC } from "../../automation/timeUtils";
+
+// Helper to locally resolve dates for reminders
+function resolveDateForReminders(raw: string, timezone?: string): string | null {
+  const today = getActiveDate(timezone);
+  if (!raw) return null;
+  const lower = raw.toLowerCase().trim();
+  if (lower === "today") return today;
+  if (lower === "tomorrow") {
+    const d = new Date(today);
+    d.setDate(d.getDate() + 1);
+    return d.toISOString().slice(0, 10);
+  }
+  if (lower === "yesterday") {
+    const d = new Date(today);
+    d.setDate(d.getDate() - 1);
+    return d.toISOString().slice(0, 10);
+  }
+  if (/^\d{4}-\d{2}-\d{2}$/.test(raw)) return raw;
+  return today; // Fallback for hallucinations like "this Sunday"
+}
+
+export async function handleUpdateTask(payload: any, userId: string) {
+  let taskId = payload.taskId;
+
+  if (!taskId && payload.title) {
+    const found = await findTaskByTitle(userId, payload.title);
+    if (found) taskId = String(found._id);
+  }
+
+  if (!taskId) {
+    return { type: "update_task", success: false, error: "Could not find matching task to update" };
+  }
+
+  const user = await User.findById(userId).select("settings").lean();
+  const timezone = (user as any)?.settings?.timezone;
+
+  const { taskId: _id, title: _t, reminderOffsetMinutes, reminderTimes, ...updates } = payload;
+
+  // Resolve new reminder times if provided
+  const resolvedReminders: string[] = [];
+  const now = new Date();
+  const newDueDate = resolveDateForReminders(updates.dueDate, timezone);
+
+  if (reminderOffsetMinutes && !isNaN(Number(reminderOffsetMinutes))) {
+    const ms = Number(reminderOffsetMinutes) * 60 * 1000;
+    resolvedReminders.push(new Date(now.getTime() + ms).toISOString());
+  }
+
+  if (Array.isArray(reminderTimes) && reminderTimes.length > 0) {
+    const baseDate = newDueDate || getActiveDate(timezone);
+    for (const t of reminderTimes) {
+      const match = String(t).match(/^(\d{1,2}):(\d{2})$/);
+      if (match) {
+        const base = parseLocalToUTC(baseDate, `${match[1].padStart(2, '0')}:${match[2]}`, timezone);
+        resolvedReminders.push(base.toISOString());
+      }
+    }
+  }
+
+  // If a new dueDate is being set and no explicit new reminders, shift existing reminders proportionally
+  if (newDueDate && resolvedReminders.length === 0) {
+    const existingTask = await Task.findOne({ _id: taskId, userId }).lean();
+    if (existingTask && (existingTask as any).reminders?.length > 0) {
+      const oldDueDateObj = new Date((existingTask as any).dueDate + 'T00:00:00');
+      const newDueDateObj = new Date(newDueDate + 'T00:00:00');
+      const dayShift = newDueDateObj.getTime() - oldDueDateObj.getTime();
+
+      for (const r of (existingTask as any).reminders) {
+        const shifted = new Date(new Date(r).getTime() + dayShift);
+        resolvedReminders.push(shifted.toISOString());
+      }
+    }
+  }
+
+  if (resolvedReminders.length > 0) {
+    updates.reminders = resolvedReminders;
+  }
+
+  const result = await updateTask(userId, taskId, updates);
+
+  return {
+    type: "update_task",
+    success: result.success,
+    taskTitle: (result as any).task?.title,
+    error: (result as any).error,
+  };
+}

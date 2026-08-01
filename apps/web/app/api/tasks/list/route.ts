@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth";
 import { connectDB } from "@/server/db/connect";
 import { Task } from "@/server/db/models/Task";
-import { getActiveDate } from "@/server/automation/timeUtils";
+import { getActiveDate } from "@life-os/execution-kernel";
 import { User } from "@/server/db/models/User";
 
 export async function GET(req: Request) {

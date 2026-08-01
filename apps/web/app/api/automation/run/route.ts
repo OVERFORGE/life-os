@@ -1,5 +1,5 @@
 import { NextResponse } from "next/server";
-import { runAutomation } from "@/server/automation/automationEngine";
+import { Kernel } from "@life-os/execution-kernel";
 import { connectDB } from "@/server/db/connect";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
@@ -26,8 +26,8 @@ export async function POST(req: Request) {
             return NextResponse.json({ success: false, error: "Unauthorized" }, { status: 401 });
         }
 
-        // 2. Fire Engine
-        const result = await runAutomation(userId);
+        // 2. Fire Engine via Kernel
+        const result = await Kernel.runAutomation(userId);
 
         return NextResponse.json(result);
     } catch (error: any) {

@@ -4,7 +4,7 @@
 import { Task } from "@/server/db/models/Task";
 import { Goal } from "@/features/goals/models/Goal";
 import { DailyLog } from "@/server/db/models/DailyLog";
-import { getActiveDate } from "@/server/automation/timeUtils";
+import { getActiveDate } from "@life-os/execution-kernel";
 
 /* ─────────────────────────────────────────────────────────── */
 /* Types                                                       */

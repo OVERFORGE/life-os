@@ -238,6 +238,9 @@ importers:
       '@life-os/design-system':
         specifier: workspace:*
         version: link:../../packages/design-system
+      '@life-os/execution-kernel':
+        specifier: workspace:*
+        version: link:../../packages/execution-kernel
       '@tauri-apps/plugin-deep-link':
         specifier: ~2.4.9
         version: 2.4.9
@@ -345,7 +348,14 @@ importers:
 
   packages/desktop-runtime: {}
 
-  packages/execution-kernel: {}
+  packages/execution-kernel:
+    dependencies:
+      groq-sdk:
+        specifier: ^1.1.2
+        version: 1.2.1
+      mongoose:
+        specifier: ^9.1.5
+        version: 9.7.0
 
   packages/types: {}
 
