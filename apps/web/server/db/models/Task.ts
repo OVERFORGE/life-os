@@ -16,7 +16,7 @@ const RecurringSchema = new mongoose.Schema(
 const TaskSchema = new mongoose.Schema(
   {
     userId: {
-      type: mongoose.Schema.Types.ObjectId,
+      type: mongoose.Schema.Types.Mixed,
       ref: "User",
       required: true,
       index: true,

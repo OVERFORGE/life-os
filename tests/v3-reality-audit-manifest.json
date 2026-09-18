@@ -1,0 +1,260 @@
+{
+  "manifestVersion": "3.0.0",
+  "generatedAt": "2026-09-14T04:30:00.000Z",
+  "testSuite": "LifeOS V3 Adversarial Reality Audit",
+  "runner": "node:test via tsx",
+  "totalTests": 127,
+  "passed": 127,
+  "failed": 0,
+  "categories": [
+    {
+      "category": "Baseline & Sanity",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase0Sanity.test.ts"],
+      "tests": [
+        { "id": "BASE-01", "name": "Basic arithmetic sanity check" },
+        { "id": "BASE-02", "name": "TypeScript type-checking execution baseline" },
+        { "id": "BASE-03", "name": "Isolated module imports without side effects" }
+      ]
+    },
+    {
+      "category": "Contracts, Epistemic Types & Policy",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase1Contracts.test.ts"],
+      "tests": [
+        { "id": "TC-POLICY-01", "name": "DEFAULT_ORCHESTRATION_POLICY immutability and schema verification" },
+        { "id": "TC-EPISTEMIC-01", "name": "Epistemic confidence enforcement on estimates and provenance on facts" },
+        { "id": "TC-ACTION-01", "name": "ActionProposal reversibility classification and idempotencyKey enforcement" },
+        { "id": "TC-MENTAL-01", "name": "MentalStateEvidence category and confidence provenance" }
+      ]
+    },
+    {
+      "category": "Dual-Plane Workspace & Event Ledger",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase2Workspace.test.ts"],
+      "tests": [
+        { "id": "TC-WS-01", "name": "ExecutionWorkspace initial event ledger record" },
+        { "id": "TC-WS-02", "name": "Concurrent specialist finding append without collision" },
+        { "id": "TC-WS-03", "name": "WorkspaceStateMachine state transition integrity" },
+        { "id": "TC-WS-04", "name": "Optimistic versioning and StaleWorkspaceMutationError detection" },
+        { "id": "TC-WS-05", "name": "Deterministic workspace replay from ledger" },
+        { "id": "TC-BUS-01", "name": "EventBus dispatch to live subscribers" }
+      ]
+    },
+    {
+      "category": "Kernel Capability Boundary & Sagas",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase4KernelCapability.test.ts"],
+      "tests": [
+        { "id": "TC-KERNEL-01", "name": "Pre-flight validation rejects unregistered action types" },
+        { "id": "TC-17", "name": "Kernel Idempotency Gate caches and deduplicates repeats" },
+        { "id": "TC-11", "name": "Compensating Saga automatically reverts on mid-batch failure" },
+        { "id": "TC-31", "name": "Compensation failure flags MANUAL_REVIEW_REQUIRED" },
+        { "id": "TC-32", "name": "OutcomeVerifier decouples diagnostic stability score from hard invariants" },
+        { "id": "TC-VERIFY-02", "name": "OutcomeVerifier strictly catches dependency cycle violations" }
+      ]
+    },
+    {
+      "category": "Fast Path Router & Parity",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase5FastPath.test.ts"],
+      "tests": [
+        { "id": "TC-01", "name": "Fast-path executes task completion in <= 1000ms with zero DAG jargon" },
+        { "id": "TC-FAST-02", "name": "Fast-path task creation with structured proposal and clean confirmation" },
+        { "id": "TC-FAST-03", "name": "Ambiguous or multi-agent requests bypass Fast Path" },
+        { "id": "TC-FAST-04", "name": "FastPath resolves task title to taskId using knownTasks context" }
+      ]
+    },
+    {
+      "category": "Domain Context Projections",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase6Projections.test.ts"],
+      "tests": [
+        { "id": "TC-15-PROD", "name": "Productivity projection contains zero raw biometrics and is deeply frozen" },
+        { "id": "TC-15-HLTH", "name": "Health projection contains zero task descriptions or financial metadata" },
+        { "id": "TC-15-WELL", "name": "Wellness projection contains normalized workload metrics and no raw biometrics" },
+        { "id": "TC-15-INJ", "name": "Intentional injection of forbidden fields rejected by assertNoForbiddenFields" }
+      ]
+    },
+    {
+      "category": "Specialist Agents & Allowlist Enforcement",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase7Specialists.test.ts"],
+      "tests": [
+        { "id": "TC-02", "name": "ProductivityAgent processes query and produces structured findings and proposal" },
+        { "id": "TC-13-PROD", "name": "Allowlist enforcement blocks ProductivityAgent from proposing workout" },
+        { "id": "TC-13-HLTH", "name": "Allowlist enforcement blocks HealthAgent from proposing task creation" },
+        { "id": "TC-SAFE-01", "name": "Fallback resilience handles malformed non-JSON garbage cleanly" }
+      ]
+    },
+    {
+      "category": "Parallel Specialist Execution & Async Concurrency",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase8Parallel.test.ts"],
+      "tests": [
+        { "id": "TC-03", "name": "Parallel specialists execute concurrently across Productivity, Health, and Wellness" },
+        { "id": "TC-07", "name": "Partial specialist outage resilience (Health timeout, peers succeed)" },
+        { "id": "TC-FAIL-01", "name": "Specialist exception isolation (Health throws error, peers complete)" }
+      ]
+    },
+    {
+      "category": "Synthesis Engine & 5-Tier Conflict Policy",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase9Synthesis.test.ts"],
+      "tests": [
+        { "id": "TC-04", "name": "SynthesisEngine resolves Recovery vs Workload conflict prioritizing Tier 1 over Tier 5" },
+        { "id": "TC-SYNTH-02", "name": "Non-conflicting proposals across domains are fully merged without suppression" }
+      ]
+    },
+    {
+      "category": "Bounded ReAct Loop & Verification",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase10ReActLoop.test.ts"],
+      "tests": [
+        { "id": "TC-05", "name": "Bounded ReAct loop terminates with GOAL_SATISFIED within 3 iterations" },
+        { "id": "TC-06", "name": "Bounded ReAct loop halts safely at MAX_ITERATIONS without infinite loop" },
+        { "id": "TC-REACT-03", "name": "ReAct loop halts safely with TIMEOUT when execution budget exceeded" }
+      ]
+    },
+    {
+      "category": "Supervisor Chief of Staff Core & Dynamic Router",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase11Supervisor.test.ts"],
+      "tests": [
+        { "id": "TC-SUP-01", "name": "Supervisor routes simple command to Fast-Path with natural confirmation" },
+        { "id": "TC-SUP-02", "name": "Supervisor routes multi-domain request to ReAct loop and streams response" },
+        { "id": "TC-SUP-03", "name": "Zero DAG terminology is leaked in Supervisor natural language response" }
+      ]
+    },
+    {
+      "category": "Observability, Telemetry & Privacy",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase12Observability.test.ts"],
+      "tests": [
+        { "id": "TC-16", "name": "Operational trace captures execution facts without leaking private chain-of-thought" },
+        { "id": "TC-TRACE-02", "name": "Trace preserves full causal timeline and duration metrics" },
+        { "id": "TC-TRACE-03", "name": "Direct attempt to inject chain_of_thought is caught and rejected" }
+      ]
+    },
+    {
+      "category": "Persistence Engine & Crash Consistency",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase13Persistence.test.ts"],
+      "tests": [
+        { "id": "TC-PERSIST-01", "name": "WorkspacePersistenceService persists workspace snapshot and recovers state" },
+        { "id": "TC-PERSIST-02", "name": "ExecutionEventLedger persistence and reconstructWorkspace determinism" },
+        { "id": "TC-PERSIST-03", "name": "Graceful fallback to memory store when MongoDB is disconnected" }
+      ]
+    },
+    {
+      "category": "Web Conversation Service Integration",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase14ConversationService.test.ts"],
+      "tests": [
+        { "id": "TC-WEB-01", "name": "ConversationService.getConversation loads conversation DTO" },
+        { "id": "TC-WEB-02", "name": "ConversationService.executeUserRequest dispatches via V3 Supervisor" },
+        { "id": "TC-WEB-03", "name": "ConversationService.executeUserRequest returns Web ReadableStream" },
+        { "id": "TC-WEB-04", "name": "executeUserRequestV3 returns structured SupervisorResponse" }
+      ]
+    },
+    {
+      "category": "Master Scenario Matrix (TC-01..TC-36)",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/masterScenarioMatrix.test.ts"],
+      "tests": [
+        { "id": "TC-01..TC-36", "name": "Exhaustive coverage of all 36 approved scenario cases with zero regressions" }
+      ]
+    },
+    {
+      "category": "Adversarial Security & Latency Benchmarking",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/phase16AdversarialAndBenchmarks.test.ts"],
+      "tests": [
+        { "id": "ADV-01", "name": "Direct prompt injection in task title does not compromise kernel isolation" },
+        { "id": "ADV-02", "name": "Permission escalation attempt is stopped at agent boundary" },
+        { "id": "ADV-03", "name": "Stale state version mutation throws StaleWorkspaceMutationError" },
+        { "id": "ADV-04", "name": "Repeated corrupted JSON is gracefully swallowed into safe fallback summary" },
+        { "id": "BENCH-01", "name": "Fast Path latency must be <= 50ms in-memory (hard SLA <= 1000ms)" },
+        { "id": "BENCH-02", "name": "3 parallel specialists with 30ms latency execute in < 60ms total" },
+        { "id": "BENCH-03", "name": "Synthesis conflict resolution latency must be <= 10ms" },
+        { "id": "BENCH-04", "name": "OutcomeVerifier execution latency must be <= 5ms" }
+      ]
+    },
+    {
+      "category": "V3 Adversarial Reality Audit",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/v3RealityAudit.test.ts"],
+      "tests": [
+        { "id": "REALITY-01", "name": "Real ConversationService executes POST entrypoint with zero specialist overhead" },
+        { "id": "REALITY-02", "name": "Fast Path handles colloquial variants without false positives" },
+        { "id": "REALITY-03", "name": "Specialist Allowlist Matrix strictly blocks unauthorized & cross-domain actions" },
+        { "id": "REALITY-04", "name": "Adversarial Context Projections deeply filter sensitive cross-domain data" },
+        { "id": "REALITY-05", "name": "Prompt injection attempts in user data cannot escalate privilege" },
+        { "id": "REALITY-06", "name": "Dynamic Router accurately classifies full evaluation corpus" },
+        { "id": "REALITY-07", "name": "Parallel execution achieves genuine concurrency with fault isolation" },
+        { "id": "REALITY-08", "name": "SynthesisEngine prioritizes Tier 1 Health/Safety over Tier 5 Workload" },
+        { "id": "REALITY-09", "name": "ReAct loop executes multi-iteration state advancement and terminates safely" },
+        { "id": "REALITY-10", "name": "Goal verification is grounded in authoritative state, not agent claim" },
+        { "id": "REALITY-11", "name": "Idempotency gate prevents duplicate execution on repeated submission" },
+        { "id": "REALITY-12", "name": "Saga automatically rolls back prior actions when mid-batch step fails" },
+        { "id": "REALITY-13", "name": "Event ledger enables 100% deterministic workspace reconstruction" },
+        { "id": "REALITY-14", "name": "Optimistic concurrency rejects stale workspace state mutations" },
+        { "id": "REALITY-15", "name": "Cross-User Isolation strictly prevents User A from mutating User B" },
+        { "id": "REALITY-16", "name": "Operational traces log execution facts with zero private CoT leakage" }
+      ]
+    },
+    {
+      "category": "Real-World User Journeys",
+      "deterministic": true,
+      "requiresMongo": false,
+      "requiresLLM": false,
+      "testFiles": ["packages/execution-kernel/src/testing/realWorldUserJourneys.test.ts"],
+      "tests": [
+        { "id": "JOURNEY-01", "name": "Simple task creation and completion via FastPath" },
+        { "id": "JOURNEY-02", "name": "Follow-up conversational task modification" },
+        { "id": "JOURNEY-03", "name": "Health workout logging and proposal validation" },
+        { "id": "JOURNEY-04", "name": "Productivity task review query without phantom mutations" },
+        { "id": "JOURNEY-05", "name": "Multi-domain workload, recovery, and training request ReAct resolution" },
+        { "id": "JOURNEY-06", "name": "Fault isolation when one specialist times out" },
+        { "id": "JOURNEY-07", "name": "Ambiguous request produces safe response without false mutations" },
+        { "id": "JOURNEY-08", "name": "Injection in task title is treated as literal data" },
+        { "id": "JOURNEY-09", "name": "Duplicate request produces idempotent outcome" },
+        { "id": "JOURNEY-10", "name": "Event ledger survives and reconstructs workspace state" }
+      ]
+    }
+  ]
+}

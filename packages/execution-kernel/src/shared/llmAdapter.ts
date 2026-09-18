@@ -22,7 +22,7 @@ export class DefaultLLMProvider implements LLMProvider {
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
-      model: model || "llama-3.1-8b-instant",
+      model: model || process.env.GROQ_MODEL || "qwen/qwen3.8-27b",
     });
     return cleanLLMResponse(rawResponse);
   }

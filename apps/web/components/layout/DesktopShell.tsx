@@ -25,10 +25,10 @@ export function DesktopShell({ children }: { children: ReactNode }) {
     }
   }, [status, session, isPublic, router]);
 
-  // On the landing page and login page, we don't want the authenticated layout
-  if (isPublic) {
+  // On the landing page, login page, or internal admin console, bypass consumer shell
+  if (isPublic || pathname.startsWith("/admin")) {
     return (
-      <div className="flex flex-col min-h-screen bg-[#161618] text-gray-100">
+      <div className="flex flex-col min-h-screen bg-[#09090B] text-gray-100">
         {children}
       </div>
     );

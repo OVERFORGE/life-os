@@ -1,5 +1,6 @@
 import { KernelRuntime } from "./kernel/KernelRuntime";
-import { HandleInput } from "./kernel/KernelEngine";
+import { KernelEngine, HandleInput } from "./kernel/KernelEngine";
+import { DefaultLLMProvider } from "./shared/llmAdapter";
 import { getActiveDate, isPastHour, parseLocalToUTC } from "./automation/timeUtils";
 import { EventBus } from "./events/EventBus";
 import { KernelEvent } from "./events/Event";
@@ -102,7 +103,8 @@ import { AdaptiveContextEngine, RankedAdaptiveContextItem } from "./learning/Ada
 import { LearningEngine, LearningEngineOutput } from "./learning/LearningEngine";
 
 // Phase 11 World Model V2 Exports
-import { LifeStateEngine, LifeState, LifeStateResult, LifeStateInput } from "./worldv2/LifeStateEngine";
+import { LifeStateEngine, LifeState, LifeStateResult, LifeStateInput, EngineEvidence, LifeStateDiagnostics } from "./worldv2/LifeStateEngine";
+import { LIFE_STATE_WEIGHTS } from "./worldv2/LifeStateWeights";
 import { GoalPressureEngineV2, GoalPressureResult } from "./worldv2/GoalPressureEngineV2";
 import { ProjectStateEngine, ProjectStateResult, ProjectStatus, RiskLevel } from "./worldv2/ProjectStateEngine";
 import { RelationshipContextEngine, RelationshipSummary } from "./worldv2/RelationshipContextEngine";
@@ -110,6 +112,18 @@ import { WorldTrendEngine, WorldTrend, MetricTrend } from "./worldv2/WorldTrendE
 import { WorldPredictionEngineV2, WorldPrediction } from "./worldv2/WorldPredictionEngineV2";
 import { WorldSnapshotV2, ExecutionGraphSummary } from "./worldv2/WorldSnapshotV2";
 import { WorldModelV2, ComputeWorldModelInput } from "./worldv2/WorldModelV2";
+import { KernelSnapshot, KernelSnapshotMetadata, KernelSnapshotSubsystems, KernelSnapshotDiagnostics } from "./worldv2/KernelSnapshot";
+import { KernelSnapshotBuilder, deepFreeze } from "./worldv2/KernelSnapshotBuilder";
+import { IKernelProjectionMapper } from "./projections/IKernelProjectionMapper";
+export * from "./services/dto/InsightDTO";
+export * from "./services/mappers/InsightDTOMapper";
+export * from "./services/InsightService";
+export * from "./services/dto/SettingsDTO";
+export * from "./services/mappers/SettingsDTOMapper";
+export * from "./services/SettingsService";
+export * from "./services/dto/AssistantContextDTO";
+export * from "./services/mappers/AssistantDTOMapper";
+export * from "./services/AssistantService";
 
 // Phase 12 Kernel Diagnostics & Observability Exports
 import {
@@ -132,6 +146,19 @@ import { KernelTraceEngine } from "./diagnostics/KernelTraceEngine";
 import { KernelAuditEngine, AuditQuestionInput, AuditReport } from "./diagnostics/KernelAuditEngine";
 import { KernelDiagnosticsEngine } from "./diagnostics/KernelDiagnosticsEngine";
 
+// Application Service Layer Exports (Phase 13)
+export * from "./services";
+export * from "./telemetry/Observation";
+export * from "./telemetry/TelemetryQuality";
+export * from "./telemetry/TelemetryWindowRegistry";
+export * from "./telemetry/ObservationMapper";
+export * from "./telemetry/InputAssembler";
+export * from "./telemetry/TelemetryIngestionService";
+export * from "./repositories/DailyLogRepository";
+export * from "./repositories/TaskRepository";
+export * from "./repositories/GoalRepository";
+export * from "./repositories/EraRepository";
+
 export class Kernel {
   static async initialize(): Promise<void> {
     return KernelRuntime.getInstance().initialize();
@@ -147,6 +174,8 @@ export class Kernel {
 }
 
 export {
+  KernelEngine,
+  DefaultLLMProvider,
   getActiveDate,
   isPastHour,
   parseLocalToUTC,
@@ -330,3 +359,23 @@ export type {
   AuditQuestionInput,
   AuditReport,
 };
+
+// Phase 1, 2 & 3 Memory & Personal Intelligence Exports
+export * from "./memory/PersonalMemoryContracts";
+export * from "./memory/EmbeddingProvider";
+export * from "./memory/MemoryRepository";
+export * from "./memory/EpistemicVerificationEngine";
+export * from "./memory/ContradictionResolver";
+export * from "./memory/MemoryFormationPipeline";
+export * from "./memory/GoalPostMortemEngine";
+export * from "./memory/MemoryConsolidationEngine";
+export * from "./incidents/IncidentContracts";
+export * from "./incidents/IncidentService";
+export * from "./worldv2/GoalIntelligenceEngine";
+
+// Context Modes (Seasons of Life) Exports
+export * from "./context/ContextModeContracts";
+export * from "./context/ContextModeService";
+
+
+

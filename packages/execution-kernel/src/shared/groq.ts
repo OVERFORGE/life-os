@@ -1,13 +1,13 @@
 import Groq from "groq-sdk";
 
 const client = new Groq({
-    apiKey: process.env.GROQ_API_KEY!,
+    apiKey: process.env.GROQ_API_KEY || "mock_key_for_dev",
 });
 
 export async function groqChat({
     messages,
     temperature = 0.2,
-    model = "llama-3.3-70b-versatile"
+    model = process.env.GROQ_MODEL || "qwen/qwen3.8-27b"
 }: {
     messages: { role: "system" | "user" | "assistant"; content: string }[];
     temperature?: number;
@@ -39,7 +39,7 @@ export function cleanLLMResponse(raw: string): string {
 export async function groqChatStream({
     messages,
     temperature = 0.7,
-    model = "llama-3.3-70b-versatile"
+    model = process.env.GROQ_MODEL || "qwen/qwen3.8-27b"
 }: {
     messages: { role: "system" | "user" | "assistant"; content: string }[];
     temperature?: number;

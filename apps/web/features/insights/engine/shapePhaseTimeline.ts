@@ -31,6 +31,12 @@ function volatility(values: number[]) {
   return Math.sqrt(variance);
 }
 
+function to10Scale(val: number): number {
+  if (val <= 1.0 && val >= 0) return val * 10; // 0.0 - 1.0 float scale
+  if (val > 10.0) return val / 10;           // 0 - 100 percentage scale
+  return val;                                // already 1 - 10 scale
+}
+
 // ---------- Shape detector ----------
 
 function detectShapeFromSignals(blocks: PhaseBlock[]): {
@@ -38,9 +44,9 @@ function detectShapeFromSignals(blocks: PhaseBlock[]): {
   shapeScore: number;
   explanation: string;
 } {
-  const mood = blocks.map(b => b.snapshot?.avgMood || 0);
-  const energy = blocks.map(b => b.snapshot?.avgEnergy || 0);
-  const stress = blocks.map(b => b.snapshot?.avgStress || 0);
+  const mood = blocks.map(b => to10Scale(b.snapshot?.avgMood || 5));
+  const energy = blocks.map(b => to10Scale(b.snapshot?.avgEnergy || 5));
+  const stress = blocks.map(b => to10Scale(b.snapshot?.avgStress || 5));
   const work = blocks.map(b => b.snapshot?.avgDeepWork || 0);
 
   const moodSlope = slope(mood);

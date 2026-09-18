@@ -7,37 +7,43 @@ function avg(nums: number[]) {
   return nums.reduce((a, b) => a + b, 0) / nums.length;
 }
 
+function to10Scale(val: number): number {
+  if (val <= 1.0 && val >= 0) return val * 10;
+  if (val > 10.0) return val / 10;
+  return val;
+}
+
 function computeDirection(phases: any[]): LifeDirection {
   if (phases.length < 2) return "flat";
 
-  const moods = phases.map(p => p.snapshot?.avgMood ?? 0);
-  const energies = phases.map(p => p.snapshot?.avgEnergy ?? 0);
+  const moods = phases.map(p => to10Scale(p.snapshot?.avgMood ?? 5));
+  const energies = phases.map(p => to10Scale(p.snapshot?.avgEnergy ?? 5));
 
   const delta =
     (moods[moods.length - 1] - moods[0]) +
     (energies[energies.length - 1] - energies[0]);
 
-  if (delta > 1) return "up";
-  if (delta < -1) return "down";
+  if (delta > 0.8) return "up";
+  if (delta < -0.8) return "down";
 
   // volatility heuristic
   const variance =
     avg(moods.map(m => Math.abs(m - avg(moods)))) +
     avg(energies.map(e => Math.abs(e - avg(energies))));
 
-  if (variance > 1.5) return "chaotic";
+  if (variance > 1.8) return "chaotic";
 
   return "flat";
 }
 
 function computeVolatility(phases: any[]): number {
-  const moods = phases.map(p => p.snapshot?.avgMood ?? 0);
-  const energies = phases.map(p => p.snapshot?.avgEnergy ?? 0);
+  const moods = phases.map(p => to10Scale(p.snapshot?.avgMood ?? 5));
+  const energies = phases.map(p => to10Scale(p.snapshot?.avgEnergy ?? 5));
 
   const moodVar = avg(moods.map(m => Math.abs(m - avg(moods))));
   const energyVar = avg(energies.map(e => Math.abs(e - avg(energies))));
 
-  return Math.min(1, (moodVar + energyVar) / 4);
+  return Math.min(1, Math.max(0, Number(((moodVar + energyVar) / 3.5).toFixed(4))));
 }
 
 function dominantPhase(phases: any[]): Phase {

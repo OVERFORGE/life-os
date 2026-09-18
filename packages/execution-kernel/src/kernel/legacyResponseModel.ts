@@ -1,4 +1,4 @@
-import { groqChatStream } from "./groq";
+import { groqChatStream } from "../shared/groq";
 
 export async function generateResponse({
   input,

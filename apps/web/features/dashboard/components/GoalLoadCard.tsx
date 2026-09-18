@@ -1,94 +1,59 @@
 "use client";
 
 import { Card } from "@/features/daily-log/ui/Card";
+import { DashboardDTO } from "@life-os/execution-kernel";
 
-function percent(n: number) {
-  return Math.round(n * 100);
-}
-
-export function GoalLoadCard({ goalLoad }: { goalLoad: any }) {
-  if (!goalLoad) return null;
-
-  console.log("FINAL GOAL LOAD CARD DATA:", goalLoad);
-
-  // ✅ API gives perGoal, not global
-  const perGoal = goalLoad.perGoal ?? [];
-
-  if (perGoal.length === 0) {
+export function GoalLoadCard({ goalLoad }: { goalLoad?: DashboardDTO["goalLoad"] }) {
+  if (!goalLoad) {
     return (
-      <Card title="Goal Load" subtitle="Jarvis system-wide goal pressure">
-        <p className="text-sm text-[#9ca3af]">No goals yet.</p>
+      <Card title="Goal Load" subtitle="System-wide goal pressure">
+        <p className="text-sm text-gray-400">No goal telemetry available.</p>
       </Card>
     );
   }
 
-  // ✅ Compute global score
-  const avgScore =
-    perGoal.reduce((sum: number, g: any) => sum + g.pressureScore, 0) /
-    perGoal.length;
-
-  // ✅ Count distribution
-  const distribution = {
-    aligned: perGoal.filter((g: any) => g.status === "aligned").length,
-    strained: perGoal.filter((g: any) => g.status === "strained").length,
-    conflicting: perGoal.filter((g: any) => g.status === "conflicting").length,
-    toxic: perGoal.filter((g: any) => g.status === "toxic").length,
-  };
-
-  // ✅ Mode logic
-  let modeLabel = "Stable System Load";
-  let explanation = "Your goals are balanced with your life capacity.";
-
-  if (avgScore > 0.75) {
-    modeLabel = "Overloaded";
-    explanation = "Too much pressure. Reduce cadence or recover.";
-  } else if (avgScore < 0.35) {
-    modeLabel = "Underutilized";
-    explanation = "You have unused capacity. Add challenge.";
-  }
+  const { globalLoadScore, mode, totalGoals, highPressureGoalsCount } = goalLoad;
 
   return (
-    <Card title="Goal Load" subtitle="Jarvis system-wide goal pressure">
+    <Card title="Goal Load" subtitle="System-wide goal pressure">
       <div className="space-y-4">
-        {/* Meter */}
+        {/* Load Score Meter */}
         <div className="flex justify-between text-sm">
           <span className="text-gray-400">Load Score</span>
-          <span className="font-semibold text-gray-100">{percent(avgScore)}%</span>
+          <span className="font-semibold text-gray-100">{globalLoadScore} / 100</span>
         </div>
 
         <div className="w-full h-2.5 rounded-full bg-[#2A2B2F] overflow-hidden">
           <div
-            className={`h-full transition-all ${avgScore > 0.75 ? 'bg-[#E8414A]' : 'bg-gray-300'}`}
-            style={{ width: `${percent(avgScore)}%` }}
+            className={`h-full transition-all duration-500 ${
+              mode === "overloaded"
+                ? "bg-[#E8414A]"
+                : mode === "underutilized"
+                ? "bg-blue-500"
+                : "bg-emerald-500"
+            }`}
+            style={{ width: `${Math.min(100, Math.max(0, globalLoadScore))}%` }}
           />
         </div>
 
-        {/* Mode */}
-        <div className="text-sm font-medium">{modeLabel}</div>
+        {/* System Load Status */}
+        <div className="flex items-center justify-between text-xs pt-1 border-t border-[#2A2B2F]">
+          <span className="text-gray-400 font-medium">Status</span>
+          <span
+            className={`px-2 py-0.5 rounded font-semibold uppercase tracking-wider ${
+              mode === "overloaded"
+                ? "bg-[#E8414A]/20 text-[#E8414A]"
+                : mode === "underutilized"
+                ? "bg-blue-500/20 text-blue-400"
+                : "bg-emerald-500/20 text-emerald-400"
+            }`}
+          >
+            {mode}
+          </span>
+        </div>
 
-        <p className="text-xs text-[#9ca3af] leading-relaxed">{explanation}</p>
-
-        {/* Distribution */}
-        <div className="grid grid-cols-2 gap-3 pt-2 text-sm">
-          <div className="flex justify-between">
-            <span className="text-gray-400">Aligned</span>
-            <span>{distribution.aligned}</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span className="text-gray-400">Strained</span>
-            <span>{distribution.strained}</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span className="text-gray-400">Conflicting</span>
-            <span>{distribution.conflicting}</span>
-          </div>
-
-          <div className="flex justify-between">
-            <span className="text-gray-400">Toxic</span>
-            <span>{distribution.toxic}</span>
-          </div>
+        <div className="text-xs text-gray-400">
+          {totalGoals} active goals • {highPressureGoalsCount} under high pressure
         </div>
       </div>
     </Card>

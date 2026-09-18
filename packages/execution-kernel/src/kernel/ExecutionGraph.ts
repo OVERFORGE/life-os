@@ -1,4 +1,5 @@
 import { Task } from "@/server/db/models/Task";
+import { Goal } from "@/features/goals/models/Goal";
 import { GoalProposal } from "@/server/db/models/GoalProposal";
 import { GraphVersion, createGraphVersion } from "./GraphVersion";
 
@@ -153,18 +154,40 @@ export class ExecutionGraph {
         }
       }
 
-      // 2. Fetch all user goals
-      const goals = await GoalProposal.find({ userId }).lean();
+      // 2. Fetch all user goals from primary Goal collection
+      const goals = await Goal.find({ userId }).lean();
       for (const g of goals as any[]) {
         graph.addNode({
           id: g._id.toString(),
           entityType: "goal",
           title: g.title || "Untitled Goal",
-          status: g.status === "accepted" ? "in_progress" : g.status || "pending",
+          status: g.status || "in_progress",
           priority: 3,
           createdAt: new Date(g.createdAt || Date.now()),
           updatedAt: new Date(g.updatedAt || Date.now()),
+          metadata: {
+            category: g.type || g.category || "General",
+            type: g.type,
+            cadence: g.cadence,
+          },
         });
+      }
+
+      // Also include active GoalProposals if any exist
+      const proposals = await GoalProposal.find({ userId, status: "pending" }).lean();
+      for (const p of proposals as any[]) {
+        const pId = p._id.toString();
+        if (!graph.getNode(pId)) {
+          graph.addNode({
+            id: pId,
+            entityType: "goal_proposal",
+            title: p.title || "Untitled Proposal",
+            status: "pending",
+            priority: 2,
+            createdAt: new Date(p.createdAt || Date.now()),
+            updatedAt: new Date(p.updatedAt || Date.now()),
+          });
+        }
       }
     } catch (err) {
       console.error("Error constructing ExecutionGraph from database:", err);

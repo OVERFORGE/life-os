@@ -9,10 +9,15 @@
     "build-desktop": "powershell.exe -ExecutionPolicy Bypass -File ./scripts/build-desktop.ps1",
     "dev:desktop": "pnpm --filter desktop dev",
     "lint": "turbo lint",
-    "build:mobile": "cd apps/mobile && eas build -p android --profile preview"
+    "build:mobile": "cd apps/mobile && eas build -p android --profile preview",
+    "audit:v3": "npx tsx --tsconfig packages/execution-kernel/tsconfig.json --test packages/execution-kernel/src/testing/*.test.ts",
+    "test:stress": "npx tsx --tsconfig packages/execution-kernel/tsconfig.json --test packages/execution-kernel/src/testing/stressTestSuite200.test.ts"
   },
   "devDependencies": {
     "babel-preset-expo": "~13.0.0",
     "turbo": "^2.0.0"
+  },
+  "dependencies": {
+    "@huggingface/transformers": "^4.3.0"
   }
 }

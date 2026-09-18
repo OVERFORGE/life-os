@@ -1,4 +1,4 @@
-import { groqChat } from "./groq";
+import { groqChat } from "../shared/groq";
 
 export async function detectIntent(input: string, history: string = "", model?: string) {
     const prompt = `

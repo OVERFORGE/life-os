@@ -1,0 +1,34 @@
+{
+  "name": "personal_memory_vector_index",
+  "type": "vectorSearch",
+  "definition": {
+    "fields": [
+      {
+        "type": "vector",
+        "path": "embedding",
+        "numDimensions": 1536,
+        "similarity": "cosine"
+      },
+      {
+        "type": "filter",
+        "path": "userId"
+      },
+      {
+        "type": "filter",
+        "path": "isArchived"
+      },
+      {
+        "type": "filter",
+        "path": "domain"
+      },
+      {
+        "type": "filter",
+        "path": "memoryType"
+      },
+      {
+        "type": "filter",
+        "path": "lifecycleStatus"
+      }
+    ]
+  }
+}

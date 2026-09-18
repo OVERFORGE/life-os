@@ -1,6 +1,7 @@
 import { SemanticEntityReference } from "./ConversationSemantics";
 import { WorldSnapshot } from "../world/WorldSnapshot";
 import { Task } from "@/server/db/models/Task";
+import { Goal } from "@/features/goals/models/Goal";
 import { GoalProposal } from "@/server/db/models/GoalProposal";
 
 export interface ConcreteEntity {
@@ -128,6 +129,22 @@ export class EntityResolver {
       }
 
       if (typeLower.includes("goal")) {
+        const goal = await Goal.findOne({
+          userId,
+          title: { $regex: mentionLower.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"), $options: "i" },
+        }).lean();
+
+        if (goal) {
+          console.log(`🔍 [ENTITY_RESOLVER] Resolved Goal from DB: "${(goal as any).title}" (${(goal as any)._id})`);
+          return {
+            type: "goal",
+            id: (goal as any)._id.toString(),
+            name: (goal as any).title,
+            source: "db",
+            rawPayload: goal,
+          };
+        }
+
         const proposal = await GoalProposal.findOne({
           userId,
           status: "pending",

@@ -14,10 +14,16 @@ function norm(x: number, min: number, max: number) {
   return clamp((x - min) / (max - min));
 }
 
+function to10Scale(val: number): number {
+  if (val <= 1.0 && val >= 0) return val * 10; // 0.0 - 1.0 float scale
+  if (val > 10.0) return val / 10;           // 0 - 100 percentage scale
+  return val;                                // already 1 - 10 scale
+}
+
 export function scoreLifePhase(m: Metrics) {
-  const mood = norm(m.avgMood, 1, 10);
-  const energy = norm(m.avgEnergy, 1, 10);
-  const stress = norm(m.avgStress, 1, 10);
+  const mood = norm(to10Scale(m.avgMood), 1, 10);
+  const energy = norm(to10Scale(m.avgEnergy), 1, 10);
+  const stress = norm(to10Scale(m.avgStress), 1, 10);
   const sleep = norm(m.avgSleep, 4, 9);
   const work = norm(m.avgDeepWork, 0, 8);
 

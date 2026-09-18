@@ -1,28 +1,54 @@
-import { connectDB } from "@/server/db/connect";
 import { getAuthSession } from "@/lib/auth";
-import { Kernel } from "@life-os/execution-kernel";
+import { connectDB } from "@/server/db/connect";
+import { LifeOSApplication } from "@life-os/execution-kernel";
+import { apiSuccess, apiError } from "@/lib/apiResponse";
+
+export async function GET(req: Request) {
+  try {
+    const session = await getAuthSession();
+    if (!(session?.user as any)?.id) {
+      return apiError("Unauthorized", "UNAUTHORIZED", 401);
+    }
+
+    const userId = (session!.user as any).id;
+    const { searchParams } = new URL(req.url);
+    const conversationId = searchParams.get("conversationId") || "default";
+
+    await connectDB();
+
+    const conversationDTO = await LifeOSApplication.conversation.getConversation(conversationId, userId);
+    return apiSuccess(conversationDTO);
+  } catch (err: any) {
+    console.error("GET /api/conversation Error:", err);
+    return apiError(err.message || "Failed to fetch conversation DTO", "INTERNAL_ERROR", 500);
+  }
+}
 
 export async function POST(req: Request) {
-  const session = await getAuthSession();
+  try {
+    const session = await getAuthSession();
+    if (!(session?.user as any)?.id) {
+      return apiError("Unauthorized", "UNAUTHORIZED", 401);
+    }
 
-  if (!(session?.user as any)?.id) {
-    return Response.json({ error: "Unauthorized" }, { status: 401 });
+    const userId = (session!.user as any).id;
+    const { message, model, mode = "general" } = await req.json();
+
+    if (!message || typeof message !== "string" || message.trim().length === 0) {
+      return apiError("Message string is required", "BAD_REQUEST", 400);
+    }
+
+    await connectDB();
+
+    // Stream execution response directly from LifeOSApplication.conversation
+    return await LifeOSApplication.conversation.executeUserRequest({
+      userId,
+      message,
+      model,
+      mode,
+    });
+  } catch (err: any) {
+    console.error("POST /api/conversation Error:", err);
+    return apiError(err.message || "Failed to execute conversation request", "INTERNAL_ERROR", 500);
   }
-
-  const userId = (session!.user as any).id;
-  const { message, model, mode = "general" } = await req.json();
-
-  if (!message) {
-    return Response.json({ error: "Message is required" }, { status: 400 });
-  }
-
-  await connectDB();
-
-  // Delegate processing to the execution kernel
-  return await Kernel.handle({
-    userId,
-    message,
-    model,
-    mode,
-  });
 }

@@ -12,7 +12,7 @@ const SignalSchema = new mongoose.Schema({
 
 const GoalSchema = new mongoose.Schema(
   {
-    userId: { type: mongoose.Schema.Types.ObjectId, ref: "User", index: true },
+    userId: { type: mongoose.Schema.Types.Mixed, ref: "User", index: true },
 
     title: String,
     description: String,

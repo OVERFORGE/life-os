@@ -18,7 +18,7 @@
 // "knocked it out", "wrapped up my session" — all correctly.
 // ============================================================
 
-import { groqChat, cleanLLMResponse } from "./groq";
+import { groqChat, cleanLLMResponse } from "../shared/groq";
 
 export type Intent =
   | "log_activity"

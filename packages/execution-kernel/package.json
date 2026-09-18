@@ -5,6 +5,7 @@
   "main": "./src/index.ts",
   "types": "./src/index.ts",
   "dependencies": {
+    "@huggingface/transformers": "^4.3.0",
     "groq-sdk": "^1.1.2",
     "mongoose": "^9.1.5"
   }
