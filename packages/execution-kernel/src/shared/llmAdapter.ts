@@ -22,7 +22,7 @@ export class DefaultLLMProvider implements LLMProvider {
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
-      model: model || process.env.GROQ_MODEL || "qwen/qwen3.8-27b",
+      model: model || process.env.GROQ_MODEL || "openai/gpt-oss-120b",
     });
     return cleanLLMResponse(rawResponse);
   }

@@ -11,7 +11,7 @@ export class ProductionLLMGateway implements LLMProvider {
   public readonly name: string = "production-llm-gateway";
   public readonly model: string;
 
-  constructor(model: string = "llama-3.1-8b-instant") {
+  constructor(model: string = process.env.GROQ_MODEL || "qwen/qwen3.8-27b") {
     this.model = model;
   }
 

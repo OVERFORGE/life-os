@@ -34,7 +34,7 @@ export class VoiceRecorder {
       const { recording } = await Audio.Recording.createAsync(
         Audio.RecordingOptionsPresets.HIGH_QUALITY,
         this.onStatusUpdate.bind(this),
-        250 // Metering update interval in ms
+        100 // Metering update interval in ms for real-time responsiveness
       );
       this.recording = recording;
       return true;
@@ -61,7 +61,7 @@ export class VoiceRecorder {
         if (this.hasDetectedSpeech && !this.silenceTimer) {
           this.silenceTimer = setTimeout(() => {
             this.stopRecording();
-          }, 2000); // 2s of silence after speech ends recording
+          }, 450); // 450ms of silence after speech ends recording (realtime conversational cadence)
         } else if (!this.hasDetectedSpeech && !this.silenceTimer) {
           // No speech detected yet — start a max-wait timer of 6 seconds
           this.silenceTimer = setTimeout(() => {
@@ -137,7 +137,7 @@ export async function transcribeAudio(uri: string): Promise<{ text?: string; err
 
     // We must pass multipart form data. fetchWithAuth should allow overriding headers or omitting Content-Type
     // so the browser/fetch polyfill can auto-generate the boundary.
-    const res = await fetchWithAuth('/transcribe', {
+    const res = await fetchWithAuth('/voice/transcribe', {
       method: 'POST',
       body: formData,
       headers: {

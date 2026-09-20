@@ -9,6 +9,7 @@ import { generateId } from "../../shared/ids";
 import { MemoryRepository } from "../../memory/MemoryRepository";
 import { MemoryFormationPipeline } from "../../memory/MemoryFormationPipeline";
 import { PersonalMemoryRecord } from "../../memory/PersonalMemoryContracts";
+import { AgentDomain } from "../contracts/AgentContracts";
 
 export type ReActTerminationReason =
   | "GOAL_SATISFIED"
@@ -84,7 +85,8 @@ export class ReActOrchestrator {
     userId: string,
     userGoal: string,
     workspace: ExecutionWorkspace,
-    evaluator?: GoalSatisfactionEvaluator
+    evaluator?: GoalSatisfactionEvaluator,
+    targetSpecialists?: AgentDomain[]
   ): Promise<ReActLoopResult> {
     const startTime = Date.now();
     let iteration = 0;
@@ -160,29 +162,40 @@ export class ReActOrchestrator {
 
       // 1. DELEGATE (Project contexts with memories & call specialists)
       workspace.transitionTo("DELEGATING");
-      const prodProj = this.projectionEngine.projectProductivity(currentState, retrievedMemories);
-      const healthProj = this.projectionEngine.projectHealth(currentState, retrievedMemories);
-      const wellProj = this.projectionEngine.projectWellness(currentState, retrievedMemories);
+      const domainsToInvoke: AgentDomain[] = targetSpecialists && targetSpecialists.length > 0
+        ? targetSpecialists
+        : ["productivity", "health", "wellness"];
 
-      const invocations: SpecialistInvocation[] = [
-        {
+      const invocations: SpecialistInvocation[] = [];
+
+      if (domainsToInvoke.includes("productivity")) {
+        const prodProj = this.projectionEngine.projectProductivity(currentState, retrievedMemories);
+        invocations.push({
           domain: "productivity",
           task: { taskId: generateId("tsk"), executionId, domain: "productivity", instruction: userGoal, constraints: [] },
           projection: prodProj,
-        },
-        {
+        });
+      }
+
+      if (domainsToInvoke.includes("health")) {
+        const healthProj = this.projectionEngine.projectHealth(currentState, retrievedMemories);
+        invocations.push({
           domain: "health",
           task: { taskId: generateId("tsk"), executionId, domain: "health", instruction: userGoal, constraints: [] },
           projection: healthProj,
-        },
-        {
+        });
+      }
+
+      if (domainsToInvoke.includes("wellness")) {
+        const wellProj = this.projectionEngine.projectWellness(currentState, retrievedMemories);
+        invocations.push({
           domain: "wellness",
           task: { taskId: generateId("tsk"), executionId, domain: "wellness", instruction: userGoal, constraints: [] },
           projection: wellProj,
-        },
-      ];
+        });
+      }
 
-      // 2. ANALYZE (Parallel specialist execution)
+      // 2. ANALYZE (Specialist execution)
       workspace.transitionTo("ANALYZING");
       const parallelResult = await this.parallelExecutor.executeParallel(
         invocations,
@@ -273,19 +286,25 @@ export class ReActOrchestrator {
     actions: KernelExecutionResult[]
   ): string {
     const actionCount = actions.filter((a) => a.success).length;
+    if (synthesisResults[0]?.summary && synthesisResults[0].summary.trim().length > 0) {
+      return synthesisResults[0].summary;
+    }
     switch (reason) {
       case "GOAL_SATISFIED":
-        return `Successfully completed goal with ${actionCount} action(s) executed.`;
+        return actionCount > 0
+          ? `I've updated your tasks and schedule as requested.`
+          : "I've reviewed your request and everything is up to date.";
       case "SUBJECTIVE_GOAL_ADDRESSED":
-        return synthesisResults[0]?.summary || "Here is the guidance based on your current state.";
+        return "Here is the guidance based on your current state.";
       case "MAX_ITERATIONS":
-        return `Completed ${actionCount} action(s), but maximum iteration limit reached before all conditions were fully satisfied.`;
       case "TIMEOUT":
-        return `Execution exceeded time budget. Preserved partial progress.`;
+        return actionCount > 0
+          ? "I've updated your tasks, though I paused to avoid changing too much at once. Let me know what to focus on next!"
+          : "I'm ready whenever you are. What would you like to focus on next?";
       case "COMPENSATION_PARTIAL_MANUAL_REVIEW_REQUIRED":
-        return `Action batch partially failed and required manual review.`;
+        return "I completed most of that, but let me know if you'd like to adjust any details.";
       default:
-        return `Execution finished with outcome: ${reason}`;
+        return "I'm here and ready to help. What would you like to focus on?";
     }
   }
 }

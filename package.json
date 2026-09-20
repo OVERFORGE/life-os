@@ -4,7 +4,8 @@
   "private": true,
   "packageManager": "pnpm@10.27.0",
   "scripts": {
-    "dev": "turbo dev",
+    "dev": "turbo dev --filter=web",
+    "dev:all": "turbo dev",
     "build": "pnpm --filter web build",
     "build-desktop": "powershell.exe -ExecutionPolicy Bypass -File ./scripts/build-desktop.ps1",
     "dev:desktop": "pnpm --filter desktop dev",

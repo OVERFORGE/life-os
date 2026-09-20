@@ -90,16 +90,20 @@ export class ContextModeService {
           if (expiresAt && expiresAt <= now) {
             await ContextModeModel.updateOne({ _id: doc._id }, { $set: { isActive: false, updatedAt: new Date() } });
           } else {
+            const modeType = doc.mode as ContextModeType;
             const mapped: ContextModeRecord = {
               id: doc._id.toString(),
               userId: doc.userId,
-              mode: doc.mode,
+              mode: modeType,
               title: doc.title,
               reason: doc.reason,
               startedAt: new Date(doc.startedAt).getTime(),
               expiresAt,
               isActive: true,
-              config: doc.config || DEFAULT_MODE_CONFIGS[doc.mode as ContextModeType],
+              config: {
+                ...DEFAULT_MODE_CONFIGS[modeType],
+                ...(doc.config || {}),
+              },
               createdAt: new Date(doc.createdAt).getTime(),
               updatedAt: new Date(doc.updatedAt).getTime(),
             };

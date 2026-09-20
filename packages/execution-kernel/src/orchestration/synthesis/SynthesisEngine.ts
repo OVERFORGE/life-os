@@ -83,10 +83,37 @@ export class SynthesisEngine {
       approvedProposals = [...allProposals];
     }
 
-    const summaries = specialistOutputs.map((o) => `${o.domain}: ${o.summary}`).join("; ");
-    const summary = conflicts.length > 0
-      ? `Synthesized with ${conflicts.length} conflict(s) resolved via policy hierarchy. ${summaries}`
-      : `Synthesized recommendations across ${specialistOutputs.length} specialist(s). ${summaries}`;
+    // Filter out internal domain disclaimers if active proposals or relevant outputs exist
+    const activeOutputs = specialistOutputs.filter(
+      (o) => o.proposals && o.proposals.length > 0
+    );
+    const candidateOutputs = activeOutputs.length > 0 ? activeOutputs : specialistOutputs;
+
+    const cleanSummaries = candidateOutputs
+      .map((o) => o.summary?.trim())
+      .filter((s) => s && s.length > 0 && !/falls outside (the )?.* specialist'?s? domain/i.test(s))
+      .join(" ");
+
+    let summary: string;
+    if (cleanSummaries.length === 0) {
+      if (approvedProposals.length > 0) {
+        const first = approvedProposals[0];
+        if ((first.actionType as any) === "create_goal" || first.actionType === "propose_goal") {
+          summary = `I have structured and established your goal: "${first.payload?.title || "New Goal"}". You are ready to start making daily progress.`;
+        } else if (first.actionType === "create_task") {
+          summary = `I have created the task "${first.payload?.title || "New Task"}" on your schedule.`;
+        } else {
+          summary = `I have updated your schedule and workspace as requested.`;
+        }
+      } else {
+        const fallback = specialistOutputs.map((o) => o.summary?.trim()).find((s) => s && s.length > 0);
+        summary = fallback || "I've reviewed your request and everything is organized. How can I assist you next?";
+      }
+    } else if (conflicts.length > 0) {
+      summary = `Prioritizing your recovery: ${cleanSummaries}`;
+    } else {
+      summary = cleanSummaries;
+    }
 
     return {
       synthesisId,

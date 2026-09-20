@@ -4,9 +4,9 @@ import { apiSuccess, apiError } from "@/lib/apiResponse";
 import { MemoryRepository } from "@life-os/execution-kernel";
 
 interface RouteContext {
-  params: {
+  params: Promise<{
     id: string;
-  };
+  }>;
 }
 
 export async function GET(req: Request, context: RouteContext) {
@@ -17,7 +17,7 @@ export async function GET(req: Request, context: RouteContext) {
     }
 
     const userId = (session!.user as any).id;
-    const { id } = context.params;
+    const { id } = await context.params;
     await connectDB();
 
     const repo = MemoryRepository.getInstance();
@@ -29,7 +29,7 @@ export async function GET(req: Request, context: RouteContext) {
 
     return apiSuccess(memory);
   } catch (err: any) {
-    console.error(`GET /api/memory/${context.params.id} error:`, err);
+    console.error("GET /api/memory/[id] error:", err);
     return apiError(err.message || "Failed to fetch memory", "INTERNAL_ERROR", 500);
   }
 }
@@ -42,7 +42,7 @@ export async function PATCH(req: Request, context: RouteContext) {
     }
 
     const userId = (session!.user as any).id;
-    const { id } = context.params;
+    const { id } = await context.params;
     await connectDB();
 
     const body = await req.json();
@@ -55,7 +55,7 @@ export async function PATCH(req: Request, context: RouteContext) {
 
     return apiSuccess(updated);
   } catch (err: any) {
-    console.error(`PATCH /api/memory/${context.params.id} error:`, err);
+    console.error("PATCH /api/memory/[id] error:", err);
     return apiError(err.message || "Failed to update memory", "INTERNAL_ERROR", 500);
   }
 }
@@ -68,7 +68,7 @@ export async function DELETE(req: Request, context: RouteContext) {
     }
 
     const userId = (session!.user as any).id;
-    const { id } = context.params;
+    const { id } = await context.params;
     await connectDB();
 
     const repo = MemoryRepository.getInstance();
@@ -84,7 +84,7 @@ export async function DELETE(req: Request, context: RouteContext) {
       message: "Memory successfully archived and excluded from future retrieval.",
     });
   } catch (err: any) {
-    console.error(`DELETE /api/memory/${context.params.id} error:`, err);
+    console.error("DELETE /api/memory/[id] error:", err);
     return apiError(err.message || "Failed to archive memory", "INTERNAL_ERROR", 500);
   }
 }

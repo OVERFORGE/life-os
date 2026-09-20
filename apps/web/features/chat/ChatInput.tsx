@@ -6,9 +6,10 @@ import { Send, Mic } from "lucide-react";
 type Props = {
   onSend: (text: string) => void;
   loading: boolean;
+  onVoiceClick?: () => void;
 };
 
-export default function ChatInput({ onSend, loading }: Props) {
+export default function ChatInput({ onSend, loading, onVoiceClick }: Props) {
   const [text, setText] = useState("");
 
   function handleSend() {
@@ -53,12 +54,15 @@ export default function ChatInput({ onSend, loading }: Props) {
           "
         />
 
-        {/* Mic Button (Visual Parity) */}
+        {/* Realtime Voice Call Button */}
         <button
+          type="button"
+          onClick={onVoiceClick}
           disabled={loading}
-          className="ml-2 p-2.5 rounded-xl bg-[#2A2B2F] transition-all hover:bg-[#3A3C42] disabled:opacity-50"
+          title="Start Realtime Voice Call"
+          className="ml-2 p-2.5 rounded-xl bg-[#2A2B2F] transition-all hover:bg-indigo-600/30 hover:border-indigo-500/50 border border-transparent hover:text-indigo-300 text-gray-300 disabled:opacity-50 active:scale-95"
         >
-          <Mic size={18} className="text-gray-100" />
+          <Mic size={18} />
         </button>
 
         {/* Send Button */}

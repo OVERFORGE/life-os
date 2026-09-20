@@ -66,12 +66,22 @@ export class ConversationSummarizer {
         return; // Already up to date for this slice
       }
 
-      const dialogueToSummarize = olderMessages
+      // Throttle: if summary exists, only re-summarize if at least 5 minutes have elapsed
+      if (conversation.summary && conversation.lastSummarizedAt) {
+        const minutesSinceLast = (Date.now() - new Date(conversation.lastSummarizedAt).getTime()) / (1000 * 60);
+        if (minutesSinceLast < 5) {
+          return; // Skip summarization until at least 5 minutes have passed
+        }
+      }
+
+      // Cap to the last 25 messages of the older slice to prevent 429 token rate limits on long histories
+      const recentOlderMessages = olderMessages.slice(-25);
+      const dialogueToSummarize = recentOlderMessages
         .map((m) => `${m.role === "user" ? "User" : "Assistant"}: ${m.content}`)
         .join("\n");
 
       console.log(
-        `📝 [SUMMARIZER] Generating rolling summary for conversation ${conversationId} (${olderMessages.length} messages)...`
+        `📝 [SUMMARIZER] Generating rolling summary for conversation ${conversationId} (${recentOlderMessages.length} of ${olderMessages.length} older messages)...`
       );
 
       const updatedSummary = await this.generateSummary(
@@ -93,7 +103,15 @@ export class ConversationSummarizer {
 
       console.log(`✅ [SUMMARIZER] Updated summary for conversation ${conversationId}`);
     } catch (err) {
-      console.error("Error in ConversationSummarizer:", err);
+      console.warn("[SUMMARIZER] Summary pass deferred:", (err as any)?.message || err);
+      // Mark as summarized to prevent infinite back-to-back retries from consuming token quota
+      try {
+        const { Conversation } = await import("@/server/db/models/Conversation");
+        await Conversation.updateOne(
+          { conversationId, userId },
+          { $set: { lastSummarizedAt: new Date() } }
+        );
+      } catch (_) {}
     }
   }
 
@@ -121,14 +139,15 @@ Write a bulleted summary using concise statements. Keep under 300 words.`;
     const userPrompt = `${existingSummary ? `[EXISTING SUMMARY]:\n${existingSummary}\n\n` : ""}[DIALOGUE TO INCORPORATE]:\n${dialogue}`;
 
     try {
+      // Use verified fast model for background summarization
       const summary = await this.llmProvider.chat(
         userPrompt,
         systemPrompt,
-        "llama-3.1-8b-instant" // Always use fastest model for summarization
+        "qwen/qwen3.8-27b"
       );
       return summary.trim();
     } catch (err) {
-      console.error("LLM summary generation failed:", err);
+      console.warn("[SUMMARIZER] LLM summary generation deferred:", err);
       return existingSummary;
     }
   }

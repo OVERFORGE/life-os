@@ -75,4 +75,27 @@ describe("Phase 14: Web Conversation Service & Supervisor Integration", () => {
     );
     assert.ok(result.response.length > 0, "Synthesized response must be returned to user");
   });
+
+  it("TC-WEB-05: Conversational greetings, inquiries, and follow-ups route to CONVERSATIONAL_LLM without specialist jargon", async () => {
+    const testPhrases = ["hello lifeOS", "wdym what goals", "how are you today?"];
+
+    for (const phrase of testPhrases) {
+      const input = {
+        userId: testUserId,
+        conversationId: "conv_chat_01",
+        message: phrase,
+      };
+
+      const result = await service.executeUserRequestV3(input);
+
+      assert.strictEqual(
+        result.routingDecision.strategy,
+        "CONVERSATIONAL_LLM",
+        `Phrase "${phrase}" must route to CONVERSATIONAL_LLM`
+      );
+      assert.strictEqual(result.terminationReason, "CONVERSATIONAL_RESPONSE");
+      assert.ok(result.response.length > 0, "Conversational response must not be empty");
+      assert.doesNotMatch(result.response, /ExecutionNode|DAG|synthesised recommendation/i);
+    }
+  });
 });

@@ -18,7 +18,7 @@ export class ResponseGenerator {
         { role: "system", content: payload.systemPrompt },
         { role: "user", content: payload.userMessage },
       ],
-      model: payload.model || "llama-3.3-70b-versatile",
+      model: payload.model || process.env.GROQ_MODEL || "openai/gpt-oss-120b",
     });
   }
 }

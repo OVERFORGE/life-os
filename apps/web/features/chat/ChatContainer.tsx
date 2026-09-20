@@ -7,6 +7,7 @@ import ChatInput from "./ChatInput";
 import ChatMessage from "./ChatMessage";
 import ConversationSidebar from "./ConversationSidebar";
 import ConversationDrawer from "./ConversationDrawer";
+import RealtimeVoiceModal from "../voice/RealtimeVoiceModal";
 import { useConversations } from "./useConversations";
 import { useChat } from "./useChat";
 
@@ -23,21 +24,21 @@ export default function ChatContainer() {
     refreshConversations,
   } = useConversations();
 
-  const { messages, sendMessage, loading, selectedModel, setSelectedModel } = useChat({
+  const { messages, sendMessage, loading, selectedModel, setSelectedModel, reload } = useChat({
     conversationId: activeConversationId,
     onMessageSent: refreshConversations,
   });
 
   const GROQ_MODELS = [
-    { id: "llama-3.3-70b-versatile", name: "Llama 3.3 70B (Best)" },
-    { id: "qwen/qwen3-32b", name: "Qwen3 32B (Great)" },
-    { id: "meta-llama/llama-4-scout-17b-16e-instruct", name: "Llama 4 Scout 17B" },
-    { id: "llama-3.1-8b-instant", name: "Llama 3.1 8B (Fastest)" },
+    { id: "openai/gpt-oss-120b", name: "GPT OSS 120B (Chief of Staff Flagship)" },
+    { id: "qwen/qwen3.8-27b", name: "Qwen 3.8 27B (Fast & Intelligent)" },
+    { id: "openai/gpt-oss-20b", name: "GPT OSS 20B (Instant)" },
   ];
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
   const [showScrollButton, setShowScrollButton] = useState(false);
+  const [isVoiceOpen, setIsVoiceOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
 
@@ -192,7 +193,22 @@ export default function ChatContainer() {
         )}
 
         {/* Input Bar */}
-        <ChatInput onSend={sendMessage} loading={loading} />
+        <ChatInput
+          onSend={sendMessage}
+          loading={loading}
+          onVoiceClick={() => setIsVoiceOpen(true)}
+        />
+
+        {/* Realtime Voice Call Overlay Modal */}
+        <RealtimeVoiceModal
+          isOpen={isVoiceOpen}
+          onClose={() => setIsVoiceOpen(false)}
+          conversationId={activeConversationId}
+          onMessageSent={() => {
+            refreshConversations();
+            reload();
+          }}
+        />
       </div>
     </div>
   );

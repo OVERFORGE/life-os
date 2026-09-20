@@ -76,7 +76,7 @@ async function classifyWithLLM(
   history: string,
   model?: string
 ): Promise<{ intent: Intent; confidence: number }> {
-  const classifierModel = "llama-3.1-8b-instant"; // Fast, cheap — purpose-built for this
+  const classifierModel = model || process.env.GROQ_MODEL || "openai/gpt-oss-120b";
 
   const systemPrompt = `You are a precision intent classifier for a personal life-tracking assistant called LifeOS. 
 

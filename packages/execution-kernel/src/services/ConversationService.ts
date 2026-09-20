@@ -59,60 +59,79 @@ export class ConversationService {
    */
   async executeUserRequest(input: HandleInput): Promise<Response> {
     try {
-      const supervisorResult = await this.executeUserRequestV3(input);
+      const routingDecision = this.supervisor.getRouter().route(input.message);
 
-      // Persist conversation turn in ConversationManager for history parity (if DB connected)
-      if (mongoose.connection && mongoose.connection.readyState === 1) {
-        try {
-          await ConversationManager.getInstance().persist({
-            conversationId: input.conversationId || "default",
-            userId: input.userId,
-            userMessage: input.message,
-            assistantResponse: supervisorResult.response,
-            stmUpdates: {},
-          });
-        } catch (persistErr) {
-          console.error("ConversationManager.persist warning:", persistErr);
-        }
+      // Fast Path: synchronous deterministic execution (< 100ms) with diagnostic headers
+      if (routingDecision.strategy === "FAST_PATH") {
+        const supervisorResult = await this.executeUserRequestV3(input);
+        this.persistTurnAsync(input, supervisorResult.response);
 
-        // Background automations
-        try {
-          await runAutomation(input.userId);
-        } catch (autoErr) {
-          console.error("Background automation warning:", autoErr);
-        }
-      }
-
-      // Out-of-band asynchronous memory formation via DurableMemoryJobQueue (Requirements 11, 12, 13)
-      DurableMemoryJobQueue.getInstance()
-        .enqueueTurn({
-          userId: input.userId,
-          userMessage: input.message,
-          assistantResponse: supervisorResult.response,
-          conversationId: input.conversationId,
-        })
-        .catch((queueErr) => {
-          console.warn("[CONVERSATION_SERVICE] Memory queue enqueue warning:", queueErr);
+        const stream = new ReadableStream({
+          start(controller) {
+            controller.enqueue(new TextEncoder().encode(supervisorResult.response));
+            controller.close();
+          },
         });
 
-      // Return Web-compatible streaming response
-      const stream = new ReadableStream({
+        return new Response(stream, {
+          headers: {
+            "Content-Type": "text/plain; charset=utf-8",
+            "x-lifeos-request-id": supervisorResult.requestId || "",
+            "x-lifeos-route": supervisorResult.routingDecision.strategy,
+            "x-lifeos-execution-id": supervisorResult.executionId,
+            "x-lifeos-memory-snapshot-id": supervisorResult.executionId,
+            "x-lifeos-duration-ms": String(supervisorResult.durationMs),
+            "x-lifeos-actions-count": String(supervisorResult.actionsExecuted),
+            "x-lifeos-termination-reason": supervisorResult.terminationReason || "COMPLETED",
+          },
+        });
+      }
+
+      // Progressive streaming execution for Conversational and Cognitive Specialist branches
+      const encoder = new TextEncoder();
+      let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
+
+      const stream = new ReadableStream<Uint8Array>({
         start(controller) {
-          controller.enqueue(new TextEncoder().encode(supervisorResult.response));
-          controller.close();
+          streamController = controller;
         },
       });
+
+      // Launch supervisor execution with real-time progressive chunking
+      this.supervisor
+        .processRequest({
+          userId: input.userId,
+          conversationId: input.conversationId,
+          message: input.message,
+          onChunk: (chunk: string) => {
+            if (streamController && chunk) {
+              try {
+                streamController.enqueue(encoder.encode(chunk));
+              } catch (e) {
+                // Stream might be closed if client disconnected
+              }
+            }
+          },
+        })
+        .then((result) => {
+          try {
+            streamController?.close();
+          } catch (_) {}
+          this.persistTurnAsync(input, result.response);
+        })
+        .catch((err) => {
+          console.error("[CONVERSATION_SERVICE] Async execution error:", err);
+          try {
+            streamController?.error(err);
+          } catch (_) {}
+        });
 
       return new Response(stream, {
         headers: {
           "Content-Type": "text/plain; charset=utf-8",
-          "x-lifeos-request-id": supervisorResult.requestId || "",
-          "x-lifeos-route": supervisorResult.routingDecision.strategy,
-          "x-lifeos-execution-id": supervisorResult.executionId,
-          "x-lifeos-memory-snapshot-id": supervisorResult.executionId,
-          "x-lifeos-duration-ms": String(supervisorResult.durationMs),
-          "x-lifeos-actions-count": String(supervisorResult.actionsExecuted),
-          "x-lifeos-termination-reason": supervisorResult.terminationReason || "COMPLETED",
+          "Transfer-Encoding": "chunked",
+          "Cache-Control": "no-cache",
+          "x-lifeos-route": routingDecision.strategy,
         },
       });
     } catch (err: any) {
@@ -120,5 +139,35 @@ export class ConversationService {
       // Fallback to legacy KernelEngine if enabled
       return KernelEngine.handle(input);
     }
+  }
+
+  private persistTurnAsync(input: HandleInput, response: string): void {
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+      Promise.all([
+        ConversationManager.getInstance().persist({
+          conversationId: input.conversationId || "default",
+          userId: input.userId,
+          userMessage: input.message,
+          assistantResponse: response,
+          stmUpdates: {},
+        }).catch((persistErr) => {
+          console.error("ConversationManager.persist warning:", persistErr);
+        }),
+        runAutomation(input.userId).catch((autoErr) => {
+          console.error("Background automation warning:", autoErr);
+        }),
+      ]).catch(() => {});
+    }
+
+    DurableMemoryJobQueue.getInstance()
+      .enqueueTurn({
+        userId: input.userId,
+        userMessage: input.message,
+        assistantResponse: response,
+        conversationId: input.conversationId,
+      })
+      .catch((queueErr) => {
+        console.warn("[CONVERSATION_SERVICE] Memory queue enqueue warning:", queueErr);
+      });
   }
 }

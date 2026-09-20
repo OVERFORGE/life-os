@@ -21,6 +21,17 @@ export default function ChatMessage({ role, content }: Props) {
     setTimeout(() => setCopied(false), 2000);
   };
 
+  if (!isUser && !displayContent) {
+    return (
+      <div className="flex w-full justify-start py-3">
+        <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1F2023] border border-[#2A2B2F] text-gray-300 text-xs shadow-sm">
+          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="font-medium">Chief of Staff is thinking...</span>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
       <div className={`flex flex-col group w-full ${isUser ? 'items-end max-w-[60%]' : 'items-start'}`}>

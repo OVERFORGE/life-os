@@ -467,6 +467,7 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
   if (!registry.has("apply_recovery_constraint")) registry.register("apply_recovery_constraint", recoveryAdapter);
   if (!registry.has("record_mental_estimate")) registry.register("record_mental_estimate", recoveryAdapter);
   if (!registry.has("create_goal")) registry.register("create_goal", goalAdapter);
+  if (!registry.has("propose_goal")) registry.register("propose_goal", goalAdapter);
   if (!registry.has("confirm_goal")) registry.register("confirm_goal", goalAdapter);
   if (!registry.has("delete_goal")) registry.register("delete_goal", deleteAdapter);
   if (!registry.has("set_context_mode")) registry.register("set_context_mode", setContextModeAdapter);

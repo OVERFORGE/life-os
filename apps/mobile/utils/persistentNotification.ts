@@ -55,8 +55,8 @@ async function ensureChannel() {
 // Global foreground service runner — keeps the notification alive
 if (Platform.OS === 'android' && !isExpoGo) {
   try {
-    notifee.registerForegroundService((_notification) => {
-      return new Promise((resolve) => {
+    notifee.registerForegroundService((_notification: any) => {
+      return new Promise<void>((resolve) => {
         isFgServiceRunning = true;
         fgTaskResolve = resolve;
 
@@ -101,7 +101,8 @@ async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
                 await playChime();
                 speakAndListen(`Reminder: ${task.title}`, () => {
                   if (Platform.OS === 'android' || Platform.OS === 'ios') {
-                    voiceRecorder.startRecording(async (uri: string) => {
+                    voiceRecorder.startRecording(async (uri: string | null) => {
+                      if (!uri) return;
                       const { transcribeAudio } = await import('./audioCapture');
                       const { text } = await transcribeAudio(uri);
                       if (text) handleChatInput(text);
@@ -303,11 +304,12 @@ async function handleChatInput(inputText: string) {
   if (isVoiceAllowed) {
     speakAndListen(response.trim(), () => {
        if (Platform.OS === 'android' || Platform.OS === 'ios') {
-         voiceRecorder.startRecording(async (uri: string) => {
-           const { transcribeAudio } = await import('./audioCapture');
-           const { text } = await transcribeAudio(uri);
-           if (text) handleChatInput(text);
-         });
+          voiceRecorder.startRecording(async (uri: string | null) => {
+            if (!uri) return;
+            const { transcribeAudio } = await import('./audioCapture');
+            const { text } = await transcribeAudio(uri);
+            if (text) handleChatInput(text);
+          });
        }
     });
   }
@@ -347,7 +349,11 @@ async function handleEvent(type: number, detail: any) {
       // MIC pressed — start headless background recording!
       await displayExecutionerNotification('LISTENING...', 'Speak your command now...');
       
-      const success = await voiceRecorder.startRecording(async (uri) => {
+      const success = await voiceRecorder.startRecording(async (uri: string | null) => {
+        if (!uri) {
+          await displayExecutionerNotification('CANCELLED', 'No speech detected.');
+          return;
+        }
         await displayExecutionerNotification('PROCESSING...', 'Transcribing voice...');
         const { text, error } = await transcribeAudio(uri);
         

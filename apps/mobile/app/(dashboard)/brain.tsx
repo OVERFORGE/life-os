@@ -6,6 +6,7 @@ import {
 } from 'react-native';
 import { Bot, ArrowUp, Copy, Check, ArrowDown, Mic, X, MicOff } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Clipboard from 'expo-clipboard';
 import { fetchWithAuth, API_URL } from '../../utils/api';
 import { scheduleAllTaskReminders } from '../../utils/notifications';
 import { useLocalSearchParams } from 'expo-router';
@@ -421,7 +422,7 @@ export default function BrainScreen() {
             placeholderTextColor={C.muted}
             style={{ flex: 1, color: C.text, fontSize: 16, paddingVertical: 6, maxHeight: 120, minHeight: 30 }}
             multiline
-            onSubmitEditing={sendMessage}
+            onSubmitEditing={() => sendMessage()}
             editable={!loading}
           />
 

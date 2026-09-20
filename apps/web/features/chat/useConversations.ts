@@ -14,9 +14,25 @@ export interface ConversationItem {
 
 export function useConversations() {
   const [conversations, setConversations] = useState<ConversationItem[]>([]);
-  const [activeConversationId, setActiveConversationId] = useState<string | null>(null);
+  const [activeConversationId, setActiveConversationIdState] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem("lifeos_active_conversation_id") || null;
+    }
+    return null;
+  });
   const [loading, setLoading] = useState(true);
   const [searchQuery, setSearchQuery] = useState("");
+
+  const setActiveConversationId = useCallback((id: string | null) => {
+    setActiveConversationIdState(id);
+    if (typeof window !== "undefined") {
+      if (id) {
+        localStorage.setItem("lifeos_active_conversation_id", id);
+      } else {
+        localStorage.removeItem("lifeos_active_conversation_id");
+      }
+    }
+  }, []);
 
   const fetchConversations = useCallback(async () => {
     try {
@@ -26,8 +42,11 @@ export function useConversations() {
       const data: ConversationItem[] = await res.json();
       setConversations(data);
 
-      // Auto-select the first (most recent) conversation if none selected
-      if (data.length > 0 && !activeConversationId) {
+      // Restore active conversation from localStorage or auto-select the most recent
+      const savedId = typeof window !== "undefined" ? localStorage.getItem("lifeos_active_conversation_id") : null;
+      if (savedId && data.some((c) => c.conversationId === savedId)) {
+        setActiveConversationId(savedId);
+      } else if (data.length > 0) {
         setActiveConversationId(data[0].conversationId);
       }
     } catch (err) {
@@ -35,7 +54,7 @@ export function useConversations() {
     } finally {
       setLoading(false);
     }
-  }, [activeConversationId]);
+  }, [setActiveConversationId]);
 
   useEffect(() => {
     fetchConversations();

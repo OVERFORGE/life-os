@@ -160,7 +160,7 @@ export default function ChatModalScreen() {
             placeholderTextColor="rgba(236,231,227,0.4)"
             value={input}
             onChangeText={setInput}
-            onSubmitEditing={sendPrompt}
+            onSubmitEditing={() => sendPrompt()}
             multiline={false}
             returnKeyType="send"
           />
