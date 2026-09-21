@@ -76,7 +76,7 @@ export default function ChatMessage({ role, content }: Props) {
     return (
       <div className="flex w-full justify-start py-3">
         <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1F2023] border border-[#2A2B2F] text-gray-300 text-xs shadow-sm">
-          <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
+          <span className="w-2 h-2 rounded-full bg-[#E8414A] animate-pulse" />
           <span className="font-medium">Aven is thinking...</span>
         </div>
       </div>

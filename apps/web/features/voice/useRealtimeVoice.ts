@@ -384,10 +384,10 @@ export function useRealtimeVoice({
       } catch (_) {}
     }
 
-    // Pause live speech recognition during assistant playback to prevent speaker feedback
+    // Ensure live speech recognition is active for real-time conversational barge-in
     if (speechRecognitionRef.current) {
       try {
-        speechRecognitionRef.current.stop();
+        speechRecognitionRef.current.start();
       } catch (_) {}
     }
 
@@ -645,6 +645,12 @@ export function useRealtimeVoice({
       } catch (_) {}
     }
 
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.start();
+      } catch (_) {}
+    }
+
     activeStatusRef.current = "listening";
     setStatus("listening");
     speechDetectedRef.current = true;
@@ -820,12 +826,23 @@ export function useRealtimeVoice({
           setAudioLevel(visualLevel);
         }
 
-        // 1. Refresh recorder buffer during speaking so pre-roll is ready when assistant finishes
+        // 1. Full-duplex conversational barge-in VAD while assistant is speaking
         if (currentStatus === "speaking" && !isMutedRef.current) {
           const now = performance.now();
-          consecutiveSpeechFramesRef.current = 0;
-          if (!speechDetectedRef.current && now - turnStartTimeRef.current > 4000) {
-            cycleRecorderBuffer();
+          const bargeInThreshold = Math.max(0.045, noiseFloorRef.current * 3.5 + 0.02);
+          if (rms > bargeInThreshold) {
+            consecutiveSpeechFramesRef.current++;
+            // Require 4 consecutive frames (~65ms) of sustained human speech to trigger barge-in
+            if (consecutiveSpeechFramesRef.current >= 4) {
+              consecutiveSpeechFramesRef.current = 0;
+              console.log(`[VAD] Barge-in energy detected (RMS: ${rms.toFixed(4)} > ${bargeInThreshold.toFixed(4)})`);
+              handleBargeIn();
+            }
+          } else {
+            consecutiveSpeechFramesRef.current = 0;
+            if (!speechDetectedRef.current && now - turnStartTimeRef.current > 4000) {
+              cycleRecorderBuffer();
+            }
           }
         }
 
@@ -977,8 +994,10 @@ export function useRealtimeVoice({
             const trimmed = interim.trim();
             if (!trimmed) return;
 
-            // Suppress recognition while assistant is speaking to prevent speaker feedback from cutting off audio
+            // If assistant is speaking or playing audio, user speech triggers immediate full-duplex barge-in!
             if (activeStatusRef.current === "speaking" || isPlayingQueueRef.current) {
+              console.log("[VOICE] SpeechRecognition barge-in triggered by user speech:", trimmed);
+              handleBargeInRef.current(trimmed);
               return;
             }
 
@@ -998,7 +1017,7 @@ export function useRealtimeVoice({
 
           recognition.onend = () => {
             if (
-              activeStatusRef.current === "listening" &&
+              (activeStatusRef.current === "listening" || activeStatusRef.current === "speaking") &&
               mediaStreamRef.current
             ) {
               try {

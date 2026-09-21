@@ -66,10 +66,10 @@ export default function RealtimeVoiceModal({
   const outerAuraScale = 1 + audioLevel * 0.45;
 
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#0A0A0C]/95 backdrop-blur-3xl transition-all duration-500 select-none overflow-hidden">
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#161618]/98 backdrop-blur-3xl transition-all duration-500 select-none overflow-hidden">
       {/* LifeOS Ambient Crimson Glow Background Mesh */}
       <div
-        className="absolute -inset-[30%] pointer-events-none transition-all duration-1000 opacity-20 blur-[130px] bg-gradient-to-tr from-[#E8414A]/30 via-[#B42129]/20 to-black"
+        className="absolute -inset-[30%] pointer-events-none transition-all duration-1000 opacity-20 blur-[130px] bg-gradient-to-tr from-[#E8414A]/25 via-[#B42129]/15 to-[#161618]"
       />
 
       {/* Top Floating Header Bar */}
@@ -161,13 +161,13 @@ export default function RealtimeVoiceModal({
                 ? "Click orb to retry"
                 : "Click orb to send speech now"
             }
-            className="relative flex items-center justify-center w-44 h-44 rounded-full shadow-2xl transition-all duration-300 cursor-pointer select-none overflow-hidden active:scale-95 group bg-gradient-to-b from-[#1F2023] via-[#161618] to-[#0D0D0F] shadow-black/90 ring-2 ring-[#E8414A]/40 hover:ring-[#E8414A]/70"
+            className="relative flex items-center justify-center w-44 h-44 rounded-full shadow-2xl transition-all duration-300 cursor-pointer select-none overflow-hidden active:scale-95 group bg-gradient-to-b from-[#1F2023] via-[#161618] to-[#161618] shadow-black/90 ring-2 ring-[#E8414A]/40 hover:ring-[#E8414A]/70"
             style={{
               transform: `scale(${orbScale})`,
             }}
           >
             {/* Subtle Glass Sheen Highlight */}
-            <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-black/50 rounded-full pointer-events-none" />
+            <div className="absolute inset-0 bg-gradient-to-b from-white/10 via-transparent to-[#161618]/70 rounded-full pointer-events-none" />
 
             {/* Subtle Red Inner Glow Ring */}
             <div className="absolute inset-1 rounded-full border border-[#E8414A]/20 pointer-events-none" />
@@ -224,7 +224,7 @@ export default function RealtimeVoiceModal({
                 ? "text-zinc-200 border-[#E8414A]/50 bg-[#E8414A]/20 shadow-[#E8414A]/20"
                 : hasDetectedUserSpeech
                 ? "text-zinc-100 border-[#E8414A]/60 bg-[#E8414A]/20 shadow-[#E8414A]/30"
-                : "text-zinc-300 border-white/10 bg-[#161618]/90"
+                : "text-zinc-300 border-[#2A2B2F] bg-[#161618]/90"
             }`}
           >
             <span className="w-2 h-2 rounded-full bg-[#E8414A] animate-ping" />
@@ -262,7 +262,7 @@ export default function RealtimeVoiceModal({
         </div>
 
         {/* Live Streaming Dialogue Display Card */}
-        <div className="w-full min-h-[90px] max-h-[130px] overflow-y-auto px-5 py-3.5 rounded-2xl bg-[#161618]/95 border border-white/10 backdrop-blur-2xl text-left shadow-2xl shadow-black/80 transition-all">
+        <div className="w-full min-h-[90px] max-h-[130px] overflow-y-auto px-5 py-3.5 rounded-2xl bg-[#161618]/95 border border-[#2A2B2F] backdrop-blur-2xl text-left shadow-2xl shadow-black/80 transition-all">
           {errorMessage ? (
             <div className="flex flex-col gap-2">
               <div className="flex items-center gap-2 text-zinc-200 text-xs">
@@ -326,7 +326,7 @@ export default function RealtimeVoiceModal({
           className={`p-4 rounded-2xl border transition-all shadow-xl shadow-black/60 backdrop-blur-xl active:scale-95 ${
             isMuted
               ? "bg-[#E8414A]/20 text-[#E8414A] border-[#E8414A]/40 hover:bg-[#E8414A]/30"
-              : "bg-[#161618] text-zinc-300 border-white/10 hover:bg-[#1F2023] hover:text-white"
+              : "bg-[#161618] text-zinc-300 border-[#2A2B2F] hover:bg-[#1F2023] hover:text-white"
           }`}
           title={isMuted ? "Unmute Microphone" : "Mute Microphone"}
         >
