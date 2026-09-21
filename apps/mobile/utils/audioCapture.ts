@@ -5,14 +5,25 @@ export class VoiceRecorder {
   private recording: Audio.Recording | null = null;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
   private onSilenceCb: ((uri: string | null) => void) | null = null;
+  private onBargeInCb: (() => void) | null = null;
+  private isBargeInActive = false;
   private hasDetectedSpeech = false;
+  private speechStartTime: number | null = null;
+  private lastSpeechTime: number | null = null;
   // Track peak metering to decide if the user actually spoke
   private peakMetering = -160;
 
-  async startRecording(onSilence: (uri: string | null) => void): Promise<boolean> {
+  async startRecording(
+    onSilence: (uri: string | null) => void,
+    options?: { isBargeIn?: boolean; onBargeIn?: () => void }
+  ): Promise<boolean> {
     try {
       this.onSilenceCb = onSilence;
+      this.onBargeInCb = options?.onBargeIn || null;
+      this.isBargeInActive = options?.isBargeIn || false;
       this.hasDetectedSpeech = false;
+      this.speechStartTime = null;
+      this.lastSpeechTime = null;
       this.peakMetering = -160;
       
       let perm = await Audio.getPermissionsAsync();
@@ -48,26 +59,59 @@ export class VoiceRecorder {
     if (status.isRecording && status.metering !== undefined) {
       const db = status.metering;
       if (db > this.peakMetering) this.peakMetering = db;
-      
-      // -35 dB is a confident voice threshold. Anything louder = speech detected.
-      if (db > -35) {
-        this.hasDetectedSpeech = true;
+      const now = Date.now();
+
+      // 1. Barge-in detection while assistant is speaking
+      if (this.isBargeInActive) {
+        // Voice directly into phone mic produces >= -26 dB, cutting above speaker audio
+        if (db >= -26) {
+          console.log('[MOBILE_VAD] Barge-in speech detected during playback! Metering:', db);
+          this.isBargeInActive = false;
+          this.hasDetectedSpeech = true;
+          this.speechStartTime = now;
+          this.lastSpeechTime = now;
+          if (this.silenceTimer) {
+            clearTimeout(this.silenceTimer);
+            this.silenceTimer = null;
+          }
+          this.onBargeInCb?.();
+          return;
+        }
+        return;
+      }
+
+      // 2. Confident voice and hold thresholds
+      const SPEECH_ONSET_DB = -36;
+      const SPEECH_HOLD_DB = -44;
+
+      if (db >= SPEECH_HOLD_DB) {
+        // User is vocalizing or trailing off naturally
         if (this.silenceTimer) {
           clearTimeout(this.silenceTimer);
           this.silenceTimer = null;
         }
+
+        if (db >= SPEECH_ONSET_DB) {
+          this.hasDetectedSpeech = true;
+          if (!this.speechStartTime) this.speechStartTime = now;
+          this.lastSpeechTime = now;
+        }
       } else {
-        // Only start silence countdown AFTER actual speech was detected
+        // Metering below hold threshold: potential pause or end of turn
         if (this.hasDetectedSpeech && !this.silenceTimer) {
+          const vocalDuration = (this.lastSpeechTime || now) - (this.speechStartTime || now);
+          // Natural conversational pause: allow breathing without mid-sentence cut-off
+          const requiredSilenceMs = vocalDuration < 1500 ? 1200 : 1050;
+
           this.silenceTimer = setTimeout(() => {
+            console.log(`[MOBILE_VAD] Natural pause reached (${requiredSilenceMs}ms). Submitting speech turn...`);
             this.stopRecording();
-          }, 450); // 450ms of silence after speech ends recording (realtime conversational cadence)
+          }, requiredSilenceMs);
         } else if (!this.hasDetectedSpeech && !this.silenceTimer) {
-          // No speech detected yet — start a max-wait timer of 6 seconds
+          // No speech detected yet — max wait ceiling of 7 seconds before cancelling
           this.silenceTimer = setTimeout(() => {
-            // If still no speech detected, cancel (don't transcribe)
             this.cancelRecording();
-          }, 6000);
+          }, 7000);
         }
       }
     }

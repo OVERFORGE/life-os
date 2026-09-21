@@ -1,6 +1,6 @@
 import ReactMarkdown from "react-markdown";
-import { Copy, Check } from "lucide-react";
-import { useState } from "react";
+import { Copy, Check, Volume2, Square } from "lucide-react";
+import { useState, useRef, useEffect } from "react";
 
 type Props = {
   role: "user" | "assistant";
@@ -10,9 +10,60 @@ type Props = {
 export default function ChatMessage({ role, content }: Props) {
   const isUser = role === "user";
   const [copied, setCopied] = useState(false);
+  const [isPlaying, setIsPlaying] = useState(false);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
 
   // Clean up <think> tags from model reasoning
   const displayContent = content.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+
+  useEffect(() => {
+    return () => {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute("src");
+        audioRef.current = null;
+      }
+    };
+  }, []);
+
+  const handleToggleAudio = () => {
+    if (isPlaying) {
+      if (audioRef.current) {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute("src");
+        audioRef.current = null;
+      }
+      setIsPlaying(false);
+      return;
+    }
+
+    if (!displayContent) return;
+
+    try {
+      const audio = new Audio(`/api/voice/tts?text=${encodeURIComponent(displayContent)}&voice=en-GB-RyanNeural`);
+      audioRef.current = audio;
+      setIsPlaying(true);
+
+      audio.onended = () => {
+        setIsPlaying(false);
+        audioRef.current = null;
+      };
+
+      audio.onerror = () => {
+        setIsPlaying(false);
+        audioRef.current = null;
+      };
+
+      audio.play().catch((err) => {
+        console.warn("[CHAT_MESSAGE] Playback error:", err);
+        setIsPlaying(false);
+        audioRef.current = null;
+      });
+    } catch (err) {
+      console.warn("[CHAT_MESSAGE] Audio error:", err);
+      setIsPlaying(false);
+    }
+  };
 
   const handleCopy = () => {
     if (!displayContent) return;
@@ -26,7 +77,7 @@ export default function ChatMessage({ role, content }: Props) {
       <div className="flex w-full justify-start py-3">
         <div className="flex items-center gap-2 px-3.5 py-1.5 rounded-full bg-[#1F2023] border border-[#2A2B2F] text-gray-300 text-xs shadow-sm">
           <span className="w-2 h-2 rounded-full bg-emerald-400 animate-pulse" />
-          <span className="font-medium">Chief of Staff is thinking...</span>
+          <span className="font-medium">Aven is thinking...</span>
         </div>
       </div>
     );
@@ -65,8 +116,36 @@ export default function ChatMessage({ role, content }: Props) {
           </ReactMarkdown>
         </div>
 
-        {/* Copy Button */}
-        <div className={`mt-2 ${isUser ? 'mr-2' : 'ml-2'} opacity-0 group-hover:opacity-100 transition-opacity duration-200`}>
+        {/* Actions Row */}
+        <div
+          className={`mt-2 ${isUser ? 'mr-2' : 'ml-2'} flex items-center gap-2 ${
+            isPlaying ? 'opacity-100' : 'opacity-0 group-hover:opacity-100'
+          } transition-opacity duration-200`}
+        >
+          {!isUser && (
+            <button
+              onClick={handleToggleAudio}
+              className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                isPlaying
+                  ? 'text-[#E8414A] bg-[#E8414A]/15 border border-[#E8414A]/30 shadow-sm'
+                  : 'text-[#9ca3af] hover:text-gray-300 hover:bg-white/5'
+              }`}
+              title={isPlaying ? "Stop listening" : "Listen to response"}
+            >
+              {isPlaying ? (
+                <>
+                  <Square size={12} className="fill-current text-[#E8414A] animate-pulse" />
+                  <span className="text-[#E8414A] font-semibold">Stop</span>
+                </>
+              ) : (
+                <>
+                  <Volume2 size={14} />
+                  <span>Listen</span>
+                </>
+              )}
+            </button>
+          )}
+
           <button 
             onClick={handleCopy}
             className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[#9ca3af] hover:text-gray-300 hover:bg-white/5 transition-colors text-xs font-medium"

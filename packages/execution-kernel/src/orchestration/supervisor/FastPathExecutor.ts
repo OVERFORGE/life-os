@@ -271,30 +271,31 @@ export class FastPathExecutor {
   }
 
   /**
-   * Generates a conversational response strictly free of DAG / internal kernel jargon.
+   * Generates a conversational response strictly free of internal mechanical jargon,
+   * reflecting authoritative kernel execution truth in Aven's composed voice.
    */
   private generateUserResponse(proposal: ActionProposal, results: KernelExecutionResult[]): string {
     const firstResult = results[0];
     if (!firstResult || !firstResult.success) {
-      const errorMsg = firstResult?.error || "An unexpected error occurred.";
+      const errorMsg = firstResult?.error || "The service failed before anything was persisted.";
       return `I couldn't complete that request: ${errorMsg}`;
     }
 
     switch (proposal.actionType) {
       case "complete_task": {
         const target = proposal.payload.targetIdentifier || proposal.payload.taskId;
-        return `I've marked task '${target}' as completed.`;
+        return `Done. Marked task '${target}' as completed.`;
       }
       case "create_task": {
-        return `I've created the task '${proposal.payload.title}' for you.`;
+        return `Done. Created task '${proposal.payload.title}'.`;
       }
       case "delete_task": {
         const target = proposal.payload.targetIdentifier || proposal.payload.taskId;
-        return `I've removed task '${target}'.`;
+        return `Removed task '${target}'.`;
       }
       case "log_meal": {
         if (proposal.payload.type === "hydration") {
-          return `Logged ${proposal.payload.amount} ${proposal.payload.unit} of water. Stay hydrated!`;
+          return `Logged ${proposal.payload.amount} ${proposal.payload.unit} of water.`;
         }
         return `Logged meal: ${proposal.payload.meal}.`;
       }
@@ -306,9 +307,9 @@ export class FastPathExecutor {
           case "sprint":
             return `Sprint Mode activated${durationStr}. High-velocity execution focus engaged with sleep and physiological circuit breakers protected.`;
           case "sanctuary":
-            return `Sanctuary Mode engaged${durationStr}. Alarms, urgency scoring, and pressure have been suspended. Prioritize nervous system recovery.`;
+            return `Sanctuary Mode engaged${durationStr}. Alarms, urgency scoring, and pressure have been suspended. Prioritizing nervous system recovery.`;
           case "sabbatical":
-            return `Sabbatical Mode active${durationStr}. Habits and velocity expectations are frozen without decay penalties. Enjoy your intentional rest.`;
+            return `Sabbatical Mode active${durationStr}. Habits and velocity expectations are frozen without decay penalties.`;
           case "standard":
           default:
             return `Returned to Standard operational mode. Balanced routines restored.`;
@@ -318,7 +319,7 @@ export class FastPathExecutor {
         return "Active context mode cleared. Returned to Standard operational mode.";
       }
       default:
-        return "Action completed successfully.";
+        return "Done. The action was persisted.";
     }
   }
 }

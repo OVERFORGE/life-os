@@ -119,8 +119,8 @@ export class ConversationSummarizer {
    * Generates a rolling summary using the fast LLM model.
    */
   private async generateSummary(existingSummary: string, dialogue: string): Promise<string> {
-    const systemPrompt = `You are a conversation summarizer for LifeOS, a personal AI operating system.
-Your task is to produce a concise, structured rolling summary of the user's ongoing conversation.
+    const systemPrompt = `You are a background conversation summarizer for Aven in LifeOS.
+Your task is to produce a concise, structured rolling summary of Daksh's conversation with Aven.
 
 PRESERVE:
 - User preferences, goals, and nutrition/fitness modes
@@ -131,8 +131,6 @@ PRESERVE:
 DISCARD:
 - Casual greetings, filler, and fluff
 - Repeated explanations and system instructions
-- Transient status updates that are no longer relevant
-
 FORMAT:
 Write a bulleted summary using concise statements. Keep under 300 words.`;
 

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowDown, PanelLeft, Plus } from "lucide-react";
+import { ArrowDown, PanelLeft, Plus, Radio } from "lucide-react";
 
 import ChatInput from "./ChatInput";
 import ChatMessage from "./ChatMessage";
@@ -30,7 +30,7 @@ export default function ChatContainer() {
   });
 
   const GROQ_MODELS = [
-    { id: "openai/gpt-oss-120b", name: "GPT OSS 120B (Chief of Staff Flagship)" },
+    { id: "openai/gpt-oss-120b", name: "GPT OSS 120B (Aven Flagship)" },
     { id: "qwen/qwen3.8-27b", name: "Qwen 3.8 27B (Fast & Intelligent)" },
     { id: "openai/gpt-oss-20b", name: "GPT OSS 20B (Instant)" },
   ];
@@ -158,6 +158,18 @@ export default function ChatContainer() {
               </div>
             )}
           </div>
+
+          {/* Realtime Voice Call Launch Button */}
+          <div className="pointer-events-auto flex items-center gap-2">
+            <button
+              onClick={() => setIsVoiceOpen(true)}
+              className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#1F2023]/90 hover:bg-[#E8414A]/20 border border-[#2A2B2F] hover:border-[#E8414A]/40 text-gray-200 hover:text-white shadow-xl backdrop-blur-xl transition-all active:scale-95 text-xs font-semibold"
+              title="Start Full-Duplex Realtime Voice Call"
+            >
+              <Radio size={14} className="text-[#E8414A] animate-pulse" />
+              <span className="hidden sm:inline">Voice Call</span>
+            </button>
+          </div>
         </div>
 
         {/* Messages List */}
@@ -169,7 +181,7 @@ export default function ChatContainer() {
           <div className="max-w-3xl mx-auto space-y-8 pb-10">
             {messages.length === 0 ? (
               <div className="text-center text-gray-500 text-sm py-16">
-                Start a conversation with LifeOS...
+                Start a conversation with Aven...
               </div>
             ) : (
               messages.map((m, i) => (

@@ -10,11 +10,21 @@ import { handleLogWorkout } from "../../dispatch/executionHandlers/handleLogWork
 import { handleLogActivity } from "../../dispatch/executionHandlers/handleLogActivity";
 import { handleCreateGoal } from "../../dispatch/executionHandlers/handleCreateGoal";
 import { handleDeleteGoal } from "../../dispatch/executionHandlers/handleDeleteGoal";
+import { handleRecordMentalState } from "../../dispatch/executionHandlers/handleRecordMentalState";
 import { IncidentService } from "../../incidents/IncidentService";
 import { ContextModeService } from "../../context/ContextModeService";
 
 function isDbConnected(): boolean {
   return mongoose.connection && mongoose.connection.readyState === 1;
+}
+
+function assertDatabaseConnected(actionType: string): void {
+  if (!isDbConnected()) {
+    if (process.env.LIFEOS_ALLOW_TEST_MOCKS === "true") {
+      return;
+    }
+    throw new Error(`[KERNEL_DATABASE_DISCONNECTED]: Cannot execute action '${actionType}' because MongoDB is disconnected.`);
+  }
 }
 
 /**
@@ -39,6 +49,7 @@ export class CreateTaskAdapter implements IKernelActionAdapter {
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("create_task");
     if (isDbConnected()) {
       return await handleCreateTask(proposal.payload, userId);
     }
@@ -81,6 +92,7 @@ export class CompleteTaskAdapter implements IKernelActionAdapter {
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("complete_task");
     if (isDbConnected()) {
       return await handleCompleteTask(proposal.payload, userId);
     }
@@ -121,6 +133,7 @@ export class UpdateTaskAdapter implements IKernelActionAdapter {
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("update_task");
     const payload = {
       ...proposal.payload,
       taskId: proposal.payload?.taskId || proposal.targetEntityId,
@@ -155,6 +168,7 @@ export class DeleteTaskAdapter implements IKernelActionAdapter {
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("delete_task");
     const payload = {
       ...proposal.payload,
       taskId: proposal.payload?.taskId || proposal.targetEntityId,
@@ -191,6 +205,7 @@ export class LogMealAdapter implements IKernelActionAdapter {
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("log_meal");
     if (isDbConnected()) {
       const payload = {
         ...proposal.payload,
@@ -233,6 +248,7 @@ export class LogWorkoutAdapter implements IKernelActionAdapter {
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("log_workout");
     if (isDbConnected()) {
       return await handleLogWorkout(proposal.payload, userId);
     }
@@ -263,6 +279,7 @@ export class LogActivityAdapter implements IKernelActionAdapter {
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("log_activity");
     if (isDbConnected()) {
       return await handleLogActivity(proposal.payload, userId);
     }
@@ -293,6 +310,7 @@ export class CreateGoalAdapter implements IKernelActionAdapter {
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("create_goal");
     if (isDbConnected()) {
       return await handleCreateGoal(proposal.payload, userId);
     }
@@ -316,6 +334,37 @@ export class CreateGoalAdapter implements IKernelActionAdapter {
 }
 
 /**
+ * Mental State Recording Adapter
+ */
+export class RecordMentalStateAdapter implements IKernelActionAdapter {
+  async validatePreconditions(proposal: ActionProposal, _userId: string): Promise<{ valid: boolean; reason?: string }> {
+    if (!proposal.payload) {
+      return { valid: false, reason: "Payload required for mental state recording" };
+    }
+    return { valid: true };
+  }
+
+  async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("record_mental_estimate");
+    if (isDbConnected()) {
+      return await handleRecordMentalState(proposal.payload, userId);
+    }
+    return {
+      success: true,
+      applied: true,
+      ...proposal.payload,
+    };
+  }
+
+  async compensate(proposal: ActionProposal, _previousResult: any, _userId: string): Promise<CompensationResult> {
+    return {
+      compensated: true,
+      reversalDetails: `Compensated mental state recording for ${proposal.id}`,
+    };
+  }
+}
+
+/**
  * Recovery & Mental Constraint Adapter (Wellness)
  */
 export class RecoveryConstraintAdapter implements IKernelActionAdapter {
@@ -323,7 +372,22 @@ export class RecoveryConstraintAdapter implements IKernelActionAdapter {
     return { valid: true };
   }
 
-  async execute(proposal: ActionProposal, _userId: string): Promise<any> {
+  async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("apply_recovery_constraint");
+    if (isDbConnected()) {
+      const { DailyLog } = await import("@/server/db/models/DailyLog");
+      const today = proposal.payload?.date || new Date().toISOString().split("T")[0];
+      await DailyLog.findOneAndUpdate(
+        { userId, date: today },
+        { $set: { "recoveryConstraint": proposal.payload } },
+        { upsert: true }
+      );
+      return {
+        success: true,
+        constraint: proposal.payload,
+        applied: true,
+      };
+    }
     return {
       success: true,
       constraintId: `rec_mock_${Date.now()}`,
@@ -452,6 +516,7 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
   const activityAdapter = new LogActivityAdapter();
   const goalAdapter = new CreateGoalAdapter();
   const recoveryAdapter = new RecoveryConstraintAdapter();
+  const mentalAdapter = new RecordMentalStateAdapter();
   const setContextModeAdapter = new SetContextModeAdapter();
   const clearContextModeAdapter = new ClearContextModeAdapter();
 
@@ -465,7 +530,7 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
   if (!registry.has("log_workout")) registry.register("log_workout", workoutAdapter);
   if (!registry.has("log_activity")) registry.register("log_activity", activityAdapter);
   if (!registry.has("apply_recovery_constraint")) registry.register("apply_recovery_constraint", recoveryAdapter);
-  if (!registry.has("record_mental_estimate")) registry.register("record_mental_estimate", recoveryAdapter);
+  if (!registry.has("record_mental_estimate")) registry.register("record_mental_estimate", mentalAdapter);
   if (!registry.has("create_goal")) registry.register("create_goal", goalAdapter);
   if (!registry.has("propose_goal")) registry.register("propose_goal", goalAdapter);
   if (!registry.has("confirm_goal")) registry.register("confirm_goal", goalAdapter);

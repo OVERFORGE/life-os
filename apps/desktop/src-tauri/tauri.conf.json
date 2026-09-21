@@ -30,7 +30,7 @@
   },
   "bundle": {
     "active": true,
-    "targets": "all",
+    "targets": ["nsis"],
     "externalBin": ["bin/node"],
     "resources": ["resources/**/*"],
     "icon": [

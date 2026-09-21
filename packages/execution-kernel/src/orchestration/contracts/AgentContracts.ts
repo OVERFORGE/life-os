@@ -1,5 +1,6 @@
 import { ActionProposal, DomainActionType } from "./ActionProposalContracts";
 import { EstimateRecord, HypothesisRecord, ObservationRecord } from "./EpistemicTypes";
+import { SemanticOperation, SomaticAffectiveEvidence } from "./SemanticTurnContracts";
 
 export type AgentDomain = "productivity" | "health" | "wellness";
 
@@ -10,6 +11,8 @@ export interface AgentTask {
   instruction: string;
   focusEntities?: string[];
   constraints: string[];
+  semanticOperation?: SemanticOperation;
+  somaticEvidence?: SomaticAffectiveEvidence;
 }
 
 export interface SpecialistOutput {

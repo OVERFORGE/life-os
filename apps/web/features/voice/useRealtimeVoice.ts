@@ -384,9 +384,10 @@ export function useRealtimeVoice({
       } catch (_) {}
     }
 
+    // Pause live speech recognition during assistant playback to prevent speaker feedback
     if (speechRecognitionRef.current) {
       try {
-        speechRecognitionRef.current.start();
+        speechRecognitionRef.current.stop();
       } catch (_) {}
     }
 
@@ -819,26 +820,12 @@ export function useRealtimeVoice({
           setAudioLevel(visualLevel);
         }
 
-        // 1. Full-Duplex Barge-In Detection when assistant is speaking
+        // 1. Refresh recorder buffer during speaking so pre-roll is ready when assistant finishes
         if (currentStatus === "speaking" && !isMutedRef.current) {
           const now = performance.now();
-          // Echo cancellation suppresses assistant audio from mic.
-          // When the user speaks into the microphone, RMS rises clearly above baseline.
-          const bargeInThreshold = Math.max(0.038, noiseFloorRef.current * 3.2 + 0.015);
-          if (rms > bargeInThreshold) {
-            consecutiveSpeechFramesRef.current++;
-            // Require ~60ms of sustained vocal energy (4 frames @ 60fps) to avoid momentary pops
-            if (consecutiveSpeechFramesRef.current >= 4) {
-              consecutiveSpeechFramesRef.current = 0;
-              console.log(`[VAD] Barge-in energy detected (RMS: ${rms.toFixed(4)} > ${bargeInThreshold.toFixed(4)})`);
-              handleBargeIn();
-            }
-          } else {
-            consecutiveSpeechFramesRef.current = 0;
-            // Periodically refresh recorder during long playback if no speech yet
-            if (!speechDetectedRef.current && now - turnStartTimeRef.current > 4000) {
-              cycleRecorderBuffer();
-            }
+          consecutiveSpeechFramesRef.current = 0;
+          if (!speechDetectedRef.current && now - turnStartTimeRef.current > 4000) {
+            cycleRecorderBuffer();
           }
         }
 
@@ -990,10 +977,8 @@ export function useRealtimeVoice({
             const trimmed = interim.trim();
             if (!trimmed) return;
 
-            // Full-duplex barge-in: If assistant is speaking or playing audio, interrupt immediately!
+            // Suppress recognition while assistant is speaking to prevent speaker feedback from cutting off audio
             if (activeStatusRef.current === "speaking" || isPlayingQueueRef.current) {
-              console.log(`[VOICE_INTERIM] Barge-in speech recognized: "${trimmed}"`);
-              handleBargeInRef.current(trimmed);
               return;
             }
 
@@ -1013,7 +998,7 @@ export function useRealtimeVoice({
 
           recognition.onend = () => {
             if (
-              (activeStatusRef.current === "listening" || activeStatusRef.current === "speaking") &&
+              activeStatusRef.current === "listening" &&
               mediaStreamRef.current
             ) {
               try {

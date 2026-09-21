@@ -43,10 +43,41 @@ export abstract class BaseSpecialistAgent implements ISpecialistAgent {
    */
   async analyze(task: AgentTask, contextProjection: any): Promise<SpecialistOutput> {
     const systemPrompt = this.buildSystemPrompt(task, contextProjection);
-    const userPrompt = `Task: ${task.instruction}\nFocus Entities: ${JSON.stringify(task.focusEntities || [])}\nConstraints: ${JSON.stringify(task.constraints || [])}\nContext: ${JSON.stringify(contextProjection)}`;
+    const userPrompt = task.semanticOperation
+      ? `Structured Semantic Operation (validated by Aven):\n${JSON.stringify(task.semanticOperation, null, 2)}\nSomatic Evidence:\n${JSON.stringify(task.somaticEvidence || null, null, 2)}\nDomain Constraints: ${JSON.stringify(task.constraints || [])}\nContext Slice: ${JSON.stringify(contextProjection)}`
+      : `Task: ${task.instruction}\nFocus Entities: ${JSON.stringify(task.focusEntities || [])}\nConstraints: ${JSON.stringify(task.constraints || [])}\nContext: ${JSON.stringify(contextProjection)}`;
 
     // 1. LLM Generation (Genuine provider errors re-throw for fault isolation)
-    const responseText = await this.llmProvider.chat(userPrompt, systemPrompt);
+    let responseText = "";
+    try {
+      responseText = await this.llmProvider.chat(userPrompt, systemPrompt);
+    } catch (llmErr) {
+      // If LLM provider fails but structured semantic operation was provided, retain the operation
+      if (task.semanticOperation && this.allowedActions.includes(task.semanticOperation.actionType)) {
+        return {
+          domain: this.domain,
+          summary: `${this.domain} domain confirmed operation: ${task.semanticOperation.actionType}.`,
+          observations: [],
+          estimates: [],
+          hypotheses: [],
+          proposals: [
+            {
+              id: generateId("act"),
+              domain: this.domain,
+              actionType: task.semanticOperation.actionType,
+              targetEntityId: task.semanticOperation.targetReference?.resolvedEntityId,
+              payload: task.semanticOperation.payload || {},
+              rationale: `${this.domain} confirmed semantic operation`,
+              reversibility: "reversible_with_compensation",
+              idempotencyKey: `${this.domain}_${task.executionId}_${task.semanticOperation.operationId}`,
+            } as any,
+          ],
+          confidence: 0.9,
+          unresolvedQuestions: [],
+        };
+      }
+      throw llmErr;
+    }
 
     // 2. Structured Output Parsing & Validation
     try {
@@ -92,6 +123,20 @@ export abstract class BaseSpecialistAgent implements ISpecialistAgent {
         idempotencyKey: p.idempotencyKey || `${this.domain}_${task.executionId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
       }));
 
+      // If LLM returned no proposals but a structured semantic operation belongs to this domain
+      if (rawProposals.length === 0 && task.semanticOperation && this.allowedActions.includes(task.semanticOperation.actionType)) {
+        rawProposals.push({
+          id: generateId("act"),
+          domain: this.domain,
+          actionType: task.semanticOperation.actionType,
+          targetEntityId: task.semanticOperation.targetReference?.resolvedEntityId,
+          payload: task.semanticOperation.payload || {},
+          rationale: `${this.domain} confirmed semantic operation`,
+          reversibility: "reversible_with_compensation",
+          idempotencyKey: `${this.domain}_${task.executionId}_${task.semanticOperation.operationId}`,
+        } as any);
+      }
+
       // Strictly validate proposals against allowlist
       const validatedProposals = this.validateProposals(rawProposals);
 
@@ -109,6 +154,31 @@ export abstract class BaseSpecialistAgent implements ISpecialistAgent {
       if (err instanceof AllowlistViolationError) {
         throw err;
       }
+
+      if (task.semanticOperation && this.allowedActions.includes(task.semanticOperation.actionType)) {
+        return {
+          domain: this.domain,
+          summary: `${this.domain} domain confirmed operation: ${task.semanticOperation.actionType}.`,
+          observations: [],
+          estimates: [],
+          hypotheses: [],
+          proposals: [
+            {
+              id: generateId("act"),
+              domain: this.domain,
+              actionType: task.semanticOperation.actionType,
+              targetEntityId: task.semanticOperation.targetReference?.resolvedEntityId,
+              payload: task.semanticOperation.payload || {},
+              rationale: `${this.domain} confirmed semantic operation`,
+              reversibility: "reversible_with_compensation",
+              idempotencyKey: `${this.domain}_${task.executionId}_${task.semanticOperation.operationId}`,
+            } as any,
+          ],
+          confidence: 0.9,
+          unresolvedQuestions: [],
+        };
+      }
+
       // Deterministic fallback if LLM response is not valid JSON
       return {
         domain: this.domain,

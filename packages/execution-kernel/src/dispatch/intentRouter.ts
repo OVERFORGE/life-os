@@ -1,5 +1,10 @@
 import { groqChat } from "../shared/groq";
 
+/**
+ * @deprecated
+ * DEPRECATED in Phase 9. Do not use.
+ * All natural language intent interpretation is canonically owned by SemanticIntentInterpreter.
+ */
 export async function detectIntent(input: string, history: string = "", model?: string) {
     const prompt = `
 You are an advanced intent classifier for a behavioral intelligence system.

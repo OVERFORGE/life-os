@@ -96,6 +96,8 @@ export async function handleCreateTask(payload: any, userId: string) {
   return {
     type: "create_task",
     success: result.success,
+    taskId: result.task?._id ? String(result.task._id) : undefined,
+    task: result.task,
     taskTitle: result.task?.title,
     dueDate: result.task?.dueDate,
     recurring: result.task?.recurring ? result.task.recurring.type : null,

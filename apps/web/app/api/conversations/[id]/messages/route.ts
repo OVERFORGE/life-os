@@ -51,11 +51,23 @@ export async function POST(req: NextRequest, props: RouteParams) {
     { $set: { lastMessageAt: new Date() } }
   );
 
+  let userName = (session?.user as any)?.name;
+  if (!userName && userId) {
+    try {
+      const { User } = await import("@/server/db/models/User");
+      const userDoc = await User.findById(userId).select("name").lean();
+      if (userDoc && (userDoc as any).name) {
+        userName = (userDoc as any).name;
+      }
+    } catch (_) {}
+  }
+
   // Delegate processing to the execution kernel conversation service
   try {
     const { LifeOSApplication } = await import("@life-os/execution-kernel");
     return await LifeOSApplication.conversation.executeUserRequest({
       userId,
+      userName,
       conversationId,
       message,
       model,

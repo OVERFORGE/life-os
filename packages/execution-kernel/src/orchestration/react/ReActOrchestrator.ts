@@ -10,6 +10,7 @@ import { MemoryRepository } from "../../memory/MemoryRepository";
 import { MemoryFormationPipeline } from "../../memory/MemoryFormationPipeline";
 import { PersonalMemoryRecord } from "../../memory/PersonalMemoryContracts";
 import { AgentDomain } from "../contracts/AgentContracts";
+import { SemanticTurn } from "../contracts/SemanticTurnContracts";
 
 export type ReActTerminationReason =
   | "GOAL_SATISFIED"
@@ -86,7 +87,8 @@ export class ReActOrchestrator {
     userGoal: string,
     workspace: ExecutionWorkspace,
     evaluator?: GoalSatisfactionEvaluator,
-    targetSpecialists?: AgentDomain[]
+    targetSpecialists?: AgentDomain[],
+    semanticTurn?: SemanticTurn
   ): Promise<ReActLoopResult> {
     const startTime = Date.now();
     let iteration = 0;
@@ -172,7 +174,15 @@ export class ReActOrchestrator {
         const prodProj = this.projectionEngine.projectProductivity(currentState, retrievedMemories);
         invocations.push({
           domain: "productivity",
-          task: { taskId: generateId("tsk"), executionId, domain: "productivity", instruction: userGoal, constraints: [] },
+          task: {
+            taskId: generateId("tsk"),
+            executionId,
+            domain: "productivity",
+            instruction: userGoal,
+            constraints: [],
+            semanticOperation: semanticTurn?.operations.find((o) => o.domain === "productivity"),
+            somaticEvidence: semanticTurn?.affectiveEvidence,
+          },
           projection: prodProj,
         });
       }
@@ -181,7 +191,15 @@ export class ReActOrchestrator {
         const healthProj = this.projectionEngine.projectHealth(currentState, retrievedMemories);
         invocations.push({
           domain: "health",
-          task: { taskId: generateId("tsk"), executionId, domain: "health", instruction: userGoal, constraints: [] },
+          task: {
+            taskId: generateId("tsk"),
+            executionId,
+            domain: "health",
+            instruction: userGoal,
+            constraints: [],
+            semanticOperation: semanticTurn?.operations.find((o) => o.domain === "health"),
+            somaticEvidence: semanticTurn?.affectiveEvidence,
+          },
           projection: healthProj,
         });
       }
@@ -190,7 +208,15 @@ export class ReActOrchestrator {
         const wellProj = this.projectionEngine.projectWellness(currentState, retrievedMemories);
         invocations.push({
           domain: "wellness",
-          task: { taskId: generateId("tsk"), executionId, domain: "wellness", instruction: userGoal, constraints: [] },
+          task: {
+            taskId: generateId("tsk"),
+            executionId,
+            domain: "wellness",
+            instruction: userGoal,
+            constraints: [],
+            semanticOperation: semanticTurn?.operations.find((o) => o.domain === "wellness"),
+            somaticEvidence: semanticTurn?.affectiveEvidence,
+          },
           projection: wellProj,
         });
       }
@@ -292,19 +318,19 @@ export class ReActOrchestrator {
     switch (reason) {
       case "GOAL_SATISFIED":
         return actionCount > 0
-          ? `I've updated your tasks and schedule as requested.`
-          : "I've reviewed your request and everything is up to date.";
+          ? "Done. Your tasks and schedule have been updated."
+          : "Everything is up to date based on your current state.";
       case "SUBJECTIVE_GOAL_ADDRESSED":
-        return "Here is the guidance based on your current state.";
+        return "Here is the breakdown based on your current state.";
       case "MAX_ITERATIONS":
       case "TIMEOUT":
         return actionCount > 0
-          ? "I've updated your tasks, though I paused to avoid changing too much at once. Let me know what to focus on next!"
-          : "I'm ready whenever you are. What would you like to focus on next?";
+          ? "I've applied the primary updates, then paused execution to prevent unnecessary churn. We can review the remaining items when you're ready."
+          : "I've reviewed the current state. What should we tackle next?";
       case "COMPENSATION_PARTIAL_MANUAL_REVIEW_REQUIRED":
-        return "I completed most of that, but let me know if you'd like to adjust any details.";
+        return "I completed the primary changes, but held one operation for review rather than risking inconsistency.";
       default:
-        return "I'm here and ready to help. What would you like to focus on?";
+        return "I've reviewed the current state. What are we working on?";
     }
   }
 }

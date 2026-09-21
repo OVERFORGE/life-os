@@ -99,15 +99,15 @@ export class SynthesisEngine {
       if (approvedProposals.length > 0) {
         const first = approvedProposals[0];
         if ((first.actionType as any) === "create_goal" || first.actionType === "propose_goal") {
-          summary = `I have structured and established your goal: "${first.payload?.title || "New Goal"}". You are ready to start making daily progress.`;
+          summary = `Structured the goal "${first.payload?.title || "New Goal"}" into your active commitments.`;
         } else if (first.actionType === "create_task") {
-          summary = `I have created the task "${first.payload?.title || "New Task"}" on your schedule.`;
+          summary = `Added "${first.payload?.title || "New Task"}" to your schedule.`;
         } else {
-          summary = `I have updated your schedule and workspace as requested.`;
+          summary = `Updated your schedule and workspace to match the new state.`;
         }
       } else {
         const fallback = specialistOutputs.map((o) => o.summary?.trim()).find((s) => s && s.length > 0);
-        summary = fallback || "I've reviewed your request and everything is organized. How can I assist you next?";
+        summary = fallback || "Everything is reviewed and in sync with current state.";
       }
     } else if (conflicts.length > 0) {
       summary = `Prioritizing your recovery: ${cleanSummaries}`;

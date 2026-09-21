@@ -1,7 +1,10 @@
 use std::sync::{Arc, Mutex};
 use tauri::Manager;
+#[cfg(not(debug_assertions))]
 use tauri_plugin_shell::ShellExt;
-use tauri_plugin_shell::process::{CommandChild, CommandEvent};
+use tauri_plugin_shell::process::CommandChild;
+#[cfg(not(debug_assertions))]
+use tauri_plugin_shell::process::CommandEvent;
 struct SidecarState(Arc<Mutex<Option<CommandChild>>>);
 
 // Learn more about Tauri commands at https://tauri.app/develop/calling-rust/
@@ -31,14 +34,26 @@ pub fn run() {
         .plugin(tauri_plugin_shell::init())
         .on_window_event(move |_window, event| {
             if let tauri::WindowEvent::Destroyed = event {
-                if let Some(mut child) = sidecar_state_clone.lock().unwrap().take() {
+                if let Some(child) = sidecar_state_clone.lock().unwrap().take() {
                     let _ = child.kill();
                 }
             }
         })
         .setup(|app| {
             let app_handle = app.handle().clone();
-            
+
+            #[cfg(debug_assertions)]
+            {
+                tauri::async_runtime::spawn(async move {
+                    std::thread::sleep(std::time::Duration::from_millis(600));
+                    if let Some(window) = app_handle.get_webview_window("main") {
+                        log::info!("Connecting Tauri dev window to active Next.js dev server on http://localhost:3000/login");
+                        let _ = window.navigate("http://localhost:3000/login".parse().unwrap());
+                    }
+                });
+            }
+
+            #[cfg(not(debug_assertions))]
             tauri::async_runtime::spawn(async move {
                 let shell = app_handle.shell();
                 let resource_dir_base = app_handle.path().resource_dir().unwrap();

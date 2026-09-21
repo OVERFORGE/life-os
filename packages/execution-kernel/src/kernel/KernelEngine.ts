@@ -53,6 +53,7 @@ import { KernelDiagnosticsEngine } from "../diagnostics/KernelDiagnosticsEngine"
 
 export interface HandleInput {
   userId: string;
+  userName?: string;
   conversationId?: string;
   message: string;
   model?: string;

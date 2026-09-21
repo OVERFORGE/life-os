@@ -59,8 +59,8 @@ export default function ChatInput({ onSend, loading, onVoiceClick }: Props) {
           type="button"
           onClick={onVoiceClick}
           disabled={loading}
-          title="Start Realtime Voice Call"
-          className="ml-2 p-2.5 rounded-xl bg-[#2A2B2F] transition-all hover:bg-indigo-600/30 hover:border-indigo-500/50 border border-transparent hover:text-indigo-300 text-gray-300 disabled:opacity-50 active:scale-95"
+          title="Start Realtime Voice Call (Full-Duplex)"
+          className="ml-2 p-2.5 rounded-xl bg-[#2A2B2F] transition-all hover:bg-[#E8414A]/20 hover:border-[#E8414A]/40 border border-transparent hover:text-[#F9A8AC] text-gray-300 disabled:opacity-50 active:scale-95"
         >
           <Mic size={18} />
         </button>

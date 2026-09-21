@@ -40,6 +40,7 @@ export interface ActionPreconditions {
 
 export interface ActionProposal<TPayload = any> {
   id: string;
+  operationId?: string;
   domain: "productivity" | "health" | "wellness" | "context";
   actionType: DomainActionType;
   targetEntityId?: string;
@@ -64,6 +65,9 @@ export type ActionExecutionStatus =
   | "EXECUTING"
   | "SUCCEEDED"
   | "FAILED"
+  | "PARTIALLY_SUCCEEDED"
+  | "REJECTED"
+  | "NEEDS_CLARIFICATION"
   | "RECONCILING"
   | "COMPENSATING"
   | "COMPENSATED"
@@ -71,6 +75,7 @@ export type ActionExecutionStatus =
 
 export interface KernelExecutionResult<TData = any> {
   actionId: string;
+  operationId?: string;
   idempotencyKey: string;
   actionType: DomainActionType;
   status: ActionExecutionStatus;

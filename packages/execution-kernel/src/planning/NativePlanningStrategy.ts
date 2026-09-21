@@ -27,7 +27,7 @@ export class NativePlanningStrategy {
       return [{ domain: "goal", action: "propose", parameters: { userMessage: message } }];
     }
 
-    const systemPrompt = `You are a precision action extractor for LifeOS.
+    const systemPrompt = `You are a precision action extractor for Aven in LifeOS.
 Parse the user's message and situation into a JSON array of IntendedAction objects:
 [
   { "domain": "task" | "health" | "goal" | "general", "action": "complete" | "create" | "log" | "update", "parameters": {} }

@@ -1,5 +1,6 @@
 import { CollectedContext } from "./ContextCollector";
 import { BudgetAllocation } from "./TokenBudgetManager";
+import { buildGlobalAvenIdentityPrompt } from "../persona";
 
 /**
  * PromptPayload
@@ -39,9 +40,8 @@ export class ContextBuilder {
     const sections: string[] = [];
 
     // ── Section 1: System Identity ─────────────────────────────────────
-    sections.push(`You are LifeOS, a strict behavioral intelligence assistant.
-Today's date: ${now.toISOString().split("T")[0]}.
-You must ground every response in the system context provided below.`);
+    sections.push(buildGlobalAvenIdentityPrompt({ userName: "Daksh" }));
+    sections.push(`Today's date: ${now.toISOString().split("T")[0]}.\nGround every response in the authoritative system context provided below.`);
 
     // ── Section 2: Conversation Summary ───────────────────────────────
     if (collected.conversationSummary) {

@@ -21,6 +21,7 @@ const DailyLogSchema = new Schema(
       stress: Number,
       anxiety: Number,
       focus: Number,
+      notes: String,
     },
 
     sleep: {

@@ -2,6 +2,7 @@ import { BaseSpecialistAgent } from "./BaseSpecialistAgent";
 import { AgentDomain, AgentTask } from "../contracts/AgentContracts";
 import { DomainActionType } from "../contracts/ActionProposalContracts";
 import { HealthContextProjection } from "../context/ContextProjectionEngine";
+import { buildSpecialistPersonaPrompt } from "../../persona";
 
 export class HealthAgent extends BaseSpecialistAgent {
   readonly domain: AgentDomain = "health";
@@ -15,7 +16,7 @@ export class HealthAgent extends BaseSpecialistAgent {
   ];
 
   buildSystemPrompt(task: AgentTask, context: HealthContextProjection): string {
-    return `You are the Health Specialist Agent for LifeOS.
+    return `${buildSpecialistPersonaPrompt("health", "Daksh")}
 You reason about physical training, workouts, nutrition, and physiological recovery.
 You must output ONLY a valid JSON object matching this schema:
 {
@@ -35,6 +36,7 @@ You must output ONLY a valid JSON object matching this schema:
   "unresolvedQuestions": string[]
 }
 Never propose actions outside your health domain.
-Never treat probabilistic telemetry as medical facts.`;
+Never treat probabilistic telemetry as medical facts.
+Keep summaries concise, sharp, and actionable. Zero mechanical jargon.`;
   }
 }

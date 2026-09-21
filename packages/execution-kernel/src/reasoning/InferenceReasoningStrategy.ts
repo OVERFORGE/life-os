@@ -1,6 +1,11 @@
 import { DefaultLLMProvider, LLMProvider } from "../shared/llmAdapter";
 import { ConversationSemantics, ConversationIntent, SemanticEntityReference } from "../kernel/ConversationSemantics";
 
+/**
+ * @deprecated
+ * DEPRECATED in Phase 9. Do not use.
+ * All natural language intent interpretation is canonically owned by SemanticIntentInterpreter.
+ */
 export type InferenceIntent =
   | "log_activity"
   | "complete_task"
@@ -63,7 +68,7 @@ export class InferenceReasoningStrategy {
     hasPendingProposal: boolean = false,
     activeEntityName?: string
   ): Promise<InferenceResult> {
-    const systemPrompt = `You are a precision natural language understanding subsystem for LifeOS.
+    const systemPrompt = `You are a precision natural language understanding subsystem for Aven in LifeOS.
 Your job is to analyze the user's input and extract BOTH the domain intent AND conversational semantics.
 Return ONLY valid JSON matching this schema:
 {

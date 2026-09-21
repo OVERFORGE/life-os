@@ -1,4 +1,5 @@
 import { AgentDomain } from "../contracts/AgentContracts";
+import { SemanticTurn } from "../contracts/SemanticTurnContracts";
 import { FastPathExecutor } from "./FastPathExecutor";
 
 export type RoutingStrategy = "FAST_PATH" | "CONVERSATIONAL_LLM" | "SINGLE_SPECIALIST" | "MULTI_AGENT";
@@ -15,13 +16,44 @@ export interface RoutingDecision {
  * DynamicRouter
  * 
  * Classifies user intent and routes to Fast-Path, Conversational LLM, Single-Specialist, or Multi-Agent ReAct.
- * Invariant: Conversational dialogue is handled directly by LLM semantic comprehension without hardcoded regexes.
+ * Invariant: Guided primarily by canonical SemanticTurn operations; no regex intent guessing when SemanticTurn is present.
  */
 export class DynamicRouter {
   constructor(private fastPath: FastPathExecutor) {}
 
-  route(message: string): RoutingDecision {
-    // 1. Check Fast Path for deterministic mutation commands
+  route(message: string, semanticTurn?: SemanticTurn): RoutingDecision {
+    // If structured SemanticTurn is provided, route directly from canonical semantic operations
+    if (semanticTurn) {
+      if (semanticTurn.primaryClassification === "CANCEL_OR_DISMISS" || semanticTurn.operations.length === 0) {
+        return {
+          strategy: "CONVERSATIONAL_LLM",
+          confidence: 1.0,
+          rationale: "Conversational dialogue, negation, or query routed to Aven persona",
+        };
+      }
+
+      const domains = Array.from(new Set(semanticTurn.operations.map((o) => o.domain))) as AgentDomain[];
+      if (domains.length >= 2) {
+        return {
+          strategy: "MULTI_AGENT",
+          selectedSpecialists: domains,
+          confidence: 0.95,
+          rationale: `Multi-domain intent from SemanticTurn: [${domains.join(", ")}]`,
+        };
+      }
+
+      return {
+        strategy: "SINGLE_SPECIALIST",
+        targetDomain: domains[0] || "productivity",
+        selectedSpecialists: domains,
+        confidence: 0.95,
+        rationale: `Single-domain intent from SemanticTurn: ${domains[0] || "productivity"}`,
+      };
+    }
+
+    // 1. Check Fast Path for deterministic mutation commands (legacy fallback: DEPRECATED)
+    // Invariant: In V2/V3 architecture, routing is strictly driven by canonical SemanticTurn
+    console.warn("[DEPRECATION_WARNING] DynamicRouter.route() called without SemanticTurn. String regex routing is deprecated.");
     if (this.fastPath.canHandle(message)) {
       return {
         strategy: "FAST_PATH",

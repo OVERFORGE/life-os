@@ -19,7 +19,7 @@ function parseIngredients(description: string): { name: string; quantity: number
     return results;
 }
 
-export async function handleLogMeal(payload: { description: string; date?: string }, userId: string) {
+export async function handleLogMeal(payload: { description: string; date?: string; items?: any[]; totalCalories?: number; mealType?: any }, userId: string) {
     const user = await User.findById(userId).select("settings").lean();
     const today = payload.date || getActiveDate(user?.settings?.timezone);
     const isHistoricalLog = !!payload.date;
@@ -28,6 +28,84 @@ export async function handleLogMeal(payload: { description: string; date?: strin
     }
 
     const desc = payload.description?.toLowerCase() || "";
+
+    // ─── Path 0: Pre-structured items (e.g. from domain intelligence) ────────
+    if (payload.items && Array.isArray(payload.items) && payload.items.length > 0) {
+        const structuredMeals: any[] = [];
+        let addedCals = 0, addedProtein = 0, addedCarbs = 0, addedFats = 0;
+
+        for (const it of payload.items) {
+            const itemName = it.name || "Food Item";
+            let foodDoc = await FoodItem.findOne({ userId, name: new RegExp(`^${itemName}$`, "i") });
+            if (!foodDoc) {
+                foodDoc = await FoodItem.create({
+                    userId,
+                    name: itemName,
+                    baseWeight: it.amount || 100,
+                    macros: {
+                        calories: it.calories || 100,
+                        protein: it.protein || 5,
+                        carbs: it.carbs || 10,
+                        fats: it.fats || 3,
+                    }
+                });
+            }
+
+            const itemCals = Math.round(it.calories ?? foodDoc.macros.calories);
+            const itemProtein = parseFloat((it.protein ?? foodDoc.macros.protein).toFixed(1));
+            const itemCarbs = parseFloat((it.carbs ?? foodDoc.macros.carbs).toFixed(1));
+            const itemFats = parseFloat((it.fats ?? foodDoc.macros.fats).toFixed(1));
+
+            structuredMeals.push({
+                mealType: payload.mealType || "snack",
+                foodItemId: foodDoc._id,
+                amount: it.amount || foodDoc.baseWeight || 100,
+                macros: {
+                    calories: itemCals,
+                    protein: itemProtein,
+                    carbs: itemCarbs,
+                    fats: itemFats,
+                }
+            });
+
+            addedCals += itemCals;
+            addedProtein += itemProtein;
+            addedCarbs += itemCarbs;
+            addedFats += itemFats;
+        }
+
+        const existing = await NutritionLog.findOne({ userId, date: today });
+        const existingMeals = existing?.meals || [];
+        const existingTotals = existing?.dailyTotals || { calories: 0, protein: 0, carbs: 0, fats: 0 };
+        const updatedTotals = {
+            calories: Math.round((existingTotals.calories || 0) + addedCals),
+            protein: parseFloat(((existingTotals.protein || 0) + addedProtein).toFixed(1)),
+            carbs: parseFloat(((existingTotals.carbs || 0) + addedCarbs).toFixed(1)),
+            fats: parseFloat(((existingTotals.fats || 0) + addedFats).toFixed(1)),
+        };
+
+        await NutritionLog.findOneAndUpdate(
+            { userId, date: today },
+            { meals: [...existingMeals, ...structuredMeals], dailyTotals: updatedTotals },
+            { upsert: true, new: true }
+        );
+        await DailyLog.findOneAndUpdate(
+            { userId, date: today },
+            { $set: { "physical.calories": updatedTotals.calories } },
+            { upsert: true }
+        );
+
+        return {
+            type: "log_meal",
+            success: true,
+            data: {
+                itemsLogged: structuredMeals.length,
+                totalCaloriesAdded: addedCals,
+                newDayTotal: updatedTotals.calories,
+                message: `Logged ${structuredMeals.length} item(s) (${addedCals} kcal). Day total: ${updatedTotals.calories} kcal.`
+            }
+        };
+    }
 
     // ─── Path 1: Template matching ───────────────────────────────────────
     // If description sounds like a template (no numbers) → try fuzzy template name match
@@ -56,7 +134,7 @@ export async function handleLogMeal(payload: { description: string; date?: strin
         const cleanedWords = cleaned.split(" ").filter(w => w.length > 2);
 
         // Best-match: score each food item; highest overlap wins (avoids short names beating specific ones)
-        let directMatch: (typeof library)[0] | undefined;
+        let directMatch: any;
         let bestScore = 0;
         for (const f of library) {
             const fname = f.name.toLowerCase();
@@ -75,11 +153,18 @@ export async function handleLogMeal(payload: { description: string; date?: strin
         }
 
         if (!directMatch) {
-            return {
-                type: "log_meal",
-                success: false,
-                error: `Could not find "${cleaned}" in your food library. Make sure the name matches something you've saved, or provide a quantity (e.g. "1 ghee grilled chicken").`
-            };
+            // Auto-create on-demand FoodItem for uncataloged item
+            directMatch = await FoodItem.create({
+                userId,
+                name: cleaned || "Custom Meal",
+                baseWeight: 150,
+                macros: {
+                    calories: payload.totalCalories || 250,
+                    protein: 12,
+                    carbs: 30,
+                    fats: 8,
+                }
+            });
         }
 
         // Default: 1 serving = 1 baseWeight

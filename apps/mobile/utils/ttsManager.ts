@@ -39,18 +39,22 @@ function sanitizeSpeechText(text: string): string {
     .trim();
 }
 
+export function isAudioSpeaking(): boolean {
+  return soundObj !== null;
+}
+
 /**
  * Streams studio-grade neural voice synthesis from the LifeOS backend via expo-av.
  * Falls back to expo-speech if offline or network unreachable.
  */
-export async function speakAndListen(text: string, onFinish: () => void, voice: string = 'en-US-JennyNeural') {
+export async function speakAndListen(text: string, onFinish: () => void, voice: string = 'en-GB-RyanNeural') {
   try {
-    // 1. Configure audio mode for high-fidelity playback
+    // 1. Configure audio mode for high-fidelity playback while allowing microphone capture (full-duplex)
     await Audio.setAudioModeAsync({
-      allowsRecordingIOS: false,
+      allowsRecordingIOS: true,
       playsInSilentModeIOS: true,
       staysActiveInBackground: true,
-      shouldDuckAndroid: true,
+      shouldDuckAndroid: false,
     });
 
     const cleanText = sanitizeSpeechText(text);

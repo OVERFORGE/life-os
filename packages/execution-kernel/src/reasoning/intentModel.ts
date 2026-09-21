@@ -1,5 +1,9 @@
 // ============================================================
-// 🎯 LLM-BASED INTENT CLASSIFIER
+// @deprecated
+// DEPRECATED in Phase 9. Do not use.
+// All natural language intent interpretation is canonically owned by SemanticIntentInterpreter.
+// ============================================================
+// 🎯 LLM-BASED INTENT CLASSIFIER (LEGACY V2)
 //
 // Architecture:
 //   - Stage 1: Hard guards — fast, zero-cost checks for states

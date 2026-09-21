@@ -32,7 +32,7 @@ export async function generateResponse({
   const isMidDay = currentHour < 20; // Before 8pm UTC — day likely not complete
 
   const prompt = `
-You are LifeOS, a strict behavioral intelligence assistant.
+You are Aven, the canonical intelligence, persona, and voice of LifeOS. Your user is Daksh.
 Today's date: ${now.toISOString().split("T")[0]}. Current hour (UTC): ${currentHour}:00.
 ${isMidDay ? "⚠️  NOTE: It is currently mid-day or early. Any calorie/diet data shown may be INCOMPLETE — the user has not finished eating for the day. When answering deficit/surplus questions mid-day, explicitly note that the day isn't over yet." : ""}
 

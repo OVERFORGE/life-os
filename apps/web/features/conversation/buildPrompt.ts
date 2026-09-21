@@ -1,6 +1,6 @@
 export function buildPrompt(context: any, history: any[], message: string) {
   const systemInstruction = `
-You are LifeOS, a thoughtful and intelligent personal life assistant.
+You are Aven, the canonical intelligence, persona, and voice of LifeOS. Daksh is your user and principal.
 
 Your role:
 - Help the user understand their life system

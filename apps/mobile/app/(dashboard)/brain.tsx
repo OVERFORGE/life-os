@@ -4,7 +4,7 @@ import {
   View, Text, TouchableOpacity, TextInput, FlatList,
   ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, Image
 } from 'react-native';
-import { Bot, ArrowUp, Copy, Check, ArrowDown, Mic, X, MicOff } from 'lucide-react-native';
+import { Bot, ArrowUp, Copy, Check, ArrowDown, Mic, X, MicOff, Volume2 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import { fetchWithAuth, API_URL } from '../../utils/api';
@@ -215,18 +215,55 @@ export default function BrainScreen() {
             return copy;
           });
           
-          // Handle TTS and auto-listen if in voice-enabled location
+          // Handle TTS and full-duplex barge-in listening if in voice-enabled location
           const isVoiceAllowed = await isVoiceAssistantEnabledAtCurrentLocation();
           if (isVoiceAllowed && parsed.trim().length > 0) {
             voiceCancelledRef.current = false;
             setIsSpeaking(true);
+
+            // 1. Start assistant neural audio playback
             speakAndListen(parsed.trim(), () => {
               setIsSpeaking(false);
-              // Only auto-listen if user hasn't cancelled
+              // Only auto-listen if user hasn't cancelled or interrupted
               if (!voiceCancelledRef.current && (Platform.OS === 'android' || Platform.OS === 'ios')) {
                 startVoiceInput();
               }
             });
+
+            // 2. Concurrently monitor microphone for full-duplex speech barge-in
+            voiceRecorder.startRecording(
+              async (uri) => {
+                setIsRecording(false);
+                if (!uri || voiceCancelledRef.current) {
+                  setInput('');
+                  return;
+                }
+                setInput('Thinking...');
+                const { text } = await transcribeAudio(uri);
+                if (text) {
+                  const cleaned = text.trim();
+                  const isJunk = cleaned.length <= 2 || /^[.\s,!?]+$/.test(cleaned);
+                  if (!isJunk) {
+                    setInput('');
+                    await sendMessage(cleaned);
+                  } else {
+                    setInput('');
+                  }
+                } else {
+                  setInput('');
+                }
+              },
+              {
+                isBargeIn: true,
+                onBargeIn: () => {
+                  console.log('[BRAIN] Full-duplex barge-in detected! Silencing assistant immediately...');
+                  stopSpeaking();
+                  setIsSpeaking(false);
+                  setIsRecording(true);
+                  setInput('Listening...');
+                },
+              }
+            );
           }
           scheduleAllTaskReminders().catch(console.error);
         } else {
@@ -260,7 +297,7 @@ export default function BrainScreen() {
     setIsRecording(false);
     setInput('');
     stopSpeaking();
-    voiceRecorder.stopRecording();
+    voiceRecorder.cancelRecording();
   };
 
   const startVoiceInput = async () => {
@@ -277,7 +314,7 @@ export default function BrainScreen() {
         setInput('');
         return;
       }
-      setInput('Transcribing...');
+      setInput('Thinking...');
       const { text, error } = await transcribeAudio(uri);
       
       if (text) {
@@ -329,10 +366,10 @@ export default function BrainScreen() {
               />
             </View>
             <Text style={{ color: C.text, fontSize: 18, fontWeight: '900', textAlign: 'center', marginBottom: 8 }}>
-              Talk to LifeOS
+              Talk to Aven
             </Text>
             <Text style={{ color: C.muted, fontSize: 14, textAlign: 'center', lineHeight: 20 }}>
-              Ask me anything about your goals, habits, daily logs, or let me help you plan your next move.
+              Your execution intelligence inside LifeOS. Ask about your commitments, state, routines, or plan your next step.
             </Text>
           </View>
         ) : (
@@ -413,12 +450,45 @@ export default function BrainScreen() {
           }}
         />
 
+        {/* Full-Duplex Speaking & Listening Status Banner */}
+        {isSpeaking && (
+          <TouchableOpacity
+            onPress={cancelVoice}
+            activeOpacity={0.8}
+            style={{
+              flexDirection: 'row',
+              alignItems: 'center',
+              justifyContent: 'space-between',
+              backgroundColor: 'rgba(232,65,74,0.15)',
+              borderColor: 'rgba(232,65,74,0.4)',
+              borderWidth: 1,
+              borderRadius: 16,
+              paddingHorizontal: 14,
+              paddingVertical: 8,
+              marginBottom: 10,
+            }}
+          >
+            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
+              <Volume2 size={16} color={C.primary} />
+              <Text style={{ color: C.text, fontSize: 13, fontWeight: '700' }}>
+                Aven Speaking...
+              </Text>
+              <Text style={{ color: C.subtext, fontSize: 11 }}>
+                (Speak or tap to interrupt)
+              </Text>
+            </View>
+            <View style={{ backgroundColor: 'rgba(232,65,74,0.3)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
+              <Text style={{ color: C.text, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>STOP</Text>
+            </View>
+          </TouchableOpacity>
+        )}
+
         {/* Text input row */}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, paddingLeft: 18, paddingRight: 8, paddingVertical: 8 }}>
           <TextInput
             value={input}
             onChangeText={setInput}
-            placeholder="Message LifeOS..."
+            placeholder="Message Aven..."
             placeholderTextColor={C.muted}
             style={{ flex: 1, color: C.text, fontSize: 16, paddingVertical: 6, maxHeight: 120, minHeight: 30 }}
             multiline

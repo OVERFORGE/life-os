@@ -28,6 +28,7 @@ export async function POST(req: Request) {
   try {
     const session = await getAuthSession();
     let userId = (session?.user as any)?.id;
+    let userName = (session?.user as any)?.name;
 
     if (!userId && process.env.NODE_ENV !== "production") {
       await connectDB();
@@ -35,11 +36,22 @@ export async function POST(req: Request) {
       const firstUser = await User.findOne().lean();
       if (firstUser) {
         userId = (firstUser as any)._id.toString();
+        userName = (firstUser as any).name;
       }
     }
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
+    }
+
+    if (!userName && userId) {
+      try {
+        const { User } = await import("@/server/db/models/User");
+        const user = await User.findById(userId).select("name").lean();
+        if (user && (user as any).name) {
+          userName = (user as any).name;
+        }
+      } catch (_) {}
     }
 
     const { message, model, mode = "general" } = await req.json();
@@ -53,6 +65,7 @@ export async function POST(req: Request) {
     // Stream execution response directly from LifeOSApplication.conversation
     return await LifeOSApplication.conversation.executeUserRequest({
       userId,
+      userName,
       message,
       model,
       mode,

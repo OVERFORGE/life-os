@@ -48,6 +48,7 @@ export class ConversationService {
   async executeUserRequestV3(input: HandleInput): Promise<SupervisorResponse> {
     return await this.supervisor.processRequest({
       userId: input.userId,
+      userName: input.userName,
       conversationId: input.conversationId,
       message: input.message,
     });
@@ -59,35 +60,7 @@ export class ConversationService {
    */
   async executeUserRequest(input: HandleInput): Promise<Response> {
     try {
-      const routingDecision = this.supervisor.getRouter().route(input.message);
-
-      // Fast Path: synchronous deterministic execution (< 100ms) with diagnostic headers
-      if (routingDecision.strategy === "FAST_PATH") {
-        const supervisorResult = await this.executeUserRequestV3(input);
-        this.persistTurnAsync(input, supervisorResult.response);
-
-        const stream = new ReadableStream({
-          start(controller) {
-            controller.enqueue(new TextEncoder().encode(supervisorResult.response));
-            controller.close();
-          },
-        });
-
-        return new Response(stream, {
-          headers: {
-            "Content-Type": "text/plain; charset=utf-8",
-            "x-lifeos-request-id": supervisorResult.requestId || "",
-            "x-lifeos-route": supervisorResult.routingDecision.strategy,
-            "x-lifeos-execution-id": supervisorResult.executionId,
-            "x-lifeos-memory-snapshot-id": supervisorResult.executionId,
-            "x-lifeos-duration-ms": String(supervisorResult.durationMs),
-            "x-lifeos-actions-count": String(supervisorResult.actionsExecuted),
-            "x-lifeos-termination-reason": supervisorResult.terminationReason || "COMPLETED",
-          },
-        });
-      }
-
-      // Progressive streaming execution for Conversational and Cognitive Specialist branches
+      // Canonical V2/V3 Execution: Route 100% of user utterances through Supervisor
       const encoder = new TextEncoder();
       let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
 
@@ -101,6 +74,7 @@ export class ConversationService {
       this.supervisor
         .processRequest({
           userId: input.userId,
+          userName: input.userName,
           conversationId: input.conversationId,
           message: input.message,
           onChunk: (chunk: string) => {
@@ -131,13 +105,12 @@ export class ConversationService {
           "Content-Type": "text/plain; charset=utf-8",
           "Transfer-Encoding": "chunked",
           "Cache-Control": "no-cache",
-          "x-lifeos-route": routingDecision.strategy,
+          "x-lifeos-route": "CANONICAL_SEMANTIC",
         },
       });
     } catch (err: any) {
-      console.warn("V3 Supervisor encountered an error, evaluating legacy fallback:", err);
-      // Fallback to legacy KernelEngine if enabled
-      return KernelEngine.handle(input);
+      console.error("[CONVERSATION_SERVICE] Fatal routing error:", err);
+      throw err;
     }
   }
 

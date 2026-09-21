@@ -6,9 +6,14 @@ import { ProductionTracer, ProductionTraceContext } from "../observability/Produ
 import { generateId } from "../../shared/ids";
 import { groqChat, cleanLLMResponse } from "../../shared/groq";
 import { ConversationManager } from "../../kernel/ConversationManager";
+import { buildSupervisorPersonaPrompt, AVEN_IDENTITY, extractFirstName } from "../../persona";
+import { SemanticIntentInterpreter } from "../semantic/SemanticIntentInterpreter";
+import { ActionProposal } from "../contracts/ActionProposalContracts";
+import { KernelCapabilityService } from "../kernel/KernelCapabilityService";
 
 export interface SupervisorRequest {
   userId: string;
+  userName?: string;
   message: string;
   conversationId?: string;
   requestId?: string;
@@ -29,12 +34,12 @@ export interface SupervisorResponse {
 }
 
 /**
- * Supervisor (Chief of Staff)
+ * Supervisor (Aven Orchestration Authority)
  * 
  * Central cognitive orchestration authority for LifeOS.
- * Owns intake, routing, workspace lifecycle, specialist coordination, and user communication.
+ * Operates as Aven: reasoning over state, coordinating specialists, and communicating with the user.
  * Invariant 1: Supervisor proposes decisions and asks the kernel to execute; never owns truth directly.
- * Invariant 28: Zero DAG terminology leaked to the end user.
+ * Invariant 28: Zero internal mechanical terminology leaked to the end user.
  */
 export class Supervisor {
   private static instance: Supervisor;
@@ -42,7 +47,8 @@ export class Supervisor {
   constructor(
     private router: DynamicRouter,
     private fastPath: FastPathExecutor,
-    private reactOrchestrator: ReActOrchestrator
+    private reactOrchestrator: ReActOrchestrator,
+    private kernel?: any
   ) {}
 
   getRouter(): DynamicRouter {
@@ -62,7 +68,7 @@ export class Supervisor {
     const fastPath = new FastPathExecutor(kernel);
     const router = new DynamicRouter(fastPath);
     const reactOrchestrator = ReActOrchestrator.createDefault(kernel);
-    return new Supervisor(router, fastPath, reactOrchestrator);
+    return new Supervisor(router, fastPath, reactOrchestrator, kernel);
   }
 
   async processRequest(req: SupervisorRequest): Promise<SupervisorResponse> {
@@ -70,10 +76,156 @@ export class Supervisor {
     const executionId = generateId("exec");
     const requestId = req.requestId || generateId("req");
 
-    // 1. Dynamic Routing Decision
-    const routingDecision = this.router.route(req.message);
+    // 1. Authoritative Semantic Interpretation via Aven
+    const interpreter = SemanticIntentInterpreter.getInstance();
+    const semanticTurn = await interpreter.interpret(req.message, {
+      userId: req.userId,
+      conversationId: req.conversationId,
+      knownTasks: req.knownTasks,
+    });
 
-    // 2. Fast Path Execution Branch (<= 1000ms)
+    // 2. Dynamic Routing Decision informed by SemanticTurn
+    const routingDecision = this.router.route(req.message, semanticTurn);
+
+    // 3. User Cancellation or Retraction Branch
+    if (semanticTurn.primaryClassification === "CANCEL_OR_DISMISS") {
+      const response = "Understood. I've cancelled that.";
+      req.onChunk?.(response);
+      const traceContext = ProductionTracer.getInstance().recordTrace({
+        requestId,
+        executionId,
+        userId: req.userId,
+        actionIds: [],
+        eventIds: [],
+        durationMs: Date.now() - startTime,
+        routingStrategy: "CONVERSATIONAL_LLM",
+        terminationReason: "CANCELLED_BY_USER",
+        timestamp: Date.now(),
+      });
+      return {
+        executionId,
+        requestId,
+        routingDecision,
+        response,
+        durationMs: Date.now() - startTime,
+        actionsExecuted: 0,
+        workspaceStatus: "COMPLETED",
+        terminationReason: "CANCELLED_BY_USER",
+        traceContext,
+      };
+    }
+
+    // 3b. Clarification / Ambiguity Interception (Zero state mutations when ambiguous)
+    if (semanticTurn.clarification?.required && semanticTurn.clarification.questionToUser) {
+      const response = semanticTurn.clarification.questionToUser;
+      req.onChunk?.(response);
+      const traceContext = ProductionTracer.getInstance().recordTrace({
+        requestId,
+        executionId,
+        userId: req.userId,
+        actionIds: [],
+        eventIds: [],
+        durationMs: Date.now() - startTime,
+        routingStrategy: "CONVERSATIONAL_LLM",
+        terminationReason: "AWAITING_CLARIFICATION",
+        timestamp: Date.now(),
+      });
+      return {
+        executionId,
+        requestId,
+        routingDecision,
+        response,
+        durationMs: Date.now() - startTime,
+        actionsExecuted: 0,
+        workspaceStatus: "COMPLETED",
+        terminationReason: "AWAITING_CLARIFICATION",
+        traceContext,
+      };
+    }
+
+    // 4. Semantic Operations Execution via Sovereign Kernel
+    if (semanticTurn.operations.length > 0) {
+      const proposals: ActionProposal[] = semanticTurn.operations.map((op, idx) => ({
+        id: `prop_${op.operationId}_${Date.now()}_${idx}`,
+        planId: `plan_${executionId}`,
+        actionType: op.actionType,
+        domain: op.domain,
+        riskClass: op.riskClass,
+        reversibility: op.riskClass === "HIGH_IRREVERSIBLE" ? "irreversible_external" : op.riskClass === "MEDIUM_COMPENSABLE" ? "reversible_with_compensation" : "atomic_single_doc",
+        state: "PROPOSED",
+        title: op.payload?.title || op.payload?.description || op.actionType,
+        rationale: semanticTurn.conversationalSummary,
+        payload: op.payload,
+        targetEntityId: op.targetReference?.resolvedEntityId,
+        requiresConfirmation: op.executionEligibility === "REQUIRES_CLARIFICATION",
+        estimatedImpact: op.actionType,
+        idempotencyKey: `${executionId}_${op.operationId}`,
+        dependencies: op.dependencies,
+      }));
+
+      const kernel = this.kernel || KernelCapabilityService.getInstance();
+      const validation = await kernel.validateActionProposals(req.userId, proposals);
+      const kernelResults = await kernel.executeActionBatch(req.userId, validation.validDecisions);
+      const successfulExecutions = kernelResults.filter((r: any) => r.success);
+
+      // Synthesize grounded truthful user response via GroundedResponseGenerator
+      const { GroundedResponseGenerator } = await import("../grounding/GroundedResponseGenerator");
+      let response = GroundedResponseGenerator.getInstance().generateResponse(
+        semanticTurn,
+        kernelResults,
+        { userMessage: req.message, conversationalSummary: semanticTurn.conversationalSummary }
+      );
+
+      if (validation.rejectedProposals.length > 0) {
+        const rejectionNotes = validation.rejectedProposals.map((r: any) => `Could not proceed: ${r.reason}`).join(" ");
+        response = response ? `${response} ${rejectionNotes}` : rejectionNotes;
+      }
+
+      req.onChunk?.(response);
+
+      const actionIds = kernelResults.map((r: any) => r.actionId);
+      const traceContext = ProductionTracer.getInstance().recordTrace({
+        requestId,
+        executionId,
+        userId: req.userId,
+        actionIds,
+        eventIds: [],
+        durationMs: Date.now() - startTime,
+        routingStrategy: routingDecision.strategy,
+        terminationReason: "GOAL_SATISFIED",
+        timestamp: Date.now(),
+      });
+
+      return {
+        executionId,
+        requestId,
+        routingDecision,
+        response,
+        durationMs: Date.now() - startTime,
+        actionsExecuted: successfulExecutions.length,
+        workspaceStatus: "COMPLETED",
+        terminationReason: "GOAL_SATISFIED",
+        traceContext,
+      };
+    }
+
+    // 5. Clarification Prompt Branch
+    if (semanticTurn.clarification?.required && semanticTurn.clarification.questionToUser) {
+      const response = semanticTurn.clarification.questionToUser;
+      req.onChunk?.(response);
+      return {
+        executionId,
+        requestId,
+        routingDecision,
+        response,
+        durationMs: Date.now() - startTime,
+        actionsExecuted: 0,
+        workspaceStatus: "COMPLETED",
+        terminationReason: "CLARIFICATION_REQUIRED",
+      };
+    }
+
+    // 6. Fast Path Execution Branch (Fallback <= 1000ms)
     if (routingDecision.strategy === "FAST_PATH") {
       const fastContext: FastPathContext = {
         executionId,
@@ -133,18 +285,28 @@ export class Supervisor {
         // Non-blocking fallback if conversation history cannot be retrieved
       }
 
+      // Resolve dynamic user name: from request or authoritative profile
+      let resolvedUserName = req.userName?.trim();
+      if (!resolvedUserName && req.userId) {
+        try {
+          const { User } = await import("@/server/db/models/User");
+          const user = await User.findById(req.userId).select("name").lean();
+          if (user && (user as any).name) {
+            resolvedUserName = (user as any).name.trim();
+          }
+        } catch (_) {
+          // Non-blocking fallback
+        }
+      }
+      const activeUserName = extractFirstName(resolvedUserName || AVEN_IDENTITY.defaultUserName || "Daksh");
+
       const systemPrompt =
-        "You are the LifeOS Chief of Staff — a charismatic, proactive, articulate executive partner and culinary advisor. " +
-        "Communicate with warmth, energy, and vivid clarity. You assist the user with productivity, habits, wellness, recipes, and daily life. " +
-        "CRITICAL FORMATTING RULES FOR SPOKEN VOICE & CONVERSATION: " +
-        "1. NEVER output markdown tables, pipe grids (|), or ASCII divider lines (---). Tables cannot be spoken aloud and break voice synthesis. " +
-        "2. When explaining recipes, cooking, or instructions, present it like a passionate TV chef: " +
-        "   - Start with an exciting 1-sentence hook describing why the dish is delicious. " +
-        "   - List ingredients cleanly using bullet points with everyday spoken measurements (e.g., '1 pound chicken thighs cut into bite-sized cubes', '2 tablespoons soy sauce'). " +
-        "   - Give 3 to 4 clear, numbered step-by-step cooking instructions (Step 1, Step 2, Step 3, Step 4) in active, spoken English. " +
-        "   - Finish with a pro chef tip for serving. " +
-        "3. Every sentence must end with clear punctuation (. or !) so voice synthesis streams and speaks aloud smoothly. " +
-        "4. When the user interrupts, asks you to stop, pause, hold on, or changes the topic mid-conversation: acknowledge gracefully in 1 friendly sentence (e.g., 'Holding right here. Take your time, what would you like to focus on?' or 'Paused. Whenever you are ready, let me know.') and address their new topic or wait for their lead. Never repeat previous unrequested content. " +
+        buildSupervisorPersonaPrompt(activeUserName) +
+        "\n\nCRITICAL FORMATTING RULES FOR SPOKEN VOICE & CONVERSATION:\n" +
+        "1. NEVER output markdown tables, pipe grids (|), or ASCII divider lines (---). Tables cannot be spoken aloud and break voice synthesis.\n" +
+        "2. When explaining instructions, recipes, or workflows, keep them concise, structured with clear steps, and spoken naturally in active English.\n" +
+        "3. Every sentence must end with clear punctuation (. or !) so voice synthesis streams and speaks aloud smoothly.\n" +
+        "4. When the user interrupts or asks to pause/hold on, acknowledge gracefully in 1 composed sentence and wait for their direction.\n" +
         "5. Never output internal thought tags, raw JSON, or robotic preamble.";
 
       const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
@@ -174,11 +336,12 @@ export class Supervisor {
         if (lowerMsg.includes("recipe") || lowerMsg.includes("cook") || lowerMsg.includes("chicken")) {
           responseText = "Here is a quick chili chicken recipe: sauté bite-sized chicken with soy sauce and cornstarch until golden, stir-fry with garlic, ginger, and chili peppers, then toss in a sweet-spicy chili glaze and garnish with green onions.";
         } else if (lowerMsg.includes("hello") || lowerMsg.includes("hi") || lowerMsg.includes("hey")) {
-          responseText = "Hello! I'm ready to assist you. What would you like to focus on today?";
+          responseText = `Hey, ${activeUserName}. What's on your mind?`;
         } else {
-          responseText = "I'm listening and ready to help. What's the next step you'd like to take?";
+          responseText = "I'm with you. What are we working on?";
         }
       }
+
 
       const durationMs = Date.now() - startTime;
       const traceContext = ProductionTracer.getInstance().recordTrace({
@@ -250,7 +413,8 @@ export class Supervisor {
       contextualGoal,
       workspace,
       undefined,
-      targetSpecialists
+      targetSpecialists,
+      semanticTurn
     );
 
     // Emit final synthesis summary as Chunk 1
@@ -292,7 +456,7 @@ export class Supervisor {
   }
 
   /**
-   * Generates a warm, articulate, British Chief of Staff (Jarvis) executive acknowledgement
+   * Generates a composed, sharp executive acknowledgement as Aven
    * when entering cognitive specialist reasoning or multi-agent planning.
    */
   private getExecutiveAcknowledgement(message: string, decision: RoutingDecision): string {
@@ -301,10 +465,10 @@ export class Supervisor {
     // 1. Action confirmation & execution
     if (/\b(implement|execute|confirm|apply|commit|do it|go ahead|proceed|approve|make it so|sounds good|looks good)\b/i.test(lower)) {
       const options = [
-        "Understood, putting that into action now.",
-        "Right away, applying those updates for you.",
-        "On it, executing that for you now.",
-        "Understood, taking care of that right away.",
+        "Understood. Putting that into action.",
+        "Applying those updates now.",
+        "Executing that now.",
+        "Understood. Taking care of that now.",
       ];
       return options[Math.floor(Math.random() * options.length)];
     }
@@ -312,10 +476,9 @@ export class Supervisor {
     // 2. Goal creation, planning, structuring, scheduling
     if (decision.targetDomain === "productivity" || /\b(goal|goals|plan|plans|schedule|routine|target|habit|habits|roadmap)\b/i.test(lower)) {
       const options = [
-        "Right away, let me organize that for you.",
-        "Understood, structuring that plan now.",
-        "On it, mapping that out for you.",
-        "Right away, let me put that structure together.",
+        "Understood. Structuring that plan now.",
+        "Mapping out the structure now.",
+        "Putting that structure together now.",
       ];
       return options[Math.floor(Math.random() * options.length)];
     }
@@ -323,9 +486,9 @@ export class Supervisor {
     // 3. Health & physical domain
     if (decision.targetDomain === "health" || /\b(health|workout|diet|meal|sleep|training|exercise)\b/i.test(lower)) {
       const options = [
-        "Right away, let me review your health metrics.",
-        "Understood, checking your routine now.",
-        "On it, analyzing your training and recovery.",
+        "Checking your health and recovery metrics now.",
+        "Reviewing your training context now.",
+        "Checking your routine and metrics now.",
       ];
       return options[Math.floor(Math.random() * options.length)];
     }
@@ -333,17 +496,16 @@ export class Supervisor {
     // 4. Wellness & recovery domain
     if (decision.targetDomain === "wellness" || /\b(wellness|stress|burnout|tired|energy|recovery|rest)\b/i.test(lower)) {
       const options = [
-        "Understood, let's look at your workload and recovery.",
-        "Right away, reviewing your wellness balance.",
+        "Understood. Let's look at your workload and recovery.",
+        "Reviewing your recovery balance now.",
       ];
       return options[Math.floor(Math.random() * options.length)];
     }
 
     // 5. Multi-agent & general cognitive analysis
     const defaultOptions = [
-      "Right away, let me look into that for you.",
-      "Understood, analyzing that for you now.",
-      "On it, reviewing that across your system.",
+      "Understood. Looking into that across your system now.",
+      "Reviewing that across your system now.",
     ];
     return defaultOptions[Math.floor(Math.random() * defaultOptions.length)];
   }

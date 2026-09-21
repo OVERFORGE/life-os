@@ -377,5 +377,9 @@ export * from "./worldv2/GoalIntelligenceEngine";
 export * from "./context/ContextModeContracts";
 export * from "./context/ContextModeService";
 
+// Persona & Identity Layer (Aven)
+export * from "./persona";
 
-
+// Semantic Orchestration & Domain Intelligence
+export * from "./orchestration";
+export * from "./nutrition/nutritionEstimator";

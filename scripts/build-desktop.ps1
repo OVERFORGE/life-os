@@ -1,5 +1,10 @@
 $ErrorActionPreference = "Stop"
 
+$CargoBin = "$env:USERPROFILE\.cargo\bin"
+if (Test-Path $CargoBin) {
+    $env:Path = "$CargoBin;$env:Path"
+}
+
 $Root = Resolve-Path "$PSScriptRoot\.."
 $DesktopDir = "$Root\apps\desktop"
 $WebDir = "$Root\apps\web"
