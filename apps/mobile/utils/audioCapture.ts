@@ -6,7 +6,7 @@ import {
   setAudioModeAsync,
 } from 'expo-audio';
 import type { AudioRecorder, RecorderState, RecordingOptions } from 'expo-audio';
-import { Platform } from 'react-native';
+
 
 // Build correct RecordingOptions using the SDK preset as a base,
 // with metering enabled for VAD/visualizer and voice_communication
@@ -253,20 +253,23 @@ export async function transcribeAudio(uri: string): Promise<{ text?: string; err
     
     const formData = new FormData();
     const filename = uri.split('/').pop() || 'audio.m4a';
-    
-    formData.append('file', {
-      uri: Platform.OS === 'android' ? uri : uri.replace('file://', ''),
-      name: filename,
-      type: 'audio/m4a',
-    } as any);
 
-    // We must pass multipart form data. fetchWithAuth should allow overriding headers or omitting Content-Type
-    // so the browser/fetch polyfill can auto-generate the boundary.
+    // React Native 0.86+ new arch fetch no longer accepts the legacy
+    // {uri, name, type} object for FormData. Convert the local file
+    // to a proper Blob first via fetch(), then append.
+    console.log('[Transcribe] Reading audio file as blob:', uri);
+    const fileResponse = await fetch(uri);
+    const blob = await fileResponse.blob();
+    console.log('[Transcribe] Blob created, size:', blob.size, 'type:', blob.type);
+
+    formData.append('file', blob, filename);
+
     const res = await fetchWithAuth('/voice/transcribe', {
       method: 'POST',
       body: formData,
       headers: {
         'Accept': 'application/json',
+        // Let fetch auto-generate the multipart boundary
         'Content-Type': 'multipart/form-data',
       }
     });
@@ -276,11 +279,11 @@ export async function transcribeAudio(uri: string): Promise<{ text?: string; err
       return { text: data.text };
     } else {
       const errText = await res.text();
-      console.error('Transcription failed:', res.status, errText);
+      console.error('[Transcribe] Server error:', res.status, errText);
       return { error: `Server error ${res.status}: ${errText}` };
     }
   } catch (error: any) {
-    console.error('Transcription error:', error);
+    console.error('[Transcribe] Error:', error);
     return { error: error?.message || 'Network error' };
   }
 }
