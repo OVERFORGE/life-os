@@ -170,8 +170,8 @@ export class VoiceRecorder {
       // Metering below hold threshold: potential pause or end of turn
       if (this.hasDetectedSpeech && !this.silenceTimer) {
         const vocalDuration = (this.lastSpeechTime || now) - (this.speechStartTime || now);
-        // Natural conversational pause: allow comfortable breathing
-        const requiredSilenceMs = vocalDuration < 1500 ? 1400 : 1150;
+        // Natural conversational pause: allow comfortable breathing without sluggish dead air
+        const requiredSilenceMs = vocalDuration < 1500 ? 1000 : 850;
 
         this.silenceTimer = setTimeout(() => {
           console.log(`[MOBILE_VAD] Natural pause reached (${requiredSilenceMs}ms). Submitting speech turn...`);

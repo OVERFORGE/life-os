@@ -1,6 +1,7 @@
 import * as Speech from 'expo-speech';
 import { createAudioPlayer, setAudioModeAsync } from 'expo-audio';
 import type { AudioPlayer } from 'expo-audio';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { API_URL } from './api';
 
 let activePlayer: AudioPlayer | null = null;
@@ -68,8 +69,16 @@ export async function speakAndListen(text: string, onFinish: () => void, voice: 
     // 2. Stop and release any existing sound
     await stopSpeaking();
 
-    // 3. Construct streaming neural TTS URL
-    const streamUrl = `${API_URL}/voice/tts?text=${encodeURIComponent(cleanText)}&voice=${encodeURIComponent(voice)}`;
+    // 3. Construct streaming neural TTS URL with universal phonetic parameter
+    let userParam = '';
+    try {
+      const storedName = await AsyncStorage.getItem('user_name');
+      const storedPhonetic = await AsyncStorage.getItem('user_phonetic_name');
+      if (storedName) userParam += `&userName=${encodeURIComponent(storedName)}`;
+      if (storedPhonetic) userParam += `&phoneticName=${encodeURIComponent(storedPhonetic)}`;
+    } catch (_) {}
+
+    const streamUrl = `${API_URL}/voice/tts?text=${encodeURIComponent(cleanText)}&voice=${encodeURIComponent(voice)}${userParam}`;
 
     try {
       const player = createAudioPlayer(streamUrl);

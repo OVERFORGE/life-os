@@ -51,12 +51,58 @@ function sanitizeForSpeech(rawText: string): string {
   return text;
 }
 
+import { getAuthSession } from "@/lib/auth";
+import { connectDB } from "@/server/db/connect";
+
+/**
+ * Universal Phonetic Name Projection
+ * Replaces orthographic names with their English phonetic equivalents
+ * so British neural voices articulate any cultural name authentically.
+ */
+function applyPhoneticNames(text: string, customPhoneticName?: string, originalName?: string): string {
+  let result = text;
+
+  // 1. Apply user's explicit custom phonetic name preference
+  if (customPhoneticName && originalName) {
+    const escaped = originalName.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+    result = result.replace(new RegExp(`\\b${escaped}\\b`, "gi"), customPhoneticName);
+  }
+
+  // 2. Universal linguistic phonetics for cross-cultural names
+  // Ensures natural pronunciation across Slavic, Indian, Gaelic, Arabic, French origins
+  const LINGUISTIC_PHONETICS: Record<string, string> = {
+    daksh: "Duksh",
+    krzysztof: "Kshee-shtoff",
+    siobhan: "Shi-vawn",
+    niamh: "Neev",
+    tariq: "Tah-reek",
+    nguyen: "Win",
+    xavier: "Zay-vee-er",
+    chao: "Ch-ow",
+  };
+
+  for (const [key, phonetic] of Object.entries(LINGUISTIC_PHONETICS)) {
+    if (!customPhoneticName || !originalName?.toLowerCase().includes(key)) {
+      result = result.replace(new RegExp(`\\b${key}\\b`, "gi"), phonetic);
+    }
+  }
+
+  return result;
+}
+
 // Supported high-quality British neural voices (Jarvis aesthetic - LifeOS Voice)
 const DEFAULT_VOICE = "en-GB-RyanNeural";
 const ALLOWED_VOICES = new Set(["en-GB-RyanNeural"]);
 
-async function handleSynthesize(text: string, voice?: string, rate?: string, pitch?: string) {
-  const cleanText = sanitizeForSpeech(text);
+async function handleSynthesize(
+  text: string,
+  voice?: string,
+  rate?: string,
+  pitch?: string,
+  userPhoneticName?: string,
+  userName?: string
+) {
+  let cleanText = sanitizeForSpeech(text);
 
   if (!cleanText) {
     return new Response(JSON.stringify({ error: "Empty or invalid text after sanitization" }), {
@@ -64,6 +110,28 @@ async function handleSynthesize(text: string, voice?: string, rate?: string, pit
       headers: { "Content-Type": "application/json" },
     });
   }
+
+  // Resolve user phonetic preference from session if not explicitly provided
+  let customPhoneticName = userPhoneticName;
+  let originalName = userName;
+
+  if (!customPhoneticName) {
+    try {
+      const session = await getAuthSession();
+      const userId = (session?.user as any)?.id;
+      if (userId) {
+        await connectDB();
+        const { User } = await import("@/server/db/models/User");
+        const user = await User.findById(userId).select("name preferences.phoneticName").lean();
+        if (user) {
+          customPhoneticName = (user as any)?.preferences?.phoneticName;
+          originalName = originalName || (user as any)?.name;
+        }
+      }
+    } catch (_) {}
+  }
+
+  cleanText = applyPhoneticNames(cleanText, customPhoneticName, originalName);
 
   const selectedVoice = voice && ALLOWED_VOICES.has(voice) ? voice : DEFAULT_VOICE;
 
@@ -132,19 +200,21 @@ export async function GET(req: NextRequest) {
   const voice = searchParams.get("voice") || undefined;
   const rate = searchParams.get("rate") || undefined;
   const pitch = searchParams.get("pitch") || undefined;
+  const phoneticName = searchParams.get("phoneticName") || req.headers.get("x-user-phonetic-name") || undefined;
+  const userName = searchParams.get("userName") || req.headers.get("x-user-name") || undefined;
 
-  return handleSynthesize(text, voice, rate, pitch);
+  return handleSynthesize(text, voice, rate, pitch, phoneticName, userName);
 }
 
 /**
  * POST /api/voice/tts
- * Body: { text: string, voice?: string, rate?: string, pitch?: string }
+ * Body: { text: string, voice?: string, rate?: string, pitch?: string, phoneticName?: string, userName?: string }
  */
 export async function POST(req: NextRequest) {
   try {
     const body = await req.json();
-    const { text, voice, rate, pitch } = body;
-    return handleSynthesize(text, voice, rate, pitch);
+    const { text, voice, rate, pitch, phoneticName, userName } = body;
+    return handleSynthesize(text, voice, rate, pitch, phoneticName, userName);
   } catch (err: any) {
     return new Response(JSON.stringify({ error: "Invalid JSON payload" }), {
       status: 400,

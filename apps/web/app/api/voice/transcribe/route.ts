@@ -44,7 +44,7 @@ export async function POST(req: Request) {
       response_format: "json",
       language: "en",
       temperature: 0,
-      prompt: "Aven, LifeOS, Daksh, tasks, habits, goals, workouts, nutrition, schedule, routines, execution, focus, wellness, briefing.",
+      prompt: "LifeOS AI assistant conversation between user and Aven.",
     });
 
     const durationMs = Date.now() - t0;

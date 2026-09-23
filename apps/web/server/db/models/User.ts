@@ -42,7 +42,12 @@ const UserSchema = new Schema(
           radius: Number,
           voiceAssistantEnabled: Boolean,
         }
-      ]
+      ],
+      phoneticName: { type: String, default: "" },
+      pronunciationPreference: {
+        mode: { type: String, enum: ["auto", "custom", "voice_sample"], default: "auto" },
+        phoneticSpelling: { type: String, default: "" },
+      },
     },
   },
   { timestamps: true }

@@ -108,8 +108,6 @@ export class Supervisor {
     }
 
     if (pendingOpExpired) {
-      const response = "Your previous request has expired. Please tell me what you'd like to do again.";
-      req.onChunk?.(response);
       const stmUpdates = { pendingOperation: null };
       try {
         if (mongoose.connection && mongoose.connection.readyState === 1) {
@@ -121,22 +119,6 @@ export class Supervisor {
           );
         }
       } catch (_) {}
-
-      return {
-        executionId,
-        requestId,
-        routingDecision: {
-          strategy: "CONVERSATIONAL_LLM",
-          confidence: 1.0,
-          rationale: "Pending operation expired due to TTL timeout",
-        },
-        response,
-        durationMs: Date.now() - startTime,
-        actionsExecuted: 0,
-        workspaceStatus: "COMPLETED",
-        terminationReason: "EXPIRED",
-        stmUpdates,
-      };
     }
 
     // 1. Authoritative Semantic Interpretation via Aven with Bounded Context Projection
@@ -253,13 +235,8 @@ export class Supervisor {
 
       const op = semanticTurn.operations[0];
       const opPayload = { ...(op?.payload || {}) };
-      if (!opPayload.priority) {
-        const prioMatch = req.message.match(/\bpriority\s+(?:to|in|as)?\s*(high|low|medium|urgent)\b/i) ||
-          req.message.match(/\b(high|low|medium|urgent)\s+priority\b/i) ||
-          req.message.match(/\b(?:set|change|make|adjust)\s+(?:the\s+)?priority\s+(?:to\s+|in\s+)?(high|low|medium|urgent)\b/i);
-        if (prioMatch) {
-          opPayload.priority = (prioMatch[1] || prioMatch[2] || "medium").toLowerCase();
-        }
+      if (op?.payload?.priority) {
+        opPayload.priority = op.payload.priority;
       }
 
       const newPendingOp: IPendingOperationContext = {
@@ -326,6 +303,12 @@ export class Supervisor {
 
     // 4. Semantic Operations Execution via Sovereign Kernel
     if (semanticTurn.operations.length > 0) {
+      // Emit model-driven semantic filler as Chunk 0 (< 20ms) before kernel validation & execution
+      const filler = this.getSemanticFiller(semanticTurn);
+      if (filler) {
+        req.onChunk?.(filler + " ");
+      }
+
       // If turn is an EXPLICIT_CORRECTION, compensate previous operation first
       if (semanticTurn.primaryClassification === "EXPLICIT_CORRECTION") {
         if (stm?.recentlyExecutedOperations && stm.recentlyExecutedOperations.length > 0) {
@@ -382,13 +365,8 @@ export class Supervisor {
         }
 
         const opPayload = { ...(op?.payload || {}) };
-        if (!opPayload.priority) {
-          const prioMatch = req.message.match(/\bpriority\s+(?:to|in|as)?\s*(high|low|medium|urgent)\b/i) ||
-            req.message.match(/\b(high|low|medium|urgent)\s+priority\b/i) ||
-            req.message.match(/\b(?:set|change|make|adjust)\s+(?:the\s+)?priority\s+(?:to\s+|in\s+)?(high|low|medium|urgent)\b/i);
-          if (prioMatch) {
-            opPayload.priority = (prioMatch[1] || prioMatch[2] || "medium").toLowerCase();
-          }
+        if (op?.payload?.priority) {
+          opPayload.priority = op.payload.priority;
         }
 
         const newPendingOp: IPendingOperationContext = {
@@ -715,13 +693,8 @@ export class Supervisor {
           (stm?.activeFocus?.entityType === "goal" || stm?.pendingOperation?.actionType?.includes("goal"))
         ) {
           const goalName = stm?.pendingOperation?.partialPayload?.title || stm?.activeFocus?.displayName || "your proposed goal";
-          responseText = `I'm setting up "${goalName}" as a recurring morning habit.`;
-        } else if (lowerMsg.includes("recipe") || lowerMsg.includes("cook") || lowerMsg.includes("chicken")) {
-          responseText = "Here is a quick chili chicken recipe: sauté bite-sized chicken with soy sauce and cornstarch until golden, stir-fry with garlic, ginger, and chili peppers, then toss in a sweet-spicy chili glaze and garnish with green onions.";
-        } else if (lowerMsg.includes("hello") || lowerMsg.includes("hi") || lowerMsg.includes("hey")) {
-          responseText = `Hey, ${activeUserName}. What's on your mind?`;
         } else {
-          responseText = "I'm with you. What are we working on?";
+          responseText = `I'm with you, ${activeUserName}. What are we working on?`;
         }
       }
 
@@ -858,25 +831,92 @@ export class Supervisor {
   }
 
   /**
-   * Generates a composed, sharp executive acknowledgement as Aven
-   * when entering cognitive specialist reasoning or multi-agent planning.
+   * Model-Driven Semantic Filler Selection
+   * Driven strictly by the LLM's classified domain and actionType (Zero Regex).
    */
-  private getExecutiveAcknowledgement(message: string, decision: RoutingDecision): string {
-    const lower = message.toLowerCase();
-
-    // 1. Action confirmation & execution
-    if (/\b(implement|execute|confirm|apply|commit|do it|go ahead|proceed|approve|make it so|sounds good|looks good)\b/i.test(lower)) {
-      const options = [
-        "Understood. Putting that into action.",
-        "Applying those updates now.",
-        "Executing that now.",
-        "Understood. Taking care of that now.",
-      ];
-      return options[Math.floor(Math.random() * options.length)];
+  private getSemanticFiller(semanticTurn: SemanticTurn): string | null {
+    if (semanticTurn.primaryClassification === "CASUAL_DIALOGUE" || semanticTurn.operations.length === 0) {
+      return null;
     }
 
-    // 2. Goal creation, planning, structuring, scheduling
-    if (decision.targetDomain === "productivity" || /\b(goal|goals|plan|plans|schedule|routine|target|habit|habits|roadmap)\b/i.test(lower)) {
+    const firstOp = semanticTurn.operations[0];
+    const actionType = firstOp?.actionType;
+    const domain = firstOp?.domain;
+
+    const FILLERS: Record<string, string[]> = {
+      create_task: [
+        "Right away, let me schedule that for you.",
+        "On it, adding that to your schedule.",
+        "One moment, putting that on your agenda.",
+        "Understood, creating that task now.",
+        "Taking care of that now, one moment.",
+      ],
+      complete_task: [
+        "On it, marking that complete for you.",
+        "Right away, checking that off for you.",
+        "Understood, updating that task now.",
+        "Taking care of that for you now.",
+      ],
+      adjust_task_priority: [
+        "Understood, updating that priority now.",
+        "Right away, adjusting that task's priority.",
+        "On it, making that update now.",
+      ],
+      delete_task: [
+        "Understood, removing that task for you.",
+        "On it, deleting that from your schedule.",
+      ],
+      reschedule_task: [
+        "One moment, rescheduling that for you.",
+        "Understood, moving that on your schedule now.",
+      ],
+      propose_goal: [
+        "Understood, structuring that habit for you now.",
+        "Let me map out that routine for you, one moment.",
+        "Putting that habit structure together now.",
+      ],
+      confirm_goal: [
+        "Understood, activating that goal for you now.",
+        "Confirming and setting that up now.",
+      ],
+      log_meal: [
+        "Got it, logging your meal now.",
+        "Noted, calculating the nutritional breakdown for you now.",
+        "Recording that meal in your daily nutrition now.",
+      ],
+      log_workout: [
+        "Understood, recording your workout session now.",
+        "Noted, logging your training metrics now.",
+      ],
+      record_mental_estimate: [
+        "Understood, logging your energy and recovery state.",
+        "Noted, updating your wellness metrics now.",
+      ],
+      set_context_mode: [
+        "Understood, switching your context mode now.",
+        "Configuring your workspace mode now.",
+      ],
+    };
+
+    const candidates = (actionType && FILLERS[actionType]) || (domain === "productivity"
+      ? ["Understood, taking care of that for you now.", "On it, updating your system now."]
+      : domain === "health"
+      ? ["Checking your health context and logging that now.", "Understood, updating your health log now."]
+      : domain === "wellness"
+      ? ["Reviewing your wellness context and recording that now."]
+      : ["Understood, processing that across your system now."]);
+
+    return candidates[Math.floor(Math.random() * candidates.length)];
+  }
+
+  /**
+   * Model-Driven Executive Acknowledgement
+   * Driven by domain and routing decision (Zero Regex).
+   */
+  private getExecutiveAcknowledgement(message: string, decision: RoutingDecision): string {
+    const domain = decision.targetDomain || (decision.selectedSpecialists && decision.selectedSpecialists[0]) || "productivity";
+
+    if (domain === "productivity") {
       const options = [
         "Understood. Structuring that plan now.",
         "Mapping out the structure now.",
@@ -885,8 +925,7 @@ export class Supervisor {
       return options[Math.floor(Math.random() * options.length)];
     }
 
-    // 3. Health & physical domain
-    if (decision.targetDomain === "health" || /\b(health|workout|diet|meal|sleep|training|exercise)\b/i.test(lower)) {
+    if (domain === "health") {
       const options = [
         "Checking your health and recovery metrics now.",
         "Reviewing your training context now.",
@@ -895,8 +934,7 @@ export class Supervisor {
       return options[Math.floor(Math.random() * options.length)];
     }
 
-    // 4. Wellness & recovery domain
-    if (decision.targetDomain === "wellness" || /\b(wellness|stress|burnout|tired|energy|recovery|rest)\b/i.test(lower)) {
+    if (domain === "wellness") {
       const options = [
         "Understood. Let's look at your workload and recovery.",
         "Reviewing your recovery balance now.",
@@ -904,7 +942,6 @@ export class Supervisor {
       return options[Math.floor(Math.random() * options.length)];
     }
 
-    // 5. Multi-agent & general cognitive analysis
     const defaultOptions = [
       "Understood. Looking into that across your system now.",
       "Reviewing that across your system now.",

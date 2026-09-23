@@ -59,6 +59,10 @@ You must handle:
 14. Structured Entity References: For descriptive references (e.g. "done with the that project budget task", "delete the workout from Tuesday"), targetReference MUST specify "kind": "DESCRIPTIVE", "rawExpression" as the user's reference phrase ("that project budget task"), and "semanticDescriptor" as the clean descriptive title/concept ("project budget"). For coreferences ("that task", "it"), specify "kind": "CONTEXTUAL_ANAPHORIC". For explicit exact IDs/titles, specify "kind": "EXPLICIT_IDENTIFIER".
 15. Habits are Goals, NOT Tasks: When user requests to establish a daily habit, morning routine, or ongoing tracking objective (e.g. "I want to start reading 15 pages of non-fiction every morning. Can we set that up as a daily habit?"), classify as "ACTION_REQUEST" with actionType: "propose_goal" and payload with "cadence": "daily", "type": "maintenance" or "identity". NEVER classify a habit request as "create_task". Tasks are for single discrete calendar commitments.
 16. State-Driven Confirmation: If an active PENDING OPERATION exists in context (e.g. confirm_goal for an active proposal), and the user confirms or gives assent (e.g. "yes", "sure", "yes sure do that", "let's do it", "go ahead"), classify as "CONFIRMATION" or "CLARIFICATION_RESPONSE" and continue the pending operation (e.g. confirm_goal) for that target entity. DO NOT spawn a new create_task or duplicate create_goal.
+17. Gratitude, Appreciation & Compliments (Strict Zero Operations): When the user expresses gratitude, relief, appreciation, or compliments (such as "Thank you so much", "You're a life saver", "You're a lifesaver", "Thanks", "Awesome", "Great job", "Appreciate your help", "Perfect"): The turn MUST be classified as "CASUAL_DIALOGUE" with operations: []. It represents conversational acknowledgment of a previously completed interaction. NEVER repeat, re-emit, or re-execute the previous turn's operations.
+18. Conversational Sign-Offs, Closures & Farewells (Strict Zero Operations): When the user indicates they want to conclude, wrap up, or end the interaction (such as "Let's talk tomorrow", "That's it for today", "Goodnight", "Have to head out", "Signing off", "Talk to you later", "That's all for now"): The turn MUST be classified as "CASUAL_DIALOGUE" with operations: []. If the user mentions upcoming commitments or schedule as context for departing (such as "I have a meeting tomorrow so let's talk tomorrow, that's it for today"), this is conversational rationale, NOT a request to create a task or calendar event. NEVER spawn an action proposal for casual departure statements.
+19. Speech Transcription Vocative Awareness: The incoming user utterance is transcribed via voice speech-to-text (ASR) and may contain acoustic or phonetic variations of the assistant's name "Aven" (such as "vin", "Vyven", "Evan", "Ivan", "Ayven"). Understand that the user is addressing Aven without requiring exact orthographic matching, and interpret the semantic intent of the request directly.
+20. Name Pronunciation Teaching: When the user instructs Aven how to pronounce their name (e.g. "Aven, pronounce my name like Duksh", "My name is pronounced Duksh", "Call me Duksh"): Classify as "ACTION_REQUEST" with actionType: "update_user_profile", domain: "context", and payload: { "phoneticName": "<phonetic_spelling>" }.
 
 Domain Action Types:
 - productivity: "create_task", "complete_task", "update_task", "delete_task", "reschedule_task", "adjust_task_priority", "create_goal", "propose_goal", "confirm_goal", "delete_goal"
@@ -148,64 +152,9 @@ export class SemanticIntentInterpreter {
     const refTime = ctx.referenceTimeMs || Date.now();
     const trimmedInput = (rawInput || "").trim();
 
-    // Fast-path negation check
-    if (/^(?:actually,?\s*)?(?:don't|do\s+not|never\s*mind|cancel|stop|ignore|delete\s+that)\b/i.test(trimmedInput)) {
-      return {
-        turnId,
-        schemaVersion: 2,
-        userId: ctx.userId,
-        conversationId: ctx.conversationId || generateId("conv"),
-        timestamp: refTime,
-        rawInput: trimmedInput,
-        normalizedTimezone: timezone,
-        provenance: {
-          interpreterProvider: "groq",
-          modelIdentifier: "deterministic_policy",
-          promptVersionHash: PROMPT_HASH,
-          contextSnapshotId: "ctx_negation",
-          contextSnapshotHash: "sha256_negation",
-          inferenceDurationMs: Date.now() - startTime,
-        },
-        primaryClassification: "CANCEL_OR_DISMISS",
-        ambiguityStatus: "UNAMBIGUOUS",
-        operations: [],
-        conversationalSummary: "User cancelled or retracted the prior action",
-      };
-    }
-
     let parsedTurn: any = null;
 
-    // Fast-path explicit correction check ("No, I meant Deploy Service Beta", "Actually I meant X", "No I meant X")
-    const correctionMatch = trimmedInput.match(/^(?:no,?\s*)?(?:i\s+meant|actually\s+i\s+meant|not\s+that\s+one,?\s*i\s+meant)\s+(.+)/i);
-    if (correctionMatch) {
-      const correctedEntityName = correctionMatch[1].trim();
-      parsedTurn = {
-        primaryClassification: "EXPLICIT_CORRECTION",
-        ambiguityStatus: "UNAMBIGUOUS",
-        conversationalSummary: `Correction: meant "${correctedEntityName}"`,
-        operations: [
-          {
-            operationId: `op_corr_${Date.now()}`,
-            domain: "productivity",
-            actionType: "complete_task",
-            riskClass: "MEDIUM_COMPENSABLE",
-            targetReference: {
-              referenceId: generateId("ref"),
-              rawExpression: correctedEntityName,
-              entityType: "task",
-              resolutionStrategy: "EXACT_TITLE",
-            },
-            payload: {
-              title: correctedEntityName,
-            },
-            dependencies: [],
-            executionEligibility: "READY",
-          },
-        ],
-      };
-    }
-
-    // Call Groq LLM for semantic interpretation
+    // Call Groq LLM for authoritative semantic interpretation
     if (!parsedTurn && process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== "mock_key_for_dev") {
       try {
         const contextSummary = [
@@ -265,21 +214,11 @@ export class SemanticIntentInterpreter {
 
     // Check if there is an active PendingOperationContext that should be continued
     const hasActivePending = Boolean(ctx.pendingOperation && (ctx.pendingOperation as any).state === "AWAITING_CLARIFICATION");
-    const isExplicitNewCreation = /^(?:add|create|remind\s+me|schedule\s+a\s+new)\b/i.test(trimmedInput);
 
-    const isQuestionOrInquiry = /^(?:what|which|why|how|who|where|when|tell\s+me|can\s+you\s+explain|explain)\b|\?/i.test(trimmedInput);
-
-    if (hasActivePending && !isExplicitNewCreation && !isQuestionOrInquiry) {
-      const isAffirmative =
-        parsedTurn?.primaryClassification === "CONFIRMATION" ||
-        /^(?:yes|sure|do\s+that|go\s+ahead|confirm|yep|yeah|ok|okay|please\s+do|yes\s+please|do\s+it)\b/i.test(trimmedInput);
-
+    if (hasActivePending) {
+      const isAffirmative = parsedTurn?.primaryClassification === "CONFIRMATION";
       const isClarificationClassification =
-        isAffirmative ||
-        parsedTurn?.primaryClassification === "CLARIFICATION_RESPONSE" ||
-        !parsedTurn?.operations ||
-        parsedTurn.operations.length === 0 ||
-        (parsedTurn.operations.length === 1 && parsedTurn.operations[0].actionType === "create_task");
+        isAffirmative || parsedTurn?.primaryClassification === "CLARIFICATION_RESPONSE";
 
       if (isClarificationClassification) {
         const pending: any = ctx.pendingOperation;
@@ -650,19 +589,6 @@ export class SemanticIntentInterpreter {
       operations.push(op);
     }
 
-    const lower = trimmedInput.toLowerCase();
-    const isDonePhrase = lower.includes("done") || lower.includes("finished") || lower.includes("completed") || lower.includes("mark that off") || lower.includes("mark it done") || lower.includes("mark off");
-    const isHabitOrGoal = (lower.includes("habit") || lower.includes("routine") || lower.includes("goal") || /reading\s+\d+\s+pages/i.test(trimmedInput)) && !isDonePhrase;
-
-    if (operations.length === 0 && isHabitOrGoal) {
-      const heuristicTurn = this.heuristicInterpretation(trimmedInput, ctx);
-      if (heuristicTurn.operations && heuristicTurn.operations.length > 0) {
-        operations.push(...heuristicTurn.operations);
-        parsedTurn.primaryClassification = "ACTION_REQUEST";
-        parsedTurn.clarification = undefined;
-      }
-    }
-
     const durationMs = Date.now() - startTime;
     const finalTurn: SemanticTurn = {
       turnId,
@@ -690,235 +616,16 @@ export class SemanticIntentInterpreter {
 
     return finalTurn;
   }
-
   /**
-   * Deterministic Heuristic Fallback
+   * Fail-Safe Fallback when LLM is unreachable or encounters an outage
+   * Pure model-driven architecture: NEVER guesses with regexes or brittle substring checks.
    */
   private heuristicInterpretation(input: string, ctx: SemanticInterpreterContext): any {
-    const lower = input.toLowerCase();
-    const operations: any[] = [];
-    let primaryClassification: TurnPrimaryClassification = "CASUAL_DIALOGUE";
-
-    // 0. Active Pending Clarification Continuation Check
-    if (ctx.pendingOperation && (ctx.pendingOperation as any).state === "AWAITING_CLARIFICATION") {
-      const isAffirmative = /^(?:yes|sure|do\s+that|go\s+ahead|confirm|yep|yeah|ok|okay|please\s+do|yes\s+please|do\s+it)\b/i.test(input.trim());
-      return {
-        primaryClassification: isAffirmative ? "CONFIRMATION" : "CLARIFICATION_RESPONSE",
-        ambiguityStatus: "UNAMBIGUOUS",
-        conversationalSummary: isAffirmative ? `Confirming pending operation: ${input}` : `Answering clarification: ${input}`,
-        operations: [],
-      };
-    }
-
-    // 0b. Explicit Correction ("No, I meant X", "Actually I meant X")
-    const correctionMatch = input.match(/^(?:no,?\s*)?(?:i\s+meant|actually\s+i\s+meant|not\s+that\s+one,?\s*i\s+meant)\s+(.+)/i);
-    if (correctionMatch) {
-      const correctedEntityName = correctionMatch[1].trim();
-      return {
-        primaryClassification: "EXPLICIT_CORRECTION",
-        ambiguityStatus: "UNAMBIGUOUS",
-        conversationalSummary: `Correction: meant "${correctedEntityName}"`,
-        operations: [
-          {
-            operationId: `op_corr_${Date.now()}`,
-            domain: "productivity",
-            actionType: "complete_task",
-            riskClass: "MEDIUM_COMPENSABLE",
-            targetReference: {
-              referenceId: generateId("ref"),
-              rawExpression: correctedEntityName,
-              semanticDescriptor: correctedEntityName,
-              kind: "DESCRIPTIVE",
-              entityType: "task",
-              resolutionStrategy: "EXACT_TITLE",
-            },
-            payload: {
-              title: correctedEntityName,
-            },
-            dependencies: [],
-            executionEligibility: "READY",
-          },
-        ],
-      };
-    }
-
-    const isFutureObligation = lower.includes("need to") || lower.includes("have to") || lower.includes("tomorrow");
-    const isDonePhrase = lower.includes("done") || lower.includes("finished") || lower.includes("completed") || lower.includes("mark that off") || lower.includes("mark it done") || lower.includes("mark off");
-    const isPriorityPhrase = lower.includes("priority");
-    const isHabitOrGoal = (lower.includes("habit") || lower.includes("routine") || lower.includes("goal")) && !isDonePhrase;
-
-    // 1. Habit / Goal Proposal
-    if (isHabitOrGoal) {
-      primaryClassification = "ACTION_REQUEST";
-      let title = input
-        .replace(/^(?:hey\s+aven,?\s*)?(?:i\s+want\s+to\s+start\s+|i\s+want\s+to\s+|can\s+we\s+set\s+that\s+up\s+as\s+a\s+(?:daily\s+)?habit\??|set\s+up\s+a\s+(?:daily\s+)?habit(?:\s+to)?|create\s+a\s+goal\s+to\s+|set\s+a\s+goal\s+to\s+)/gi, "")
-        .replace(/\b(?:can\s+we\s+set\s+that\s+up\s+as\s+a\s+(?:daily\s+)?habit\??|as\s+a\s+daily\s+habit\??)\b/gi, "")
-        .trim();
-      title = title.replace(/^[,\s\.]+|[,\s\.\?]+$/g, "");
-      if (!title) title = "Read 15 pages of non-fiction";
-
-      operations.push({
-        operationId: `op_0${operations.length + 1}`,
-        domain: "productivity",
-        actionType: "propose_goal",
-        riskClass: "MEDIUM_COMPENSABLE",
-        payload: {
-          title,
-          category: "wellness",
-          cadence: "daily",
-          targetType: "habit",
-          timeOfDay: lower.includes("morning") ? "morning" : lower.includes("evening") ? "evening" : "anytime",
-        },
-        dependencies: [],
-        executionEligibility: "READY",
-      });
-    }
-
-    // 2. Task Priority Adjustment
-    else if (isPriorityPhrase) {
-      primaryClassification = "ACTION_REQUEST";
-      const priority = lower.includes("high") ? "high" : lower.includes("urgent") ? "urgent" : lower.includes("low") ? "low" : "medium";
-      let taskExpr = input
-        .replace(/^(?:yes\s+but\s+)?(?:i\s+am\s+asking\s+you\s+to\s+)?(?:hey\s+aven,?\s*)?(?:umm\s+)?(?:can\s+you\s+)?(?:set|change|adjust)\s+(?:the\s+)?priority\s+(?:of\s+)?/i, "")
-        .replace(/\b(?:to|in)\s+(?:high|low|medium|urgent)\b/gi, "")
-        .trim();
-      operations.push({
-        operationId: `op_0${operations.length + 1}`,
-        domain: "productivity",
-        actionType: "adjust_task_priority",
-        riskClass: "MEDIUM_COMPENSABLE",
-        targetReference: {
-          rawExpression: taskExpr,
-          entityType: "task",
-          resolutionStrategy: taskExpr ? "CONTEXTUAL_RECENT" : "UNRESOLVED",
-        },
-        payload: {
-          priority,
-        },
-      });
-    }
-
-    // 3. Task Completion
-    else if (!isFutureObligation && isDonePhrase) {
-      primaryClassification = "ACTION_REQUEST";
-      let taskExpr = input
-        .replace(/^(?:hey\s+aven,?\s*)?(?:can\s+you\s+)?(?:mark\s+(?:that\s+task\s+as\s+|that\s+as\s+|that\s+off\s*|it\s+as\s+)?(?:done|complete)?)/i, "")
-        .replace(/\b(?:done|completed|finished|mark that off|mark off)\b/gi, "")
-        .trim();
-
-      const rawDescriptor = taskExpr
-        .replace(/^(?:with\s+)?(?:the\s+|that\s+)+/i, "")
-        .replace(/\s+task$/i, "")
-        .trim();
-      const isDescriptive = rawDescriptor.length > 0 && !/^(?:it|that|this|the\s+one)$/i.test(rawDescriptor);
-
-      operations.push({
-        operationId: `op_0${operations.length + 1}`,
-        domain: "productivity",
-        actionType: "complete_task",
-        riskClass: "LOW_REVERSIBLE",
-        targetReference: {
-          rawExpression: taskExpr || "that task",
-          semanticDescriptor: isDescriptive ? rawDescriptor : undefined,
-          kind: isDescriptive ? "DESCRIPTIVE" : "CONTEXTUAL_ANAPHORIC",
-          entityType: "task",
-          resolutionStrategy: isDescriptive ? "EXACT_TITLE" : "CONTEXTUAL_RECENT",
-        },
-        payload: {},
-      });
-    }
-
-    // 3. Task Creation (Only when not priority or done)
-    else if (
-      lower.includes("task") ||
-      lower.includes("remind me") ||
-      lower.includes("need to") ||
-      lower.includes("have to") ||
-      lower.includes("to do") ||
-      lower.includes("finish the") ||
-      lower.startsWith("schedule") ||
-      lower.includes("schedule ")
-    ) {
-      primaryClassification = "ACTION_REQUEST";
-      const dateMatch = lower.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-      const dueDate = dateMatch ? dateMatch[1] : lower.includes("tomorrow") ? "tomorrow" : "today";
-      let title = input
-        .replace(/^(?:hey\s+aven,?\s*)?(?:can\s+you\s+)?(?:schedule\s+|add\s+(?:a\s+)?task\s+(?:to\s+)?|create\s+(?:a\s+)?task\s+(?:to\s+)?|remind\s+me\s+(?:in\s+\d+\s*(?:mins?|minutes?|hours?)\s+)?to\s+|i\s+need\s+to\s+|tomorrow\s+i\s+have\s+to\s+|tomorrow\s+i\s+need\s+to\s+)/i, "")
-        .replace(/\b(?:for\s+)?(?:\d{4}-\d{2}-\d{2}|tomorrow|today|afternoon|morning|tonight)\b/gi, "")
-        .trim();
-      if (!title) title = input;
-
-      operations.push({
-        operationId: "op_01",
-        domain: "productivity",
-        actionType: "create_task",
-        riskClass: "LOW_REVERSIBLE",
-        payload: {
-          title,
-          dueDate,
-        },
-        temporal: {
-          rawExpression: dueDate,
-          type: "POINT_IN_TIME",
-        },
-      });
-    }
-
-    // 4. Meal Logging
-    if (lower.includes("had") || lower.includes("ate") || lower.includes("meal") || lower.includes("breakfast") || lower.includes("lunch") || lower.includes("dinner") || lower.includes("shake") || lower.includes("smoothie")) {
-      primaryClassification = "ACTION_REQUEST";
-      let mealDesc = input
-        .replace(/^(?:hey\s+aven,?\s*)?(?:i\s+had\s+|just\s+had\s+|log\s+meal:?\s*)/i, "")
-        .trim();
-      operations.push({
-        operationId: `op_0${operations.length + 1}`,
-        domain: "health",
-        actionType: "log_meal",
-        riskClass: "LOW_REVERSIBLE",
-        payload: {
-          description: mealDesc,
-          mealType: lower.includes("breakfast") ? "breakfast" : lower.includes("lunch") ? "lunch" : lower.includes("dinner") ? "dinner" : "snack",
-        },
-      });
-    }
-
-    // 5. Mental / Affective State
-    let affectiveEvidence: SomaticAffectiveEvidence | undefined = undefined;
-    if (lower.includes("exhausted") || lower.includes("tired") || lower.includes("rough") || lower.includes("energy is at zero") || lower.includes("burned out")) {
-      primaryClassification = "STATE_OBSERVATION";
-      affectiveEvidence = {
-        energy: { value: 1, confidence: 0.9 },
-        stress: { value: 8, confidence: 0.8 },
-        mood: { value: 3, confidence: 0.7 },
-        reportedFatigue: true,
-        somaticSymptoms: ["exhaustion"],
-        rawVerbatim: input,
-      };
-      operations.push({
-        operationId: `op_0${operations.length + 1}`,
-        domain: "wellness",
-        actionType: "record_mental_estimate",
-        riskClass: "LOW_REVERSIBLE",
-        payload: {
-          mood: 3,
-          energy: 1,
-          stress: 8,
-          notes: input,
-        },
-      });
-    }
-
-    // In compound turns, if any operational action exists, prioritize ACTION_REQUEST over STATE_OBSERVATION
-    if (operations.some((o) => o.actionType === "create_task" || o.actionType === "log_meal" || o.actionType === "complete_task")) {
-      primaryClassification = "ACTION_REQUEST";
-    }
-
     return {
-      primaryClassification,
+      primaryClassification: "CASUAL_DIALOGUE",
       ambiguityStatus: "UNAMBIGUOUS",
       conversationalSummary: input,
-      operations,
-      affectiveEvidence,
+      operations: [],
     };
   }
 }
