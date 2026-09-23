@@ -75,6 +75,12 @@ export class KernelCapabilityService implements IKernelCapabilityService {
 
     let order = 1;
     for (const proposal of proposals) {
+      const propId = proposal.id || (proposal as any).proposalId || `prop_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+      proposal.id = propId;
+      if (!proposal.idempotencyKey) {
+        proposal.idempotencyKey = `idemp_${propId}`;
+      }
+
       const adapter = this.registry.get(proposal.actionType);
 
       if (!adapter) {
@@ -128,7 +134,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
 
     for (const decision of sorted) {
       const action = decision.action;
-      const idempotencyKey = action.idempotencyKey;
+      const idempotencyKey = action.idempotencyKey || action.id || (action as any).proposalId || `idemp_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
 
       // 1. Idempotency Gate (Requirement 1 & Invariant 11)
       const existingAudit = this.auditStore.get(idempotencyKey);
@@ -139,6 +145,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
           actionType: action.actionType,
           status: "SUCCEEDED",
           success: true,
+          idempotent: true,
           data: existingAudit.result,
           targetEntityId: action.targetEntityId,
           timestamp: existingAudit.timestamp,
@@ -186,6 +193,20 @@ export class KernelCapabilityService implements IKernelCapabilityService {
           timestamp: Date.now(),
         });
 
+        const targetEntity = executionData?.targetEntity || (executionData?.goalId ? {
+          entityId: executionData.goalId.toString(),
+          displayName: executionData.title || executionData.goal?.title || "Goal",
+          entityType: "goal" as const,
+          domain: "productivity" as const,
+          status: executionData.status || executionData.goal?.status,
+        } : (executionData?.taskId ? {
+          entityId: executionData.taskId.toString(),
+          displayName: executionData.taskTitle || executionData.title || executionData.task?.title || "Task",
+          entityType: "task" as const,
+          domain: "productivity" as const,
+          status: executionData.task?.status,
+        } : undefined));
+
         const execResult: KernelExecutionResult = {
           actionId: action.id,
           idempotencyKey,
@@ -193,7 +214,8 @@ export class KernelCapabilityService implements IKernelCapabilityService {
           status: "SUCCEEDED",
           success: true,
           data: executionData,
-          targetEntityId: action.targetEntityId,
+          targetEntity,
+          targetEntityId: targetEntity?.entityId || action.targetEntityId || executionData?.taskId || executionData?.task?._id || executionData?.goalId || executionData?.sessionId || executionData?._id,
           timestamp: Date.now(),
         };
 
@@ -362,5 +384,38 @@ export class KernelCapabilityService implements IKernelCapabilityService {
     postSnapshot: AuthoritativeKernelState
   ): Promise<VerificationOutcome> {
     return OutcomeVerifier.verify(constraints, preSnapshot, postSnapshot);
+  }
+
+  async compensateAction(operation: any, userId: string): Promise<boolean> {
+    const actionType = typeof operation === "object" ? operation.actionType : undefined;
+    const adapter = actionType ? this.registry.get(actionType) : null;
+    if (!adapter) {
+      return false;
+    }
+
+    const proposal: ActionProposal = {
+      id: typeof operation === "object" ? operation.operationId : "comp_prop",
+      operationId: typeof operation === "object" ? operation.operationId : "comp_prop",
+      actionType,
+      domain: (operation.domain as any) || "productivity",
+      reversibility: "atomic_single_doc",
+      rationale: "User retraction",
+      targetEntityId: operation.targetEntity?.entityId,
+      payload: {
+        ...(operation.payloadSnapshot || {}),
+        taskId: operation.targetEntity?.entityId || operation.payloadSnapshot?.taskId,
+        goalId: operation.targetEntity?.entityId || operation.payloadSnapshot?.goalId,
+      },
+      idempotencyKey: `comp_${Date.now()}`,
+    };
+
+    const previousResult = {
+      taskId: operation.targetEntity?.entityId || operation.payloadSnapshot?.taskId,
+      goalId: operation.targetEntity?.entityId || operation.payloadSnapshot?.goalId,
+      ...(operation.payloadSnapshot || {}),
+    };
+
+    const result = await adapter.compensate(proposal, previousResult, userId);
+    return Boolean(result.compensated);
   }
 }

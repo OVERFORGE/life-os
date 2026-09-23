@@ -69,4 +69,9 @@ export interface IKernelCapabilityService {
     preSnapshot: AuthoritativeKernelState,
     postSnapshot: AuthoritativeKernelState
   ): Promise<VerificationOutcome>;
+
+  /**
+   * Compensates a previously executed operation (e.g. on user cancellation or correction).
+   */
+  compensateAction(operation: any, userId: string): Promise<boolean>;
 }

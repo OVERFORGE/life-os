@@ -34,7 +34,9 @@ export function extractFirstName(fullName?: string): string {
   }
   const cleaned = fullName.trim();
   const first = cleaned.split(/\s+/)[0];
-  if (!first) return AVEN_IDENTITY.defaultUserName;
+  if (!first || /^(mobile|user|client|guest|unknown)$/i.test(first)) {
+    return AVEN_IDENTITY.defaultUserName;
+  }
   return first.charAt(0).toUpperCase() + first.slice(1);
 }
 

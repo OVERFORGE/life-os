@@ -22,27 +22,36 @@ export default function DashboardLayout() {
     // Re-schedule all task reminders on app boot
     scheduleAllTaskReminders().catch(e => console.log('Task reminder sync failed', e));
 
-    import('../../utils/persistentNotification').then(n => n.setupPersistentNotification());
+    import('../../utils/persistentNotification')
+      .then(n => n.setupPersistentNotification())
+      .catch(e => console.warn('Persistent notification setup skipped:', e));
 
-    // Listen for foreground push notifications to trigger voice
-    const sub1 = Notifications.addNotificationReceivedListener(notification => {
-      const title = notification.request.content.title || 'Reminder';
-      const body = notification.request.content.body || 'You have a new reminder.';
-      const speechText = `${title}. ${body}`;
-      handleSpontaneousSpeech(speechText).catch(console.error);
-    });
+    let sub1: { remove: () => void } | null = null;
+    let sub2: { remove: () => void } | null = null;
 
-    // Listen for user tapping the notification when the app is in the background
-    const sub2 = Notifications.addNotificationResponseReceivedListener(response => {
-      const title = response.notification.request.content.title || 'Reminder';
-      const body = response.notification.request.content.body || 'You have a new reminder.';
-      const speechText = `${title}. ${body}`;
-      handleSpontaneousSpeech(speechText).catch(console.error);
-    });
+    try {
+      // Listen for foreground push notifications to trigger voice
+      sub1 = Notifications.addNotificationReceivedListener(notification => {
+        const title = notification.request.content.title || 'Reminder';
+        const body = notification.request.content.body || 'You have a new reminder.';
+        const speechText = `${title}. ${body}`;
+        handleSpontaneousSpeech(speechText).catch(console.error);
+      });
+
+      // Listen for user tapping the notification when the app is in the background
+      sub2 = Notifications.addNotificationResponseReceivedListener(response => {
+        const title = response.notification.request.content.title || 'Reminder';
+        const body = response.notification.request.content.body || 'You have a new reminder.';
+        const speechText = `${title}. ${body}`;
+        handleSpontaneousSpeech(speechText).catch(console.error);
+      });
+    } catch (err) {
+      console.warn('Failed to attach notification listeners:', err);
+    }
 
     return () => {
-      sub1.remove();
-      sub2.remove();
+      sub1?.remove();
+      sub2?.remove();
     };
   }, []);
 
@@ -96,6 +105,7 @@ export default function DashboardLayout() {
         <Tabs.Screen name="notifications" options={{ href: null, title: 'Notifications' }} />
         <Tabs.Screen name="profile" options={{ href: null, title: 'Profile' }} />
         <Tabs.Screen name="settings" options={{ href: null, title: 'Settings' }} />
+        <Tabs.Screen name="voice-call" options={{ href: null, title: 'Voice Call' }} />
       </Tabs>
     </SafeAreaView>
   );

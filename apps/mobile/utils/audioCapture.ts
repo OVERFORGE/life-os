@@ -1,140 +1,229 @@
-import { Audio } from 'expo-av';
+import {
+  AudioModule,
+  requestRecordingPermissionsAsync,
+  getRecordingPermissionsAsync,
+  setAudioModeAsync,
+} from 'expo-audio';
+import type { AudioRecorder, RecorderState } from 'expo-audio';
 import { Platform } from 'react-native';
 
+export interface VoiceRecorderOptions {
+  isBargeIn?: boolean;
+  onBargeIn?: () => void;
+  onVolume?: (volume: number, db: number) => void;
+  onSpeechDetected?: () => void;
+}
+
 export class VoiceRecorder {
-  private recording: Audio.Recording | null = null;
+  private recorder: AudioRecorder | null = null;
   private silenceTimer: ReturnType<typeof setTimeout> | null = null;
+  private pollingInterval: ReturnType<typeof setInterval> | null = null;
   private onSilenceCb: ((uri: string | null) => void) | null = null;
   private onBargeInCb: (() => void) | null = null;
+  private onVolumeCb: ((volume: number, db: number) => void) | null = null;
+  private onSpeechDetectedCb: (() => void) | null = null;
   private isBargeInActive = false;
   private hasDetectedSpeech = false;
   private speechStartTime: number | null = null;
   private lastSpeechTime: number | null = null;
-  // Track peak metering to decide if the user actually spoke
   private peakMetering = -160;
 
   async startRecording(
     onSilence: (uri: string | null) => void,
-    options?: { isBargeIn?: boolean; onBargeIn?: () => void }
+    options?: VoiceRecorderOptions
   ): Promise<boolean> {
     try {
+      // Cancel any existing recording
+      await this.cleanupRecorder();
+
       this.onSilenceCb = onSilence;
       this.onBargeInCb = options?.onBargeIn || null;
+      this.onVolumeCb = options?.onVolume || null;
+      this.onSpeechDetectedCb = options?.onSpeechDetected || null;
       this.isBargeInActive = options?.isBargeIn || false;
       this.hasDetectedSpeech = false;
       this.speechStartTime = null;
       this.lastSpeechTime = null;
       this.peakMetering = -160;
       
-      let perm = await Audio.getPermissionsAsync();
+      let perm = await getRecordingPermissionsAsync();
       if (perm.status !== 'granted') {
-        perm = await Audio.requestPermissionsAsync();
+        perm = await requestRecordingPermissionsAsync();
       }
       if (perm.status !== 'granted') {
         console.log('Audio permission not granted.');
         return false;
       }
 
-      await Audio.setAudioModeAsync({
-        allowsRecordingIOS: true,
-        playsInSilentModeIOS: true,
-        staysActiveInBackground: true,
-        shouldDuckAndroid: true,
+      await setAudioModeAsync({
+        allowsRecording: true,
+        playsInSilentMode: true,
+        shouldPlayInBackground: true,
       });
 
-      const { recording } = await Audio.Recording.createAsync(
-        Audio.RecordingOptionsPresets.HIGH_QUALITY,
-        this.onStatusUpdate.bind(this),
-        100 // Metering update interval in ms for real-time responsiveness
-      );
-      this.recording = recording;
+      // Flatten recording options for the native constructor (it expects
+      // outputFormat/audioEncoder at the top level, NOT nested under android:{})
+      const nativeOptions = {
+        extension: '.m4a',
+        sampleRate: 44100,
+        numberOfChannels: 2,
+        bitRate: 128000,
+        isMeteringEnabled: true,
+        meteringEnabled: true,
+        ...(Platform.OS === 'android'
+          ? { outputFormat: 'mpeg4' as const, audioEncoder: 'aac' as const }
+          : {}),
+      };
+
+      console.log('[VoiceRecorder] Creating AudioRecorder with native options:', JSON.stringify(nativeOptions));
+      const recorder = new AudioModule.AudioRecorder(nativeOptions);
+      console.log('[VoiceRecorder] Preparing to record...');
+      await recorder.prepareToRecordAsync(nativeOptions as any);
+      console.log('[VoiceRecorder] Starting recording...');
+      recorder.record();
+      this.recorder = recorder;
+
+      // Start metering polling interval (every 80ms) for high-responsiveness VAD and visualizer
+      let pollCount = 0;
+      this.pollingInterval = setInterval(() => {
+        if (!this.recorder) return;
+        try {
+          const status = this.recorder.getStatus();
+          pollCount++;
+          if (pollCount <= 3 || pollCount % 30 === 0) {
+            console.log('[VoiceRecorder] Poll #' + pollCount + ' status:', JSON.stringify(status));
+          }
+          this.onStatusUpdate(status);
+        } catch (e) {
+          console.warn('[VoiceRecorder] getStatus error:', e);
+        }
+      }, 80);
+
       return true;
     } catch (err) {
       console.error('Failed to start recording', err);
+      await this.cleanupRecorder();
       return false;
     }
   }
 
-  private onStatusUpdate(status: Audio.RecordingStatus) {
-    if (status.isRecording && status.metering !== undefined) {
-      const db = status.metering;
-      if (db > this.peakMetering) this.peakMetering = db;
-      const now = Date.now();
+  private onStatusUpdate(status: RecorderState) {
+    if (!status.isRecording) return;
 
-      // 1. Barge-in detection while assistant is speaking
-      if (this.isBargeInActive) {
-        // Voice directly into phone mic produces >= -26 dB, cutting above speaker audio
-        if (db >= -26) {
-          console.log('[MOBILE_VAD] Barge-in speech detected during playback! Metering:', db);
-          this.isBargeInActive = false;
-          this.hasDetectedSpeech = true;
-          this.speechStartTime = now;
-          this.lastSpeechTime = now;
-          if (this.silenceTimer) {
-            clearTimeout(this.silenceTimer);
-            this.silenceTimer = null;
-          }
-          this.onBargeInCb?.();
-          return;
-        }
-        return;
-      }
+    const db = status.metering !== undefined ? status.metering : -160;
+    if (db > this.peakMetering) this.peakMetering = db;
+    const now = Date.now();
 
-      // 2. Confident voice and hold thresholds
-      const SPEECH_ONSET_DB = -36;
-      const SPEECH_HOLD_DB = -44;
+    // Compute normalized volume (0.0 to 1.0) for UI soundwave feedback
+    // -65 dB is silence floor, -15 dB is loud voice
+    let normVolume = 0;
+    if (db > -65) {
+      normVolume = Math.min(1, Math.max(0.05, (db + 65) / 45));
+    }
+    this.onVolumeCb?.(normVolume, db);
 
-      if (db >= SPEECH_HOLD_DB) {
-        // User is vocalizing or trailing off naturally
+    // 1. Barge-in detection while assistant is speaking
+    if (this.isBargeInActive) {
+      // Direct speech cuts above speaker audio
+      if (db >= -28) {
+        console.log('[MOBILE_VAD] Barge-in speech detected during playback! Metering:', db);
+        this.isBargeInActive = false;
+        this.hasDetectedSpeech = true;
+        this.speechStartTime = now;
+        this.lastSpeechTime = now;
         if (this.silenceTimer) {
           clearTimeout(this.silenceTimer);
           this.silenceTimer = null;
         }
-
-        if (db >= SPEECH_ONSET_DB) {
-          this.hasDetectedSpeech = true;
-          if (!this.speechStartTime) this.speechStartTime = now;
-          this.lastSpeechTime = now;
-        }
-      } else {
-        // Metering below hold threshold: potential pause or end of turn
-        if (this.hasDetectedSpeech && !this.silenceTimer) {
-          const vocalDuration = (this.lastSpeechTime || now) - (this.speechStartTime || now);
-          // Natural conversational pause: allow breathing without mid-sentence cut-off
-          const requiredSilenceMs = vocalDuration < 1500 ? 1200 : 1050;
-
-          this.silenceTimer = setTimeout(() => {
-            console.log(`[MOBILE_VAD] Natural pause reached (${requiredSilenceMs}ms). Submitting speech turn...`);
-            this.stopRecording();
-          }, requiredSilenceMs);
-        } else if (!this.hasDetectedSpeech && !this.silenceTimer) {
-          // No speech detected yet — max wait ceiling of 7 seconds before cancelling
-          this.silenceTimer = setTimeout(() => {
-            this.cancelRecording();
-          }, 7000);
-        }
+        this.onSpeechDetectedCb?.();
+        this.onBargeInCb?.();
+        return;
       }
+      return;
     }
-  }
 
-  async stopRecording() {
-    if (!this.recording) return null;
-    try {
+    // 2. Realistic voice thresholds for mobile mics
+    const SPEECH_ONSET_DB = -50;
+    const SPEECH_HOLD_DB = -58;
+
+    if (db >= SPEECH_HOLD_DB) {
+      // User is vocalizing or trailing off naturally
       if (this.silenceTimer) {
         clearTimeout(this.silenceTimer);
         this.silenceTimer = null;
       }
-      await this.recording.stopAndUnloadAsync();
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      const uri = this.recording.getURI();
-      this.recording = null;
+
+      if (db >= SPEECH_ONSET_DB) {
+        if (!this.hasDetectedSpeech) {
+          console.log('[MOBILE_VAD] User speech onset detected! dB:', db);
+          this.hasDetectedSpeech = true;
+          this.onSpeechDetectedCb?.();
+        }
+        if (!this.speechStartTime) this.speechStartTime = now;
+        this.lastSpeechTime = now;
+      }
+    } else {
+      // Metering below hold threshold: potential pause or end of turn
+      if (this.hasDetectedSpeech && !this.silenceTimer) {
+        const vocalDuration = (this.lastSpeechTime || now) - (this.speechStartTime || now);
+        // Natural conversational pause: allow comfortable breathing
+        const requiredSilenceMs = vocalDuration < 1500 ? 1400 : 1150;
+
+        this.silenceTimer = setTimeout(() => {
+          console.log(`[MOBILE_VAD] Natural pause reached (${requiredSilenceMs}ms). Submitting speech turn...`);
+          this.stopRecording();
+        }, requiredSilenceMs);
+      } else if (!this.hasDetectedSpeech && !this.silenceTimer) {
+        // Generous 25-second idle ceiling before resetting, so user doesn't get cancelled while preparing to speak
+        this.silenceTimer = setTimeout(() => {
+          console.log('[MOBILE_VAD] Idle timeout (25s) with no speech. Resetting.');
+          this.cancelRecording();
+        }, 25000);
+      }
+    }
+  }
+
+  private async cleanupRecorder() {
+    if (this.pollingInterval) {
+      clearInterval(this.pollingInterval);
+      this.pollingInterval = null;
+    }
+    if (this.silenceTimer) {
+      clearTimeout(this.silenceTimer);
+      this.silenceTimer = null;
+    }
+    if (this.recorder) {
+      try {
+        await this.recorder.stop();
+      } catch (_) {}
+      this.recorder = null;
+    }
+  }
+
+  async stopRecording(): Promise<string | null> {
+    if (!this.recorder) return null;
+    try {
+      if (this.pollingInterval) {
+        clearInterval(this.pollingInterval);
+        this.pollingInterval = null;
+      }
+      if (this.silenceTimer) {
+        clearTimeout(this.silenceTimer);
+        this.silenceTimer = null;
+      }
+      const uri = this.recorder.uri;
+      try {
+        await this.recorder.stop();
+      } catch (_) {}
+      this.recorder = null;
+
+      await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
       
       if (this.onSilenceCb) {
-        if (this.hasDetectedSpeech && uri) {
-          // Only transcribe if we actually detected meaningful speech
+        if (uri) {
+          console.log('[VoiceRecorder] Submitting audio for transcription:', uri);
           this.onSilenceCb(uri);
         } else {
-          // No speech detected — signal caller with null so it can reset silently
           this.onSilenceCb(null);
         }
         this.onSilenceCb = null;
@@ -147,21 +236,11 @@ export class VoiceRecorder {
   }
 
   async cancelRecording() {
-    if (!this.recording) return;
-    try {
-      if (this.silenceTimer) {
-        clearTimeout(this.silenceTimer);
-        this.silenceTimer = null;
-      }
-      await this.recording.stopAndUnloadAsync();
-      await Audio.setAudioModeAsync({ allowsRecordingIOS: false });
-      this.recording = null;
-      if (this.onSilenceCb) {
-        this.onSilenceCb(null); // null = cancelled / no speech
-        this.onSilenceCb = null;
-      }
-    } catch (err) {
-      console.error('Failed to cancel recording', err);
+    await this.cleanupRecorder();
+    await setAudioModeAsync({ allowsRecording: false }).catch(() => {});
+    if (this.onSilenceCb) {
+      this.onSilenceCb(null); // null = cancelled / no speech
+      this.onSilenceCb = null;
     }
   }
 }

@@ -17,6 +17,17 @@ const GoalSchema = new mongoose.Schema(
     title: String,
     description: String,
 
+    status: {
+      type: String,
+      enum: ["active", "proposed", "archived", "completed"],
+      default: "active",
+      index: true,
+    },
+    confirmedAt: Date,
+    archivedAt: Date,
+    remediationReason: String,
+    canonicalGoalId: String,
+
     type: {
       type: String,
       enum: ["identity", "performance", "maintenance"],
@@ -37,6 +48,25 @@ const GoalSchema = new mongoose.Schema(
     },
   },
   { timestamps: true }
+);
+
+// Pre-save normalization: guarantee string userId and trimmed title
+GoalSchema.pre("save", function () {
+  if (this.userId) {
+    this.userId = this.userId.toString();
+  }
+  if (this.title) {
+    this.title = this.title.trim();
+  }
+});
+
+// Partial unique index: prevent duplicate active or proposed goals per user
+GoalSchema.index(
+  { userId: 1, title: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { status: { $in: ["active", "proposed"] } },
+  }
 );
 
 export const Goal =

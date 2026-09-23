@@ -41,6 +41,9 @@ export default function LoginScreen() {
 
       if (data.token) {
         await AsyncStorage.setItem('user_token', data.token);
+        if (data.user?.name) {
+          await AsyncStorage.setItem('user_name', data.user.name);
+        }
         router.replace('/(dashboard)');
       } else {
         alert(data.error || "Invalid credentials.");
@@ -112,6 +115,9 @@ export default function LoginScreen() {
       
       if (data.token) {
         await AsyncStorage.setItem('user_token', data.token);
+        if (data.user?.name) {
+          await AsyncStorage.setItem('user_name', data.user.name);
+        }
         router.replace('/(dashboard)');
       } else {
         setLoading(false);
@@ -152,6 +158,9 @@ export default function LoginScreen() {
 
       if (data.token) {
         await AsyncStorage.setItem('user_token', data.token);
+        if (data.user?.name) {
+          await AsyncStorage.setItem('user_name', data.user.name);
+        }
         router.replace('/(dashboard)');
       } else {
         alert(data.error || "Login failed");

@@ -4,15 +4,13 @@ import {
   View, Text, TouchableOpacity, TextInput, FlatList,
   ActivityIndicator, KeyboardAvoidingView, Platform, Keyboard, Image
 } from 'react-native';
-import { Bot, ArrowUp, Copy, Check, ArrowDown, Mic, X, MicOff, Volume2 } from 'lucide-react-native';
+import { Bot, ArrowUp, Copy, Check, ArrowDown, Phone, X, Volume2 } from 'lucide-react-native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import { fetchWithAuth, API_URL } from '../../utils/api';
 import { scheduleAllTaskReminders } from '../../utils/notifications';
-import { useLocalSearchParams } from 'expo-router';
-import { VoiceRecorder, transcribeAudio } from '../../utils/audioCapture';
-import { isVoiceAssistantEnabledAtCurrentLocation } from '../../utils/locationManager';
-import { speakAndListen, stopSpeaking } from '../../utils/ttsManager';
+import { useLocalSearchParams, useRouter } from 'expo-router';
+import { stopSpeaking } from '../../utils/ttsManager';
 
 type Message = { role: 'user' | 'assistant'; content: string };
 
@@ -124,14 +122,10 @@ export default function BrainScreen() {
   const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile');
   const [displayCount, setDisplayCount] = useState(20);
 
+  const router = useRouter();
   const flatListRef = useRef<FlatList>(null);
   const isUserScrolling = useRef(false);
   const [keyboardVisible, setKeyboardVisible] = useState(false);
-  const [isRecording, setIsRecording] = useState(false);
-  const [isSpeaking, setIsSpeaking] = useState(false);
-  const [voiceRecorder] = useState(() => new VoiceRecorder());
-  // A ref so the cancel flag is always up-to-date inside async callbacks
-  const voiceCancelledRef = useRef(false);
   
   // Cleanup speech on unmount
   useEffect(() => {
@@ -215,56 +209,6 @@ export default function BrainScreen() {
             return copy;
           });
           
-          // Handle TTS and full-duplex barge-in listening if in voice-enabled location
-          const isVoiceAllowed = await isVoiceAssistantEnabledAtCurrentLocation();
-          if (isVoiceAllowed && parsed.trim().length > 0) {
-            voiceCancelledRef.current = false;
-            setIsSpeaking(true);
-
-            // 1. Start assistant neural audio playback
-            speakAndListen(parsed.trim(), () => {
-              setIsSpeaking(false);
-              // Only auto-listen if user hasn't cancelled or interrupted
-              if (!voiceCancelledRef.current && (Platform.OS === 'android' || Platform.OS === 'ios')) {
-                startVoiceInput();
-              }
-            });
-
-            // 2. Concurrently monitor microphone for full-duplex speech barge-in
-            voiceRecorder.startRecording(
-              async (uri) => {
-                setIsRecording(false);
-                if (!uri || voiceCancelledRef.current) {
-                  setInput('');
-                  return;
-                }
-                setInput('Thinking...');
-                const { text } = await transcribeAudio(uri);
-                if (text) {
-                  const cleaned = text.trim();
-                  const isJunk = cleaned.length <= 2 || /^[.\s,!?]+$/.test(cleaned);
-                  if (!isJunk) {
-                    setInput('');
-                    await sendMessage(cleaned);
-                  } else {
-                    setInput('');
-                  }
-                } else {
-                  setInput('');
-                }
-              },
-              {
-                isBargeIn: true,
-                onBargeIn: () => {
-                  console.log('[BRAIN] Full-duplex barge-in detected! Silencing assistant immediately...');
-                  stopSpeaking();
-                  setIsSpeaking(false);
-                  setIsRecording(true);
-                  setInput('Listening...');
-                },
-              }
-            );
-          }
           scheduleAllTaskReminders().catch(console.error);
         } else {
           setMessages(prev => {
@@ -291,53 +235,6 @@ export default function BrainScreen() {
     }
   };
 
-  const cancelVoice = () => {
-    voiceCancelledRef.current = true;
-    setIsSpeaking(false);
-    setIsRecording(false);
-    setInput('');
-    stopSpeaking();
-    voiceRecorder.cancelRecording();
-  };
-
-  const startVoiceInput = async () => {
-    if (loading) return;
-    // Reset cancel flag on every manual OR auto-triggered start
-    voiceCancelledRef.current = false;
-    setIsRecording(true);
-    setInput('Listening...');
-    
-    const success = await voiceRecorder.startRecording(async (uri) => {
-      setIsRecording(false);
-      // null means recording was cancelled or no speech detected — silently ignore
-      if (!uri || voiceCancelledRef.current) {
-        setInput('');
-        return;
-      }
-      setInput('Thinking...');
-      const { text, error } = await transcribeAudio(uri);
-      
-      if (text) {
-        // Filter junk: ignore empty strings, single punctuation, single chars
-        const cleaned = text.trim();
-        const isJunk = cleaned.length <= 2 || /^[.\s,!?]+$/.test(cleaned);
-        if (isJunk) {
-          setInput('');
-          return; // Silently ignore — don't send, don't re-listen
-        }
-        setInput('');
-        await sendMessage(text);
-      } else {
-        setInput('');
-        // Don't show error on auto-listen — just silently stop
-      }
-    });
-
-    if (!success) {
-      setIsRecording(false);
-      setInput('');
-    }
-  };
 
   const visibleMessages = messages.slice(-displayCount);
 
@@ -450,38 +347,7 @@ export default function BrainScreen() {
           }}
         />
 
-        {/* Full-Duplex Speaking & Listening Status Banner */}
-        {isSpeaking && (
-          <TouchableOpacity
-            onPress={cancelVoice}
-            activeOpacity={0.8}
-            style={{
-              flexDirection: 'row',
-              alignItems: 'center',
-              justifyContent: 'space-between',
-              backgroundColor: 'rgba(232,65,74,0.15)',
-              borderColor: 'rgba(232,65,74,0.4)',
-              borderWidth: 1,
-              borderRadius: 16,
-              paddingHorizontal: 14,
-              paddingVertical: 8,
-              marginBottom: 10,
-            }}
-          >
-            <View style={{ flexDirection: 'row', alignItems: 'center', gap: 8 }}>
-              <Volume2 size={16} color={C.primary} />
-              <Text style={{ color: C.text, fontSize: 13, fontWeight: '700' }}>
-                Aven Speaking...
-              </Text>
-              <Text style={{ color: C.subtext, fontSize: 11 }}>
-                (Speak or tap to interrupt)
-              </Text>
-            </View>
-            <View style={{ backgroundColor: 'rgba(232,65,74,0.3)', borderRadius: 10, paddingHorizontal: 8, paddingVertical: 3 }}>
-              <Text style={{ color: C.text, fontSize: 10, fontWeight: '800', letterSpacing: 0.5 }}>STOP</Text>
-            </View>
-          </TouchableOpacity>
-        )}
+
 
         {/* Text input row */}
         <View style={{ flexDirection: 'row', alignItems: 'flex-end', backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, paddingLeft: 18, paddingRight: 8, paddingVertical: 8 }}>
@@ -496,25 +362,14 @@ export default function BrainScreen() {
             editable={!loading}
           />
 
-          {/* Mic / Cancel button */}
-          {(isSpeaking || isRecording) ? (
-            <TouchableOpacity
-              onPress={cancelVoice}
-              style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6, marginBottom: 1, backgroundColor: 'rgba(232,65,74,0.25)' }}
-            >
-              {isRecording
-                ? <MicOff size={18} color={C.primary} />
-                : <X size={18} color={C.primary} />}
-            </TouchableOpacity>
-          ) : (
-            <TouchableOpacity
-              onPress={startVoiceInput}
-              disabled={loading}
-              style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6, marginBottom: 1 }}
-            >
-              <Mic size={18} color={C.muted} />
-            </TouchableOpacity>
-          )}
+          {/* Voice Call button */}
+          <TouchableOpacity
+            onPress={() => router.push('/(dashboard)/voice-call')}
+            disabled={loading}
+            style={{ width: 36, height: 36, borderRadius: 18, alignItems: 'center', justifyContent: 'center', marginLeft: 6, marginBottom: 1 }}
+          >
+            <Phone size={18} color={C.muted} />
+          </TouchableOpacity>
 
           {/* Send button */}
           <TouchableOpacity

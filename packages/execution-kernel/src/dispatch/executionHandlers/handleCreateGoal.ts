@@ -32,14 +32,45 @@ export async function handleCreateGoal(payload: any, userId: string) {
         direction: "higher_better" 
     }));
 
-    const goal = await Goal.create({
-        title: payload.title,
-        type: payload.type || "maintenance",
-        cadence: payload.cadence || "daily",
-        signals: formattedSignals,
-        userId,
-    });
+    let goal: any;
+    try {
+        goal = await Goal.create({
+            title: payload.title,
+            type: payload.type || "maintenance",
+            cadence: payload.cadence || "daily",
+            status: payload.status || "active",
+            signals: formattedSignals,
+            userId: userId.toString(),
+        });
+    } catch (err: any) {
+        if (err?.code === 11000) {
+            throw new Error(`DUPLICATE_DETECTED: An active goal "${payload.title}" already exists.`);
+        }
+        throw err;
+    }
 
-    await evaluateGoal({ goal, userId });
-    return { type: "create_goal", success: true, data: { title: goal.title } };
+    try {
+        await evaluateGoal(goal);
+    } catch (evalErr) {
+        console.warn("[handleCreateGoal] evaluateGoal non-blocking error:", evalErr);
+    }
+    return {
+        type: "create_goal",
+        success: true,
+        goalId: goal._id.toString(),
+        title: goal.title,
+        goal,
+        targetEntity: {
+            entityId: goal._id.toString(),
+            displayName: goal.title,
+            entityType: "goal" as const,
+            domain: "productivity" as const,
+            status: goal.status,
+        },
+        data: {
+            goalId: goal._id.toString(),
+            title: goal.title,
+            goal,
+        },
+    };
 }

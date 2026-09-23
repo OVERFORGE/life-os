@@ -14,7 +14,10 @@ export type TurnPrimaryClassification =
   | "STATE_OBSERVATION"       // Somatic, affective, or dietary report without explicit command
   | "CASUAL_DIALOGUE"         // Greetings, meta-dialogue, conversational banter
   | "CLARIFICATION_RESPONSE"  // User answering an outstanding system clarification prompt
-  | "CANCEL_OR_DISMISS";     // User retracting, cancelling, or dismissing a prior turn
+  | "CONFIRMATION"           // User confirming an active proposal (e.g. "yes sure do that")
+  | "CANCEL_OR_DISMISS"       // User retracting, cancelling, or dismissing a prior turn
+  | "EXPLICIT_CORRECTION"     // User explicitly correcting a previous entity/parameter
+  | "EXPLICIT_RETRACTION";    // User explicitly commanding rollback or cancellation of previous action
 
 export type AmbiguityStatus =
   | "UNAMBIGUOUS"             // All operations, entities, and temporal targets are explicit
@@ -23,13 +26,138 @@ export type AmbiguityStatus =
   | "TEMPORAL_AMBIGUOUS"      // Timeframe is broad or underspecified ("sometime", "later")
   | "CONFLICTING_INTENTS";    // Contradictory requests within the same turn
 
+export type EntityResolutionStatus =
+  | "RESOLVED"
+  | "AMBIGUOUS"
+  | "NOT_FOUND"
+  | "UNRESOLVED";
+
+export type ResolutionMethod =
+  | "EXPLICIT_IDENTIFIER"
+  | "PENDING_OPERATION_CANDIDATE"
+  | "STM_ACTIVE_FOCUS"
+  | "STM_RECENT_ENTITY_RECENCY"
+  | "AUTHORITATIVE_EXACT_MATCH"
+  | "AUTHORITATIVE_CONTEXTUAL_MATCH"
+  | "AMBIGUOUS_MULTI_CANDIDATE";
+
+export interface EntityResolutionEvidence {
+  status: EntityResolutionStatus;
+  selectedEntityId?: string;
+  selectedDisplayName?: string;
+  candidateIds?: string[];
+  candidateTitles?: string[];
+  method: ResolutionMethod;
+  confidence: number; // 0.0 - 1.0 diagnostic only, not execution gate
+  evidenceDetails: {
+    matchedField?: string;
+    temporalAlignment?: boolean;
+    domainMatch?: boolean;
+    recencyDeltaMs?: number;
+  };
+  clarificationReason?: string;
+  clarificationQuestion?: string;
+}
+
+export type SemanticReferenceKind =
+  | "EXPLICIT_IDENTIFIER"     // Exact database ID or verbatim exact title
+  | "CONTEXTUAL_ANAPHORIC"   // Coreference ("that task", "it", "the one we just discussed")
+  | "DESCRIPTIVE";           // Descriptive concept ("project budget", "reading habit")
+
 export interface EntityReference {
   referenceId: string;
-  rawExpression: string;      // "the presentation", "it", "my meeting with Alex"
-  entityType: "task" | "goal" | "meal" | "workout" | "schedule_block";
+  kind?: SemanticReferenceKind;
+  rawExpression: string;      // "the presentation", "it", "that project budget task"
+  semanticDescriptor?: string;// Clean descriptive concept extracted by Aven: "project budget"
+  entityType: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "weight" | "context_mode";
+  domain?: "productivity" | "health" | "wellness" | "context";
+  temporalConstraint?: {
+    dateAnchor?: string;
+    relativeSlot?: "morning" | "afternoon" | "evening";
+  };
+  contextualRelation?: "ACTIVE_FOCUS" | "PENDING_OPERATION" | "RECENT_OPERATION" | "GENERAL_SEARCH";
   resolutionStrategy: "EXPLICIT_ID" | "EXACT_TITLE" | "CONTEXTUAL_RECENT" | "AMBIGUOUS_CANDIDATES" | "UNRESOLVED";
   candidateIds?: string[];    // Populated if multiple entities match
   resolvedEntityId?: string;  // Populated ONLY by Contextual Entity Resolution Layer
+  evidence?: EntityResolutionEvidence;
+}
+
+export type PendingOperationState =
+  | "CREATED"
+  | "AWAITING_CLARIFICATION"
+  | "CONTINUED"
+  | "CANCELLED"
+  | "EXPIRED"
+  | "COMPLETED";
+
+export interface IPendingOperationContext {
+  operationId: string;
+  turnId: string;
+  actionType: DomainActionType;
+  domain: "productivity" | "health" | "wellness" | "context";
+  partialPayload: Record<string, any>;
+  missingRequirement: {
+    kind: "TARGET_ENTITY_RESOLUTION" | "TEMPORAL_SPECIFICATION" | "PARAMETER_VALUE" | "DUPLICATE_CONFIRMATION";
+    targetEntityType?: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "weight" | "context_mode";
+    parameterName?: string;
+  };
+  clarificationQuestion: string;
+  candidateEntities?: Array<{
+    entityId: string;
+    displayName: string;
+    temporalAnchor?: string;
+    metadata?: Record<string, any>;
+  }>;
+  state: PendingOperationState;
+  createdAt: Date | string;
+  expiresAt: Date | string;
+}
+
+export interface IContextEntityRef {
+  entityType: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "incident" | "context_mode" | "weight";
+  entityId: string;
+  displayName: string;
+  domain: "productivity" | "health" | "wellness" | "context";
+  status?: string;
+  temporalAnchor?: string; // e.g. "2026-09-21" or "2026-09-21T21:00:00Z"
+  metadata?: Record<string, any>;
+  lastReferencedTurnId?: string;
+  updatedAt?: Date | string;
+}
+
+export interface IExecutedOperationSnapshot {
+  operationId: string;
+  turnId: string;
+  actionType: DomainActionType;
+  domain: "productivity" | "health" | "wellness" | "context";
+  targetEntity?: {
+    entityType: string;
+    entityId: string;
+    displayName: string;
+  };
+  payloadSnapshot: Record<string, any>;
+  success: boolean;
+  executedAt: Date | string;
+  reversibility: "atomic_single_doc" | "reversible_with_compensation" | "irreversible_external";
+}
+
+export interface BoundedContextProjection {
+  userId: string;
+  conversationId: string;
+  timezone: string;
+  referenceTimeMs: number;
+  recentDialogue: Array<{ role: "user" | "assistant"; content: string }>;
+  activeFocus: IContextEntityRef | null;
+  recentEntities: IContextEntityRef[];
+  pendingOperation: {
+    operationId: string;
+    actionType: DomainActionType;
+    clarificationQuestion: string;
+    missingRequirement: string;
+    candidateEntities?: Array<{ entityId: string; displayName: string; temporalAnchor?: string }>;
+  } | null;
+  activeMode: string;
+  activeIncidents: string[];
 }
 
 export interface TemporalExpression {

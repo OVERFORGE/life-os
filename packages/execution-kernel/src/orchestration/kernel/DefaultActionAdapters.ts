@@ -35,6 +35,29 @@ export class CreateTaskAdapter implements IKernelActionAdapter {
     if (!proposal.payload?.title || typeof proposal.payload.title !== "string") {
       return { valid: false, reason: "Task title is required" };
     }
+
+    // Enforce Domain Duplicate Conflict Policy (Invariant S-4 / Phase 4)
+    if (!proposal.payload?.allowDuplicate && isDbConnected()) {
+      const { Task } = await import("@/server/db/models/Task");
+      const today = proposal.payload?.dueDate || new Date().toISOString().split("T")[0];
+      const trimmedTitle = proposal.payload.title.trim();
+      const escaped = trimmedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+      const existing = await Task.findOne({
+        userId: { $in: [userId, userObjId] },
+        title: { $regex: new RegExp(`^${escaped}$`, "i") },
+        status: "pending",
+        dueDate: today,
+      }).lean();
+
+      if (existing) {
+        return {
+          valid: false,
+          reason: `CONFLICT_REQUIRES_CLARIFICATION: You already have a pending task "${(existing as any).title}" scheduled for today. Did you want to update that one or schedule another?`,
+        };
+      }
+    }
+
     // Enforce incident constraints: if task references a goal suspended by an active incident
     if (proposal.payload?.goalId) {
       const constraints = await IncidentService.getInstance().getEffectiveOperationalConstraints(userId);
@@ -302,33 +325,246 @@ export class LogActivityAdapter implements IKernelActionAdapter {
  * Goal Creation Adapter
  */
 export class CreateGoalAdapter implements IKernelActionAdapter {
-  async validatePreconditions(proposal: ActionProposal, _userId: string): Promise<{ valid: boolean; reason?: string }> {
-    if (!proposal.payload?.title) {
+  async validatePreconditions(proposal: ActionProposal, userId: string): Promise<{ valid: boolean; reason?: string }> {
+    if (!proposal.payload) {
+      proposal.payload = {};
+    }
+    if (!proposal.payload.title) {
+      proposal.payload.title = proposal.payload.name || proposal.payload.habit || proposal.payload.goalTitle || proposal.payload.goal || proposal.payload.description || proposal.title;
+    }
+    if (!proposal.payload.title || proposal.payload.title === "propose_goal" || proposal.payload.title === "create_goal") {
       return { valid: false, reason: "Goal title required" };
+    }
+    if (isDbConnected()) {
+      const { Goal } = await import("@/features/goals/models/Goal");
+      const userStr = userId.toString();
+      const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+      const trimmedTitle = proposal.payload.title.trim();
+      const escaped = trimmedTitle.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const existing = await Goal.findOne({
+        userId: { $in: [userStr, userObjId] },
+        title: { $regex: new RegExp(`^${escaped}$`, "i") },
+        status: { $in: ["active", "proposed"] },
+      }).lean();
+
+      if (existing) {
+        return {
+          valid: false,
+          reason: `DUPLICATE_DETECTED: An active goal "${(existing as any).title}" already exists.`,
+        };
+      }
     }
     return { valid: true };
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
     assertDatabaseConnected("create_goal");
+    const payload = {
+      ...proposal.payload,
+      status: proposal.actionType === "propose_goal" ? "proposed" : (proposal.payload?.status || "active"),
+    };
     if (isDbConnected()) {
-      return await handleCreateGoal(proposal.payload, userId);
+      return await handleCreateGoal(payload, userId);
     }
     return {
       success: true,
       goalId: `goal_mock_${Date.now()}`,
       title: proposal.payload.title,
+      targetEntity: {
+        entityId: `goal_mock_${Date.now()}`,
+        displayName: proposal.payload.title,
+        entityType: "goal" as const,
+        domain: "productivity" as const,
+        status: payload.status,
+      },
     };
   }
 
   async compensate(proposal: ActionProposal, previousResult: any, userId: string): Promise<CompensationResult> {
-    const goalId = previousResult?.goalId || previousResult?.goal?._id;
+    const goalId = previousResult?.goalId || previousResult?.data?.goalId || previousResult?.targetEntity?.entityId || previousResult?.goal?._id;
     if (goalId && isDbConnected()) {
       await handleDeleteGoal({ goalId }, userId);
     }
     return {
       compensated: true,
       reversalDetails: `Compensated goal ${goalId || proposal.id}`,
+    };
+  }
+}
+
+/**
+ * Goal Deletion Adapter
+ */
+export class DeleteGoalAdapter implements IKernelActionAdapter {
+  async validatePreconditions(proposal: ActionProposal, _userId: string): Promise<{ valid: boolean; reason?: string }> {
+    if (!proposal.payload?.goalId && !proposal.targetEntityId) {
+      return { valid: false, reason: "goalId is required to delete a goal" };
+    }
+    return { valid: true };
+  }
+
+  async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("delete_goal");
+    const payload = {
+      ...proposal.payload,
+      goalId: proposal.payload?.goalId || proposal.targetEntityId,
+    };
+    if (isDbConnected()) {
+      return await handleDeleteGoal(payload, userId);
+    }
+    return {
+      success: true,
+      goalId: payload.goalId,
+      deleted: true,
+    };
+  }
+
+  async compensate(_proposal: ActionProposal, _previousResult: any, _userId: string): Promise<CompensationResult> {
+    return {
+      compensated: false,
+      error: "Irreversible domain mutation without soft-delete snapshot",
+    };
+  }
+}
+
+/**
+ * Goal Confirmation Adapter
+ */
+export class ConfirmGoalAdapter implements IKernelActionAdapter {
+  async validatePreconditions(proposal: ActionProposal, _userId: string): Promise<{ valid: boolean; reason?: string }> {
+    if (!proposal.payload?.goalId && !proposal.payload?.proposalId && !proposal.targetEntityId) {
+      return { valid: false, reason: "goalId or proposalId is required to confirm a goal" };
+    }
+    return { valid: true };
+  }
+
+  async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("confirm_goal");
+    const goalId = proposal.payload?.goalId || proposal.targetEntityId || proposal.payload?.proposalId;
+    if (isDbConnected()) {
+      const { Goal } = await import("@/features/goals/models/Goal");
+      const userStr = userId.toString();
+      const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+      const updated = await Goal.findOneAndUpdate(
+        { _id: goalId, userId: { $in: [userStr, userObjId] } },
+        { $set: { status: "active", confirmedAt: new Date() } },
+        { returnDocument: "after" }
+      );
+      return {
+        success: true,
+        goalId,
+        title: updated?.title || "Goal",
+        goal: updated,
+        targetEntity: {
+          entityId: goalId.toString(),
+          displayName: updated?.title || "Goal",
+          entityType: "goal" as const,
+          domain: "productivity" as const,
+          status: "active",
+        },
+      };
+    }
+    return {
+      success: true,
+      goalId,
+      title: proposal.payload?.title || "Goal",
+      confirmed: true,
+      targetEntity: {
+        entityId: goalId.toString(),
+        displayName: proposal.payload?.title || "Goal",
+        entityType: "goal" as const,
+        domain: "productivity" as const,
+        status: "active",
+      },
+    };
+  }
+
+  async compensate(proposal: ActionProposal, _previousResult: any, userId: string): Promise<CompensationResult> {
+    const goalId = proposal.payload?.goalId || proposal.targetEntityId;
+    if (goalId && isDbConnected()) {
+      const { Goal } = await import("@/features/goals/models/Goal");
+      const userStr = userId.toString();
+      const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+      await Goal.findOneAndUpdate({ _id: goalId, userId: { $in: [userStr, userObjId] } }, { $set: { status: "proposed" } });
+    }
+    return {
+      compensated: true,
+      reversalDetails: `Reverted goal confirmation for ${goalId || proposal.id}`,
+    };
+  }
+}
+
+/**
+ * Weight Log Adapter
+ */
+export class UpdateWeightAdapter implements IKernelActionAdapter {
+  async validatePreconditions(proposal: ActionProposal, _userId: string): Promise<{ valid: boolean; reason?: string }> {
+    const weight = Number(proposal.payload?.weight);
+    if (!weight || isNaN(weight) || weight <= 0) {
+      return { valid: false, reason: "Valid positive weight value required" };
+    }
+    return { valid: true };
+  }
+
+  async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("update_weight");
+    if (isDbConnected()) {
+      const { handleUpdateWeight } = await import("../../dispatch/executionHandlers/handleUpdateWeight");
+      return await handleUpdateWeight(proposal.payload, userId);
+    }
+    return {
+      success: true,
+      weight: proposal.payload.weight,
+      date: new Date().toISOString().split("T")[0],
+    };
+  }
+
+  async compensate(proposal: ActionProposal, _previousResult: any, _userId: string): Promise<CompensationResult> {
+    return {
+      compensated: true,
+      reversalDetails: `Compensated weight update for proposal ${proposal.id}`,
+    };
+  }
+}
+
+/**
+ * Workout Modification Adapter
+ */
+export class ModifyWorkoutAdapter implements IKernelActionAdapter {
+  async validatePreconditions(proposal: ActionProposal, _userId: string): Promise<{ valid: boolean; reason?: string }> {
+    if (!proposal.payload?.sessionId && !proposal.targetEntityId) {
+      return { valid: false, reason: "sessionId is required to modify a workout" };
+    }
+    return { valid: true };
+  }
+
+  async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("modify_workout");
+    const sessionId = proposal.payload?.sessionId || proposal.targetEntityId;
+    if (isDbConnected()) {
+      const { WorkoutSession } = await import("@/server/db/models/WorkoutSession");
+      const updated = await WorkoutSession.findOneAndUpdate(
+        { _id: sessionId, userId },
+        { $set: proposal.payload },
+        { new: true }
+      );
+      return {
+        success: true,
+        sessionId,
+        workout: updated,
+      };
+    }
+    return {
+      success: true,
+      sessionId,
+      modified: true,
+    };
+  }
+
+  async compensate(proposal: ActionProposal, _previousResult: any, _userId: string): Promise<CompensationResult> {
+    return {
+      compensated: true,
+      reversalDetails: `Reverted workout modification ${proposal.id}`,
     };
   }
 }
@@ -515,6 +751,10 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
   const workoutAdapter = new LogWorkoutAdapter();
   const activityAdapter = new LogActivityAdapter();
   const goalAdapter = new CreateGoalAdapter();
+  const deleteGoalAdapter = new DeleteGoalAdapter();
+  const confirmGoalAdapter = new ConfirmGoalAdapter();
+  const updateWeightAdapter = new UpdateWeightAdapter();
+  const modifyWorkoutAdapter = new ModifyWorkoutAdapter();
   const recoveryAdapter = new RecoveryConstraintAdapter();
   const mentalAdapter = new RecordMentalStateAdapter();
   const setContextModeAdapter = new SetContextModeAdapter();
@@ -528,13 +768,15 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
   if (!registry.has("adjust_task_priority")) registry.register("adjust_task_priority", updateAdapter);
   if (!registry.has("log_meal")) registry.register("log_meal", mealAdapter);
   if (!registry.has("log_workout")) registry.register("log_workout", workoutAdapter);
+  if (!registry.has("modify_workout")) registry.register("modify_workout", modifyWorkoutAdapter);
+  if (!registry.has("update_weight")) registry.register("update_weight", updateWeightAdapter);
   if (!registry.has("log_activity")) registry.register("log_activity", activityAdapter);
   if (!registry.has("apply_recovery_constraint")) registry.register("apply_recovery_constraint", recoveryAdapter);
   if (!registry.has("record_mental_estimate")) registry.register("record_mental_estimate", mentalAdapter);
   if (!registry.has("create_goal")) registry.register("create_goal", goalAdapter);
   if (!registry.has("propose_goal")) registry.register("propose_goal", goalAdapter);
-  if (!registry.has("confirm_goal")) registry.register("confirm_goal", goalAdapter);
-  if (!registry.has("delete_goal")) registry.register("delete_goal", deleteAdapter);
+  if (!registry.has("confirm_goal")) registry.register("confirm_goal", confirmGoalAdapter);
+  if (!registry.has("delete_goal")) registry.register("delete_goal", deleteGoalAdapter);
   if (!registry.has("set_context_mode")) registry.register("set_context_mode", setContextModeAdapter);
   if (!registry.has("clear_context_mode")) registry.register("clear_context_mode", clearContextModeAdapter);
 

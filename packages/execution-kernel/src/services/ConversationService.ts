@@ -91,7 +91,7 @@ export class ConversationService {
           try {
             streamController?.close();
           } catch (_) {}
-          this.persistTurnAsync(input, result.response);
+          this.persistTurnAsync(input, result.response, result.stmUpdates);
         })
         .catch((err) => {
           console.error("[CONVERSATION_SERVICE] Async execution error:", err);
@@ -114,7 +114,7 @@ export class ConversationService {
     }
   }
 
-  private persistTurnAsync(input: HandleInput, response: string): void {
+  private persistTurnAsync(input: HandleInput, response: string, stmUpdates?: Record<string, any>): void {
     if (mongoose.connection && mongoose.connection.readyState === 1) {
       Promise.all([
         ConversationManager.getInstance().persist({
@@ -122,7 +122,7 @@ export class ConversationService {
           userId: input.userId,
           userMessage: input.message,
           assistantResponse: response,
-          stmUpdates: {},
+          stmUpdates: stmUpdates || {},
         }).catch((persistErr) => {
           console.error("ConversationManager.persist warning:", persistErr);
         }),

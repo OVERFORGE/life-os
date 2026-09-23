@@ -68,6 +68,7 @@ export async function POST(req: Request) {
       {
         id: dbUser._id.toString(),
         email: dbUser.email,
+        name: dbUser.name,
         sessionId,
       },
       secret,

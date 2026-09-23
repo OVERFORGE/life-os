@@ -12,6 +12,7 @@
     "dev:mobile": "pnpm --filter mobile start",
     "lint": "turbo lint",
     "build:mobile": "cd apps/mobile && eas build -p android --profile preview",
+    "postinstall": "node scripts/patch-expo-modules.js",
     "audit:v3": "npx tsx --tsconfig packages/execution-kernel/tsconfig.json --test packages/execution-kernel/src/testing/*.test.ts",
     "test:stress": "npx tsx --tsconfig packages/execution-kernel/tsconfig.json --test packages/execution-kernel/src/testing/stressTestSuite200.test.ts"
   },

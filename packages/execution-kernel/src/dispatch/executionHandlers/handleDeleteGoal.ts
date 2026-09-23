@@ -2,25 +2,34 @@ import { Goal } from "@/features/goals/models/Goal";
 import { LifeSignal } from "@/features/signals/models/LifeSignal";
 
 export async function handleDeleteGoal(payload: any, userId: string) {
-    // 1. Try exact match
-    let toDelete = await Goal.findOne({ userId, title: payload.title });
+    let toDelete: any = null;
 
-    // 2. Try case-insensitive exact match
-    if (!toDelete) {
-        // Escape regex special characters in the payload title just in case
-        const escapedTitle = payload.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-        toDelete = await Goal.findOne({ userId, title: new RegExp(`^${escapedTitle}$`, 'i') });
+    // 1. Try match by ID if provided
+    const idToFind = payload.goalId || payload._id || payload.id;
+    if (idToFind) {
+        toDelete = await Goal.findOne({ _id: idToFind, userId });
     }
 
-    // 3. Try partial string match (e.g. LLM outputs "learning guitar daily" but title is "Learn Guitar")
-    if (!toDelete) {
-        const activeGoals = await Goal.find({ userId }).select("title").lean();
-        const bestMatch = activeGoals.find(g => 
-            g.title.toLowerCase().includes(payload.title.toLowerCase()) || 
-            payload.title.toLowerCase().includes(g.title.toLowerCase())
-        );
-        if (bestMatch) {
-            toDelete = await Goal.findById(bestMatch._id);
+    // 2. Try exact match by title if title is provided
+    if (!toDelete && payload.title) {
+        toDelete = await Goal.findOne({ userId, title: payload.title });
+
+        // 3. Try case-insensitive exact match
+        if (!toDelete) {
+            const escapedTitle = payload.title.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+            toDelete = await Goal.findOne({ userId, title: new RegExp(`^${escapedTitle}$`, 'i') });
+        }
+
+        // 4. Try partial string match
+        if (!toDelete) {
+            const activeGoals = await Goal.find({ userId }).select("title").lean();
+            const bestMatch = activeGoals.find((g: any) => 
+                g.title.toLowerCase().includes(payload.title.toLowerCase()) || 
+                payload.title.toLowerCase().includes(g.title.toLowerCase())
+            );
+            if (bestMatch) {
+                toDelete = await Goal.findById((bestMatch as any)._id);
+            }
         }
     }
 

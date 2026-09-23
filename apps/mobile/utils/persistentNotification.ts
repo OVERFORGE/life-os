@@ -20,7 +20,13 @@ import { playChime, speakAndListen } from './ttsManager';
 import Constants from 'expo-constants';
 
 const isExpoGo = Constants.appOwnership === 'expo';
-const voiceRecorder = new VoiceRecorder();
+let _voiceRecorder: VoiceRecorder | null = null;
+function getVoiceRecorder(): VoiceRecorder {
+  if (!_voiceRecorder) {
+    _voiceRecorder = new VoiceRecorder();
+  }
+  return _voiceRecorder;
+}
 
 const CHANNEL_ID = 'lifeos-exe-v8';
 const NOTIF_ID = 'lifeos-executioner-notif';
@@ -101,7 +107,7 @@ async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
                 await playChime();
                 speakAndListen(`Reminder: ${task.title}`, () => {
                   if (Platform.OS === 'android' || Platform.OS === 'ios') {
-                    voiceRecorder.startRecording(async (uri: string | null) => {
+                    getVoiceRecorder().startRecording(async (uri: string | null) => {
                       if (!uri) return;
                       const { transcribeAudio } = await import('./audioCapture');
                       const { text } = await transcribeAudio(uri);
@@ -304,7 +310,7 @@ async function handleChatInput(inputText: string) {
   if (isVoiceAllowed) {
     speakAndListen(response.trim(), () => {
        if (Platform.OS === 'android' || Platform.OS === 'ios') {
-          voiceRecorder.startRecording(async (uri: string | null) => {
+          getVoiceRecorder().startRecording(async (uri: string | null) => {
             if (!uri) return;
             const { transcribeAudio } = await import('./audioCapture');
             const { text } = await transcribeAudio(uri);
@@ -349,7 +355,7 @@ async function handleEvent(type: number, detail: any) {
       // MIC pressed — start headless background recording!
       await displayExecutionerNotification('LISTENING...', 'Speak your command now...');
       
-      const success = await voiceRecorder.startRecording(async (uri: string | null) => {
+      const success = await getVoiceRecorder().startRecording(async (uri: string | null) => {
         if (!uri) {
           await displayExecutionerNotification('CANCELLED', 'No speech detected.');
           return;

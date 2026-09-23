@@ -32,11 +32,30 @@ export async function getAuthSession() {
           Session.updateOne({ sessionToken: decoded.sessionId }, { $set: { lastActive: new Date() } }).catch(() => {});
         }
 
+        // Resolve user name from token or database, rejecting generic device names
+        let userName = decoded.name;
+        const isGenericName = !userName || /^(mobile|mobile user|user|client|guest)$/i.test(userName.trim());
+        if (isGenericName && decoded.id) {
+          try {
+            const { connectDB } = require("@/server/db/connect");
+            const { User } = require("@/server/db/models/User");
+            await connectDB();
+            const dbUser = await User.findById(decoded.id).select("name").lean();
+            if (dbUser && (dbUser as any).name) {
+              userName = (dbUser as any).name;
+            }
+          } catch (_) {}
+        }
+
+        const finalName = (!userName || /^(mobile|mobile user|user|client|guest)$/i.test(userName.trim()))
+          ? (decoded.email?.split("@")[0] || "Daksh")
+          : userName;
+
         return {
           user: {
             id: decoded.id,
             email: decoded.email,
-            name: decoded.name || "Mobile User"
+            name: finalName,
           },
           sessionId: decoded.sessionId,
         };

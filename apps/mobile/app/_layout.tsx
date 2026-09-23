@@ -4,7 +4,6 @@ import { Stack } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import 'react-native-reanimated';
 import '../global.css';
-import '../utils/persistentNotification';
 import { useEffect } from 'react';
 import { ToastProvider } from '../components/ui/Toast';
 import { registerForPushNotificationsAsync, scheduleDailyReminder } from '../utils/notifications';
@@ -29,9 +28,13 @@ const defaultErrorHandler = (global as any).ErrorUtils?.getGlobalHandler();
 
 export default function RootLayout() {
   useEffect(() => {
-    registerForPushNotificationsAsync().then(() => {
-      scheduleDailyReminder();
-    });
+    registerForPushNotificationsAsync()
+      .then(() => {
+        scheduleDailyReminder().catch(() => {});
+      })
+      .catch((e) => {
+        console.warn('Push registration skipped:', e);
+      });
     
     // Clean up the old persistent notification if it exists
     Notifications.dismissNotificationAsync('lifeos-persistent-notif').catch(() => {});
