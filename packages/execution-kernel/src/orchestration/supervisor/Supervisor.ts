@@ -498,7 +498,7 @@ export class Supervisor {
 
       // If a goal was proposed, set state-driven PendingOperationContext for confirmation
       let nextPendingOperation: IPendingOperationContext | null = null;
-      const proposedGoalRes = successfulExecutions.find((res) => res.actionType === "propose_goal");
+      const proposedGoalRes = successfulExecutions.find((res: any) => res.actionType === "propose_goal");
       if (proposedGoalRes) {
         const pGoalId = proposedGoalRes.targetEntity?.entityId || proposedGoalRes.data?.goalId || proposedGoalRes.data?._id;
         const pGoalTitle = proposedGoalRes.targetEntity?.displayName || proposedGoalRes.data?.title || "goal";

@@ -330,7 +330,7 @@ export class CreateGoalAdapter implements IKernelActionAdapter {
       proposal.payload = {};
     }
     if (!proposal.payload.title) {
-      proposal.payload.title = proposal.payload.name || proposal.payload.habit || proposal.payload.goalTitle || proposal.payload.goal || proposal.payload.description || proposal.title;
+      proposal.payload.title = proposal.payload.name || proposal.payload.habit || proposal.payload.goalTitle || proposal.payload.goal || proposal.payload.description || (proposal as any).title;
     }
     if (!proposal.payload.title || proposal.payload.title === "propose_goal" || proposal.payload.title === "create_goal") {
       return { valid: false, reason: "Goal title required" };
