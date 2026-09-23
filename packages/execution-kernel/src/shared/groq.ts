@@ -73,12 +73,12 @@ export async function groqChat({
             const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
             const prompt = messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
             const geminiRes = await ai.models.generateContent({
-                model: "gemini-3.6-flash",
+                model: "gemini-2.5-flash",
                 contents: prompt,
             });
             const text = geminiRes.text?.trim() || "";
             if (text) {
-                console.log("[GROQ] Recovered successfully using tertiary Gemini 3.6 Flash fallback");
+                console.log("[GROQ] Recovered successfully using tertiary Gemini 2.5 Flash fallback");
                 return text;
             }
         } catch (geminiErr: any) {

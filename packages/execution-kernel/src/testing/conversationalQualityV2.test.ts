@@ -79,7 +79,11 @@ test("V2 Semantic Conversational Quality Suite", async (t) => {
       firstChunk.includes("adding that") ||
       firstChunk.includes("agenda") ||
       firstChunk.includes("creating that") ||
-      firstChunk.includes("Taking care of that");
+      firstChunk.includes("Taking care of that") ||
+      firstChunk.includes("setting that up") ||
+      firstChunk.includes("setting up") ||
+      firstChunk.includes("On it") ||
+      firstChunk.includes("Right away");
     assert.ok(isNaturalFiller, `First chunk should be a semantic filler, got: "${firstChunk}"`);
   });
 });

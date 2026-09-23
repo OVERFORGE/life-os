@@ -8,6 +8,7 @@ import { groqChat, cleanLLMResponse } from "../../shared/groq";
 import { ConversationManager } from "../../kernel/ConversationManager";
 import { buildSupervisorPersonaPrompt, AVEN_IDENTITY, extractFirstName } from "../../persona";
 import { SemanticIntentInterpreter } from "../semantic/SemanticIntentInterpreter";
+import { FastSemanticFiller } from "../semantic/FastSemanticFiller";
 import { ActionProposal, DOMAIN_CAPABILITIES, DomainActionType } from "../contracts/ActionProposalContracts";
 import { KernelCapabilityService } from "../kernel/KernelCapabilityService";
 import {
@@ -85,6 +86,25 @@ export class Supervisor {
     const executionId = generateId("exec");
     const requestId = req.requestId || generateId("req");
     const conversationId = req.conversationId || "default";
+
+    let earlyFillerEmitted = false;
+    let mainExecutionFinished = false;
+
+    // Launch instant model-driven semantic filler concurrently (< 180ms) for real-time voice responsiveness
+    const fillerPromise = req.onChunk
+      ? FastSemanticFiller.getInstance()
+          .generateFiller(req.message)
+          .then((filler) => {
+            if (filler && !mainExecutionFinished && req.onChunk) {
+              earlyFillerEmitted = true;
+              const cleanFiller = filler.replace(/[.!?\s]+$/, "") + ".\n\n";
+              req.onChunk(cleanFiller);
+              return filler;
+            }
+            return null;
+          })
+          .catch(() => null)
+      : Promise.resolve(null);
 
     // 0. Pre-load Conversational State & Short-Term Memory (Phase 1)
     let loadedState: any = null;
@@ -187,6 +207,7 @@ export class Supervisor {
             expiresAt: new Date(Date.now() + 10 * 60 * 1000),
           };
           stmUpdates = { pendingOperation: newPendingOp };
+          mainExecutionFinished = true;
           req.onChunk?.(response);
           return {
             executionId,
@@ -203,6 +224,7 @@ export class Supervisor {
         }
       }
 
+      mainExecutionFinished = true;
       req.onChunk?.(response);
       const traceContext = ProductionTracer.getInstance().recordTrace({
         requestId,
@@ -232,6 +254,7 @@ export class Supervisor {
     // 3b. Clarification / Ambiguity Interception (Phase 2: First-Class Pending Operation Continuation)
     if (semanticTurn.clarification?.required && semanticTurn.clarification.questionToUser) {
       const response = semanticTurn.clarification.questionToUser;
+      mainExecutionFinished = true;
       req.onChunk?.(response);
 
       const op = semanticTurn.operations[0];
@@ -304,10 +327,21 @@ export class Supervisor {
 
     // 4. Semantic Operations Execution via Sovereign Kernel
     if (semanticTurn.operations.length > 0) {
-      // Emit model-driven semantic filler as Chunk 0 (< 20ms) before kernel validation & execution
-      const filler = this.getSemanticFiller(semanticTurn);
-      if (filler) {
-        req.onChunk?.(filler + " ");
+      // If early concurrent filler has not emitted, check if filler is needed
+      if (!earlyFillerEmitted) {
+        try {
+          const fastFiller = await Promise.race([
+            fillerPromise,
+            new Promise<null>((res) => setTimeout(() => res(null), 80)),
+          ]);
+          if (!earlyFillerEmitted && !fastFiller) {
+            const filler = this.getSemanticFiller(semanticTurn);
+            if (filler) {
+              const cleanFiller = filler.replace(/[.!?\s]+$/, "") + ".\n\n";
+              req.onChunk?.(cleanFiller);
+            }
+          }
+        } catch (_) {}
       }
 
       // If turn is an EXPLICIT_CORRECTION, compensate previous operation first
@@ -398,6 +432,7 @@ export class Supervisor {
           }
         } catch (_) {}
 
+        mainExecutionFinished = true;
         req.onChunk?.(clarificationQuestion);
         return {
           executionId,
@@ -514,6 +549,7 @@ export class Supervisor {
         }
       } catch (_) {}
 
+      mainExecutionFinished = true;
       req.onChunk?.(response);
 
       const actionIds = kernelResults.map((r: any) => r.actionId);
@@ -546,6 +582,7 @@ export class Supervisor {
     // 5. Clarification Prompt Branch
     if (semanticTurn.clarification?.required && semanticTurn.clarification.questionToUser) {
       const response = semanticTurn.clarification.questionToUser;
+      mainExecutionFinished = true;
       req.onChunk?.(response);
       return {
         executionId,
@@ -585,6 +622,7 @@ export class Supervisor {
           timestamp: Date.now(),
         });
 
+        mainExecutionFinished = true;
         req.onChunk?.(fastResult.userResponse);
         return {
           executionId,
@@ -603,11 +641,12 @@ export class Supervisor {
 
     // 3. Conversational LLM Execution Branch (Natural Dialogue without Specialist Jargon)
     if (routingDecision.strategy === "CONVERSATIONAL_LLM") {
-      // If the turn is an information query or data lookup, emit an immediate semantic query filler
-      if (semanticTurn.primaryClassification === "INFORMATION_QUERY") {
+      // If the turn is an information query or data lookup, emit an immediate semantic query filler if not already emitted
+      if (semanticTurn.primaryClassification === "INFORMATION_QUERY" && !earlyFillerEmitted) {
         const queryFiller = this.getSemanticFiller(semanticTurn);
         if (queryFiller) {
-          req.onChunk?.(queryFiller + " ");
+          const cleanFiller = queryFiller.replace(/[.!?\s]+$/, "") + ".\n\n";
+          req.onChunk?.(cleanFiller);
         }
       }
 
@@ -740,6 +779,7 @@ export class Supervisor {
         timestamp: Date.now(),
       });
 
+      mainExecutionFinished = true;
       req.onChunk?.(responseText);
 
       return {
@@ -756,10 +796,14 @@ export class Supervisor {
     }
 
     // 4. Multi-Agent / Specialist ReAct Execution Branch
-    // Immediately emit natural Jarvis executive acknowledgement as Chunk 0 (< 15ms)
-    const acknowledgement = this.getExecutiveAcknowledgement(req.message, routingDecision);
-    if (acknowledgement) {
-      req.onChunk?.(acknowledgement + " ");
+    // Immediately emit natural Jarvis executive acknowledgement as Chunk 0 (< 15ms) if not already emitted
+    let acknowledgement = "";
+    if (!earlyFillerEmitted) {
+      acknowledgement = this.getExecutiveAcknowledgement(req.message, routingDecision);
+      if (acknowledgement) {
+        const cleanAck = acknowledgement.replace(/[.!?\s]+$/, "") + ".\n\n";
+        req.onChunk?.(cleanAck);
+      }
     }
 
     // Ingest dialogue context if conversationId is provided so follow-up commands retain proposal details
@@ -802,6 +846,7 @@ export class Supervisor {
     );
 
     // Emit final synthesis summary as Chunk 1
+    mainExecutionFinished = true;
     req.onChunk?.(reactResult.userSummary);
 
     const fullResponse = acknowledgement
