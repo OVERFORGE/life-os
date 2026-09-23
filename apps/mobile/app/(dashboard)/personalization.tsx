@@ -1,14 +1,14 @@
-// CACHE BUST 
-import React, { useState, useEffect, useCallback } from 'react';
+import React, { useState, useEffect, useCallback, useRef } from 'react';
 import {
   View, Text, ScrollView, TouchableOpacity, SafeAreaView,
-  Switch, ActivityIndicator,
+  Switch, ActivityIndicator, TextInput, Alert,
 } from 'react-native';
-import { ArrowLeft, Bell, Moon, Scale, ChevronUp, ChevronDown, Check, Flame, TrendingDown, Minus } from 'lucide-react-native';
+import { ArrowLeft, Bell, Moon, Scale, ChevronUp, ChevronDown, Check, Flame, TrendingDown, Minus, Mic, Volume2, Sparkles, User, Square } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
 import AsyncStorage from '@react-native-async-storage/async-storage';
-import { fetchWithAuth } from '../../utils/api';
+import { fetchWithAuth, API_URL } from '../../utils/api';
+import { VoiceRecorder } from '../../utils/audioCapture';
+import { speakAndListen } from '../../utils/ttsManager';
 import * as Notifications from 'expo-notifications';
 
 const C = {
@@ -56,13 +56,21 @@ export default function PersonalizationScreen() {
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(false);
 
+  // User Profile & Pronunciation state
+  const [userName, setUserName] = useState('');
+  const [phoneticName, setPhoneticName] = useState('');
+  const [pronunciationPreference, setPronunciationPreference] = useState<'auto' | 'custom' | 'voice_sample'>('auto');
+  const [isRecordingSample, setIsRecordingSample] = useState(false);
+  const [isProcessingSample, setIsProcessingSample] = useState(false);
+  const [isTestingVoice, setIsTestingVoice] = useState(false);
+  const sampleRecorderRef = useRef<VoiceRecorder | null>(null);
+
   // Preferences state
   const [reminderEnabled, setReminderEnabled] = useState(true);
   const [reminderDay, setReminderDay] = useState(0);     // 0=Sun
   const [reminderHour, setReminderHour] = useState(9);   // 9am
   const [rolloverHour, setRolloverHour] = useState(4);   // 4am
   const [persistentNotifEnabled, setPersistentNotifEnabled] = useState(false); // Default false for Expo Go safety
-
 
   // Diet mode state
   const [dietMode, setDietMode] = useState('recomp');
@@ -73,7 +81,7 @@ export default function PersonalizationScreen() {
   const loadPrefs = async () => {
     setLoading(true);
     try {
-        const [userRes, weightRes] = await Promise.all([
+      const [userRes, weightRes] = await Promise.all([
         fetchWithAuth('/user'),
         fetchWithAuth('/health/weight-trend')
       ]);
@@ -90,7 +98,10 @@ export default function PersonalizationScreen() {
 
       if (userRes.ok) {
         const d = await userRes.json();
+        setUserName(d.name || '');
         const prefs = d.preferences || {};
+        setPhoneticName(prefs.phoneticName || '');
+        setPronunciationPreference(prefs.pronunciationPreference || 'auto');
         setReminderEnabled(prefs.weightReminderEnabled !== false);
         setReminderDay(prefs.weightReminderDay ?? 0);
         setReminderHour(prefs.weightReminderHour ?? 9);
@@ -112,7 +123,10 @@ export default function PersonalizationScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => { loadPrefs(); }, []));
+  // Safe standard useEffect - does not crash with NavigationContainer mismatch
+  useEffect(() => {
+    loadPrefs();
+  }, []);
 
   const save = async () => {
     setSaving(true);
@@ -122,6 +136,8 @@ export default function PersonalizationScreen() {
         headers: { 'Content-Type': 'application/json' },
         body: JSON.stringify({
           preferences: {
+            phoneticName: phoneticName.trim(),
+            pronunciationPreference,
             weightReminderEnabled: reminderEnabled,
             weightReminderDay: reminderDay,
             weightReminderHour: reminderHour,
@@ -138,8 +154,6 @@ export default function PersonalizationScreen() {
       } else {
         import('../../utils/persistentNotification').then(n => n.stopTaskRotation());
       }
-      
-
 
       if (res.ok) {
         setSaved(true);
@@ -156,6 +170,81 @@ export default function PersonalizationScreen() {
     }
   };
 
+  // Start recording voice pronunciation sample
+  const startRecordingSample = async () => {
+    try {
+      setIsRecordingSample(true);
+      const recorder = new VoiceRecorder();
+      sampleRecorderRef.current = recorder;
+
+      const started = await recorder.startRecording(async (uri) => {
+        setIsRecordingSample(false);
+        if (!uri) return;
+        
+        setIsProcessingSample(true);
+        try {
+          const formData = new FormData();
+          const filename = uri.split('/').pop() || 'sample.m4a';
+          const fileRes = await fetch(uri);
+          const blob = await fileRes.blob();
+          formData.append('file', blob, filename);
+
+          const sampleRes = await fetchWithAuth('/user/pronunciation-sample', {
+            method: 'POST',
+            body: formData,
+            headers: {
+              'Accept': 'application/json',
+              'Content-Type': 'multipart/form-data',
+            }
+          });
+
+          if (sampleRes.ok) {
+            const result = await sampleRes.json();
+            if (result.phoneticName) {
+              setPhoneticName(result.phoneticName);
+              setPronunciationPreference('voice_sample');
+              Alert.alert('Pronunciation Learned', `Aven will pronounce your name as "${result.phoneticName}". Tap "Test Voice" to listen.`);
+            }
+          } else {
+            const err = await sampleRes.text();
+            Alert.alert('Processing Error', 'Could not extract phonetic spelling from sample.');
+          }
+        } catch (err: any) {
+          console.error('Sample upload error:', err);
+          Alert.alert('Upload Error', err?.message || 'Failed to upload voice sample.');
+        } finally {
+          setIsProcessingSample(false);
+        }
+      });
+
+      if (!started) {
+        setIsRecordingSample(false);
+        Alert.alert('Microphone Error', 'Could not access microphone.');
+      }
+    } catch (e: any) {
+      setIsRecordingSample(false);
+      Alert.alert('Recorder Error', e?.message || 'Failed to start recording.');
+    }
+  };
+
+  const stopRecordingSample = async () => {
+    if (sampleRecorderRef.current) {
+      await sampleRecorderRef.current.stopRecording();
+    }
+  };
+
+  const testVoicePronunciation = () => {
+    if (isTestingVoice) return;
+    setIsTestingVoice(true);
+    const targetName = phoneticName.trim() || userName || 'Daksh';
+    speakAndListen(
+      `Hello ${targetName}. I am Aven, your executive operating system.`,
+      () => {
+        setIsTestingVoice(false);
+      }
+    );
+  };
+
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: C.bg }}>
       {/* Header */}
@@ -165,7 +254,7 @@ export default function PersonalizationScreen() {
         </TouchableOpacity>
         <View style={{ flex: 1, marginLeft: 16 }}>
           <Text style={{ fontSize: 20, fontWeight: '900', color: C.text }}>Personalization</Text>
-          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 2 }}>App Preferences</Text>
+          <Text style={{ color: C.muted, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginTop: 2 }}>Voice & Preferences</Text>
         </View>
         <TouchableOpacity
           onPress={save}
@@ -190,6 +279,122 @@ export default function PersonalizationScreen() {
         </View>
       ) : (
         <ScrollView contentContainerStyle={{ padding: 20, paddingBottom: 60 }} showsVerticalScrollIndicator={false}>
+
+          {/* ── Aven Voice & Name Pronunciation Learning ── */}
+          <View style={{ backgroundColor: C.card, borderRadius: 24, borderWidth: 1, borderColor: C.border, padding: 24, marginBottom: 24 }}>
+            <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 16 }}>
+              <View style={{ width: 44, height: 44, borderRadius: 14, backgroundColor: C.primaryBg, alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+                <Sparkles color={C.primary} size={22} />
+              </View>
+              <View style={{ flex: 1 }}>
+                <Text style={{ color: C.text, fontSize: 17, fontWeight: '900' }}>Voice & Name Pronunciation</Text>
+                <Text style={{ color: C.subtext, fontSize: 12, marginTop: 2, fontWeight: '600' }}>Teach Aven how to address you naturally</Text>
+              </View>
+            </View>
+
+            {/* Current Voice Identity */}
+            <View style={{ backgroundColor: C.bg, borderRadius: 16, padding: 14, borderWidth: 1, borderColor: C.border, marginBottom: 16, flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between' }}>
+              <View>
+                <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1 }}>Active Voice</Text>
+                <Text style={{ color: C.text, fontSize: 15, fontWeight: '900', marginTop: 2 }}>Aven (Polished British)</Text>
+              </View>
+              <View style={{ backgroundColor: 'rgba(232,65,74,0.15)', paddingHorizontal: 10, paddingVertical: 4, borderRadius: 8 }}>
+                <Text style={{ color: C.primary, fontSize: 11, fontWeight: '900' }}>en-GB-Ryan</Text>
+              </View>
+            </View>
+
+            {/* Phonetic Spelling Editor */}
+            <View style={{ marginBottom: 16 }}>
+              <Text style={{ color: C.subtext, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>Phonetic Name Alias</Text>
+              <TextInput
+                value={phoneticName}
+                onChangeText={(val) => {
+                  setPhoneticName(val);
+                  setPronunciationPreference('custom');
+                }}
+                placeholder={userName ? `e.g. Duksh for ${userName}` : "e.g. Duksh"}
+                placeholderTextColor={C.muted}
+                style={{
+                  backgroundColor: C.bg,
+                  borderWidth: 1,
+                  borderColor: C.border,
+                  borderRadius: 14,
+                  paddingHorizontal: 16,
+                  paddingVertical: 12,
+                  color: C.text,
+                  fontSize: 15,
+                  fontWeight: '700',
+                }}
+              />
+              <Text style={{ color: C.muted, fontSize: 11, fontWeight: '500', marginTop: 6 }}>
+                English phonetic respelling so British neural voice pronounces your name accurately.
+              </Text>
+            </View>
+
+            {/* Interactive Audio Controls */}
+            <View style={{ flexDirection: 'row', gap: 10 }}>
+              {/* Record Voice Sample */}
+              <TouchableOpacity
+                onPress={isRecordingSample ? stopRecordingSample : startRecordingSample}
+                disabled={isProcessingSample}
+                style={{
+                  flex: 1,
+                  backgroundColor: isRecordingSample ? '#E8414A' : C.bg,
+                  borderWidth: 1,
+                  borderColor: isRecordingSample ? '#E8414A' : C.border,
+                  borderRadius: 16,
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+              >
+                {isProcessingSample ? (
+                  <ActivityIndicator color={C.primary} size="small" />
+                ) : isRecordingSample ? (
+                  <>
+                    <Square size={16} color="#FFF" fill="#FFF" />
+                    <Text style={{ color: '#FFF', fontSize: 13, fontWeight: '900' }}>Tap to Stop</Text>
+                  </>
+                ) : (
+                  <>
+                    <Mic size={16} color={C.primary} />
+                    <Text style={{ color: C.text, fontSize: 13, fontWeight: '800' }}>Record Sample</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+
+              {/* Test Audio Preview */}
+              <TouchableOpacity
+                onPress={testVoicePronunciation}
+                disabled={isTestingVoice || isRecordingSample}
+                style={{
+                  flex: 1,
+                  backgroundColor: C.bg,
+                  borderWidth: 1,
+                  borderColor: isTestingVoice ? C.primary : C.border,
+                  borderRadius: 16,
+                  paddingVertical: 12,
+                  paddingHorizontal: 14,
+                  flexDirection: 'row',
+                  alignItems: 'center',
+                  justifyContent: 'center',
+                  gap: 8,
+                }}
+              >
+                {isTestingVoice ? (
+                  <ActivityIndicator color={C.primary} size="small" />
+                ) : (
+                  <>
+                    <Volume2 size={16} color={C.primary} />
+                    <Text style={{ color: C.text, fontSize: 13, fontWeight: '800' }}>Test Voice</Text>
+                  </>
+                )}
+              </TouchableOpacity>
+            </View>
+          </View>
 
 
           {/* ── Command Center (Persistent Notification) ── */}

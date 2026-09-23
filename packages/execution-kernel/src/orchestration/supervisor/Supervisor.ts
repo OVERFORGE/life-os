@@ -14,6 +14,7 @@ import {
   IContextEntityRef,
   IExecutedOperationSnapshot,
   IPendingOperationContext,
+  SemanticTurn,
 } from "../contracts/SemanticTurnContracts";
 import mongoose from "mongoose";
 
@@ -602,6 +603,14 @@ export class Supervisor {
 
     // 3. Conversational LLM Execution Branch (Natural Dialogue without Specialist Jargon)
     if (routingDecision.strategy === "CONVERSATIONAL_LLM") {
+      // If the turn is an information query or data lookup, emit an immediate semantic query filler
+      if (semanticTurn.primaryClassification === "INFORMATION_QUERY") {
+        const queryFiller = this.getSemanticFiller(semanticTurn);
+        if (queryFiller) {
+          req.onChunk?.(queryFiller + " ");
+        }
+      }
+
       let historyMessages: { role: "system" | "user" | "assistant"; content: string }[] = [];
 
       try {
@@ -835,7 +844,24 @@ export class Supervisor {
    * Driven strictly by the LLM's classified domain and actionType (Zero Regex).
    */
   private getSemanticFiller(semanticTurn: SemanticTurn): string | null {
-    if (semanticTurn.primaryClassification === "CASUAL_DIALOGUE" || semanticTurn.operations.length === 0) {
+    if (semanticTurn.primaryClassification === "CASUAL_DIALOGUE") {
+      return null;
+    }
+
+    if (semanticTurn.primaryClassification === "INFORMATION_QUERY") {
+      const QUERY_FILLERS = [
+        "One moment, checking that for you.",
+        "Let me look that up for you.",
+        "Pulling up your schedule now.",
+        "Checking your agenda now, one moment.",
+        "Looking into that for you now.",
+        "Reviewing your records now.",
+      ];
+      const idx = Math.floor(Math.random() * QUERY_FILLERS.length);
+      return QUERY_FILLERS[idx];
+    }
+
+    if (semanticTurn.operations.length === 0) {
       return null;
     }
 

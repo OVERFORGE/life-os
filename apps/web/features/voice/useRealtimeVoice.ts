@@ -159,6 +159,7 @@ export function useRealtimeVoice({
   const recordedChunksRef = useRef<Blob[]>([]);
   const animFrameRef = useRef<number | null>(null);
   const speechRecognitionRef = useRef<any>(null);
+  const liveTranscriptRef = useRef<string>("");
 
   // Turn State Machine & Locks
   const activeStatusRef = useRef<VoiceStatus>("idle");
@@ -237,6 +238,7 @@ export function useRealtimeVoice({
     consecutiveSpeechFramesRef.current = 0;
     turnStartTimeRef.current = performance.now();
     isProcessingTurnRef.current = false;
+    liveTranscriptRef.current = "";
     setHasDetectedUserSpeech(false);
 
     // Clean up old recorder if still active
@@ -749,9 +751,15 @@ export function useRealtimeVoice({
       const audioBlob = new Blob(recordedChunksRef.current, { type: mimeType });
       recordedChunksRef.current = [];
 
-      console.log(`[VOICE] Audio blob created: ${audioBlob.size} bytes (${mimeType})`);
+      // 1. If Web Speech API already transcribed speech live while user spoke, use it immediately (0ms upload delay)
+      const liveTranscript = liveTranscriptRef.current?.trim();
+      if (liveTranscript && liveTranscript.length > 2) {
+        console.log(`[VOICE] Using zero-delay live transcript (${liveTranscript.length} chars): "${liveTranscript}"`);
+        await processUserSpeech(liveTranscript);
+        return;
+      }
 
-      // Guard against zero/near-zero audio (e.g. empty mic or accidental tap)
+      // 2. Fallback to server Whisper transcription if SpeechRecognition was not available
       if (audioBlob.size < 1500) {
         console.log("[VOICE] Audio blob too small (<1.5KB), resuming listening.");
         resetListeningTurn();
@@ -1002,6 +1010,7 @@ export function useRealtimeVoice({
             }
 
             if (activeStatusRef.current === "listening") {
+              liveTranscriptRef.current = trimmed;
               setUserTranscript(trimmed);
               setHasDetectedUserSpeech(true);
               speechDetectedRef.current = true;

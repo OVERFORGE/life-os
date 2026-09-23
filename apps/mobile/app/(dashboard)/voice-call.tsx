@@ -190,36 +190,40 @@ export default function VoiceCallScreen() {
     }
   }, [isMuted]);
 
+  const activeXhrRef = useRef<XMLHttpRequest | null>(null);
+
   const sendToAven = async (text: string) => {
     if (!isActiveRef.current || cancelledRef.current) return;
     
     setStatus('thinking');
+    setAssistantTranscript('');
     
     try {
       const token = await AsyncStorage.getItem('user_token');
-      const res = await fetchWithAuth('/conversation', {
-        method: 'POST',
-        body: JSON.stringify({ 
-          message: text, 
-          model: selectedModel, 
-          mode: 'general' 
-        }),
-      });
+      if (activeXhrRef.current) {
+        try { activeXhrRef.current.abort(); } catch (_) {}
+      }
 
-      if (!isActiveRef.current || cancelledRef.current) return;
+      const xhr = new XMLHttpRequest();
+      activeXhrRef.current = xhr;
+      xhr.open('POST', `${API_URL}/conversation`);
+      if (token) {
+        xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+      xhr.setRequestHeader('Content-Type', 'application/json');
 
-      if (res.ok) {
-        // The /conversation API returns streaming text/plain, not JSON
-        const responseText = await res.text();
-        const parsed = responseText.trim();
-        
-        if (parsed.length > 0) {
-          setAssistantTranscript(parsed.trim());
-          setStatus('speaking');
+      let processedLength = 0;
+      let rawAccumulated = '';
+      const speechQueue: string[] = [];
+      let isPlayingSpeech = false;
+      let streamEnded = false;
+      let pendingSentenceBuffer = '';
 
-          // Speak the response with Aven's voice
-          speakAndListen(parsed.trim(), () => {
-            if (!isActiveRef.current || cancelledRef.current) return;
+      const playNextChunk = () => {
+        if (!isActiveRef.current || cancelledRef.current) return;
+        if (speechQueue.length === 0) {
+          isPlayingSpeech = false;
+          if (streamEnded) {
             setStatus('idle');
             // Auto-listen for the next turn
             setTimeout(() => {
@@ -227,63 +231,95 @@ export default function VoiceCallScreen() {
                 startListening();
               }
             }, 300);
-          });
-
-          // Also start barge-in monitoring
-          voiceRecorderRef.current.startRecording(
-            async (uri) => {
-              if (!isActiveRef.current || cancelledRef.current) return;
-              if (!uri) return;
-              
-              setStatus('transcribing');
-              const { text: bargeText } = await transcribeAudio(uri);
-              if (bargeText) {
-                const cleaned = bargeText.trim();
-                const isJunk = cleaned.length <= 2 || /^[.\s,!?]+$/.test(cleaned);
-                if (!isJunk) {
-                  setUserTranscript(cleaned);
-                  await sendToAven(cleaned);
-                } else {
-                  startListening();
-                }
-              } else {
-                startListening();
-              }
-            },
-            {
-              isBargeIn: true,
-              onBargeIn: () => {
-                console.log('[VOICE-CALL] Barge-in detected! Interrupting Aven...');
-                stopSpeaking();
-                setStatus('listening');
-                setHasDetectedSpeech(true);
-                setAssistantTranscript('');
-              },
-              onVolume: (vol) => {
-                if (isActiveRef.current && !cancelledRef.current) {
-                  setAudioVolume(vol);
-                }
-              },
-              onSpeechDetected: () => {
-                if (isActiveRef.current && !cancelledRef.current) {
-                  setHasDetectedSpeech(true);
-                }
-              },
-            }
-          );
-        } else {
-          startListening();
+          }
+          return;
         }
 
-        scheduleAllTaskReminders().catch(() => {});
-      } else {
-        setErrorMessage('Failed to get response from Aven.');
+        isPlayingSpeech = true;
+        setStatus('speaking');
+        const nextSegment = speechQueue.shift()!;
+        speakAndListen(nextSegment, () => {
+          playNextChunk();
+        });
+      };
+
+      const queueSentence = (sentence: string) => {
+        const clean = sentence.trim();
+        if (clean.length > 0) {
+          speechQueue.push(clean);
+          if (!isPlayingSpeech) {
+            playNextChunk();
+          }
+        }
+      };
+
+      xhr.onprogress = () => {
+        if (!isActiveRef.current || cancelledRef.current) {
+          try { xhr.abort(); } catch (_) {}
+          return;
+        }
+
+        const newChunk = xhr.responseText.slice(processedLength);
+        processedLength = xhr.responseText.length;
+        rawAccumulated += newChunk;
+        pendingSentenceBuffer += newChunk;
+        setAssistantTranscript(rawAccumulated.trim());
+
+        // Extract completed sentence ending in [.!?\n]
+        const sentenceRegex = /([^.!?\n]{3,}[.!?]+(?:\s+|$)|[^\n]{8,}\n+)/g;
+        let match;
+        let lastIdx = 0;
+        while ((match = sentenceRegex.exec(pendingSentenceBuffer)) !== null) {
+          const s = match[1].trim();
+          if (s.length > 0) {
+            console.log('[MOBILE_STREAM] Instant segment playback:', s);
+            queueSentence(s);
+          }
+          lastIdx = sentenceRegex.lastIndex;
+        }
+        if (lastIdx > 0) {
+          pendingSentenceBuffer = pendingSentenceBuffer.slice(lastIdx);
+        }
+      };
+
+      xhr.onload = () => {
+        activeXhrRef.current = null;
+        if (!isActiveRef.current || cancelledRef.current) return;
+        streamEnded = true;
+
+        if (pendingSentenceBuffer.trim().length > 0) {
+          queueSentence(pendingSentenceBuffer.trim());
+          pendingSentenceBuffer = '';
+        } else if (!isPlayingSpeech && speechQueue.length === 0) {
+          setStatus('idle');
+          setTimeout(() => {
+            if (isActiveRef.current && !cancelledRef.current) {
+              startListening();
+            }
+          }, 300);
+        }
+      };
+
+      xhr.onerror = (e) => {
+        activeXhrRef.current = null;
+        console.error('[VOICE-CALL] Stream error:', e);
+        if (isActiveRef.current && !cancelledRef.current) {
+          setErrorMessage('Network connection lost.');
+          setStatus('error');
+        }
+      };
+
+      xhr.send(JSON.stringify({
+        message: text,
+        model: selectedModel,
+        mode: 'general',
+      }));
+    } catch (e: any) {
+      console.error('[VOICE-CALL] sendToAven error:', e);
+      if (isActiveRef.current && !cancelledRef.current) {
+        setErrorMessage(e?.message || 'Could not communicate with assistant.');
         setStatus('error');
       }
-    } catch (e: any) {
-      if (!isActiveRef.current || cancelledRef.current) return;
-      setErrorMessage(e?.message || 'Network error');
-      setStatus('error');
     }
   };
 
