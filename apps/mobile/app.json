@@ -65,6 +65,13 @@
         }
       ],
       "expo-web-browser",
+      [
+        "expo-audio",
+        {
+          "microphonePermission": "Allow Life OS to access your microphone for voice calls with Aven.",
+          "recordAudioAndroid": true
+        }
+      ],
       "@react-native-google-signin/google-signin",
       "@react-native-community/datetimepicker",
       [

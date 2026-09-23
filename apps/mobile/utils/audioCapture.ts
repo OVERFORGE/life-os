@@ -1,11 +1,27 @@
 import {
   AudioModule,
+  RecordingPresets,
   requestRecordingPermissionsAsync,
   getRecordingPermissionsAsync,
   setAudioModeAsync,
 } from 'expo-audio';
-import type { AudioRecorder, RecorderState } from 'expo-audio';
+import type { AudioRecorder, RecorderState, RecordingOptions } from 'expo-audio';
 import { Platform } from 'react-native';
+
+// Build correct RecordingOptions using the SDK preset as a base,
+// with metering enabled for VAD/visualizer and voice_communication
+// audio source on Android for echo cancellation + AGC.
+const VOICE_RECORDING_OPTIONS: RecordingOptions = {
+  ...RecordingPresets.HIGH_QUALITY,
+  isMeteringEnabled: true,
+  android: {
+    ...RecordingPresets.HIGH_QUALITY.android,
+    audioSource: 'voice_communication' as const,
+  },
+  ios: {
+    ...RecordingPresets.HIGH_QUALITY.ios,
+  },
+};
 
 export interface VoiceRecorderOptions {
   isBargeIn?: boolean;
@@ -51,7 +67,7 @@ export class VoiceRecorder {
         perm = await requestRecordingPermissionsAsync();
       }
       if (perm.status !== 'granted') {
-        console.log('Audio permission not granted.');
+        console.log('[VoiceRecorder] Audio permission not granted.');
         return false;
       }
 
@@ -61,24 +77,10 @@ export class VoiceRecorder {
         shouldPlayInBackground: true,
       });
 
-      // Flatten recording options for the native constructor (it expects
-      // outputFormat/audioEncoder at the top level, NOT nested under android:{})
-      const nativeOptions = {
-        extension: '.m4a',
-        sampleRate: 44100,
-        numberOfChannels: 2,
-        bitRate: 128000,
-        isMeteringEnabled: true,
-        meteringEnabled: true,
-        ...(Platform.OS === 'android'
-          ? { outputFormat: 'mpeg4' as const, audioEncoder: 'aac' as const }
-          : {}),
-      };
-
-      console.log('[VoiceRecorder] Creating AudioRecorder with native options:', JSON.stringify(nativeOptions));
-      const recorder = new AudioModule.AudioRecorder(nativeOptions);
+      console.log('[VoiceRecorder] Creating AudioRecorder with options:', JSON.stringify(VOICE_RECORDING_OPTIONS));
+      const recorder = new AudioModule.AudioRecorder(VOICE_RECORDING_OPTIONS);
       console.log('[VoiceRecorder] Preparing to record...');
-      await recorder.prepareToRecordAsync(nativeOptions as any);
+      await recorder.prepareToRecordAsync(VOICE_RECORDING_OPTIONS);
       console.log('[VoiceRecorder] Starting recording...');
       recorder.record();
       this.recorder = recorder;
