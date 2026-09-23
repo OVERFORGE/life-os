@@ -117,10 +117,10 @@ export class VoiceRecorder {
     const now = Date.now();
 
     // Compute normalized volume (0.0 to 1.0) for UI soundwave feedback
-    // -65 dB is silence floor, -15 dB is loud voice
+    // -55 dB is silence floor (ignores fan noise), -10 dB is loud voice
     let normVolume = 0;
-    if (db > -65) {
-      normVolume = Math.min(1, Math.max(0.05, (db + 65) / 45));
+    if (db > -55) {
+      normVolume = Math.min(1, Math.max(0.05, (db + 55) / 40));
     }
     this.onVolumeCb?.(normVolume, db);
 
@@ -144,9 +144,11 @@ export class VoiceRecorder {
       return;
     }
 
-    // 2. Realistic voice thresholds for mobile mics
-    const SPEECH_ONSET_DB = -50;
-    const SPEECH_HOLD_DB = -58;
+    // 2. Voice thresholds tuned for voice_communication source
+    // Raised to ignore ambient noise (fans, AC) — voice_communication
+    // already applies hardware noise suppression + AGC
+    const SPEECH_ONSET_DB = -40;
+    const SPEECH_HOLD_DB = -48;
 
     if (db >= SPEECH_HOLD_DB) {
       // User is vocalizing or trailing off naturally

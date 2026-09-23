@@ -209,10 +209,11 @@ export default function VoiceCallScreen() {
       if (!isActiveRef.current || cancelledRef.current) return;
 
       if (res.ok) {
-        const data = await res.json();
-        const parsed = data.message?.content || data.response || '';
+        // The /conversation API returns streaming text/plain, not JSON
+        const responseText = await res.text();
+        const parsed = responseText.trim();
         
-        if (parsed.trim().length > 0) {
+        if (parsed.length > 0) {
           setAssistantTranscript(parsed.trim());
           setStatus('speaking');
 
