@@ -314,16 +314,7 @@ export async function GET(req: NextRequest) {
       }
     }
 
-    const unscheduledTasks: Array<{
-      id: string;
-      title: string;
-      priority: string;
-      status: string;
-      dueDate: string;
-      dueTime?: string | null;
-    }> = [];
 
-    const effectiveOccurrences: any[] = [...occurrences];
 
     for (const t of tasks) {
       const isAlreadyRepresented = occurrences.some(
