@@ -20,7 +20,12 @@ function getGroqClient(): Groq | null {
 }
 
 const DEFAULT_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
-const RESILIENT_FALLBACK_MODEL = "qwen/qwen3.8-27b";
+const RESILIENT_FALLBACK_MODELS = [
+    "openai/gpt-oss-120b",
+    "openai/gpt-oss-20b",
+    "qwen/qwen3.8-27b",
+];
+const RESILIENT_FALLBACK_MODEL = "openai/gpt-oss-120b";
 
 export async function groqChat({
     messages,
@@ -35,7 +40,7 @@ export async function groqChat({
 }) {
     const client = getGroqClient();
 
-    // Tier 1: Primary Model (Default: openai/gpt-oss-120b)
+    // Tier 1: Primary Model
     if (client) {
         try {
             const response = await client.chat.completions.create({
@@ -47,14 +52,15 @@ export async function groqChat({
             const content = response.choices[0]?.message?.content || "";
             if (content.trim()) return content;
         } catch (primaryErr: any) {
-            console.warn(`[GROQ] Primary model ${model} failed (${primaryErr?.status || primaryErr?.message}), switching to resilient fallback: ${RESILIENT_FALLBACK_MODEL}`);
+            console.warn(`[GROQ] Primary model ${model} failed (${primaryErr?.status || primaryErr?.message}), trying resilient fallbacks`);
         }
 
-        // Tier 2: Resilient Fast Fallback (qwen/qwen3.8-27b)
-        if (model !== RESILIENT_FALLBACK_MODEL) {
+        // Tier 2: Resilient Groq Fallback Models
+        for (const fallbackModel of RESILIENT_FALLBACK_MODELS) {
+            if (fallbackModel === model) continue;
             try {
                 const fallbackResponse = await client.chat.completions.create({
-                    model: RESILIENT_FALLBACK_MODEL,
+                    model: fallbackModel,
                     messages,
                     temperature,
                     max_tokens,
@@ -62,7 +68,7 @@ export async function groqChat({
                 const content = fallbackResponse.choices[0]?.message?.content || "";
                 if (content.trim()) return content;
             } catch (fallbackErr: any) {
-                console.warn(`[GROQ] Resilient model ${RESILIENT_FALLBACK_MODEL} failed (${fallbackErr?.status || fallbackErr?.message})`);
+                console.warn(`[GROQ] Resilient model ${fallbackModel} failed (${fallbackErr?.status || fallbackErr?.message})`);
             }
         }
     }

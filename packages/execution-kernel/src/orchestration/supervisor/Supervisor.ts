@@ -776,6 +776,43 @@ export class Supervisor {
       }
 
 
+      let stmUpdates: Record<string, any> | undefined = undefined;
+      const asksConfirmation = responseText.includes("?") && (
+        responseText.toLowerCase().includes("shall i") ||
+        responseText.toLowerCase().includes("would you like me to") ||
+        responseText.toLowerCase().includes("should i") ||
+        responseText.toLowerCase().includes("do you want me to") ||
+        responseText.toLowerCase().includes("would you like to confirm")
+      );
+
+      if (asksConfirmation) {
+        const conversationalPendingOp: IPendingOperationContext = {
+          operationId: generateId("pop"),
+          turnId: generateId("turn"),
+          actionType: (stm?.activeFocus?.entityType === "goal" ? "confirm_goal" : "create_temporal_series") as DomainActionType,
+          domain: "productivity",
+          partialPayload: {},
+          missingRequirement: { kind: "CONFIRMATION" as any },
+          clarificationQuestion: responseText,
+          state: "AWAITING_CLARIFICATION",
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        };
+
+        stmUpdates = { pendingOperation: conversationalPendingOp };
+
+        try {
+          if (mongoose.connection && mongoose.connection.readyState === 1) {
+            const { ConversationShortTermMemory } = await import("@/server/db/models/ConversationShortTermMemory");
+            await ConversationShortTermMemory.updateOne(
+              { conversationId, userId: req.userId },
+              { $set: stmUpdates },
+              { upsert: true }
+            );
+          }
+        } catch (_) {}
+      }
+
       const durationMs = Date.now() - startTime;
       const traceContext = ProductionTracer.getInstance().recordTrace({
         requestId,
@@ -802,6 +839,8 @@ export class Supervisor {
         workspaceStatus: "COMPLETED",
         terminationReason: "CONVERSATIONAL_RESPONSE",
         traceContext,
+        stmUpdates,
+        pendingOperation: stmUpdates?.pendingOperation,
       };
     }
 

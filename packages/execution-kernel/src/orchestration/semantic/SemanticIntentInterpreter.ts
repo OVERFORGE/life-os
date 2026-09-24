@@ -188,6 +188,59 @@ if (!process.env.GROQ_API_KEY) {
 
 const PROMPT_HASH = crypto.createHash("sha256").update(SYSTEM_PROMPT_V2).digest("hex");
 
+function repairTruncatedJSON(jsonString: string): any {
+  try {
+    return JSON.parse(jsonString);
+  } catch (_) {}
+
+  // If truncated inside operations array, salvage completed operation objects
+  const opIdx = jsonString.indexOf('"operations"');
+  if (opIdx !== -1) {
+    const arrStart = jsonString.indexOf("[", opIdx);
+    if (arrStart !== -1) {
+      let depth = 0;
+      let inString = false;
+      let escape = false;
+      let lastCompletedObjEnd = -1;
+
+      for (let i = arrStart + 1; i < jsonString.length; i++) {
+        const char = jsonString[i];
+        if (escape) {
+          escape = false;
+          continue;
+        }
+        if (char === "\\") {
+          escape = true;
+          continue;
+        }
+        if (char === '"') {
+          inString = !inString;
+          continue;
+        }
+        if (!inString) {
+          if (char === "{") {
+            depth++;
+          } else if (char === "}") {
+            depth--;
+            if (depth === 0) {
+              lastCompletedObjEnd = i;
+            }
+          }
+        }
+      }
+
+      if (lastCompletedObjEnd !== -1) {
+        const repaired = jsonString.substring(0, lastCompletedObjEnd + 1) + "\n]}";
+        try {
+          return JSON.parse(repaired);
+        } catch (_) {}
+      }
+    }
+  }
+
+  return null;
+}
+
 export class SemanticIntentInterpreter {
   private static instance: SemanticIntentInterpreter;
 
@@ -242,18 +295,23 @@ export class SemanticIntentInterpreter {
           messages,
           model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
           temperature: 0.1,
-          max_tokens: 1200,
+          max_tokens: 4096,
         });
 
         const cleaned = cleanLLMResponse(rawResponse);
         const jsonStart = cleaned.indexOf("{");
         const jsonEnd = cleaned.lastIndexOf("}");
-        if (jsonStart !== -1 && jsonEnd !== -1) {
-          const sanitized = cleaned
-            .substring(jsonStart, jsonEnd + 1)
+        if (jsonStart !== -1) {
+          const sliceCandidate = jsonEnd > jsonStart ? cleaned.substring(jsonStart, jsonEnd + 1) : cleaned.substring(jsonStart);
+          const sanitized = sliceCandidate
             .replace(/,\s*([}\]])/g, "$1")
             .replace(/\/\/.*$/gm, "");
-          parsedTurn = JSON.parse(sanitized);
+          try {
+            parsedTurn = JSON.parse(sanitized);
+          } catch (parseErr) {
+            parsedTurn = repairTruncatedJSON(sanitized);
+            if (!parsedTurn) throw parseErr;
+          }
         }
       } catch (llmErr) {
         console.warn("[SEMANTIC_INTERPRETER] Groq LLM call failed, falling back to heuristic parsing:", llmErr);
