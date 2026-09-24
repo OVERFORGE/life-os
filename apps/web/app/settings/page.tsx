@@ -49,35 +49,35 @@ export default function SettingsDashboard() {
       title: "Personalization & Voice",
       desc: "Aven voice identity, name pronunciation, daily rollover & reminders",
       icon: Sparkles,
-      iconBg: "bg-[#E8414A]/10 text-[#E8414A]",
+      iconBg: "bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] group-hover:text-[#E8414A] group-hover:border-[#E8414A]/40",
       route: "/settings/personalization",
     },
     {
       title: "Locations & Zones",
       desc: "Voice assistant geofencing, home/work zones & triggers",
       icon: MapPin,
-      iconBg: "bg-blue-500/10 text-blue-400",
+      iconBg: "bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] group-hover:text-[#E8414A] group-hover:border-[#E8414A]/40",
       route: "/settings/locations",
     },
     {
       title: "Signals & Automations",
       desc: "External signals, context inputs & proactive behaviors",
       icon: Radio,
-      iconBg: "bg-purple-500/10 text-purple-400",
+      iconBg: "bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] group-hover:text-[#E8414A] group-hover:border-[#E8414A]/40",
       route: "/settings/signals",
     },
     {
       title: "Connected Devices",
       desc: "Desktop, mobile app sync & active session management",
       icon: Laptop,
-      iconBg: "bg-emerald-500/10 text-emerald-400",
+      iconBg: "bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] group-hover:text-[#E8414A] group-hover:border-[#E8414A]/40",
       route: "/settings/devices",
     },
     {
       title: "Weight & Health Hub",
       desc: "Scale calibrations, maintenance calorie baselines & trend preferences",
       icon: Scale,
-      iconBg: "bg-amber-500/10 text-amber-400",
+      iconBg: "bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] group-hover:text-[#E8414A] group-hover:border-[#E8414A]/40",
       route: "/settings/weights",
     },
   ];
@@ -93,7 +93,7 @@ export default function SettingsDashboard() {
 
         <button
           onClick={handleLogout}
-          className="flex items-center gap-2 px-3.5 py-2 bg-red-500/10 border border-red-500/20 rounded-xl text-xs font-bold tracking-wider text-red-500 hover:bg-red-500/20 transition-colors uppercase"
+          className="flex items-center gap-2 px-3.5 py-2 bg-[#E8414A]/10 border border-[#E8414A]/25 rounded-xl text-xs font-bold tracking-wider text-[#E8414A] hover:bg-[#E8414A]/20 transition-colors uppercase"
         >
           <Power size={14} /> Logout
         </button>
@@ -109,7 +109,7 @@ export default function SettingsDashboard() {
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-lg font-bold text-white">{user?.name || (loading ? "Loading..." : "User")}</h2>
-                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-emerald-500/20 text-emerald-400 rounded-full">
+                <span className="px-2 py-0.5 text-[10px] font-bold uppercase tracking-wider bg-[#2A2B2F] text-gray-300 border border-[#3E424B] rounded-full">
                   {user?.role || "Active Member"}
                 </span>
               </div>
@@ -121,8 +121,8 @@ export default function SettingsDashboard() {
               )}
             </div>
           </div>
-          <div className="p-2.5 bg-[#25262A] border border-[#303136] rounded-xl text-gray-400">
-            <ShieldCheck className="w-5 h-5 text-emerald-400" />
+          <div className="p-2.5 bg-[#25262A] border border-[#303136] rounded-xl text-gray-300">
+            <ShieldCheck className="w-5 h-5 text-gray-300" />
           </div>
         </div>
 

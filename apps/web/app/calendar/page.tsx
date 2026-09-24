@@ -139,8 +139,16 @@ export default function CalendarPage() {
   const [weekDaysData, setWeekDaysData] = useState<DayProjection[]>([]);
   const [unscheduledTasks, setUnscheduledTasks] = useState<UnscheduledTask[]>([]);
 
-  // 24 Hours Grid Mode: Fit to screen (default) vs Scrollable expanded
-  const [fitScreen, setFitScreen] = useState(true);
+  const gridScrollRef = useRef<HTMLDivElement>(null);
+
+  // Auto-scroll to current hour or 8 AM on load/date change
+  useEffect(() => {
+    if (gridScrollRef.current && viewMode === "week") {
+      const curH = new Date().getHours();
+      const targetHour = Math.max(0, curH - 1);
+      gridScrollRef.current.scrollTop = targetHour * 56;
+    }
+  }, [viewMode, selectedDate]);
 
   // Drag and Drop State
   const [draggedBlock, setDraggedBlock] = useState<{
@@ -602,19 +610,6 @@ export default function CalendarPage() {
             </button>
           </div>
 
-          {/* Fit to screen toggle */}
-          {viewMode === "week" && (
-            <button
-              onClick={() => setFitScreen(!fitScreen)}
-              className={`p-1.5 border rounded-xl transition-colors ${
-                fitScreen ? "bg-[#2A2B2F] border-gray-600 text-white" : "bg-[#1F2023] border-[#2A2B2F] text-gray-400"
-              }`}
-              title={fitScreen ? "Expand to scrollable grid" : "Fit 24 hours on screen"}
-            >
-              {fitScreen ? <Minimize2 className="w-3.5 h-3.5" /> : <Maximize2 className="w-3.5 h-3.5" />}
-            </button>
-          )}
-
           <button
             onClick={() => loadData()}
             className="p-2 bg-[#1F2023] hover:bg-[#2A2B2F] border border-[#2A2B2F] text-gray-300 hover:text-white rounded-xl transition-colors"
@@ -703,156 +698,158 @@ export default function CalendarPage() {
                 })}
               </div>
 
-              {/* 24-Hour Grid Canvas */}
+              {/* 24-Hour Grid Canvas (Scrollable with Spacious Hour Rows) */}
               <div
-                className={`flex-1 min-h-0 relative flex flex-col ${
-                  fitScreen ? "overflow-hidden" : "overflow-y-auto"
-                }`}
+                ref={gridScrollRef}
+                className="flex-1 min-h-0 relative overflow-y-auto select-none"
               >
-                {/* Real-time Red Current Time Line across 24 Hours */}
-                <div
-                  className="absolute left-0 right-0 z-30 pointer-events-none flex items-center"
-                  style={{
-                    top: `${(currentMinuteOfDay / 1440) * 100}%`,
-                  }}
-                >
-                  <div className="w-[12.5%] text-right pr-2 text-[9px] font-mono text-[#E8414A] font-bold">
-                    {formatMinutesToTime(currentMinuteOfDay)}
-                  </div>
-                  <div className="flex-1 h-[2px] bg-[#E8414A] shadow-[0_0_8px_rgba(232,65,74,0.8)]" />
-                </div>
-
-                {/* 24 Hour Rows */}
-                {hours24.map((hour) => {
-                  const timeLabel = formatHourLabel(hour);
-                  return (
+                <div className="relative min-h-[1344px] h-[1344px] flex flex-col">
+                  {/* Real-time Red Current Time Line across 24 Hours */}
+                  {currentWeekDays.includes(todayStr) && (
                     <div
-                      key={hour}
-                      className={`grid grid-cols-8 border-b border-[#2A2B2F]/30 ${
-                        fitScreen ? "flex-1 min-h-[22px]" : "min-h-[46px]"
-                      }`}
+                      className="absolute left-0 right-0 z-30 pointer-events-none flex items-center"
+                      style={{
+                        top: `${(currentMinuteOfDay / 60) * 56}px`,
+                      }}
                     >
-                      {/* Hour Time Label */}
-                      <div className="text-right pr-2 text-[10px] font-mono text-gray-400 border-r border-[#2A2B2F]/50 flex items-center justify-end select-none">
-                        {timeLabel}
+                      <div className="w-[12.5%] text-right pr-2 text-[9px] font-mono text-[#E8414A] font-bold">
+                        {formatMinutesToTime(currentMinuteOfDay)}
                       </div>
-
-                      {/* 7 Day Hour Slots with Drop Zone */}
-                      {currentWeekDays.map((dayStr) => {
-                        const isSlotTarget = dragOverSlot?.date === dayStr && dragOverSlot?.hour === hour;
-                        return (
-                          <div
-                            key={dayStr}
-                            onDragOver={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              if (dragOverSlot?.date !== dayStr || dragOverSlot?.hour !== hour) {
-                                setDragOverSlot({ date: dayStr, hour });
-                              }
-                            }}
-                            onDragLeave={() => {
-                              if (dragOverSlot?.date === dayStr && dragOverSlot?.hour === hour) {
-                                setDragOverSlot(null);
-                              }
-                            }}
-                            onDrop={(e) => {
-                              e.preventDefault();
-                              e.stopPropagation();
-                              handleDropOnSlot(dayStr, hour);
-                            }}
-                            onClick={() => openQuickScheduleAt(dayStr, hour)}
-                            className={`border-r border-[#2A2B2F]/30 relative group transition-colors cursor-pointer ${
-                              isSlotTarget
-                                ? "bg-[#E8414A]/20 ring-1 ring-[#E8414A]"
-                                : "hover:bg-[#2A2B2F]/20"
-                            }`}
-                          >
-                            <span className="opacity-0 group-hover:opacity-40 absolute top-0.5 right-1 text-gray-500 text-[10px]">
-                              +
-                            </span>
-                          </div>
-                        );
-                      })}
+                      <div className="flex-1 h-[2px] bg-[#E8414A] shadow-[0_0_8px_rgba(232,65,74,0.8)]" />
                     </div>
-                  );
-                })}
+                  )}
 
-                {/* Overlaid Draggable Blocks */}
-                {weekDaysData.map((dayProj, colIdx) => {
-                  const colLeftPercent = 12.5 + colIdx * 12.5;
-
-                  return dayProj.blocks.map((block) => {
-                    const startMin = block.planned?.startMinute ?? 0;
-                    const duration = block.planned?.durationMinutes ?? block.actual?.durationMinutes ?? 60;
-                    const topPercent = (startMin / 1440) * 100;
-                    const heightPercent = (duration / 1440) * 100;
-
-                    const isFocus = block.kind === "WORK_SESSION";
-                    const isRoutine = block.kind === "ROUTINE_BLOCK";
-                    const isDone = block.variance.status === "ON_TRACK" || block.variance.status === "OVERRUN";
-                    const isBeingDragged = draggedBlock?.occurrenceId === block.occurrenceId;
-
+                  {/* 24 Hour Rows */}
+                  {hours24.map((hour) => {
+                    const timeLabel = formatHourLabel(hour);
                     return (
                       <div
-                        key={block.blockId}
-                        draggable={Boolean(block.occurrenceId)}
-                        onDragStart={(e) => {
-                          e.stopPropagation();
-                          setDraggedBlock({
-                            occurrenceId: block.occurrenceId,
-                            title: block.title,
-                            duration,
-                          });
-                          e.dataTransfer.setData("text/plain", block.occurrenceId || "");
-                          e.dataTransfer.effectAllowed = "move";
-                        }}
-                        onDragEnd={() => {
-                          setDraggedBlock(null);
-                          setDragOverSlot(null);
-                        }}
-                        onClick={(e) => {
-                          e.stopPropagation();
-                          setSelectedBlock(block);
-                        }}
-                        title={`${block.title} (${formatMinutesToTime(startMin)} – ${formatMinutesToTime(startMin + duration)})`}
-                        style={{
-                          top: `${topPercent}%`,
-                          height: `${heightPercent}%`,
-                          left: `calc(${colLeftPercent}% + 2px)`,
-                          width: "calc(12.5% - 4px)",
-                          minHeight: "24px",
-                        }}
-                        className={`absolute z-10 px-2 py-1 rounded-lg border text-left cursor-grab active:cursor-grabbing transition-all overflow-hidden shadow-md flex flex-col justify-center ${
-                          isBeingDragged
-                            ? "opacity-40 ring-2 ring-[#E8414A]"
-                            : isDone
-                            ? "bg-[#202227] border-[#2A2B2F] opacity-90"
-                            : "bg-[#26282E] border-[#3E424B] hover:border-[#E8414A]/70 hover:bg-[#2E3038] hover:z-20"
-                        } ${
-                          isFocus
-                            ? "border-l-[3.5px] border-l-[#E8414A]"
-                            : isRoutine
-                            ? "border-l-[3.5px] border-l-amber-500"
-                            : "border-l-[3.5px] border-l-blue-500"
-                        }`}
+                        key={hour}
+                        style={{ height: "56px", minHeight: "56px" }}
+                        className="grid grid-cols-8 border-b border-[#2A2B2F]/30"
                       >
-                        {/* Task Title (High Contrast & Visible) */}
-                        <div className="flex items-center gap-1 leading-none">
-                          <span className="text-[11px] font-bold text-white truncate drop-shadow-sm flex-1">
-                            {block.title}
-                          </span>
+                        {/* Hour Time Label */}
+                        <div className="text-right pr-2 text-[10px] font-mono text-gray-400 border-r border-[#2A2B2F]/50 flex items-center justify-end select-none">
+                          {timeLabel}
                         </div>
 
-                        {/* Time & Status Subtitle (If block has room) */}
-                        {duration >= 45 && (
-                          <div className="text-[9px] font-mono text-gray-300 truncate mt-0.5 leading-none">
-                            {formatMinutesToTime(startMin)}
-                          </div>
-                        )}
+                        {/* 7 Day Hour Slots with Drop Zone */}
+                        {currentWeekDays.map((dayStr) => {
+                          const isSlotTarget = dragOverSlot?.date === dayStr && dragOverSlot?.hour === hour;
+                          return (
+                            <div
+                              key={dayStr}
+                              onDragOver={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                if (dragOverSlot?.date !== dayStr || dragOverSlot?.hour !== hour) {
+                                  setDragOverSlot({ date: dayStr, hour });
+                                }
+                              }}
+                              onDragLeave={() => {
+                                if (dragOverSlot?.date === dayStr && dragOverSlot?.hour === hour) {
+                                  setDragOverSlot(null);
+                                }
+                              }}
+                              onDrop={(e) => {
+                                e.preventDefault();
+                                e.stopPropagation();
+                                handleDropOnSlot(dayStr, hour);
+                              }}
+                              onClick={() => openQuickScheduleAt(dayStr, hour)}
+                              className={`border-r border-[#2A2B2F]/30 relative group transition-colors cursor-pointer ${
+                                isSlotTarget
+                                  ? "bg-[#E8414A]/20 ring-1 ring-[#E8414A]"
+                                  : "hover:bg-[#2A2B2F]/20"
+                              }`}
+                            >
+                              <span className="opacity-0 group-hover:opacity-40 absolute top-0.5 right-1 text-gray-500 text-[10px]">
+                                +
+                              </span>
+                            </div>
+                          );
+                        })}
                       </div>
                     );
-                  });
-                })}
+                  })}
+
+                  {/* Overlaid Draggable Blocks */}
+                  {weekDaysData.map((dayProj, colIdx) => {
+                    const colLeftPercent = 12.5 + colIdx * 12.5;
+
+                    return dayProj.blocks.map((block) => {
+                      const startMin = block.planned?.startMinute ?? 0;
+                      const duration = block.planned?.durationMinutes ?? block.actual?.durationMinutes ?? 60;
+                      const topPx = (startMin / 60) * 56;
+                      const heightPx = Math.max(26, (duration / 60) * 56 - 3);
+
+                      const isFocus = block.kind === "WORK_SESSION";
+                      const isRoutine = block.kind === "ROUTINE_BLOCK";
+                      const isDone = block.variance.status === "ON_TRACK" || block.variance.status === "OVERRUN";
+                      const isBeingDragged = draggedBlock?.occurrenceId === block.occurrenceId;
+
+                      return (
+                        <div
+                          key={block.blockId}
+                          draggable={Boolean(block.occurrenceId)}
+                          onDragStart={(e) => {
+                            e.stopPropagation();
+                            setDraggedBlock({
+                              occurrenceId: block.occurrenceId,
+                              title: block.title,
+                              duration,
+                            });
+                            e.dataTransfer.setData("text/plain", block.occurrenceId || "");
+                            e.dataTransfer.effectAllowed = "move";
+                          }}
+                          onDragEnd={() => {
+                            setDraggedBlock(null);
+                            setDragOverSlot(null);
+                          }}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setSelectedBlock(block);
+                          }}
+                          title={`${block.title} (${formatMinutesToTime(startMin)} – ${formatMinutesToTime(startMin + duration)})`}
+                          style={{
+                            top: `${topPx}px`,
+                            height: `${heightPx}px`,
+                            left: `calc(${colLeftPercent}% + 2px)`,
+                            width: "calc(12.5% - 4px)",
+                            minHeight: "26px",
+                          }}
+                          className={`absolute z-10 px-2 py-1 rounded-lg border text-left cursor-grab active:cursor-grabbing transition-all overflow-hidden shadow-md flex flex-col justify-center ${
+                            isBeingDragged
+                              ? "opacity-40 ring-2 ring-[#E8414A]"
+                              : isDone
+                              ? "bg-[#202227] border-[#2A2B2F] opacity-90"
+                              : "bg-[#26282E] border-[#3E424B] hover:border-[#E8414A]/70 hover:bg-[#2E3038] hover:z-20"
+                          } ${
+                            isFocus
+                              ? "border-l-[3.5px] border-l-[#E8414A]"
+                              : isRoutine
+                              ? "border-l-[3.5px] border-l-amber-500"
+                              : "border-l-[3.5px] border-l-[#E8414A]/70"
+                          }`}
+                        >
+                          {/* Task Title (High Contrast & Visible) */}
+                          <div className="flex items-center gap-1 leading-none">
+                            <span className="text-[11px] font-bold text-white truncate drop-shadow-sm flex-1">
+                              {block.title}
+                            </span>
+                          </div>
+
+                          {/* Time & Duration Subtitle */}
+                          {heightPx >= 36 && (
+                            <div className="text-[9px] font-mono text-gray-300 truncate mt-0.5 leading-none">
+                              {formatMinutesToTime(startMin)} – {formatMinutesToTime(startMin + duration)}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    });
+                  })}
+                </div>
               </div>
             </div>
           )}

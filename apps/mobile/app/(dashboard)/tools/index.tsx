@@ -28,12 +28,12 @@ export default function ToolsHubScreen() {
           onPress={() => router.push('/(dashboard)/calendar' as any)}
           style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 16, flexDirection: 'row', alignItems: 'center' }}
         >
-          <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: 'rgba(96, 165, 250, 0.15)', borderWidth: 1, borderColor: 'rgba(96, 165, 250, 0.3)', alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
-            <Calendar size={24} color="#60A5FA" />
+          <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: '#2A2B2F', alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+            <Calendar size={24} color="#ECE7E3" />
           </View>
           <View style={{ flex: 1 }}>
-            <Text style={{ color: '#FFFDFC', fontWeight: '600', fontSize: 16 }}>RoutineAI Calendar</Text>
-            <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 14, marginTop: 2 }}>Temporal reality & live timeline</Text>
+            <Text style={{ color: '#FFFDFC', fontWeight: '600', fontSize: 16 }}>Calendar</Text>
+            <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 14, marginTop: 2 }}>Your schedule & smart routine</Text>
           </View>
           <ChevronRight size={20} color="rgba(236,231,227,0.3)" />
         </TouchableOpacity>

@@ -327,7 +327,7 @@ export default function PersonalizationPage() {
         {/* ── 2. Daily Schedule & Rollover ── */}
         <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-blue-500/10 text-blue-400 rounded-xl">
+            <div className="p-3 bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] rounded-xl">
               <Clock className="w-6 h-6" />
             </div>
             <div>
@@ -440,7 +440,7 @@ export default function PersonalizationPage() {
         {/* ── 3. Nutrition & Diet Baseline ── */}
         <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-6 shadow-sm">
           <div className="flex items-center gap-3 mb-6">
-            <div className="p-3 bg-amber-500/10 text-amber-400 rounded-xl">
+            <div className="p-3 bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] rounded-xl">
               <Flame className="w-6 h-6" />
             </div>
             <div>

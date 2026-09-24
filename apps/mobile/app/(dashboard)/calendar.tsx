@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useCallback, useMemo } from 'react';
+import React, { useEffect, useState, useCallback, useMemo, useRef } from 'react';
 import {
   View,
   Text,
@@ -27,12 +27,13 @@ import {
   Check,
   Flame,
   ArrowRight,
+  CalendarDays,
 } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../utils/api';
 
 const SCREEN_WIDTH = Dimensions.get('window').width;
-const HOUR_HEIGHT = 56; // Height per hour in Day view (24 * 56 = 1344px)
+const HOUR_HEIGHT = 60; // Spacious 60px per hour in Day view (24 * 60 = 1440px)
 
 interface TimelineBlock {
   blockId: string;
@@ -93,9 +94,9 @@ function formatHourLabel(h: number): string {
 export default function CalendarScreen() {
   const router = useRouter();
 
-  const [viewMode, setViewMode] = useState<'day' | 'week' | 'agenda'>('day');
+  const [viewMode, setViewMode] = useState<'day' | 'week' | 'agenda'>('week');
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split('T')[0]);
-  const [projection, setProjection] = useState<TimelineProjection | null>(null);
+  const [weekProjections, setWeekProjections] = useState<Record<string, TimelineProjection>>({});
   const [loading, setLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
 
@@ -107,12 +108,16 @@ export default function CalendarScreen() {
   // Scheduling form state
   const [scheduleTitle, setScheduleTitle] = useState('');
   const [scheduleTaskId, setScheduleTaskId] = useState<string | null>(null);
+  const [scheduleDate, setScheduleDate] = useState(() => selectedDate);
   const [scheduleHour, setScheduleHour] = useState(9); // Default 9 AM
   const [scheduleDuration, setScheduleDuration] = useState(60);
 
   // Log time form state
   const [logTaskTitle, setLogTaskTitle] = useState('');
   const [logMinutes, setLogMinutes] = useState('45');
+
+  // Day View Scroll Ref
+  const dayScrollRef = useRef<ScrollView>(null);
 
   // Compute 7 days of the current week (Mon-Sun)
   const weekDays = useMemo(() => {
@@ -152,36 +157,96 @@ export default function CalendarScreen() {
     return () => clearInterval(interval);
   }, []);
 
-  const loadTimeline = useCallback(async () => {
+  // Fetch full week projections in parallel
+  const loadWeekTimeline = useCallback(async () => {
     setLoading(true);
     try {
       const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
-      const res = await fetchWithAuth(`/calendar/timeline?date=${selectedDate}&timezone=${encodeURIComponent(tz)}`);
-      if (res.ok) {
-        const json = await res.json();
-        if (json.ok || json.success) {
-          setProjection(json.data);
+      const days = weekDays.map((d) => d.dateStr);
+
+      const results = await Promise.all(
+        days.map(async (dateStr) => {
+          try {
+            const res = await fetchWithAuth(`/calendar/timeline?date=${dateStr}&timezone=${encodeURIComponent(tz)}`);
+            if (res.ok) {
+              const json = await res.json();
+              if (json.ok || json.success) {
+                return { dateStr, projection: json.data as TimelineProjection };
+              }
+            }
+          } catch (e) {
+            console.warn(`Failed to load timeline for ${dateStr}:`, e);
+          }
+          return { dateStr, projection: null };
+        })
+      );
+
+      const mapping: Record<string, TimelineProjection> = {};
+      results.forEach((item) => {
+        if (item.projection) {
+          mapping[item.dateStr] = item.projection;
         }
-      }
+      });
+      setWeekProjections(mapping);
     } catch (e) {
-      console.error('Failed to load mobile calendar timeline:', e);
+      console.error('Failed to load mobile week timeline:', e);
     } finally {
       setLoading(false);
     }
-  }, [selectedDate]);
+  }, [weekDays]);
 
   useEffect(() => {
-    loadTimeline();
-  }, [loadTimeline]);
+    loadWeekTimeline();
+  }, [loadWeekTimeline]);
+
+  // Active projection for selected date
+  const projection = weekProjections[selectedDate] || null;
+
+  // Unscheduled tasks across loaded projections
+  const tasksToSchedule = useMemo(() => {
+    if (projection?.tasksToSchedule && projection.tasksToSchedule.length > 0) {
+      return projection.tasksToSchedule;
+    }
+    for (const p of Object.values(weekProjections)) {
+      if (p.tasksToSchedule && p.tasksToSchedule.length > 0) {
+        return p.tasksToSchedule;
+      }
+    }
+    return [];
+  }, [projection, weekProjections]);
+
+  // Total weekly summary stats
+  const weekSummary = useMemo(() => {
+    let planned = 0;
+    let actual = 0;
+    let completed = 0;
+    Object.values(weekProjections).forEach((p) => {
+      planned += p.summary?.totalPlannedMinutes || 0;
+      actual += p.summary?.totalActualMinutes || 0;
+      completed += p.summary?.completedOccurrencesCount || 0;
+    });
+    return { planned, actual, completed };
+  }, [weekProjections]);
+
+  // Auto-scroll Day view to current hour (or 8 AM)
+  useEffect(() => {
+    if (viewMode === 'day' && dayScrollRef.current) {
+      const nowH = new Date().getHours();
+      const targetHour = Math.max(0, nowH - 1);
+      setTimeout(() => {
+        dayScrollRef.current?.scrollTo({ y: targetHour * HOUR_HEIGHT, animated: true });
+      }, 100);
+    }
+  }, [viewMode, selectedDate]);
 
   // Date Navigation handlers
-  const handlePrevDay = () => {
+  const handlePrev = () => {
     const d = new Date(`${selectedDate}T12:00:00Z`);
     d.setUTCDate(d.getUTCDate() - (viewMode === 'week' ? 7 : 1));
     setSelectedDate(d.toISOString().split('T')[0]);
   };
 
-  const handleNextDay = () => {
+  const handleNext = () => {
     const d = new Date(`${selectedDate}T12:00:00Z`);
     d.setUTCDate(d.getUTCDate() + (viewMode === 'week' ? 7 : 1));
     setSelectedDate(d.toISOString().split('T')[0]);
@@ -206,7 +271,7 @@ export default function CalendarScreen() {
           action: 'schedule_task',
           taskId: scheduleTaskId || `custom-${Date.now()}`,
           taskTitle: scheduleTitle,
-          targetDate: selectedDate,
+          targetDate: scheduleDate || selectedDate,
           startMinute: startMin,
           durationMinutes: scheduleDuration,
         }),
@@ -216,7 +281,7 @@ export default function CalendarScreen() {
         setScheduleModalOpen(false);
         setScheduleTitle('');
         setScheduleTaskId(null);
-        await loadTimeline();
+        await loadWeekTimeline();
       } else {
         Alert.alert('Scheduling Error', 'Failed to schedule task');
       }
@@ -259,7 +324,7 @@ export default function CalendarScreen() {
 
       if (res.ok) {
         setSelectedBlock(null);
-        await loadTimeline();
+        await loadWeekTimeline();
       }
     } catch (e) {
       console.error('Reschedule error:', e);
@@ -283,7 +348,7 @@ export default function CalendarScreen() {
       });
       if (res.ok) {
         setSelectedBlock(null);
-        await loadTimeline();
+        await loadWeekTimeline();
       }
     } catch (e) {
       console.error('Complete error:', e);
@@ -314,7 +379,7 @@ export default function CalendarScreen() {
       if (res.ok) {
         setLogTimeModalOpen(false);
         setLogTaskTitle('');
-        await loadTimeline();
+        await loadWeekTimeline();
       }
     } catch (e) {
       console.error('Log time error:', e);
@@ -339,8 +404,8 @@ export default function CalendarScreen() {
         }),
       });
       if (res.ok) {
-        await loadTimeline();
-        Alert.alert('Focus Block Scheduled', 'Aven planned a 90-minute focus session starting at 10:00 AM.');
+        await loadWeekTimeline();
+        Alert.alert('Focus Block Scheduled', 'Aven planned a 90-minute focus session at 10:00 AM.');
       }
     } catch (e) {
       console.error('Focus block error:', e);
@@ -353,7 +418,7 @@ export default function CalendarScreen() {
 
   return (
     <View style={styles.container}>
-      {/* 1. Header Bar */}
+      {/* ─── 1. Header Bar ─── */}
       <View style={styles.header}>
         <View>
           <Text style={styles.title}>Calendar</Text>
@@ -368,7 +433,7 @@ export default function CalendarScreen() {
               setLogTimeModalOpen(true);
             }}
           >
-            <Clock size={15} color="#E8414A" />
+            <Clock size={14} color="#E8414A" />
             <Text style={styles.logTimeHeaderText}>Log</Text>
           </TouchableOpacity>
 
@@ -377,10 +442,11 @@ export default function CalendarScreen() {
             onPress={() => {
               setScheduleTaskId(null);
               setScheduleTitle('');
+              setScheduleDate(selectedDate);
               setScheduleModalOpen(true);
             }}
           >
-            <Plus size={16} color="#FFFFFF" />
+            <Plus size={15} color="#FFFFFF" />
             <Text style={styles.scheduleHeaderText}>Schedule</Text>
           </TouchableOpacity>
 
@@ -388,12 +454,12 @@ export default function CalendarScreen() {
             onPress={() => router.push('/(dashboard)/voice-call')}
             style={styles.voiceBtn}
           >
-            <Mic size={18} color="#fff" />
+            <Mic size={17} color="#FFFDFC" />
           </TouchableOpacity>
         </View>
       </View>
 
-      {/* 2. View Mode Tabs (Day | Week | Agenda) */}
+      {/* ─── 2. View Mode Tabs (Day | Week | Agenda) ─── */}
       <View style={styles.viewTabsContainer}>
         <TouchableOpacity
           style={[styles.viewTab, viewMode === 'day' && styles.viewTabActive]}
@@ -415,197 +481,350 @@ export default function CalendarScreen() {
         </TouchableOpacity>
       </View>
 
-      {/* 3. Date Navigation & Today Switcher */}
+      {/* ─── 3. Date Navigation & Today Switcher ─── */}
       <View style={styles.dateNavRow}>
         <View style={styles.navArrows}>
-          <TouchableOpacity onPress={handlePrevDay} style={styles.arrowBtn}>
-            <ChevronLeft size={18} color="#ccc" />
+          <TouchableOpacity onPress={handlePrev} style={styles.arrowBtn}>
+            <ChevronLeft size={16} color="#ECE7E3" />
           </TouchableOpacity>
           <TouchableOpacity onPress={handleToday} style={styles.todayBtn}>
             <Text style={styles.todayBtnText}>Today</Text>
           </TouchableOpacity>
-          <TouchableOpacity onPress={handleNextDay} style={styles.arrowBtn}>
-            <ChevronRight size={18} color="#ccc" />
+          <TouchableOpacity onPress={handleNext} style={styles.arrowBtn}>
+            <ChevronRight size={16} color="#ECE7E3" />
           </TouchableOpacity>
         </View>
 
         <Text style={styles.dateTitleText}>
-          {new Date(`${selectedDate}T12:00:00Z`).toLocaleDateString(undefined, {
-            weekday: 'short',
-            month: 'short',
-            day: 'numeric',
-          })}
+          {viewMode === 'week'
+            ? `${weekDays[0].name}, ${weekDays[0].dayNum} – ${weekDays[6].name}, ${weekDays[6].dayNum}`
+            : new Date(`${selectedDate}T12:00:00Z`).toLocaleDateString(undefined, {
+                weekday: 'short',
+                month: 'short',
+                day: 'numeric',
+              })}
         </Text>
       </View>
 
-      {/* 4. 7-Day Week Strip */}
+      {/* ─── 4. 7-Day Week Strip with Event Dots ─── */}
       <View style={styles.weekStrip}>
-        {weekDays.map((d) => (
-          <TouchableOpacity
-            key={d.dateStr}
-            style={[
-              styles.weekDayPill,
-              d.isSelected && styles.weekDayPillSelected,
-              d.isToday && !d.isSelected && styles.weekDayPillToday,
-            ]}
-            onPress={() => setSelectedDate(d.dateStr)}
-          >
-            <Text
+        {weekDays.map((d) => {
+          const dayProj = weekProjections[d.dateStr];
+          const hasEvents = dayProj && dayProj.blocks.length > 0;
+
+          return (
+            <TouchableOpacity
+              key={d.dateStr}
               style={[
-                styles.weekDayName,
-                d.isSelected && styles.weekDayTextActive,
-                d.isToday && !d.isSelected && styles.weekDayTextToday,
+                styles.weekDayPill,
+                d.isSelected && styles.weekDayPillSelected,
+                d.isToday && !d.isSelected && styles.weekDayPillToday,
               ]}
+              onPress={() => {
+                setSelectedDate(d.dateStr);
+              }}
             >
-              {d.name}
-            </Text>
-            <Text
-              style={[
-                styles.weekDayNum,
-                d.isSelected && styles.weekDayTextActive,
-                d.isToday && !d.isSelected && styles.weekDayTextToday,
-              ]}
-            >
-              {d.dayNum}
-            </Text>
-          </TouchableOpacity>
-        ))}
+              <Text
+                style={[
+                  styles.weekDayName,
+                  d.isSelected && styles.weekDayTextActive,
+                  d.isToday && !d.isSelected && styles.weekDayTextToday,
+                ]}
+              >
+                {d.name}
+              </Text>
+              <Text
+                style={[
+                  styles.weekDayNum,
+                  d.isSelected && styles.weekDayTextActive,
+                  d.isToday && !d.isSelected && styles.weekDayTextToday,
+                ]}
+              >
+                {d.dayNum}
+              </Text>
+              {hasEvents && (
+                <View
+                  style={[
+                    styles.eventDot,
+                    d.isSelected ? { backgroundColor: '#FFFFFF' } : { backgroundColor: '#E8414A' },
+                  ]}
+                />
+              )}
+            </TouchableOpacity>
+          );
+        })}
       </View>
 
-      {/* 5. Summary Metrics Bar */}
-      {projection && (
-        <View style={styles.metricsBar}>
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>Planned focus</Text>
-            <Text style={styles.metricValue}>
-              {Math.floor((projection.summary.totalPlannedMinutes || 0) / 60)}h{' '}
-              {(projection.summary.totalPlannedMinutes || 0) % 60}m
-            </Text>
-          </View>
-          <View style={styles.metricDivider} />
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>Time spent</Text>
-            <Text style={[styles.metricValue, { color: '#E8414A' }]}>
-              {Math.floor((projection.summary.totalActualMinutes || 0) / 60)}h{' '}
-              {(projection.summary.totalActualMinutes || 0) % 60}m
-            </Text>
-          </View>
-          <View style={styles.metricDivider} />
-          <View style={styles.metricItem}>
-            <Text style={styles.metricLabel}>Completed</Text>
-            <Text style={[styles.metricValue, { color: '#10B981' }]}>
-              {projection.summary.completedOccurrencesCount || 0}
-            </Text>
-          </View>
+      {/* ─── 5. Summary Metrics Bar ─── */}
+      <View style={styles.metricsBar}>
+        <View style={styles.metricItem}>
+          <Text style={styles.metricLabel}>{viewMode === 'week' ? 'Week planned' : 'Planned focus'}</Text>
+          <Text style={styles.metricValue}>
+            {viewMode === 'week'
+              ? `${Math.floor(weekSummary.planned / 60)}h ${weekSummary.planned % 60}m`
+              : `${Math.floor((projection?.summary.totalPlannedMinutes || 0) / 60)}h ${(projection?.summary.totalPlannedMinutes || 0) % 60}m`}
+          </Text>
         </View>
-      )}
+        <View style={styles.metricDivider} />
+        <View style={styles.metricItem}>
+          <Text style={styles.metricLabel}>{viewMode === 'week' ? 'Week spent' : 'Time spent'}</Text>
+          <Text style={[styles.metricValue, { color: '#E8414A' }]}>
+            {viewMode === 'week'
+              ? `${Math.floor(weekSummary.actual / 60)}h ${weekSummary.actual % 60}m`
+              : `${Math.floor((projection?.summary.totalActualMinutes || 0) / 60)}h ${(projection?.summary.totalActualMinutes || 0) % 60}m`}
+          </Text>
+        </View>
+        <View style={styles.metricDivider} />
+        <View style={styles.metricItem}>
+          <Text style={styles.metricLabel}>Completed</Text>
+          <Text style={[styles.metricValue, { color: '#10B981' }]}>
+            {viewMode === 'week' ? weekSummary.completed : projection?.summary.completedOccurrencesCount || 0}
+          </Text>
+        </View>
+      </View>
 
-      {/* 6. Main Calendar Content Area */}
-      {loading ? (
+      {/* ─── 6. Main Calendar Content Area ─── */}
+      {loading && Object.keys(weekProjections).length === 0 ? (
         <View style={styles.centerContainer}>
           <ActivityIndicator color="#E8414A" size="large" />
-          <Text style={styles.loadingText}>Loading timeline...</Text>
+          <Text style={styles.loadingText}>Loading calendar...</Text>
         </View>
       ) : (
         <ScrollView
           style={styles.mainScrollView}
-          contentContainerStyle={{ paddingBottom: 60 }}
+          contentContainerStyle={{ paddingBottom: 80 }}
           showsVerticalScrollIndicator={false}
         >
-          {/* DAY VIEW: 24-Hour Timeline Grid */}
-          {(viewMode === 'day' || viewMode === 'week') && (
-            <View style={styles.timelineContainer}>
-              {/* Hour Grid Lines (00:00 to 24:00) */}
-              {Array.from({ length: 24 }).map((_, h) => (
-                <TouchableOpacity
-                  key={`hour-${h}`}
-                  style={[styles.hourRow, { top: h * HOUR_HEIGHT, height: HOUR_HEIGHT }]}
-                  activeOpacity={0.6}
-                  onPress={() => {
-                    setScheduleHour(h);
-                    setScheduleTaskId(null);
-                    setScheduleTitle('');
-                    setScheduleModalOpen(true);
-                  }}
-                >
-                  <View style={styles.timeLabelContainer}>
-                    <Text style={styles.timeLabelText}>{formatHourLabel(h)}</Text>
-                  </View>
-                  <View style={styles.hourDividerLine} />
-                </TouchableOpacity>
-              ))}
-
-              {/* Current Time Indicator (Red line) */}
-              {isToday && (
-                <View
-                  style={[
-                    styles.nowIndicatorLine,
-                    {
-                      top: (currentMinute / 60) * HOUR_HEIGHT,
-                    },
-                  ]}
-                >
-                  <View style={styles.nowIndicatorDot} />
-                  <View style={styles.nowIndicatorBar} />
-                </View>
-              )}
-
-              {/* Scheduled Event Blocks */}
-              {projection?.blocks.map((block) => {
-                const startMin = block.planned?.startMinute ?? 9 * 60;
-                const durMin = block.planned?.durationMinutes ?? 60;
-                const topPos = (startMin / 60) * HOUR_HEIGHT;
-                const blockHeight = Math.max(34, (durMin / 60) * HOUR_HEIGHT - 3);
-
-                const isHard = block.kind === 'HARD_EVENT';
-                const isRoutine = block.kind === 'ROUTINE_BLOCK';
-                const isCompleted = block.variance.status === 'ON_TRACK' || !!block.actual;
-
-                let borderLeftColor = '#E8414A';
-                if (isHard) borderLeftColor = '#EF4444';
-                else if (isRoutine) borderLeftColor = '#F59E0B';
-                else if (isCompleted) borderLeftColor = '#10B981';
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* VIEW: WEEK (Spacious Day-by-Day Cards Overview)                 */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {viewMode === 'week' && (
+            <View style={styles.weekContainer}>
+              {weekDays.map((d) => {
+                const dayProj = weekProjections[d.dateStr];
+                const blocks = dayProj?.blocks || [];
+                const isSelectedDay = d.dateStr === selectedDate;
 
                 return (
-                  <TouchableOpacity
-                    key={block.blockId}
-                    activeOpacity={0.8}
-                    onPress={() => setSelectedBlock(block)}
+                  <View
+                    key={d.dateStr}
                     style={[
-                      styles.dayBlockCard,
-                      {
-                        top: topPos,
-                        height: blockHeight,
-                        borderLeftColor: borderLeftColor,
-                      },
+                      styles.weekDaySectionCard,
+                      isSelectedDay && styles.weekDaySectionCardActive,
+                      d.isToday && styles.weekDaySectionCardToday,
                     ]}
                   >
-                    <View style={styles.dayBlockHeader}>
-                      <Text style={styles.dayBlockTitle} numberOfLines={1}>
-                        {block.title}
-                      </Text>
-                      {isCompleted && <CheckCircle2 size={12} color="#10B981" />}
+                    {/* Day Section Header */}
+                    <View style={styles.weekDaySectionHeader}>
+                      <View style={styles.weekDaySectionHeaderLeft}>
+                        <View
+                          style={[
+                            styles.weekDayBadge,
+                            d.isToday ? styles.weekDayBadgeToday : styles.weekDayBadgeRegular,
+                          ]}
+                        >
+                          <Text
+                            style={[
+                              styles.weekDayBadgeText,
+                              d.isToday ? { color: '#FFFFFF' } : { color: '#ECE7E3' },
+                            ]}
+                          >
+                            {d.name} {d.dayNum}
+                          </Text>
+                        </View>
+                        <Text style={styles.weekDayFullLabel}>
+                          {d.isToday ? 'Today' : d.name}
+                        </Text>
+                      </View>
+
+                      <View style={styles.weekDaySectionHeaderRight}>
+                        {blocks.length > 0 && (
+                          <Text style={styles.weekDayTaskCount}>
+                            {blocks.length} {blocks.length === 1 ? 'task' : 'tasks'}
+                          </Text>
+                        )}
+                        <TouchableOpacity
+                          style={styles.weekDayAddBtn}
+                          onPress={() => {
+                            setScheduleDate(d.dateStr);
+                            setScheduleTaskId(null);
+                            setScheduleTitle('');
+                            setScheduleModalOpen(true);
+                          }}
+                        >
+                          <Plus size={14} color="#E8414A" />
+                        </TouchableOpacity>
+                      </View>
                     </View>
 
-                    {block.planned && blockHeight >= 40 && (
-                      <Text style={styles.dayBlockTimeText} numberOfLines={1}>
-                        {formatMinutes(block.planned.startMinute)} – {formatMinutes(block.planned.endMinute)}
-                      </Text>
+                    {/* Day's Scheduled Blocks */}
+                    {blocks.length === 0 ? (
+                      <TouchableOpacity
+                        activeOpacity={0.7}
+                        onPress={() => {
+                          setScheduleDate(d.dateStr);
+                          setScheduleTaskId(null);
+                          setScheduleTitle('');
+                          setScheduleModalOpen(true);
+                        }}
+                        style={styles.weekDayEmptySlot}
+                      >
+                        <Text style={styles.weekDayEmptySlotText}>
+                          No tasks scheduled • Tap to plan
+                        </Text>
+                      </TouchableOpacity>
+                    ) : (
+                      <View style={styles.weekDayBlocksList}>
+                        {blocks.map((block) => {
+                          const isHard = block.kind === 'HARD_EVENT';
+                          const isRoutine = block.kind === 'ROUTINE_BLOCK';
+                          const isDone = !!block.actual || block.variance.status === 'ON_TRACK';
+
+                          let accentColor = '#E8414A';
+                          if (isHard) accentColor = '#EF4444';
+                          else if (isRoutine) accentColor = '#F59E0B';
+                          else if (isDone) accentColor = '#10B981';
+
+                          return (
+                            <TouchableOpacity
+                              key={block.blockId}
+                              activeOpacity={0.8}
+                              style={[styles.weekBlockCard, { borderLeftColor: accentColor }]}
+                              onPress={() => setSelectedBlock(block)}
+                            >
+                              <View style={styles.weekBlockCardContent}>
+                                <View style={styles.weekBlockCardTop}>
+                                  <Text style={styles.weekBlockTitle} numberOfLines={1}>
+                                    {block.title}
+                                  </Text>
+                                  {isDone && <CheckCircle2 size={14} color="#10B981" />}
+                                </View>
+
+                                {block.planned && (
+                                  <Text style={styles.weekBlockTime}>
+                                    {formatMinutes(block.planned.startMinute)} –{' '}
+                                    {formatMinutes(block.planned.endMinute)} ({block.planned.durationMinutes}m)
+                                  </Text>
+                                )}
+                              </View>
+                            </TouchableOpacity>
+                          );
+                        })}
+                      </View>
                     )}
-                  </TouchableOpacity>
+                  </View>
                 );
               })}
             </View>
           )}
 
-          {/* AGENDA VIEW: Chronological List */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* VIEW: DAY (Spacious 24-Hour Vertical Timeline)                  */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {viewMode === 'day' && (
+            <ScrollView
+              ref={dayScrollRef}
+              nestedScrollEnabled
+              style={styles.dayTimelineScroll}
+              showsVerticalScrollIndicator={false}
+            >
+              <View style={styles.timelineCanvas}>
+                {/* 24 Hour Dividing Rows */}
+                {Array.from({ length: 24 }).map((_, h) => (
+                  <TouchableOpacity
+                    key={`day-hour-${h}`}
+                    style={[styles.hourRow, { top: h * HOUR_HEIGHT, height: HOUR_HEIGHT }]}
+                    activeOpacity={0.6}
+                    onPress={() => {
+                      setScheduleDate(selectedDate);
+                      setScheduleHour(h);
+                      setScheduleTaskId(null);
+                      setScheduleTitle('');
+                      setScheduleModalOpen(true);
+                    }}
+                  >
+                    <View style={styles.timeLabelContainer}>
+                      <Text style={styles.timeLabelText}>{formatHourLabel(h)}</Text>
+                    </View>
+                    <View style={styles.hourDividerLine} />
+                  </TouchableOpacity>
+                ))}
+
+                {/* Real-time Red Current Time Line across 24 Hours */}
+                {isToday && (
+                  <View
+                    style={[
+                      styles.nowIndicatorLine,
+                      {
+                        top: (currentMinute / 60) * HOUR_HEIGHT,
+                      },
+                    ]}
+                  >
+                    <View style={styles.nowIndicatorDot} />
+                    <View style={styles.nowIndicatorBar} />
+                  </View>
+                )}
+
+                {/* Scheduled Event Blocks */}
+                {projection?.blocks.map((block) => {
+                  const startMin = block.planned?.startMinute ?? 9 * 60;
+                  const durMin = block.planned?.durationMinutes ?? 60;
+                  const topPos = (startMin / 60) * HOUR_HEIGHT;
+                  const blockHeight = Math.max(34, (durMin / 60) * HOUR_HEIGHT - 3);
+
+                  const isHard = block.kind === 'HARD_EVENT';
+                  const isRoutine = block.kind === 'ROUTINE_BLOCK';
+                  const isDone = block.variance.status === 'ON_TRACK' || !!block.actual;
+
+                  let accentColor = '#E8414A';
+                  if (isHard) accentColor = '#EF4444';
+                  else if (isRoutine) accentColor = '#F59E0B';
+                  else if (isDone) accentColor = '#10B981';
+
+                  return (
+                    <TouchableOpacity
+                      key={block.blockId}
+                      activeOpacity={0.8}
+                      onPress={() => setSelectedBlock(block)}
+                      style={[
+                        styles.dayBlockCard,
+                        {
+                          top: topPos,
+                          height: blockHeight,
+                          borderLeftColor: accentColor,
+                        },
+                      ]}
+                    >
+                      <View style={styles.dayBlockHeader}>
+                        <Text style={styles.dayBlockTitle} numberOfLines={1}>
+                          {block.title}
+                        </Text>
+                        {isDone && <CheckCircle2 size={13} color="#10B981" />}
+                      </View>
+
+                      {block.planned && blockHeight >= 42 && (
+                        <Text style={styles.dayBlockTimeText} numberOfLines={1}>
+                          {formatMinutes(block.planned.startMinute)} –{' '}
+                          {formatMinutes(block.planned.endMinute)} ({block.planned.durationMinutes}m)
+                        </Text>
+                      )}
+                    </TouchableOpacity>
+                  );
+                })}
+              </View>
+            </ScrollView>
+          )}
+
+          {/* ═══════════════════════════════════════════════════════════════ */}
+          {/* VIEW: AGENDA (Chronological List)                               */}
+          {/* ═══════════════════════════════════════════════════════════════ */}
           {viewMode === 'agenda' && (
             <View style={styles.agendaContainer}>
               {projection?.blocks.length === 0 ? (
                 <View style={styles.centerContainer}>
                   <CalendarIcon size={36} color="#444" />
                   <Text style={styles.emptyTitle}>No scheduled events</Text>
-                  <Text style={styles.emptySubtitle}>Tap + Schedule to plan your work</Text>
+                  <Text style={styles.emptySubtitle}>Tap + Schedule to plan your day</Text>
                 </View>
               ) : (
                 projection?.blocks.map((block) => {
@@ -634,7 +853,8 @@ export default function CalendarScreen() {
                           <Text style={styles.agendaTitle}>{block.title}</Text>
                           {block.planned && (
                             <Text style={styles.agendaTime}>
-                              {formatMinutes(block.planned.startMinute)} – {formatMinutes(block.planned.endMinute)} ({block.planned.durationMinutes}m)
+                              {formatMinutes(block.planned.startMinute)} –{' '}
+                              {formatMinutes(block.planned.endMinute)} ({block.planned.durationMinutes}m)
                             </Text>
                           )}
                           {block.actual && (
@@ -667,18 +887,18 @@ export default function CalendarScreen() {
             </View>
           )}
 
-          {/* 7. Tasks to Schedule Tray */}
-          {projection?.tasksToSchedule && projection.tasksToSchedule.length > 0 && (
+          {/* ─── 7. Tasks to Schedule Tray ─── */}
+          {tasksToSchedule.length > 0 && (
             <View style={styles.sectionCard}>
               <View style={styles.sectionHeaderRow}>
                 <View style={styles.sectionHeaderTitleRow}>
-                  <ListTodo size={16} color="#E8414A" />
+                  <ListTodo size={15} color="#E8414A" />
                   <Text style={styles.sectionTitle}>Tasks to schedule</Text>
                 </View>
-                <Text style={styles.sectionBadge}>{projection.tasksToSchedule.length}</Text>
+                <Text style={styles.sectionBadge}>{tasksToSchedule.length}</Text>
               </View>
 
-              {projection.tasksToSchedule.map((task) => (
+              {tasksToSchedule.map((task) => (
                 <View key={task.id} style={styles.unscheduledTaskRow}>
                   <View style={{ flex: 1 }}>
                     <Text style={styles.unscheduledTaskTitle}>{task.title}</Text>
@@ -692,6 +912,7 @@ export default function CalendarScreen() {
                     onPress={() => {
                       setScheduleTaskId(task.id);
                       setScheduleTitle(task.title);
+                      setScheduleDate(selectedDate);
                       setScheduleDuration(task.estimatedDurationMinutes || 60);
                       setScheduleModalOpen(true);
                     }}
@@ -704,10 +925,10 @@ export default function CalendarScreen() {
             </View>
           )}
 
-          {/* 8. Aven's RoutineAI Suggestion */}
+          {/* ─── 8. Aven's RoutineAI Suggestion ─── */}
           <View style={styles.avenSuggestionCard}>
             <View style={styles.avenHeaderRow}>
-              <Sparkles size={16} color="#E8414A" />
+              <Sparkles size={15} color="#E8414A" />
               <Text style={styles.avenTitle}>Aven&apos;s Suggestion</Text>
             </View>
             <Text style={styles.avenDesc}>
@@ -722,7 +943,7 @@ export default function CalendarScreen() {
         </ScrollView>
       )}
 
-      {/* 9. SCHEDULE TASK MODAL */}
+      {/* ─── 9. SCHEDULE TASK MODAL ─── */}
       <Modal visible={scheduleModalOpen} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -736,11 +957,26 @@ export default function CalendarScreen() {
             <Text style={styles.inputLabel}>Task Title</Text>
             <TextInput
               style={styles.textInput}
-              placeholder="e.g. Design review, Deep work"
+              placeholder="e.g. Design review, Strategic work"
               placeholderTextColor="#666"
               value={scheduleTitle}
               onChangeText={setScheduleTitle}
             />
+
+            <Text style={styles.inputLabel}>Date</Text>
+            <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.timeChipsScroll}>
+              {weekDays.map((d) => (
+                <TouchableOpacity
+                  key={`pick-d-${d.dateStr}`}
+                  style={[styles.timeChip, scheduleDate === d.dateStr && styles.timeChipActive]}
+                  onPress={() => setScheduleDate(d.dateStr)}
+                >
+                  <Text style={[styles.timeChipText, scheduleDate === d.dateStr && styles.timeChipTextActive]}>
+                    {d.name} {d.dayNum}
+                  </Text>
+                </TouchableOpacity>
+              ))}
+            </ScrollView>
 
             <Text style={styles.inputLabel}>Start Hour</Text>
             <ScrollView horizontal showsHorizontalScrollIndicator={false} style={styles.timeChipsScroll}>
@@ -780,14 +1016,14 @@ export default function CalendarScreen() {
               {isMutating ? (
                 <ActivityIndicator color="#fff" />
               ) : (
-                <Text style={styles.primaryModalBtnText}>Schedule into Day</Text>
+                <Text style={styles.primaryModalBtnText}>Schedule Event</Text>
               )}
             </TouchableOpacity>
           </View>
         </View>
       </Modal>
 
-      {/* 10. BLOCK ACTIONS / RESCHEDULE MODAL */}
+      {/* ─── 10. BLOCK ACTIONS / RESCHEDULE MODAL ─── */}
       <Modal visible={!!selectedBlock} transparent animationType="fade">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -866,7 +1102,7 @@ export default function CalendarScreen() {
         </View>
       </Modal>
 
-      {/* 11. LOG TIME MODAL */}
+      {/* ─── 11. LOG TIME MODAL ─── */}
       <Modal visible={logTimeModalOpen} transparent animationType="slide">
         <View style={styles.modalOverlay}>
           <View style={styles.modalContent}>
@@ -937,23 +1173,23 @@ const styles = StyleSheet.create({
     alignItems: 'center',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   title: {
-    fontSize: 24,
+    fontSize: 22,
     fontWeight: '800',
-    color: '#FFFFFF',
+    color: '#FFFDFC',
     letterSpacing: -0.5,
   },
   subTitle: {
     color: '#8A8F9D',
-    fontSize: 12,
-    marginTop: 2,
+    fontSize: 11,
+    marginTop: 1,
   },
   headerActions: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 8,
+    gap: 7,
   },
   logTimeHeaderBtn: {
     flexDirection: 'row',
@@ -961,36 +1197,36 @@ const styles = StyleSheet.create({
     backgroundColor: '#1E2129',
     borderColor: '#2F333D',
     borderWidth: 1,
-    paddingHorizontal: 10,
-    paddingVertical: 7,
-    borderRadius: 10,
-    gap: 5,
+    paddingHorizontal: 9,
+    paddingVertical: 6,
+    borderRadius: 9,
+    gap: 4,
   },
   logTimeHeaderText: {
-    color: '#E1E4EA',
-    fontSize: 12,
+    color: '#ECE7E3',
+    fontSize: 11,
     fontWeight: '600',
   },
   scheduleHeaderBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: '#E8414A',
-    paddingHorizontal: 12,
-    paddingVertical: 7,
-    borderRadius: 10,
-    gap: 5,
+    paddingHorizontal: 11,
+    paddingVertical: 6,
+    borderRadius: 9,
+    gap: 4,
   },
   scheduleHeaderText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   voiceBtn: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
-    backgroundColor: '#262933',
-    borderColor: '#373C48',
+    width: 32,
+    height: 32,
+    borderRadius: 16,
+    backgroundColor: '#1F2023',
+    borderColor: '#2A2B2F',
     borderWidth: 1,
     alignItems: 'center',
     justifyContent: 'center',
@@ -999,28 +1235,28 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     backgroundColor: '#161922',
     marginHorizontal: 16,
-    borderRadius: 12,
-    padding: 3,
-    marginBottom: 10,
+    borderRadius: 10,
+    padding: 2.5,
+    marginBottom: 8,
     borderWidth: 1,
-    borderColor: '#262A34',
+    borderColor: '#242834',
   },
   viewTab: {
     flex: 1,
-    paddingVertical: 6,
+    paddingVertical: 5,
     alignItems: 'center',
-    borderRadius: 9,
+    borderRadius: 8,
   },
   viewTabActive: {
     backgroundColor: '#262A36',
   },
   viewTabText: {
-    color: '#8E94A4',
+    color: '#7D8494',
     fontSize: 12,
     fontWeight: '600',
   },
   viewTabTextActive: {
-    color: '#FFFFFF',
+    color: '#FFFDFC',
     fontWeight: '700',
   },
   dateNavRow: {
@@ -1033,45 +1269,46 @@ const styles = StyleSheet.create({
   navArrows: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   arrowBtn: {
-    padding: 6,
-    borderRadius: 8,
+    padding: 5,
+    borderRadius: 7,
     backgroundColor: '#1C1F28',
     borderWidth: 1,
-    borderColor: '#2B2F3D',
+    borderColor: '#282C38',
   },
   todayBtn: {
     backgroundColor: '#E8414A',
-    paddingHorizontal: 10,
-    paddingVertical: 5,
-    borderRadius: 8,
+    paddingHorizontal: 9,
+    paddingVertical: 4,
+    borderRadius: 7,
   },
   todayBtnText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   dateTitleText: {
-    color: '#FFFFFF',
-    fontSize: 14,
+    color: '#FFFDFC',
+    fontSize: 13,
     fontWeight: '700',
   },
   weekStrip: {
     flexDirection: 'row',
     justifyContent: 'space-between',
     paddingHorizontal: 16,
-    marginBottom: 10,
+    marginBottom: 8,
   },
   weekDayPill: {
     width: (SCREEN_WIDTH - 32 - 24) / 7,
     alignItems: 'center',
-    paddingVertical: 8,
-    borderRadius: 10,
+    paddingVertical: 7,
+    borderRadius: 9,
     backgroundColor: '#161922',
     borderWidth: 1,
-    borderColor: '#262A34',
+    borderColor: '#242834',
+    position: 'relative',
   },
   weekDayPillSelected: {
     backgroundColor: '#E8414A',
@@ -1084,10 +1321,10 @@ const styles = StyleSheet.create({
     color: '#7C8292',
     fontSize: 10,
     fontWeight: '600',
-    marginBottom: 2,
+    marginBottom: 1,
   },
   weekDayNum: {
-    color: '#FFFFFF',
+    color: '#FFFDFC',
     fontSize: 13,
     fontWeight: '700',
   },
@@ -1097,14 +1334,20 @@ const styles = StyleSheet.create({
   weekDayTextToday: {
     color: '#E8414A',
   },
+  eventDot: {
+    width: 4,
+    height: 4,
+    borderRadius: 2,
+    marginTop: 2,
+  },
   metricsBar: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-around',
     backgroundColor: '#161922',
     marginHorizontal: 16,
-    paddingVertical: 8,
-    borderRadius: 12,
+    paddingVertical: 7,
+    borderRadius: 10,
     borderWidth: 1,
     borderColor: '#242834',
     marginBottom: 10,
@@ -1114,19 +1357,19 @@ const styles = StyleSheet.create({
   },
   metricLabel: {
     color: '#7D8494',
-    fontSize: 10,
+    fontSize: 9,
     fontWeight: '500',
   },
   metricValue: {
-    color: '#FFFFFF',
-    fontSize: 13,
+    color: '#FFFDFC',
+    fontSize: 12,
     fontWeight: '700',
     marginTop: 1,
   },
   metricDivider: {
     width: 1,
-    height: 22,
-    backgroundColor: '#2A2F3D',
+    height: 20,
+    backgroundColor: '#262A36',
   },
   centerContainer: {
     flex: 1,
@@ -1136,34 +1379,147 @@ const styles = StyleSheet.create({
   },
   loadingText: {
     color: '#888',
-    fontSize: 13,
-    marginTop: 12,
+    fontSize: 12,
+    marginTop: 10,
   },
   emptyTitle: {
     color: '#aaa',
-    fontSize: 16,
+    fontSize: 15,
     fontWeight: '600',
-    marginTop: 12,
+    marginTop: 10,
   },
   emptySubtitle: {
     color: '#666',
-    fontSize: 13,
-    marginTop: 4,
+    fontSize: 12,
+    marginTop: 3,
     textAlign: 'center',
   },
   mainScrollView: {
     flex: 1,
     paddingHorizontal: 16,
   },
-  timelineContainer: {
+  weekContainer: {
+    gap: 10,
+    marginBottom: 16,
+  },
+  weekDaySectionCard: {
+    backgroundColor: '#161922',
+    borderRadius: 12,
+    padding: 12,
+    borderWidth: 1,
+    borderColor: '#242834',
+  },
+  weekDaySectionCardActive: {
+    borderColor: '#3D4252',
+    backgroundColor: '#191C26',
+  },
+  weekDaySectionCardToday: {
+    borderColor: '#E8414A',
+  },
+  weekDaySectionHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginBottom: 8,
+  },
+  weekDaySectionHeaderLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+  },
+  weekDayBadge: {
+    paddingHorizontal: 8,
+    paddingVertical: 3,
+    borderRadius: 6,
+  },
+  weekDayBadgeToday: {
+    backgroundColor: '#E8414A',
+  },
+  weekDayBadgeRegular: {
+    backgroundColor: '#222632',
+  },
+  weekDayBadgeText: {
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  weekDayFullLabel: {
+    color: '#FFFDFC',
+    fontSize: 13,
+    fontWeight: '700',
+  },
+  weekDaySectionHeaderRight: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  weekDayTaskCount: {
+    color: '#7D8494',
+    fontSize: 11,
+    fontWeight: '600',
+  },
+  weekDayAddBtn: {
+    padding: 4,
+    borderRadius: 6,
+    backgroundColor: 'rgba(232, 65, 74, 0.12)',
+  },
+  weekDayEmptySlot: {
+    paddingVertical: 10,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#202430',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+  },
+  weekDayEmptySlotText: {
+    color: '#606575',
+    fontSize: 11,
+    fontWeight: '500',
+  },
+  weekDayBlocksList: {
+    gap: 6,
+  },
+  weekBlockCard: {
+    backgroundColor: '#222632',
+    borderWidth: 1,
+    borderColor: '#2D3242',
+    borderLeftWidth: 3.5,
+    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 8,
+  },
+  weekBlockCardContent: {
+    gap: 2,
+  },
+  weekBlockCardTop: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    gap: 6,
+  },
+  weekBlockTitle: {
+    color: '#FFFDFC',
+    fontSize: 12,
+    fontWeight: '700',
+    flex: 1,
+  },
+  weekBlockTime: {
+    color: '#8E94A4',
+    fontSize: 10,
+    fontFamily: 'monospace',
+  },
+  dayTimelineScroll: {
+    maxHeight: 520,
+    marginBottom: 16,
+  },
+  timelineCanvas: {
     height: 24 * HOUR_HEIGHT,
     position: 'relative',
     backgroundColor: '#12141B',
-    borderRadius: 14,
+    borderRadius: 12,
     borderWidth: 1,
     borderColor: '#20242F',
     overflow: 'hidden',
-    marginBottom: 16,
   },
   hourRow: {
     position: 'absolute',
@@ -1173,7 +1529,7 @@ const styles = StyleSheet.create({
     alignItems: 'flex-start',
   },
   timeLabelContainer: {
-    width: 60,
+    width: 58,
     paddingLeft: 8,
     paddingTop: 3,
   },
@@ -1190,7 +1546,7 @@ const styles = StyleSheet.create({
   },
   nowIndicatorLine: {
     position: 'absolute',
-    left: 56,
+    left: 54,
     right: 0,
     flexDirection: 'row',
     alignItems: 'center',
@@ -1210,15 +1566,15 @@ const styles = StyleSheet.create({
   },
   dayBlockCard: {
     position: 'absolute',
-    left: 64,
+    left: 62,
     right: 8,
     backgroundColor: '#26282E',
     borderColor: '#3E424B',
     borderWidth: 1,
-    borderLeftWidth: 4,
+    borderLeftWidth: 3.5,
     borderRadius: 8,
     paddingHorizontal: 8,
-    paddingVertical: 4,
+    paddingVertical: 5,
     zIndex: 10,
     justifyContent: 'center',
   },
@@ -1237,7 +1593,7 @@ const styles = StyleSheet.create({
   dayBlockTimeText: {
     color: '#9E9FA4',
     fontSize: 9,
-    fontWeight: '500',
+    fontFamily: 'monospace',
     marginTop: 1,
   },
   agendaContainer: {
@@ -1246,8 +1602,8 @@ const styles = StyleSheet.create({
   },
   agendaCard: {
     backgroundColor: '#181B24',
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#262A36',
     flexDirection: 'row',
@@ -1265,28 +1621,28 @@ const styles = StyleSheet.create({
   agendaCardLeft: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 12,
+    gap: 10,
     flex: 1,
   },
   agendaIndicator: {
-    width: 4,
-    height: 36,
+    width: 3.5,
+    height: 34,
     borderRadius: 2,
   },
   agendaTitle: {
     color: '#FFFFFF',
-    fontSize: 14,
+    fontSize: 13,
     fontWeight: '700',
   },
   agendaTime: {
     color: '#8E94A4',
-    fontSize: 11,
-    marginTop: 3,
+    fontSize: 10,
+    marginTop: 2,
   },
   agendaActual: {
     color: '#10B981',
-    fontSize: 11,
-    marginTop: 2,
+    fontSize: 10,
+    marginTop: 1,
   },
   agendaCardRight: {
     marginLeft: 8,
@@ -1295,10 +1651,10 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
-    paddingHorizontal: 8,
-    paddingVertical: 4,
-    borderRadius: 8,
-    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 3,
+    borderRadius: 6,
+    gap: 3,
   },
   doneBadgeText: {
     color: '#10B981',
@@ -1306,113 +1662,113 @@ const styles = StyleSheet.create({
     fontWeight: '700',
   },
   rescheduleQuickBtn: {
-    padding: 8,
-    borderRadius: 8,
+    padding: 7,
+    borderRadius: 7,
     backgroundColor: '#222633',
   },
   sectionCard: {
     backgroundColor: '#161922',
-    borderRadius: 14,
-    padding: 14,
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
     borderColor: '#242834',
-    marginBottom: 14,
+    marginBottom: 12,
   },
   sectionHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 10,
+    marginBottom: 8,
   },
   sectionHeaderTitleRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
+    gap: 5,
   },
   sectionTitle: {
-    color: '#FFFFFF',
-    fontSize: 13,
+    color: '#FFFDFC',
+    fontSize: 12,
     fontWeight: '700',
   },
   sectionBadge: {
     color: '#8A8F9D',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
     backgroundColor: '#20242F',
     paddingHorizontal: 6,
     paddingVertical: 1,
-    borderRadius: 8,
+    borderRadius: 6,
   },
   unscheduledTaskRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingVertical: 8,
+    paddingVertical: 7,
     borderBottomWidth: 1,
     borderBottomColor: '#20242F',
   },
   unscheduledTaskTitle: {
-    color: '#E1E4EA',
-    fontSize: 12,
+    color: '#ECE7E3',
+    fontSize: 11,
     fontWeight: '600',
   },
   unscheduledTaskMeta: {
     color: '#73798A',
-    fontSize: 10,
-    marginTop: 2,
+    fontSize: 9,
+    marginTop: 1,
   },
   taskScheduleBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     backgroundColor: 'rgba(232, 65, 74, 0.12)',
-    paddingHorizontal: 8,
-    paddingVertical: 5,
-    borderRadius: 8,
-    gap: 4,
+    paddingHorizontal: 7,
+    paddingVertical: 4,
+    borderRadius: 7,
+    gap: 3,
     marginLeft: 8,
   },
   taskScheduleBtnText: {
     color: '#E8414A',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '700',
   },
   avenSuggestionCard: {
-    backgroundColor: '#171A24',
-    borderRadius: 14,
-    padding: 14,
+    backgroundColor: '#161922',
+    borderRadius: 12,
+    padding: 12,
     borderWidth: 1,
-    borderColor: '#292E3D',
+    borderColor: '#262A38',
     marginBottom: 20,
   },
   avenHeaderRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: 6,
-    marginBottom: 6,
+    gap: 5,
+    marginBottom: 4,
   },
   avenTitle: {
-    color: '#FFFFFF',
-    fontSize: 13,
+    color: '#FFFDFC',
+    fontSize: 12,
     fontWeight: '700',
   },
   avenDesc: {
     color: '#8E94A4',
     fontSize: 11,
-    lineHeight: 16,
-    marginBottom: 10,
+    lineHeight: 15,
+    marginBottom: 8,
   },
   avenActionBtn: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
     backgroundColor: '#E8414A',
-    paddingVertical: 8,
-    borderRadius: 10,
-    gap: 6,
+    paddingVertical: 7,
+    borderRadius: 8,
+    gap: 5,
   },
   avenActionBtnText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '700',
   },
   modalOverlay: {
@@ -1422,9 +1778,9 @@ const styles = StyleSheet.create({
   },
   modalContent: {
     backgroundColor: '#161922',
-    borderTopLeftRadius: 20,
-    borderTopRightRadius: 20,
-    padding: 20,
+    borderTopLeftRadius: 18,
+    borderTopRightRadius: 18,
+    padding: 18,
     borderWidth: 1,
     borderColor: '#282C38',
   },
@@ -1432,43 +1788,43 @@ const styles = StyleSheet.create({
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    marginBottom: 16,
+    marginBottom: 14,
   },
   modalTitle: {
-    color: '#FFFFFF',
-    fontSize: 16,
+    color: '#FFFDFC',
+    fontSize: 15,
     fontWeight: '700',
   },
   modalSubTitle: {
     color: '#8E94A4',
     fontSize: 11,
-    marginTop: 2,
+    marginTop: 1,
   },
   inputLabel: {
     color: '#8E94A4',
     fontSize: 11,
     fontWeight: '600',
-    marginBottom: 6,
+    marginBottom: 5,
   },
   textInput: {
     backgroundColor: '#1F232D',
     borderColor: '#2B303E',
     borderWidth: 1,
-    borderRadius: 10,
+    borderRadius: 9,
     color: '#FFFFFF',
-    paddingHorizontal: 12,
-    paddingVertical: 10,
-    fontSize: 13,
-    marginBottom: 12,
+    paddingHorizontal: 11,
+    paddingVertical: 9,
+    fontSize: 12,
+    marginBottom: 10,
   },
   timeChipsScroll: {
     flexDirection: 'row',
-    marginBottom: 12,
+    marginBottom: 10,
   },
   timeChip: {
-    paddingHorizontal: 12,
-    paddingVertical: 6,
-    borderRadius: 8,
+    paddingHorizontal: 10,
+    paddingVertical: 5,
+    borderRadius: 7,
     backgroundColor: '#20242F',
     marginRight: 6,
     borderWidth: 1,
@@ -1480,7 +1836,7 @@ const styles = StyleSheet.create({
   },
   timeChipText: {
     color: '#8E94A4',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
   timeChipTextActive: {
@@ -1489,14 +1845,14 @@ const styles = StyleSheet.create({
   },
   durationsRow: {
     flexDirection: 'row',
-    gap: 8,
-    marginBottom: 16,
+    gap: 7,
+    marginBottom: 14,
   },
   durationBtn: {
     flex: 1,
-    paddingVertical: 8,
+    paddingVertical: 7,
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 7,
     backgroundColor: '#20242F',
     borderWidth: 1,
     borderColor: '#2C3140',
@@ -1507,7 +1863,7 @@ const styles = StyleSheet.create({
   },
   durationBtnText: {
     color: '#8E94A4',
-    fontSize: 11,
+    fontSize: 10,
     fontWeight: '600',
   },
   durationBtnTextActive: {
@@ -1516,27 +1872,27 @@ const styles = StyleSheet.create({
   },
   primaryModalBtn: {
     backgroundColor: '#E8414A',
-    paddingVertical: 12,
-    borderRadius: 12,
+    paddingVertical: 11,
+    borderRadius: 10,
     alignItems: 'center',
     justifyContent: 'center',
   },
   primaryModalBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   actionSectionTitle: {
     color: '#8E94A4',
     fontSize: 11,
     fontWeight: '600',
-    marginBottom: 8,
+    marginBottom: 7,
   },
   rescheduleGrid: {
     flexDirection: 'row',
     flexWrap: 'wrap',
-    gap: 8,
-    marginBottom: 16,
+    gap: 7,
+    marginBottom: 14,
   },
   rescheduleBtn: {
     flex: 1,
@@ -1544,18 +1900,18 @@ const styles = StyleSheet.create({
     backgroundColor: '#20242F',
     borderColor: '#2B303E',
     borderWidth: 1,
-    paddingVertical: 10,
+    paddingVertical: 9,
     alignItems: 'center',
-    borderRadius: 8,
+    borderRadius: 7,
   },
   rescheduleBtnText: {
     color: '#FFFFFF',
-    fontSize: 12,
+    fontSize: 11,
     fontWeight: '600',
   },
   modalActionsRow: {
     flexDirection: 'row',
-    gap: 10,
+    gap: 8,
   },
   completeActionBtn: {
     flex: 1,
@@ -1565,13 +1921,13 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(16, 185, 129, 0.15)',
     borderColor: '#10B981',
     borderWidth: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 10,
+    gap: 5,
   },
   completeActionBtnText: {
     color: '#10B981',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
   logTimeActionBtn: {
@@ -1582,13 +1938,13 @@ const styles = StyleSheet.create({
     backgroundColor: '#262933',
     borderColor: '#373C48',
     borderWidth: 1,
-    paddingVertical: 12,
-    borderRadius: 12,
-    gap: 6,
+    paddingVertical: 11,
+    borderRadius: 10,
+    gap: 5,
   },
   logTimeActionBtnText: {
     color: '#FFFFFF',
-    fontSize: 13,
+    fontSize: 12,
     fontWeight: '700',
   },
 });
