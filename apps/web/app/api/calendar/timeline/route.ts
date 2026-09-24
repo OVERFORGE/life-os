@@ -54,6 +54,8 @@ export async function GET(req: NextRequest) {
     const engine = TemporalTimelineEngine.getInstance();
     const { Task } = await import("@/server/db/models/Task");
 
+    const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
+
     // ─── WEEK OR AGENDA VIEW ───
     if (view === "week" || view === "agenda") {
       const weekDays = getWeekDays(dateOnly);
@@ -63,7 +65,7 @@ export async function GET(req: NextRequest) {
       const weekStartMs = new Date(`${startDate}T00:00:00Z`).getTime() - 6 * 3600 * 1000;
       const weekEndMs = new Date(`${endDate}T23:59:59Z`).getTime() + 6 * 3600 * 1000;
 
-      const [allOccurrences, allChronicles, allTasks] = await Promise.all([
+      const [allOccurrences, allChronicles, allTasks, activeSeries] = await Promise.all([
         TemporalOccurrence.find({
           userId,
           dateOnly: { $in: weekDays },
@@ -77,6 +79,10 @@ export async function GET(req: NextRequest) {
           userId,
           dueDate: { $in: weekDays },
           status: { $ne: "skipped" },
+        }).lean(),
+        TemporalSeriesTemplate.find({
+          userId,
+          status: "ACTIVE",
         }).lean(),
       ]);
 
@@ -99,6 +105,59 @@ export async function GET(req: NextRequest) {
         const dayTasks = allTasks.filter((t: any) => t.dueDate === day);
 
         const effectiveOccurrences: any[] = [...dayOccurrences];
+
+        // Dynamically project active recurring series templates if not already instantiated
+        for (const series of activeSeries) {
+          const [y, m, d] = day.split("-").map(Number);
+          const dayOfWeek = new Date(y, m - 1, d).getDay();
+          const rec = series.recurrence;
+          const matchesRecurrence =
+            rec &&
+            (!rec.effectiveStartDate || day >= rec.effectiveStartDate) &&
+            (!rec.effectiveEndDate || day <= rec.effectiveEndDate) &&
+            (rec.frequency === "DAILY" || (Array.isArray(rec.daysOfWeek) && rec.daysOfWeek.includes(dayOfWeek)));
+
+          if (matchesRecurrence) {
+            const alreadyExists = effectiveOccurrences.some(
+              (o: any) =>
+                o.seriesId === series.seriesId ||
+                o.title?.toLowerCase() === series.title?.toLowerCase()
+            );
+            if (!alreadyExists) {
+              const [sh, sm] = (series.baseStartTime || "09:00").split(":").map(Number);
+              const startMinute = (sh || 0) * 60 + (sm || 0);
+              const durationMinutes = series.baseDurationMinutes || 60;
+              const endMinute = Math.min(1439, startMinute + durationMinutes);
+              const eh = Math.floor(endMinute / 60);
+              const em = endMinute % 60;
+
+              effectiveOccurrences.push({
+                occurrenceId: `proj_${series.seriesId}_${day}`,
+                userId,
+                seriesId: series.seriesId,
+                title: series.title,
+                kind: series.kind || "ROUTINE_BLOCK",
+                dateOnly: day,
+                plannedInterval: {
+                  dateOnly: day,
+                  startMinute,
+                  endMinute,
+                  durationMinutes,
+                  startIsoUtc: `${day}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00Z`,
+                  endIsoUtc: `${day}T${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}:00Z`,
+                  timezone,
+                  isMidnightCrossing: false,
+                },
+                locationContext: series.locationContext || { category: "HOME", requiresPhysicalTransit: false },
+                rigidity: "ELASTIC",
+                status: "SCHEDULED",
+                linkedEntity: series.linkedEntity || { entityType: "none" },
+                version: 1,
+                overrideType: "NONE",
+              });
+            }
+          }
+        }
 
         for (const t of dayTasks) {
           const isAlreadyRepresented = dayOccurrences.some(
@@ -175,16 +234,85 @@ export async function GET(req: NextRequest) {
     const dayStartMs = new Date(`${dateOnly}T00:00:00Z`).getTime() - 6 * 3600 * 1000;
     const dayEndMs = new Date(`${dateOnly}T23:59:59Z`).getTime() + 6 * 3600 * 1000;
 
-    const chronicles = await ExecutionChronicle.find({
-      userId,
-      startedAtMs: { $gte: dayStartMs, $lte: dayEndMs },
-    }).lean();
+    const [chronicles, tasks, activeDaySeries] = await Promise.all([
+      ExecutionChronicle.find({
+        userId,
+        startedAtMs: { $gte: dayStartMs, $lte: dayEndMs },
+      }).lean(),
+      Task.find({
+        userId,
+        dueDate: dateOnly,
+        status: { $ne: "skipped" },
+      }).lean(),
+      TemporalSeriesTemplate.find({
+        userId,
+        status: "ACTIVE",
+      }).lean(),
+    ]);
 
-    const tasks = await Task.find({
-      userId,
-      dueDate: dateOnly,
-      status: { $ne: "skipped" },
-    }).lean();
+    const unscheduledTasks: Array<{
+      id: string;
+      title: string;
+      priority: string;
+      status: string;
+      dueDate: string;
+      dueTime?: string | null;
+    }> = [];
+
+    const effectiveOccurrences: any[] = [...occurrences];
+
+    // Project recurring series for this single day
+    for (const series of activeDaySeries) {
+      const [y, m, d] = dateOnly.split("-").map(Number);
+      const dayOfWeek = new Date(y, m - 1, d).getDay();
+      const rec = series.recurrence;
+      const matchesRecurrence =
+        rec &&
+        (!rec.effectiveStartDate || dateOnly >= rec.effectiveStartDate) &&
+        (!rec.effectiveEndDate || dateOnly <= rec.effectiveEndDate) &&
+        (rec.frequency === "DAILY" || (Array.isArray(rec.daysOfWeek) && rec.daysOfWeek.includes(dayOfWeek)));
+
+      if (matchesRecurrence) {
+        const alreadyExists = effectiveOccurrences.some(
+          (o: any) =>
+            o.seriesId === series.seriesId ||
+            o.title?.toLowerCase() === series.title?.toLowerCase()
+        );
+        if (!alreadyExists) {
+          const [sh, sm] = (series.baseStartTime || "09:00").split(":").map(Number);
+          const startMinute = (sh || 0) * 60 + (sm || 0);
+          const durationMinutes = series.baseDurationMinutes || 60;
+          const endMinute = Math.min(1439, startMinute + durationMinutes);
+          const eh = Math.floor(endMinute / 60);
+          const em = endMinute % 60;
+
+          effectiveOccurrences.push({
+            occurrenceId: `proj_${series.seriesId}_${dateOnly}`,
+            userId,
+            seriesId: series.seriesId,
+            title: series.title,
+            kind: series.kind || "ROUTINE_BLOCK",
+            dateOnly,
+            plannedInterval: {
+              dateOnly,
+              startMinute,
+              endMinute,
+              durationMinutes,
+              startIsoUtc: `${dateOnly}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00Z`,
+              endIsoUtc: `${dateOnly}T${String(eh).padStart(2, "0")}:${String(em).padStart(2, "0")}:00Z`,
+              timezone,
+              isMidnightCrossing: false,
+            },
+            locationContext: series.locationContext || { category: "HOME", requiresPhysicalTransit: false },
+            rigidity: "ELASTIC",
+            status: "SCHEDULED",
+            linkedEntity: series.linkedEntity || { entityType: "none" },
+            version: 1,
+            overrideType: "NONE",
+          });
+        }
+      }
+    }
 
     const unscheduledTasks: Array<{
       id: string;

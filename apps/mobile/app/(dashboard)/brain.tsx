@@ -145,10 +145,16 @@ export default function BrainScreen() {
     setHistoryLoading(true);
     try {
       const res = await fetchWithAuth('/conversation/history');
-      if (res.ok) {
         const data = await res.json();
-        setMessages(data.map((m: any) => ({ role: m.role, content: m.content })));
-      }
+        const sorted = (Array.isArray(data) ? data : []).sort((a: any, b: any) => {
+          const tA = new Date(a.createdAt || 0).getTime();
+          const tB = new Date(b.createdAt || 0).getTime();
+          if (tA !== tB) return tA - tB;
+          if (a.role === 'user' && b.role === 'assistant') return -1;
+          if (a.role === 'assistant' && b.role === 'user') return 1;
+          return 0;
+        });
+        setMessages(sorted.map((m: any) => ({ role: m.role, content: m.content })));
     } catch (e) {
       console.error('Failed to load chat history:', e);
     } finally {

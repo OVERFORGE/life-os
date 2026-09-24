@@ -48,7 +48,7 @@ export class ConversationManager {
       Conversation.findOne({ conversationId, userId }).lean(),
       ConversationShortTermMemory.findOne({ conversationId, userId }).lean(),
       ConversationMessage.find({ conversationId, userId })
-        .sort({ createdAt: 1 })
+        .sort({ createdAt: 1, _id: 1 })
         .select("role content")
         .lean(),
     ]);
@@ -77,23 +77,30 @@ export class ConversationManager {
     const assistantTokens = estimateTokens(assistantResponse);
     const totalNewTokens = userTokens + assistantTokens;
 
-    // 1. Create message records in parallel
-    await Promise.all([
-      ConversationMessage.create({
-        conversationId,
-        userId,
-        role: "user",
-        content: userMessage,
-        tokenEstimate: userTokens,
-      }),
-      ConversationMessage.create({
-        conversationId,
-        userId,
-        role: "assistant",
-        content: assistantResponse,
-        tokenEstimate: assistantTokens,
-      }),
-    ]);
+    // 1. Create message records sequentially with strictly monotonic timestamps
+    // User message is always timestamped strictly before assistant message
+    const userCreatedAt = new Date();
+    const assistantCreatedAt = new Date(userCreatedAt.getTime() + 500);
+
+    await ConversationMessage.create({
+      conversationId,
+      userId,
+      role: "user",
+      content: userMessage,
+      tokenEstimate: userTokens,
+      createdAt: userCreatedAt,
+      updatedAt: userCreatedAt,
+    });
+
+    await ConversationMessage.create({
+      conversationId,
+      userId,
+      role: "assistant",
+      content: assistantResponse,
+      tokenEstimate: assistantTokens,
+      createdAt: assistantCreatedAt,
+      updatedAt: assistantCreatedAt,
+    });
 
     // 2. Update Conversation metadata atomically
     await Conversation.updateOne(

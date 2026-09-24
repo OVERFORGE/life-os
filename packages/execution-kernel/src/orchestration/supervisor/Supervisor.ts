@@ -148,7 +148,7 @@ export class Supervisor {
       userId: req.userId,
       conversationId,
       knownTasks: req.knownTasks,
-      recentHistory: (loadedState?.recentMessages || []).slice(-6),
+      recentHistory: (loadedState?.recentMessages || []).slice(-16),
       activeFocus: stm?.activeFocus || null,
       recentEntities: stm?.recentEntities || [],
       pendingOperation: pendingOp,
@@ -263,10 +263,20 @@ export class Supervisor {
         opPayload.priority = op.payload.priority;
       }
 
+      const isTemporalClarification =
+        op?.actionType === "create_temporal_series" ||
+        op?.actionType === "schedule_occurrence" ||
+        response.toLowerCase().includes("class") ||
+        response.toLowerCase().includes("schedule") ||
+        response.toLowerCase().includes("block") ||
+        response.toLowerCase().includes("routine");
+
+      const resolvedActionType = op?.actionType || (isTemporalClarification ? "create_temporal_series" : "create_task");
+
       const newPendingOp: IPendingOperationContext = {
         operationId: op?.operationId || generateId("pop"),
         turnId: semanticTurn.turnId,
-        actionType: op?.actionType || "create_task",
+        actionType: resolvedActionType,
         domain: op?.domain || "productivity",
         partialPayload: opPayload,
         missingRequirement: {
@@ -656,7 +666,7 @@ export class Supervisor {
         if (req.conversationId) {
           const loaded = await ConversationManager.getInstance().load(req.conversationId, req.userId);
           if (loaded && loaded.recentMessages && loaded.recentMessages.length > 0) {
-            historyMessages = loaded.recentMessages.slice(-6).map((m: any) => ({
+            historyMessages = loaded.recentMessages.slice(-14).map((m: any) => ({
               role: (m.role === "assistant" ? "assistant" : "user") as "assistant" | "user",
               content: m.content || "",
             }));
@@ -813,7 +823,7 @@ export class Supervisor {
         const loaded = await ConversationManager.getInstance().load(req.conversationId, req.userId);
         if (loaded?.recentMessages && loaded.recentMessages.length > 0) {
           const recent = loaded.recentMessages
-            .slice(-4)
+            .slice(-14)
             .map((m: any) => `${m.role === "assistant" ? "Assistant" : "User"}: ${m.content}`)
             .join("\n");
           if (recent.trim().length > 0) {

@@ -32,9 +32,18 @@ export async function GET(_req: NextRequest, props: RouteParams) {
   }
 
   const messages = await ConversationMessage.find({ conversationId, userId })
-    .sort({ createdAt: 1 })
+    .sort({ createdAt: 1, _id: 1 })
     .select("role content createdAt tokenEstimate")
     .lean();
+
+  messages.sort((a: any, b: any) => {
+    const tA = new Date(a.createdAt).getTime();
+    const tB = new Date(b.createdAt).getTime();
+    if (tA !== tB) return tA - tB;
+    if (a.role === "user" && b.role === "assistant") return -1;
+    if (a.role === "assistant" && b.role === "user") return 1;
+    return 0;
+  });
 
   return Response.json({ ...conversation, messages });
 }

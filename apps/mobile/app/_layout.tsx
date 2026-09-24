@@ -12,8 +12,8 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Alert } from 'react-native';
 
 // Global Error Handler to catch fatal crashes
-const defaultErrorHandler = (global as any).ErrorUtils?.getGlobalHandler();
-(global as any).ErrorUtils?.setGlobalHandler((error: Error, isFatal: boolean) => {
+const defaultErrorHandler = (globalThis as any).ErrorUtils?.getGlobalHandler();
+(globalThis as any).ErrorUtils?.setGlobalHandler((error: Error, isFatal: boolean) => {
   if (isFatal) {
     Alert.alert(
       'Fatal Error Captured',

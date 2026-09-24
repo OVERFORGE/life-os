@@ -32,7 +32,11 @@ export class ScheduleOccurrenceAdapter implements IKernelActionAdapter {
     if (!payload?.title || typeof payload.title !== "string") {
       return { valid: false, reason: "Title is required for scheduled occurrence" };
     }
-    if (!payload?.dateOnly || !/^\d{4}-\d{2}-\d{2}$/.test(payload.dateOnly)) {
+    if (!payload?.dateOnly || typeof payload.dateOnly !== "string") {
+      return { valid: false, reason: "Valid dateOnly (YYYY-MM-DD) is required" };
+    }
+    const dateParts = payload.dateOnly.split("-");
+    if (dateParts.length !== 3 || dateParts[0].length !== 4 || isNaN(Number(dateParts[0])) || isNaN(Number(dateParts[1])) || isNaN(Number(dateParts[2]))) {
       return { valid: false, reason: "Valid dateOnly (YYYY-MM-DD) is required" };
     }
     if (!payload?.startTime) {
@@ -287,15 +291,50 @@ export class CreateTemporalSeriesAdapter implements IKernelActionAdapter {
     if (!p?.title || typeof p.title !== "string") {
       return { valid: false, reason: "Series title is required" };
     }
-    if (!p?.baseStartTime || !p?.recurrence) {
-      return { valid: false, reason: "baseStartTime and recurrence rule are required" };
+    if (!p?.baseStartTime && !p?.startTime) {
+      return { valid: false, reason: "baseStartTime (HH:MM) is required" };
     }
     return { valid: true };
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
     const p = proposal.payload;
-    const seriesId = `ser_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+    const seriesId = p.seriesId || `ser_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
+
+    const today = new Date();
+    const yr = today.getFullYear();
+    const mo = String(today.getMonth() + 1).padStart(2, "0");
+    const da = String(today.getDate()).padStart(2, "0");
+    const todayIso = `${yr}-${mo}-${da}`;
+
+    const rec = p.recurrence || {};
+    let daysOfWeek: number[] = [today.getDay()];
+    if (Array.isArray(rec.daysOfWeek) && rec.daysOfWeek.length > 0) {
+      daysOfWeek = rec.daysOfWeek.map((d: any) => {
+        if (typeof d === "number") return d;
+        const s = String(d).toLowerCase().trim();
+        if (s.startsWith("sun")) return 0;
+        if (s.startsWith("mon")) return 1;
+        if (s.startsWith("tue")) return 2;
+        if (s.startsWith("wed")) return 3;
+        if (s.startsWith("thu")) return 4;
+        if (s.startsWith("fri")) return 5;
+        if (s.startsWith("sat")) return 6;
+        return 1;
+      });
+    }
+
+    const normalizedRecurrence = {
+      frequency: rec.frequency || "WEEKLY",
+      interval: typeof rec.interval === "number" && rec.interval > 0 ? rec.interval : 1,
+      daysOfWeek,
+      effectiveStartDate: rec.effectiveStartDate || p.effectiveStartDate || p.dateOnly || todayIso,
+      effectiveEndDate: rec.effectiveEndDate || p.effectiveEndDate,
+      count: typeof rec.count === "number" ? rec.count : undefined,
+    };
+
+    const baseStartTime = p.baseStartTime || p.startTime || "09:00";
+    const baseDurationMinutes = p.baseDurationMinutes || p.durationMinutes || 60;
 
     const seriesData = {
       seriesId,
@@ -303,13 +342,13 @@ export class CreateTemporalSeriesAdapter implements IKernelActionAdapter {
       title: p.title.trim(),
       kind: p.kind || "ROUTINE_BLOCK",
       locationContext: {
-        category: p.locationCategory || "HOME",
+        category: p.locationCategory || (p.kind === "HARD_EVENT" ? "ACADEMIC" : "HOME"),
         label: p.locationLabel || "",
         requiresPhysicalTransit: p.locationCategory !== "HOME" && p.locationCategory !== "VIRTUAL",
       },
-      recurrence: p.recurrence,
-      baseStartTime: p.baseStartTime,
-      baseDurationMinutes: p.baseDurationMinutes || 60,
+      recurrence: normalizedRecurrence,
+      baseStartTime,
+      baseDurationMinutes,
       linkedEntity: p.linkedEntity || { entityType: "none" },
       status: "ACTIVE" as const,
       metadata: p.metadata || {},
@@ -317,7 +356,68 @@ export class CreateTemporalSeriesAdapter implements IKernelActionAdapter {
 
     if (isDbConnected()) {
       const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
-      await TemporalSeriesTemplate.create(seriesData);
+      await TemporalSeriesTemplate.findOneAndUpdate(
+        { userId, seriesId },
+        seriesData,
+        { upsert: true, new: true }
+      );
+
+      // Pre-generate concrete TemporalOccurrence records for upcoming 12 weeks
+      const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
+      const [sy, sm, sd] = normalizedRecurrence.effectiveStartDate.split("-").map(Number);
+      const startRef = new Date(sy, sm - 1, sd);
+      const occurrencesToCreate: any[] = [];
+
+      for (let dayOffset = 0; dayOffset < 84; dayOffset++) {
+        const curDate = new Date(startRef);
+        curDate.setDate(startRef.getDate() + dayOffset);
+        const dayOfWeek = curDate.getDay();
+
+        if (normalizedRecurrence.daysOfWeek.includes(dayOfWeek)) {
+          const cy = curDate.getFullYear();
+          const cm = String(curDate.getMonth() + 1).padStart(2, "0");
+          const cd = String(curDate.getDate()).padStart(2, "0");
+          const curDateIso = `${cy}-${cm}-${cd}`;
+
+          if (normalizedRecurrence.effectiveEndDate && curDateIso > normalizedRecurrence.effectiveEndDate) {
+            break;
+          }
+
+          const norm = normalizeTemporalInterval({
+            dateOnly: curDateIso,
+            startTime: baseStartTime,
+            durationMinutes: baseDurationMinutes,
+            timezone: p.timezone || "UTC",
+          });
+
+          if (norm.valid && norm.interval) {
+            const occurrenceId = buildOccurrenceId(seriesId, curDateIso);
+            occurrencesToCreate.push({
+              occurrenceId,
+              userId,
+              seriesId,
+              title: seriesData.title,
+              kind: seriesData.kind,
+              dateOnly: curDateIso,
+              plannedInterval: norm.interval,
+              locationContext: seriesData.locationContext,
+              rigidity: "ELASTIC",
+              status: "SCHEDULED",
+              linkedEntity: seriesData.linkedEntity,
+              version: 1,
+              overrideType: "NONE",
+            });
+          }
+        }
+      }
+
+      for (const occ of occurrencesToCreate) {
+        await TemporalOccurrence.findOneAndUpdate(
+          { userId, occurrenceId: occ.occurrenceId },
+          occ,
+          { upsert: true }
+        ).catch(() => {});
+      }
     }
 
     return {
@@ -333,13 +433,17 @@ export class CreateTemporalSeriesAdapter implements IKernelActionAdapter {
     previousResult: any,
     userId: string
   ): Promise<CompensationResult> {
-    const seriesId = previousResult?.seriesId;
+    const seriesId = previousResult?.seriesId || proposal.payload?.seriesId;
     if (seriesId && isDbConnected()) {
       const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
-      await TemporalSeriesTemplate.deleteOne({ userId, seriesId });
+      const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
+      await Promise.all([
+        TemporalSeriesTemplate.deleteOne({ userId, seriesId }),
+        TemporalOccurrence.deleteMany({ userId, seriesId }),
+      ]);
       return {
         compensated: true,
-        reversalDetails: `Deleted created series ${seriesId}`,
+        reversalDetails: `Deleted created series and occurrences ${seriesId}`,
       };
     }
     return { compensated: true, reversalDetails: "Series creation compensated" };

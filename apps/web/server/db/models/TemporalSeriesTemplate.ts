@@ -41,7 +41,16 @@ const RecurrenceRuleSchema = new Schema(
     },
     interval: { type: Number, default: 1 },
     daysOfWeek: [{ type: Number, min: 0, max: 6 }],
-    effectiveStartDate: { type: String, required: true },
+    effectiveStartDate: {
+      type: String,
+      default: () => {
+        const d = new Date();
+        const y = d.getFullYear();
+        const m = String(d.getMonth() + 1).padStart(2, "0");
+        const day = String(d.getDate()).padStart(2, "0");
+        return `${y}-${m}-${day}`;
+      },
+    },
     effectiveEndDate: { type: String },
     count: { type: Number },
   },

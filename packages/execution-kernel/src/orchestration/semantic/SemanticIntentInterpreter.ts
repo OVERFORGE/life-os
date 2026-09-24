@@ -66,11 +66,55 @@ You must handle:
 19. Speech Transcription Vocative Awareness: The incoming user utterance is transcribed via voice speech-to-text (ASR) and may contain acoustic or phonetic variations of the assistant's name "Aven" (such as "vin", "Vyven", "Evan", "Ivan", "Ayven"). Understand that the user is addressing Aven without requiring exact orthographic matching, and interpret the semantic intent of the request directly.
 20. Name Pronunciation Teaching: When the user instructs Aven how to pronounce their name (e.g. "Aven, pronounce my name like Duksh", "My name is pronounced Duksh", "Call me Duksh"): Classify as "ACTION_REQUEST" with actionType: "update_user_profile", domain: "context", and payload: { "phoneticName": "<phonetic_spelling>" }.
 21. Calendar Time Blocking & RoutineAI (V3 Temporal Reality):
-- When the user schedules a specific calendar block, focus session, meeting, or routine (e.g. "Schedule deep work tomorrow from 2pm to 4pm", "Book gym tomorrow at 7am for 1 hour", "Block 9am to 10am for email"): Classify as "ACTION_REQUEST" with actionType: "schedule_occurrence", domain: "productivity", and payload: { "title": "<title>", "dateOnly": "YYYY-MM-DD", "startTime": "HH:MM", "endTime": "HH:MM", "durationMinutes": <minutes>, "kind": "WORK_SESSION" | "ROUTINE_BLOCK" | "HARD_EVENT" }.
-- When the user moves or reschedules a scheduled block: Classify as "reschedule_occurrence" with payload: { "newStartTime": "HH:MM", "newDateOnly": "YYYY-MM-DD" } and targetReference pointing to the block.
-- When the user cancels a scheduled block: Classify as "cancel_occurrence".
-- When the user logs an executed work interval or session retrospectively (e.g. "I just worked on the presentation from 2pm to 4pm", "Logged 45 min focus sprint"): Classify as "log_execution_interval" with payload: { "title": "<title>", "durationMinutes": <mins> }.
-- When the user sets up a recurring routine/schedule (e.g. "Schedule gym every Monday, Wednesday, Friday at 7am"): Classify as "create_temporal_series" with payload: { "title": "Gym", "kind": "ROUTINE_BLOCK", "baseStartTime": "07:00", "baseDurationMinutes": 60, "recurrence": { "frequency": "WEEKLY", "daysOfWeek": [1, 3, 5] } }.
+- Recurring Class Schedules & Regular Commitments:
+  When the user states recurring commitments, lectures, university/school classes, gym routines, or regular blocks (e.g. "I have my university classes on Monday from 1:40PM to 4:10PM", "On Tuesdays I have class from 11:10am to 12:50pm and then from 3:20pm to 4:10pm", "I generally go to gym on Monday around 11:30am to 1:30pm", "Add my university classes every Monday"):
+  Classify as "ACTION_REQUEST". Emit "create_temporal_series" operations for each distinct time slot (e.g., two slots on Tuesday produce two separate operations in the operations array).
+  Payload format:
+  {
+    "title": "University classes" (or "Gym", or course name),
+    "kind": "HARD_EVENT" (for university/school classes, fixed appointments) | "ROUTINE_BLOCK" (for gym, daily habits),
+    "baseStartTime": "HH:MM" (24-hour time, e.g. "13:40", "11:10", "15:20", "11:30"),
+    "baseDurationMinutes": <duration in minutes: 1:40PM to 4:10PM is 150 min; 11:10AM to 12:50PM is 100 min; 3:20PM to 4:10PM is 50 min; 11:30AM to 1:30PM is 120 min>,
+    "locationCategory": "ACADEMIC" (for university/school) | "GYM" (for gym/fitness) | "HOME" | "WORK_SITE",
+    "recurrence": {
+      "frequency": "WEEKLY",
+      "interval": 1,
+      "daysOfWeek": [<array of day numbers: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat>],
+      "effectiveStartDate": "YYYY-MM-DD"
+    }
+  }
+  CRITICAL: Do NOT ask redundant permission questions like "Should I block those slots on your calendar?" when the user states their timings; schedule them directly into their calendar routines.
+
+- Transition & Commute Buffers:
+  When the user mentions travel, transit, or commute times (e.g. "after my uni it takes me 40-45 mins to get back home all 5 days of the week", "commute is 45 mins"):
+  Classify as "ACTION_REQUEST" with actionType: "create_temporal_series" with payload:
+  {
+    "title": "Commute home",
+    "kind": "TRANSITION_BUFFER",
+    "baseStartTime": "16:15",
+    "baseDurationMinutes": 45,
+    "locationCategory": "TRANSIT",
+    "recurrence": {
+      "frequency": "WEEKLY",
+      "interval": 1,
+      "daysOfWeek": [1, 2, 3, 4, 5],
+      "effectiveStartDate": "YYYY-MM-DD"
+    }
+  }
+
+- Conversational Context Recall & Coreference Resolution:
+  When the user refers back to a commitment mentioned earlier in the conversation (e.g. "Yk the monday university class that I told you about that happens like every Monday so add that in my calendar", "schedule that for me"):
+  CRITICALLY: CAREFULLY INSPECT THE RECENT CONVERSATION HISTORY PROVIDED IN THIS PROMPT. Find where the user previously stated the class times or commitment details (such as Monday from 1:40PM to 4:10PM).
+  Extract those times directly from the earlier turn and emit the "create_temporal_series" operation!
+  NEVER ask the user "What time does your Monday university class start and end?" if they already provided that time earlier in the conversation history.
+
+- Follow-up Confirmation for Slot Blocking:
+  If the assistant previously asked "Should I block those slots on your calendar?" or similar, and the user replies with affirmative consent ("yes", "sure", "do it", "go ahead"):
+  Classify as "ACTION_REQUEST" or "CONFIRMATION" and immediately schedule the referenced slots discussed in the previous user message!
+
+- One-Off Calendar Events:
+  When the user books a single specific appointment or focus session for a specific date:
+  Classify as "ACTION_REQUEST" with actionType: "schedule_occurrence" and payload with dateOnly, startTime, durationMinutes, kind.
 
 Domain Action Types:
 - productivity: "create_task", "complete_task", "update_task", "delete_task", "reschedule_task", "adjust_task_priority", "create_goal", "propose_goal", "confirm_goal", "delete_goal", "schedule_occurrence", "reschedule_occurrence", "cancel_occurrence", "create_temporal_series", "log_execution_interval"
@@ -187,7 +231,7 @@ export class SemanticIntentInterpreter {
         ];
 
         if (ctx.recentHistory && ctx.recentHistory.length > 0) {
-          for (const hist of ctx.recentHistory.slice(-6)) {
+          for (const hist of ctx.recentHistory.slice(-16)) {
             messages.push({ role: hist.role, content: hist.content });
           }
         }
@@ -238,8 +282,19 @@ export class SemanticIntentInterpreter {
 
         const missingKind = typeof pending.missingRequirement === "object" ? pending.missingRequirement.kind : pending.missingRequirement;
 
-        // Case 1: Pending Confirmation (e.g. proposed goal confirmation or duplicate confirmation)
-        if (isAffirmative && (missingKind === "CONFIRMATION" || missingKind === "DUPLICATE_CONFIRMATION" || continuedActionType === "confirm_goal" || continuedActionType === "propose_goal")) {
+        // Case 1: Pending Confirmation (e.g. proposed goal confirmation, slot blocking, or duplicate confirmation)
+        if (
+          isAffirmative &&
+          (missingKind === "CONFIRMATION" ||
+            missingKind === "DUPLICATE_CONFIRMATION" ||
+            continuedActionType === "confirm_goal" ||
+            continuedActionType === "propose_goal" ||
+            continuedActionType === "create_temporal_series" ||
+            continuedActionType === "schedule_occurrence" ||
+            String(pending.clarificationQuestion || "").toLowerCase().includes("block") ||
+            String(pending.clarificationQuestion || "").toLowerCase().includes("calendar") ||
+            String(pending.clarificationQuestion || "").toLowerCase().includes("schedule"))
+        ) {
           if (continuedActionType === "propose_goal") {
             continuedActionType = "confirm_goal";
           }
@@ -320,12 +375,26 @@ export class SemanticIntentInterpreter {
         } else if (missingKind === "PARAMETER_VALUE") {
           const paramName = pending.missingRequirement?.parameterName || "value";
           continuedPayload[paramName] = trimmedInput;
+
+          if (
+            continuedActionType === "create_temporal_series" ||
+            continuedActionType === "schedule_occurrence" ||
+            String(pending.clarificationQuestion || "").toLowerCase().includes("class") ||
+            String(pending.clarificationQuestion || "").toLowerCase().includes("routine") ||
+            String(pending.clarificationQuestion || "").toLowerCase().includes("schedule")
+          ) {
+            continuedActionType = "create_temporal_series";
+            if (!continuedPayload.title) {
+              continuedPayload.title = "University classes";
+            }
+          }
+
           parsedTurn.clarification = undefined;
           parsedTurn.ambiguityStatus = "UNAMBIGUOUS";
         }
 
         parsedTurn.primaryClassification = isAffirmative ? "CONFIRMATION" : "CLARIFICATION_RESPONSE";
-        parsedTurn.conversationalSummary = isAffirmative ? `Confirmed ${continuedActionType}` : `Continuing ${continuedActionType}`;
+        parsedTurn.conversationalSummary = isAffirmative ? "Confirmed." : "Proceeding with your request.";
         parsedTurn.operations = [
           {
             operationId: `op_cont_${Date.now()}`,

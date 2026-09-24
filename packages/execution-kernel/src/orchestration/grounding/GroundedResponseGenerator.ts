@@ -41,9 +41,17 @@ export class GroundedResponseGenerator {
 
     // 3. If no operations were requested (casual dialogue or informational)
     if (results.length === 0) {
-      // Strip any accidental third-person prefix from conversationalSummary
+      // Strip any accidental third-person prefix or internal action identifiers from conversationalSummary
       const summary = turn.conversationalSummary || "";
-      if (summary.startsWith("User wants") || summary.startsWith("The user") || summary.startsWith("User ")) {
+      if (
+        summary.startsWith("User wants") ||
+        summary.startsWith("The user") ||
+        summary.startsWith("User ") ||
+        summary.includes("_") ||
+        summary.includes("create_") ||
+        summary.startsWith("Continuing ") ||
+        summary.startsWith("Confirmed ")
+      ) {
         return "I understand. How else can I assist you?";
       }
       return summary || "I understand. How else can I assist you?";
@@ -245,7 +253,19 @@ export class GroundedResponseGenerator {
     }
 
     if (err) {
-      return `I couldn't complete ${result.actionType.replace("_", " ")}: ${err}`;
+      if (
+        err.includes("validation failed") ||
+        err.includes("is required") ||
+        err.includes("Path `") ||
+        err.includes("Cast to") ||
+        err.includes("Mongo") ||
+        err.includes("Template")
+      ) {
+        return "I wasn't able to schedule that. Could you confirm the start time or dates?";
+      }
+      const cap = DOMAIN_CAPABILITIES[result.actionType];
+      const noun = cap?.verbalization?.entityNoun || "schedule update";
+      return `I wasn't able to complete that ${noun}. Could you clarify the details?`;
     }
 
     const cap = DOMAIN_CAPABILITIES[result.actionType];
