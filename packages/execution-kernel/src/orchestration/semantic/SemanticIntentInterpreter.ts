@@ -13,7 +13,9 @@ import {
   IPendingOperationContext,
 } from "../contracts/SemanticTurnContracts";
 import { DomainActionType, DOMAIN_CAPABILITIES } from "../contracts/ActionProposalContracts";
-import { resolveTemporalExpression } from "./temporalResolver";
+import { resolveTemporalExpression, resolveStructuredTemporal } from "./temporalResolver";
+import { getActiveDate } from "../../automation/timeUtils";
+import { minutesToTimeString } from "../../temporal/normalization/temporalNormalizer";
 import { NutritionEstimator } from "../../nutrition/nutritionEstimator";
 
 export interface SemanticInterpreterContext {
@@ -63,12 +65,19 @@ You must handle:
 18. Conversational Sign-Offs, Closures & Farewells (Strict Zero Operations): When the user indicates they want to conclude, wrap up, or end the interaction (such as "Let's talk tomorrow", "That's it for today", "Goodnight", "Have to head out", "Signing off", "Talk to you later", "That's all for now"): The turn MUST be classified as "CASUAL_DIALOGUE" with operations: []. If the user mentions upcoming commitments or schedule as context for departing (such as "I have a meeting tomorrow so let's talk tomorrow, that's it for today"), this is conversational rationale, NOT a request to create a task or calendar event. NEVER spawn an action proposal for casual departure statements.
 19. Speech Transcription Vocative Awareness: The incoming user utterance is transcribed via voice speech-to-text (ASR) and may contain acoustic or phonetic variations of the assistant's name "Aven" (such as "vin", "Vyven", "Evan", "Ivan", "Ayven"). Understand that the user is addressing Aven without requiring exact orthographic matching, and interpret the semantic intent of the request directly.
 20. Name Pronunciation Teaching: When the user instructs Aven how to pronounce their name (e.g. "Aven, pronounce my name like Duksh", "My name is pronounced Duksh", "Call me Duksh"): Classify as "ACTION_REQUEST" with actionType: "update_user_profile", domain: "context", and payload: { "phoneticName": "<phonetic_spelling>" }.
+21. Calendar Time Blocking & RoutineAI (V3 Temporal Reality):
+- When the user schedules a specific calendar block, focus session, meeting, or routine (e.g. "Schedule deep work tomorrow from 2pm to 4pm", "Book gym tomorrow at 7am for 1 hour", "Block 9am to 10am for email"): Classify as "ACTION_REQUEST" with actionType: "schedule_occurrence", domain: "productivity", and payload: { "title": "<title>", "dateOnly": "YYYY-MM-DD", "startTime": "HH:MM", "endTime": "HH:MM", "durationMinutes": <minutes>, "kind": "WORK_SESSION" | "ROUTINE_BLOCK" | "HARD_EVENT" }.
+- When the user moves or reschedules a scheduled block: Classify as "reschedule_occurrence" with payload: { "newStartTime": "HH:MM", "newDateOnly": "YYYY-MM-DD" } and targetReference pointing to the block.
+- When the user cancels a scheduled block: Classify as "cancel_occurrence".
+- When the user logs an executed work interval or session retrospectively (e.g. "I just worked on the presentation from 2pm to 4pm", "Logged 45 min focus sprint"): Classify as "log_execution_interval" with payload: { "title": "<title>", "durationMinutes": <mins> }.
+- When the user sets up a recurring routine/schedule (e.g. "Schedule gym every Monday, Wednesday, Friday at 7am"): Classify as "create_temporal_series" with payload: { "title": "Gym", "kind": "ROUTINE_BLOCK", "baseStartTime": "07:00", "baseDurationMinutes": 60, "recurrence": { "frequency": "WEEKLY", "daysOfWeek": [1, 3, 5] } }.
 
 Domain Action Types:
-- productivity: "create_task", "complete_task", "update_task", "delete_task", "reschedule_task", "adjust_task_priority", "create_goal", "propose_goal", "confirm_goal", "delete_goal"
+- productivity: "create_task", "complete_task", "update_task", "delete_task", "reschedule_task", "adjust_task_priority", "create_goal", "propose_goal", "confirm_goal", "delete_goal", "schedule_occurrence", "reschedule_occurrence", "cancel_occurrence", "create_temporal_series", "log_execution_interval"
 - health: "log_meal", "log_workout", "modify_workout", "update_weight", "propose_diet_mode", "confirm_diet_mode"
 - wellness: "log_activity", "record_mental_estimate", "apply_recovery_constraint"
 - context: "set_context_mode", "clear_context_mode"
+
 
 OUTPUT SCHEMA (Return ONLY valid JSON):
 {
@@ -469,8 +478,21 @@ export class SemanticIntentInterpreter {
 
       // 3. Resolve temporal references
       let resolvedTemporal: any = undefined;
-      const rawTimeExpr = rawOp.temporal?.rawExpression || payload.dueDate || payload.date;
-      if (rawTimeExpr) {
+      const rawTimeExpr = rawOp.temporal?.rawExpression || payload.dueDate || payload.date || payload.dateOnly;
+      if (rawOp.temporal?.structuredMeaning) {
+        const { resolveStructuredTemporal } = await import("./temporalResolver");
+        const temp = resolveStructuredTemporal(rawOp.temporal.structuredMeaning, timezone, refTime);
+        resolvedTemporal = {
+          rawExpression: rawOp.temporal.rawExpression || `${temp.dateOnly} ${temp.timeOnly || ""}`,
+          type: rawOp.temporal.type || "POINT_IN_TIME",
+          parsedAnchor: temp.dateOnly,
+          resolvedDate: temp.dateOnly,
+          resolvedTime: temp.timeOnly,
+          timezone,
+          isAmbiguous: false,
+          structuredMeaning: rawOp.temporal.structuredMeaning,
+        };
+      } else if (rawTimeExpr) {
         const temp = resolveTemporalExpression(rawTimeExpr, timezone, refTime);
         resolvedTemporal = {
           rawExpression: rawTimeExpr,
@@ -486,8 +508,51 @@ export class SemanticIntentInterpreter {
           if (temp.timeOnly) payload.dueTime = temp.timeOnly;
         } else if (actionType === "record_mental_estimate") {
           payload.date = temp.dateOnly;
+        } else if (actionType === "schedule_occurrence") {
+          if (!payload.dateOnly || payload.dateOnly === "today" || payload.dateOnly === "tomorrow") {
+            payload.dateOnly = temp.dateOnly;
+          }
+          if (!payload.startTime && temp.timeOnly) {
+            payload.startTime = temp.timeOnly;
+          }
         }
       }
+
+      // 3b. Deterministic Normalization for RoutineAI schedule_occurrence
+      if (actionType === "schedule_occurrence") {
+        if (!payload.dateOnly || payload.dateOnly === "today") {
+          payload.dateOnly = resolvedTemporal?.resolvedDate || getActiveDate(timezone, 4, new Date(refTime));
+        } else if (payload.dateOnly === "tomorrow") {
+          const d = new Date(refTime);
+          d.setUTCDate(d.getUTCDate() + 1);
+          payload.dateOnly = d.toISOString().split("T")[0];
+        }
+        if (!payload.kind) {
+          payload.kind = "WORK_SESSION";
+        }
+        if (!payload.rigidity) {
+          payload.rigidity = "ELASTIC";
+        }
+        if (!payload.timezone) {
+          payload.timezone = timezone;
+        }
+        // Normalize interval if startTime is present
+        if (payload.startTime) {
+          const { normalizeTemporalInterval } = await import("../../temporal/normalization/temporalNormalizer");
+          const norm = normalizeTemporalInterval({
+            dateOnly: payload.dateOnly,
+            startTime: payload.startTime,
+            endTime: payload.endTime,
+            durationMinutes: payload.durationMinutes,
+            timezone,
+          });
+          if (norm.valid && norm.interval) {
+            payload.durationMinutes = norm.interval.durationMinutes;
+            payload.endTime = minutesToTimeString(norm.interval.endMinute % 1440);
+          }
+        }
+      }
+
 
       // 4. Resolve entity references for actions requiring target entities
       let targetRef = rawOp.targetReference;

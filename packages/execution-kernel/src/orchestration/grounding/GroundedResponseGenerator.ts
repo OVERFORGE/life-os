@@ -180,6 +180,36 @@ export class GroundedResponseGenerator {
         return `Reset context mode to default.`;
       }
 
+      case "schedule_occurrence": {
+        const title = result.targetEntity?.displayName || data?.title || "block";
+        const interval = data?.plannedInterval;
+        const dateStr = interval?.dateOnly ? ` on ${interval.dateOnly}` : "";
+        const durStr = interval?.durationMinutes ? ` (${interval.durationMinutes} min)` : "";
+        return `I've scheduled "${title}"${dateStr}${durStr} on your calendar.`;
+      }
+
+      case "reschedule_occurrence": {
+        const title = result.targetEntity?.displayName || data?.title || "block";
+        return `Rescheduled "${title}".`;
+      }
+
+      case "cancel_occurrence": {
+        const title = result.targetEntity?.displayName || data?.title || "scheduled block";
+        return `Cancelled "${title}".`;
+      }
+
+      case "create_temporal_series": {
+        const title = data?.title || "recurring schedule";
+        return `Created recurring routine: "${title}".`;
+      }
+
+      case "log_execution_interval": {
+        const title = data?.title || "work session";
+        const dur = data?.durationMinutes ? ` (${data.durationMinutes} min)` : "";
+        return `Recorded work session: "${title}"${dur}.`;
+      }
+
+
       default: {
         const noun = cap?.verbalization?.entityNoun || "item";
         const verb = cap?.verbalization?.actionVerbPast || "processed";

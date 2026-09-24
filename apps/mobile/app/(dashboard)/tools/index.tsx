@@ -4,7 +4,7 @@ import React from 'react';
 import { View, Text, ScrollView, TouchableOpacity } from 'react-native';
 import { useRouter } from 'expo-router';
 import { BlurView } from 'expo-blur';
-import { Heart, FileText, Target, Clock, ChevronRight, CheckSquare } from 'lucide-react-native';
+import { Heart, FileText, Target, Clock, Calendar, ChevronRight, CheckSquare } from 'lucide-react-native';
 
 export default function ToolsHubScreen() {
   const router = useRouter();
@@ -21,6 +21,22 @@ export default function ToolsHubScreen() {
 
       <ScrollView style={{ flex: 1, paddingHorizontal: 20, paddingTop: 24 }} contentContainerStyle={{ paddingBottom: 120 }}>
         <Text style={{ color: 'rgba(236,231,227,0.7)', fontSize: 12, fontWeight: 'bold', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 16 }}>Available Modules</Text>
+
+        {/* ─── RoutineAI Calendar Card ─── */}
+        <TouchableOpacity
+          activeOpacity={0.8}
+          onPress={() => router.push('/(dashboard)/calendar' as any)}
+          style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 20, marginBottom: 16, flexDirection: 'row', alignItems: 'center' }}
+        >
+          <View style={{ width: 48, height: 48, borderRadius: 12, backgroundColor: 'rgba(96, 165, 250, 0.15)', borderWidth: 1, borderColor: 'rgba(96, 165, 250, 0.3)', alignItems: 'center', justifyContent: 'center', marginRight: 16 }}>
+            <Calendar size={24} color="#60A5FA" />
+          </View>
+          <View style={{ flex: 1 }}>
+            <Text style={{ color: '#FFFDFC', fontWeight: '600', fontSize: 16 }}>RoutineAI Calendar</Text>
+            <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 14, marginTop: 2 }}>Temporal reality & live timeline</Text>
+          </View>
+          <ChevronRight size={20} color="rgba(236,231,227,0.3)" />
+        </TouchableOpacity>
 
         {/* ─── Task Manager Card ─── */}
         <TouchableOpacity

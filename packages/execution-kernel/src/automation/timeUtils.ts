@@ -7,8 +7,8 @@
  * Returns today's active date (YYYY-MM-DD), considering a configurable rollover hour.
  * If rolloverHour=4, any time before 4 AM is still considered "yesterday".
  */
-export function getActiveDate(timezone?: string, rolloverHour: number = 4): string {
-    const now = new Date();
+export function getActiveDate(timezone?: string, rolloverHour: number = 4, referenceTime?: number | Date): string {
+    const now = referenceTime ? new Date(referenceTime) : new Date();
     
     const formatterOptions: Intl.DateTimeFormatOptions = { 
         timeZone: timezone || Intl.DateTimeFormat().resolvedOptions().timeZone,

@@ -94,8 +94,36 @@ export class GoalPressureEngineV2 {
         factors.push("Goal contains nodes on Critical Path [critical bonus: 1.000]");
       }
 
-      const rawScore     = 0.40 * taskPressure + 0.40 * blockagePressure + 0.20 * criticalBonus;
+      // Check for finite deliverable target completion date pressure
+      const goalNode =
+        graphSnapshot.readyNodes.find((n) => n.id === goalId) ||
+        graphSnapshot.completedNodes.find((n) => n.id === goalId) ||
+        graphSnapshot.blockedNodes.find((b) => b.node.id === goalId)?.node;
+
+      const isFinite = goalNode?.metadata?.nature === "finite_deliverable";
+      let deadlinePressure = 0;
+
+      if (isFinite && goalNode?.metadata?.targetCompletionDate) {
+        const targetMs = new Date(goalNode.metadata.targetCompletionDate).getTime();
+        const nowMs = Date.now();
+        const daysRemaining = (targetMs - nowMs) / (1000 * 3600 * 24);
+        if (daysRemaining <= 0) {
+          deadlinePressure = 1.0;
+          factors.push("Deliverable target date has passed [deadline pressure: 1.000]");
+        } else if (daysRemaining <= 7) {
+          deadlinePressure = Math.max(0, (7 - daysRemaining) / 7);
+          factors.push(
+            `Target deadline in ${Math.ceil(daysRemaining)} day(s) [deadline pressure: ${deadlinePressure.toFixed(3)}]`
+          );
+        }
+      }
+
+      const rawScore =
+        isFinite && deadlinePressure > 0
+          ? 0.35 * taskPressure + 0.35 * blockagePressure + 0.15 * criticalBonus + 0.15 * deadlinePressure
+          : 0.40 * taskPressure + 0.40 * blockagePressure + 0.20 * criticalBonus;
       const pressureScore = Math.min(100, Math.round(rawScore * 100));
+
 
       // D-4: Widened trend hysteresis bands to avoid oscillation near boundaries
       const trend: "rising" | "stable" | "falling" =

@@ -14,6 +14,7 @@
     "build:mobile": "cd apps/mobile && eas build -p android --profile preview",
     "postinstall": "node scripts/patch-expo-modules.js",
     "audit:v3": "npx tsx --tsconfig packages/execution-kernel/tsconfig.json --test packages/execution-kernel/src/testing/*.test.ts",
+    "test:routineai": "npx tsx --tsconfig packages/execution-kernel/tsconfig.json --test packages/execution-kernel/src/testing/phase1TemporalContracts.test.ts packages/execution-kernel/src/testing/phase2GoalEvolutionAndAttribution.test.ts packages/execution-kernel/src/testing/phase3UnifiedTimelineAndSolver.test.ts packages/execution-kernel/src/testing/phase4CadenceAndConstraints.test.ts packages/execution-kernel/src/testing/phase5AvenSemanticTemporalExecution.test.ts packages/execution-kernel/src/testing/phase6CalendarAndControlSurface.test.ts",
     "test:stress": "npx tsx --tsconfig packages/execution-kernel/tsconfig.json --test packages/execution-kernel/src/testing/stressTestSuite200.test.ts"
   },
   "devDependencies": {

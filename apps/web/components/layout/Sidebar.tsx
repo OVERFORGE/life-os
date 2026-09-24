@@ -28,11 +28,13 @@ const navSections = [
   {
     title: "Organization",
     items: [
+      { href: "/calendar", label: "Calendar", icon: Calendar },
       { href: "/tasks", label: "Tasks", icon: CheckSquare },
       { href: "/goals", label: "Goals", icon: Target },
       { href: "/history", label: "Timeline", icon: Calendar },
     ]
   },
+
   {
     title: "Execution",
     items: [

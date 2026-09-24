@@ -1,4 +1,6 @@
 import { getActiveDate, parseLocalToUTC } from "../../automation/timeUtils";
+import { normalizeTemporalInterval } from "../../temporal/normalization/temporalNormalizer";
+import { StructuredTemporalMeaning } from "../contracts/SemanticTurnContracts";
 
 export interface ResolvedTemporal {
   rawExpression: string;
@@ -6,6 +8,54 @@ export interface ResolvedTemporal {
   timeOnly?: string; // HH:MM (24h)
   isoTimestamp: string; // Full ISO UTC string
   timezone: string;
+}
+
+/**
+ * Deterministically resolves already-structured temporal meaning without NLP or regex matching.
+ * Implements Guardrail 3 (Deterministic Normalization Layer).
+ */
+export function resolveStructuredTemporal(
+  meaning: StructuredTemporalMeaning,
+  timezone: string = "UTC",
+  referenceTimeMs: number = Date.now()
+): ResolvedTemporal {
+  const refDate = new Date(referenceTimeMs);
+  const activeDate = getActiveDate(timezone, 4, refDate);
+  
+  let targetDate = meaning.dateOnly || activeDate;
+  if (meaning.relativeAnchor === "TOMORROW") {
+    const d = new Date(`${activeDate}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() + 1);
+    targetDate = d.toISOString().split("T")[0];
+  } else if (meaning.relativeAnchor === "YESTERDAY") {
+    const d = new Date(`${activeDate}T12:00:00Z`);
+    d.setUTCDate(d.getUTCDate() - 1);
+    targetDate = d.toISOString().split("T")[0];
+  }
+
+  const targetTime = meaning.startTime || "12:00";
+  const normResult = normalizeTemporalInterval(
+    {
+      dateOnly: targetDate,
+      startTime: targetTime,
+      endTime: meaning.endTime,
+      durationMinutes: meaning.durationMinutes,
+      timezone,
+    },
+    targetDate
+  );
+
+  const iso = normResult.valid && normResult.interval
+    ? normResult.interval.startIsoUtc
+    : parseLocalToUTC(targetDate, targetTime, timezone).toISOString();
+
+  return {
+    rawExpression: meaning.rawExpression || `${targetDate} ${targetTime}`,
+    dateOnly: targetDate,
+    timeOnly: meaning.startTime,
+    isoTimestamp: iso,
+    timezone,
+  };
 }
 
 const DAY_NAME_MAP: Record<string, number> = {
@@ -38,10 +88,11 @@ export function resolveTemporalExpression(
   const lower = raw.toLowerCase();
   const refDate = new Date(referenceTimeMs);
 
-  // Default date is today's active date in timezone
-  const today = getActiveDate(timezone);
+  // Default date is today's active date in timezone relative to reference time
+  const today = getActiveDate(timezone, 4, refDate);
   let targetDate = today;
   let targetTime: string | undefined = undefined;
+
 
   // 1. Time-of-day extraction
   // Matches "3pm", "3:30pm", "3:30 pm", "15:00", "3 pm", etc.

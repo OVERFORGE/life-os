@@ -760,6 +760,21 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
   const setContextModeAdapter = new SetContextModeAdapter();
   const clearContextModeAdapter = new ClearContextModeAdapter();
 
+  // RoutineAI Temporal Reality Adapters (V3)
+  const {
+    ScheduleOccurrenceAdapter,
+    RescheduleOccurrenceAdapter,
+    CancelOccurrenceAdapter,
+    CreateTemporalSeriesAdapter,
+    LogExecutionIntervalAdapter,
+  } = require("../../temporal/adapters/TemporalActionAdapters");
+
+  const scheduleOccAdapter = new ScheduleOccurrenceAdapter();
+  const rescheduleOccAdapter = new RescheduleOccurrenceAdapter();
+  const cancelOccAdapter = new CancelOccurrenceAdapter();
+  const createSeriesAdapter = new CreateTemporalSeriesAdapter();
+  const logExecAdapter = new LogExecutionIntervalAdapter();
+
   if (!registry.has("create_task")) registry.register("create_task", taskAdapter);
   if (!registry.has("complete_task")) registry.register("complete_task", completeAdapter);
   if (!registry.has("update_task")) registry.register("update_task", updateAdapter);
@@ -779,7 +794,13 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
   if (!registry.has("delete_goal")) registry.register("delete_goal", deleteGoalAdapter);
   if (!registry.has("set_context_mode")) registry.register("set_context_mode", setContextModeAdapter);
   if (!registry.has("clear_context_mode")) registry.register("clear_context_mode", clearContextModeAdapter);
+  if (!registry.has("schedule_occurrence")) registry.register("schedule_occurrence", scheduleOccAdapter);
+  if (!registry.has("reschedule_occurrence")) registry.register("reschedule_occurrence", rescheduleOccAdapter);
+  if (!registry.has("cancel_occurrence")) registry.register("cancel_occurrence", cancelOccAdapter);
+  if (!registry.has("create_temporal_series")) registry.register("create_temporal_series", createSeriesAdapter);
+  if (!registry.has("log_execution_interval")) registry.register("log_execution_interval", logExecAdapter);
 
   return registry;
 }
+
 

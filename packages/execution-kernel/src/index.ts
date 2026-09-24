@@ -383,3 +383,12 @@ export * from "./persona";
 // Semantic Orchestration & Domain Intelligence
 export * from "./orchestration";
 export * from "./nutrition/nutritionEstimator";
+
+// RoutineAI Temporal Reality & Cadence Architecture (V3)
+export * from "./temporal/contracts/TemporalContracts";
+export * from "./temporal/normalization/temporalNormalizer";
+export * from "./temporal/solver/ScheduleSolver";
+export * from "./temporal/projection/TemporalTimelineEngine";
+export * from "./temporal/cadence/CadenceLearningEngine";
+export * from "./temporal/adapters/TemporalActionAdapters";
+

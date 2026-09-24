@@ -58,7 +58,7 @@ export default function DashboardLayout() {
   return (
     <SafeAreaView style={{ flex: 1, backgroundColor: '#0f1115' }} edges={['top']}>
       <Tabs
-        tabBar={(props) => <FloatingTabBar {...props} />}
+        tabBar={(props) => <FloatingTabBar {...(props as any)} />}
         screenOptions={{
           headerShown: false,
         }}
@@ -98,6 +98,7 @@ export default function DashboardLayout() {
           options={{ href: null, title: 'Phase Detail' }}
         />
         {/* Hidden tabs — still navigable but not shown in bar */}
+        <Tabs.Screen name="calendar" options={{ href: null, title: 'Calendar' }} />
         <Tabs.Screen name="health" options={{ href: null, title: 'Health Hub' }} />
         <Tabs.Screen name="gym" options={{ href: null, title: 'Gym Session' }} />
         <Tabs.Screen name="nutrition" options={{ href: null, title: 'Nutrition Tracker' }} />

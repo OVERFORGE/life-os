@@ -31,7 +31,13 @@ export type DomainActionType =
   | "apply_recovery_constraint"
   // Context / Life Season actions
   | "set_context_mode"
-  | "clear_context_mode";
+  | "clear_context_mode"
+  // Temporal & RoutineAI actions (V3)
+  | "schedule_occurrence"
+  | "reschedule_occurrence"
+  | "cancel_occurrence"
+  | "create_temporal_series"
+  | "log_execution_interval";
 
 export interface DomainActionCapability {
   actionType: DomainActionType;
@@ -288,6 +294,57 @@ export const DOMAIN_CAPABILITIES: Record<DomainActionType, DomainActionCapabilit
     duplicatePolicy: "IDEMPOTENT_IGNORE",
     idempotencyScope: "GLOBAL_CONTENT",
     verbalization: { entityNoun: "context mode", actionVerbPast: "cleared" },
+  },
+  schedule_occurrence: {
+    actionType: "schedule_occurrence",
+    domain: "productivity",
+    operationKind: "CREATE",
+    requiresTargetEntity: false,
+    targetEntityType: "task",
+    supportsContinuation: false,
+    duplicatePolicy: "DETECT_AND_CLARIFY",
+    idempotencyScope: "TEMPORAL_SLOT",
+    verbalization: { entityNoun: "schedule block", actionVerbPast: "scheduled" },
+  },
+  reschedule_occurrence: {
+    actionType: "reschedule_occurrence",
+    domain: "productivity",
+    operationKind: "RESCHEDULE",
+    requiresTargetEntity: true,
+    supportsContinuation: true,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "schedule block", actionVerbPast: "rescheduled" },
+  },
+  cancel_occurrence: {
+    actionType: "cancel_occurrence",
+    domain: "productivity",
+    operationKind: "CANCEL",
+    requiresTargetEntity: true,
+    supportsContinuation: false,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "schedule block", actionVerbPast: "cancelled" },
+  },
+  create_temporal_series: {
+    actionType: "create_temporal_series",
+    domain: "productivity",
+    operationKind: "CREATE",
+    requiresTargetEntity: false,
+    supportsContinuation: false,
+    duplicatePolicy: "DETECT_AND_CLARIFY",
+    idempotencyScope: "GLOBAL_CONTENT",
+    verbalization: { entityNoun: "recurring schedule", actionVerbPast: "created" },
+  },
+  log_execution_interval: {
+    actionType: "log_execution_interval",
+    domain: "productivity",
+    operationKind: "CREATE",
+    requiresTargetEntity: false,
+    supportsContinuation: false,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "work session", actionVerbPast: "recorded" },
   },
 };
 

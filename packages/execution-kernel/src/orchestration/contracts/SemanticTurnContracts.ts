@@ -160,6 +160,24 @@ export interface BoundedContextProjection {
   activeIncidents: string[];
 }
 
+export interface StructuredTemporalMeaning {
+  dateOnly?: string;                // YYYY-MM-DD
+  startTime?: string;               // HH:MM (24-hour)
+  endTime?: string;                 // HH:MM (24-hour)
+  durationMinutes?: number;
+  timezone?: string;
+  isAmbiguous?: boolean;
+  recurrence?: {
+    frequency: "DAILY" | "WEEKLY" | "MONTHLY" | "CUSTOM";
+    interval: number;
+    daysOfWeek?: number[];
+    effectiveStartDate?: string;
+    effectiveEndDate?: string;
+  };
+  relativeAnchor?: "TODAY" | "TOMORROW" | "YESTERDAY" | "THIS_WEEK" | "NEXT_WEEK";
+  rawExpression: string;            // Original verbatim phrase for provenance and audit
+}
+
 export interface TemporalExpression {
   rawExpression: string;      // "tomorrow afternoon", "next Monday at 3pm", "after lunch"
   type: "POINT_IN_TIME" | "DATE_ONLY" | "RELATIVE_OFFSET" | "TIME_OF_DAY_RANGE" | "RECURRING";
@@ -168,7 +186,9 @@ export interface TemporalExpression {
   resolvedTime?: string;      // Computed 24-hour time HH:MM
   timezone: string;           // e.g. "America/New_York" or "Asia/Kolkata"
   isAmbiguous: boolean;       // true if time has multiple interpretations without policy
+  structuredMeaning?: StructuredTemporalMeaning;
 }
+
 
 export type OperationRiskClass =
   | "READ_ONLY"               // Queries, no state changes

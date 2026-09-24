@@ -28,6 +28,34 @@ const GoalSchema = new mongoose.Schema(
     remediationReason: String,
     canonicalGoalId: String,
 
+    nature: {
+      type: String,
+      enum: ["finite_deliverable", "habitual_cadence"],
+      default: "habitual_cadence",
+      index: true,
+    },
+
+    definitionOfDone: { type: String },
+    targetCompletionDate: { type: Date },
+
+    milestones: [
+      {
+        milestoneId: { type: String, required: true },
+        title: { type: String, required: true },
+        completed: { type: Boolean, default: false },
+        completedAt: { type: Date },
+        linkedTaskId: { type: String },
+        order: { type: Number, default: 0 },
+      },
+    ],
+
+    deliverableProgressPercent: {
+      type: Number,
+      min: 0,
+      max: 100,
+      default: 0,
+    },
+
     type: {
       type: String,
       enum: ["identity", "performance", "maintenance"],
@@ -49,6 +77,7 @@ const GoalSchema = new mongoose.Schema(
   },
   { timestamps: true }
 );
+
 
 // Pre-save normalization: guarantee string userId and trimmed title
 GoalSchema.pre("save", function () {

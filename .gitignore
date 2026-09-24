@@ -15,7 +15,7 @@ build
 # Android build artifacts (may end up in root when running gradle from wrong directory)
 .build
 .cxx
-mobile/
+/mobile/
 
 # Typescript
 *.tsbuildinfo

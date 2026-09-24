@@ -157,8 +157,9 @@ export class ExecutionGraph {
       // 2. Fetch all user goals from primary Goal collection
       const goals = await Goal.find({ userId }).lean();
       for (const g of goals as any[]) {
+        const goalIdStr = g._id.toString();
         graph.addNode({
-          id: g._id.toString(),
+          id: goalIdStr,
           entityType: "goal",
           title: g.title || "Untitled Goal",
           status: g.status || "in_progress",
@@ -169,9 +170,52 @@ export class ExecutionGraph {
             category: g.type || g.category || "General",
             type: g.type,
             cadence: g.cadence,
+            nature: g.nature || "habitual_cadence",
+            targetCompletionDate: g.targetCompletionDate,
+            definitionOfDone: g.definitionOfDone,
+            deliverableProgressPercent: g.deliverableProgressPercent || 0,
           },
         });
+
+        // Add milestone topological dependency nodes & edges
+        if (Array.isArray(g.milestones) && g.milestones.length > 0) {
+          const sortedMilestones = [...g.milestones].sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+          let prevMilestoneId: string | null = null;
+
+          for (const m of sortedMilestones) {
+            const mId = m.milestoneId || `ms_${m._id || Math.random().toString(36).substring(2, 7)}`;
+            graph.addNode({
+              id: mId,
+              entityType: "milestone",
+              title: m.title || "Milestone",
+              status: m.completed ? "completed" : "pending",
+              priority: 3,
+              createdAt: new Date(g.createdAt || Date.now()),
+              updatedAt: new Date(g.updatedAt || Date.now()),
+              metadata: {
+                goalId: goalIdStr,
+                linkedTaskId: m.linkedTaskId,
+                order: m.order || 0,
+              },
+            });
+
+            // Milestone requires previous milestone in sequence
+            if (prevMilestoneId) {
+              graph.addEdge(mId, prevMilestoneId, "requires");
+            }
+            prevMilestoneId = mId;
+
+            // Milestone requires linked task if specified
+            if (m.linkedTaskId && graph.getNode(m.linkedTaskId)) {
+              graph.addEdge(mId, m.linkedTaskId, "requires");
+            }
+
+            // Goal requires milestone
+            graph.addEdge(goalIdStr, mId, "requires");
+          }
+        }
       }
+
 
       // Also include active GoalProposals if any exist
       const proposals = await GoalProposal.find({ userId, status: "pending" }).lean();
