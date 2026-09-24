@@ -75,6 +75,15 @@ interface TimelineProjection {
   tasksToSchedule?: UnscheduledTask[];
 }
 
+interface FloatingState {
+  block: TimelineBlock;
+  sourceDate: string;
+  targetDate: string;
+  targetHour: number;
+  targetMinute: number;
+  durationMinutes: number;
+}
+
 function formatMinutes(min: number): string {
   const norm = ((min % 1440) + 1440) % 1440;
   const h = Math.floor(norm / 60);
@@ -99,6 +108,10 @@ export default function CalendarScreen() {
   const [weekProjections, setWeekProjections] = useState<Record<string, TimelineProjection>>({});
   const [loading, setLoading] = useState(true);
   const [isMutating, setIsMutating] = useState(false);
+
+  // Floating card / Hard-select drag state (Google Calendar & Notion Calendar style)
+  const [floatingState, setFloatingState] = useState<FloatingState | null>(null);
+  const [hardSelectBlockId, setHardSelectBlockId] = useState<string | null>(null);
 
   // Modals state
   const [selectedBlock, setSelectedBlock] = useState<TimelineBlock | null>(null);
@@ -293,6 +306,89 @@ export default function CalendarScreen() {
     }
   };
 
+  // Hard-select card into floating state (Google Calendar / Notion Calendar style)
+  const handleHardSelect = (block: TimelineBlock, dateStr: string) => {
+    const startMin = block.planned?.startMinute ?? 9 * 60;
+    const durMin = block.planned?.durationMinutes ?? 60;
+    const hour = Math.floor(startMin / 60);
+    const minute = startMin % 60;
+
+    setHardSelectBlockId(block.blockId);
+    setFloatingState({
+      block,
+      sourceDate: dateStr,
+      targetDate: dateStr,
+      targetHour: hour,
+      targetMinute: minute,
+      durationMinutes: durMin,
+    });
+  };
+
+  // Commit floating move to backend with optimistic update
+  const handleCommitFloatingMove = async () => {
+    if (!floatingState) return;
+    const { block, sourceDate, targetDate, targetHour, targetMinute, durationMinutes } = floatingState;
+    const occId = (block.occurrenceId || block.blockId || "").replace("occ_", "");
+    const newStartMinute = targetHour * 60 + targetMinute;
+    const newStartTime = `${String(targetHour).padStart(2, '0')}:${String(targetMinute).padStart(2, '0')}`;
+
+    setIsMutating(true);
+    // Optimistic UI update
+    setWeekProjections((prev) => {
+      const next = { ...prev };
+      // Remove from source date
+      if (next[sourceDate]) {
+        next[sourceDate] = {
+          ...next[sourceDate],
+          blocks: next[sourceDate].blocks.filter((b) => b.blockId !== block.blockId),
+        };
+      }
+      // Add or update on target date
+      if (next[targetDate]) {
+        const updatedBlock: TimelineBlock = {
+          ...block,
+          planned: {
+            startMinute: newStartMinute,
+            endMinute: newStartMinute + durationMinutes,
+            durationMinutes,
+          },
+        };
+        next[targetDate] = {
+          ...next[targetDate],
+          blocks: [...next[targetDate].blocks.filter((b) => b.blockId !== block.blockId), updatedBlock],
+        };
+      }
+      return next;
+    });
+
+    setFloatingState(null);
+    setHardSelectBlockId(null);
+
+    try {
+      const res = await fetchWithAuth('/calendar/mutate', {
+        method: 'POST',
+        body: JSON.stringify({
+          actionType: 'reschedule_occurrence',
+          payload: {
+            occurrenceId: occId,
+            newDateOnly: targetDate,
+            newStartTime,
+            newDurationMinutes: durationMinutes,
+          },
+        }),
+      });
+
+      if (!res.ok) {
+        await loadWeekTimeline();
+      }
+    } catch (e) {
+      console.error('Error committing floating move:', e);
+      await loadWeekTimeline();
+    } finally {
+      setIsMutating(false);
+    }
+  };
+
   // Reschedule occurrence mutation
   const handleRescheduleBlock = async (offsetHours: number) => {
     if (!selectedBlock?.occurrenceId && !selectedBlock?.planned) return;
@@ -305,20 +401,17 @@ export default function CalendarScreen() {
       const pad = (n: number) => String(n).padStart(2, '0');
       const sH = Math.floor(newStartMin / 60);
       const sM = newStartMin % 60;
-      const eMin = newStartMin + dur;
-      const eH = Math.floor(eMin / 60);
-      const eM = eMin % 60;
-
-      const newStartIso = `${selectedDate}T${pad(sH)}:${pad(sM)}:00`;
-      const newEndIso = `${selectedDate}T${pad(eH)}:${pad(eM)}:00`;
 
       const res = await fetchWithAuth('/calendar/mutate', {
         method: 'POST',
         body: JSON.stringify({
-          action: 'reschedule_occurrence',
-          occurrenceId: selectedBlock.occurrenceId || selectedBlock.blockId,
-          newStartIso,
-          newEndIso,
+          actionType: 'reschedule_occurrence',
+          payload: {
+            occurrenceId: (selectedBlock.occurrenceId || selectedBlock.blockId || "").replace("occ_", ""),
+            newDateOnly: selectedDate,
+            newStartTime: `${pad(sH)}:${pad(sM)}`,
+            newDurationMinutes: dur,
+          },
         }),
       });
 
@@ -511,6 +604,7 @@ export default function CalendarScreen() {
         {weekDays.map((d) => {
           const dayProj = weekProjections[d.dateStr];
           const hasEvents = dayProj && dayProj.blocks.length > 0;
+          const isFloatingTarget = floatingState?.targetDate === d.dateStr;
 
           return (
             <TouchableOpacity
@@ -519,9 +613,14 @@ export default function CalendarScreen() {
                 styles.weekDayPill,
                 d.isSelected && styles.weekDayPillSelected,
                 d.isToday && !d.isSelected && styles.weekDayPillToday,
+                isFloatingTarget && styles.weekDayPillTarget,
               ]}
               onPress={() => {
-                setSelectedDate(d.dateStr);
+                if (floatingState) {
+                  setFloatingState((prev) => (prev ? { ...prev, targetDate: d.dateStr } : null));
+                } else {
+                  setSelectedDate(d.dateStr);
+                }
               }}
             >
               <Text
@@ -529,6 +628,7 @@ export default function CalendarScreen() {
                   styles.weekDayName,
                   d.isSelected && styles.weekDayTextActive,
                   d.isToday && !d.isSelected && styles.weekDayTextToday,
+                  isFloatingTarget && { color: '#E8414A', fontWeight: '800' },
                 ]}
               >
                 {d.name}
@@ -538,6 +638,7 @@ export default function CalendarScreen() {
                   styles.weekDayNum,
                   d.isSelected && styles.weekDayTextActive,
                   d.isToday && !d.isSelected && styles.weekDayTextToday,
+                  isFloatingTarget && { color: '#FFFFFF', fontWeight: '800' },
                 ]}
               >
                 {d.dayNum}
@@ -554,6 +655,117 @@ export default function CalendarScreen() {
           );
         })}
       </View>
+
+      {/* ─── FLOATING CARD HUD (Google Calendar / Notion Calendar Style) ─── */}
+      {floatingState && (
+        <View style={styles.floatingHudContainer}>
+          <View style={styles.floatingHudHeader}>
+            <View style={styles.floatingHudLeft}>
+              <View style={styles.floatingHudPill}>
+                <View style={styles.floatingDot} />
+                <Text style={styles.floatingHudStatus}>MOVING</Text>
+              </View>
+              <Text style={styles.floatingHudTitle} numberOfLines={1}>
+                {floatingState.block.title}
+              </Text>
+            </View>
+            <TouchableOpacity
+              onPress={() => {
+                setFloatingState(null);
+                setHardSelectBlockId(null);
+              }}
+              style={styles.floatingHudCloseBtn}
+            >
+              <X size={16} color="#ECE7E3" />
+            </TouchableOpacity>
+          </View>
+
+          {/* Target time */}
+          <View style={styles.floatingHudTargetRow}>
+            <Clock size={13} color="#E8414A" />
+            <Text style={styles.floatingHudTargetText}>
+              Target: {floatingState.targetDate} at {formatMinutes(floatingState.targetHour * 60 + floatingState.targetMinute)}
+            </Text>
+            <Text style={styles.floatingHudDurationText}>
+              ({floatingState.durationMinutes}m)
+            </Text>
+          </View>
+
+          {/* Quick nudge buttons */}
+          <View style={styles.floatingHudNudgeRow}>
+            <TouchableOpacity
+              style={styles.nudgeBtn}
+              onPress={() => {
+                setFloatingState((prev) => {
+                  if (!prev) return null;
+                  const newHour = Math.max(0, prev.targetHour - 1);
+                  return { ...prev, targetHour: newHour };
+                });
+              }}
+            >
+              <Text style={styles.nudgeBtnText}>-1 hr</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.nudgeBtn}
+              onPress={() => {
+                setFloatingState((prev) => {
+                  if (!prev) return null;
+                  const newHour = Math.min(23, prev.targetHour + 1);
+                  return { ...prev, targetHour: newHour };
+                });
+              }}
+            >
+              <Text style={styles.nudgeBtnText}>+1 hr</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.nudgeBtn}
+              onPress={() => {
+                setFloatingState((prev) => {
+                  if (!prev) return null;
+                  const d = new Date(`${prev.targetDate}T12:00:00Z`);
+                  d.setUTCDate(d.getUTCDate() - 1);
+                  return { ...prev, targetDate: d.toISOString().split('T')[0] };
+                });
+              }}
+            >
+              <Text style={styles.nudgeBtnText}>-1 day</Text>
+            </TouchableOpacity>
+
+            <TouchableOpacity
+              style={styles.nudgeBtn}
+              onPress={() => {
+                setFloatingState((prev) => {
+                  if (!prev) return null;
+                  const d = new Date(`${prev.targetDate}T12:00:00Z`);
+                  d.setUTCDate(d.getUTCDate() + 1);
+                  return { ...prev, targetDate: d.toISOString().split('T')[0] };
+                });
+              }}
+            >
+              <Text style={styles.nudgeBtnText}>+1 day</Text>
+            </TouchableOpacity>
+          </View>
+
+          {/* Hint & Commit CTA */}
+          <View style={styles.floatingHudActionRow}>
+            <Text style={styles.floatingHudHint}>
+              Tap any hour/day slot below or confirm:
+            </Text>
+            <TouchableOpacity
+              style={styles.floatingDropBtn}
+              onPress={handleCommitFloatingMove}
+              disabled={isMutating}
+            >
+              <Check size={14} color="#FFFDFC" />
+              <Text style={styles.floatingDropBtnText}>
+                {isMutating ? 'Dropping...' : 'Drop Here'}
+              </Text>
+            </TouchableOpacity>
+          </View>
+        </View>
+      )}
 
       {/* ─── 5. Summary Metrics Bar ─── */}
       <View style={styles.metricsBar}>
@@ -685,19 +897,36 @@ export default function CalendarScreen() {
                           else if (isRoutine) accentColor = '#F59E0B';
                           else if (isDone) accentColor = '#10B981';
 
+                          const isHardSelected = hardSelectBlockId === block.blockId;
+
                           return (
                             <TouchableOpacity
                               key={block.blockId}
                               activeOpacity={0.8}
-                              style={[styles.weekBlockCard, { borderLeftColor: accentColor }]}
-                              onPress={() => setSelectedBlock(block)}
+                              onLongPress={() => handleHardSelect(block, d.dateStr)}
+                              delayLongPress={220}
+                              style={[
+                                styles.weekBlockCard,
+                                { borderLeftColor: accentColor },
+                                isHardSelected && styles.hardSelectedBlockCard,
+                              ]}
+                              onPress={() => {
+                                if (floatingState) return;
+                                setSelectedBlock(block);
+                              }}
                             >
                               <View style={styles.weekBlockCardContent}>
                                 <View style={styles.weekBlockCardTop}>
                                   <Text style={styles.weekBlockTitle} numberOfLines={1}>
                                     {block.title}
                                   </Text>
-                                  {isDone && <CheckCircle2 size={14} color="#10B981" />}
+                                  {isHardSelected ? (
+                                    <View style={styles.floatingBadge}>
+                                      <Text style={styles.floatingBadgeText}>FLOATING</Text>
+                                    </View>
+                                  ) : isDone ? (
+                                    <CheckCircle2 size={14} color="#10B981" />
+                                  ) : null}
                                 </View>
 
                                 {block.planned && (
@@ -711,6 +940,25 @@ export default function CalendarScreen() {
                           );
                         })}
                       </View>
+                    )}
+
+                    {/* Quick drop target in Week view when a block is floating */}
+                    {floatingState && (
+                      <TouchableOpacity
+                        style={styles.weekDropSlot}
+                        onPress={() => {
+                          setFloatingState((prev) => (prev ? { ...prev, targetDate: d.dateStr } : null));
+                        }}
+                      >
+                        <View style={styles.weekDropSlotContent}>
+                          <Clock size={12} color="#E8414A" />
+                          <Text style={styles.weekDropSlotText}>
+                            {floatingState.targetDate === d.dateStr
+                              ? `✓ Drop here at ${formatMinutes(floatingState.targetHour * 60 + floatingState.targetMinute)}`
+                              : `Move to ${d.name}`}
+                          </Text>
+                        </View>
+                      </TouchableOpacity>
                     )}
                   </View>
                 );
@@ -733,14 +981,22 @@ export default function CalendarScreen() {
                 {Array.from({ length: 24 }).map((_, h) => (
                   <TouchableOpacity
                     key={`day-hour-${h}`}
-                    style={[styles.hourRow, { top: h * HOUR_HEIGHT, height: HOUR_HEIGHT }]}
+                    style={[
+                      styles.hourRow,
+                      { top: h * HOUR_HEIGHT, height: HOUR_HEIGHT },
+                      floatingState?.targetHour === h && styles.hourRowHighlight,
+                    ]}
                     activeOpacity={0.6}
                     onPress={() => {
-                      setScheduleDate(selectedDate);
-                      setScheduleHour(h);
-                      setScheduleTaskId(null);
-                      setScheduleTitle('');
-                      setScheduleModalOpen(true);
+                      if (floatingState) {
+                        setFloatingState((prev) => (prev ? { ...prev, targetHour: h, targetMinute: 0 } : null));
+                      } else {
+                        setScheduleDate(selectedDate);
+                        setScheduleHour(h);
+                        setScheduleTaskId(null);
+                        setScheduleTitle('');
+                        setScheduleModalOpen(true);
+                      }
                     }}
                   >
                     <View style={styles.timeLabelContainer}>
@@ -749,6 +1005,30 @@ export default function CalendarScreen() {
                     <View style={styles.hourDividerLine} />
                   </TouchableOpacity>
                 ))}
+
+                {/* Ghost drop preview when card is floating in Day View */}
+                {floatingState && floatingState.targetDate === selectedDate && (
+                  <View
+                    style={[
+                      styles.ghostDropCard,
+                      {
+                        top: (floatingState.targetHour + floatingState.targetMinute / 60) * HOUR_HEIGHT,
+                        height: Math.max(34, (floatingState.durationMinutes / 60) * HOUR_HEIGHT - 3),
+                      },
+                    ]}
+                  >
+                    <View style={styles.ghostDropHeader}>
+                      <View style={styles.ghostPulseDot} />
+                      <Text style={styles.ghostDropTitle} numberOfLines={1}>
+                        Drop: {floatingState.block.title}
+                      </Text>
+                    </View>
+                    <Text style={styles.ghostDropTime}>
+                      {formatMinutes(floatingState.targetHour * 60 + floatingState.targetMinute)} –{' '}
+                      {formatMinutes(floatingState.targetHour * 60 + floatingState.targetMinute + floatingState.durationMinutes)}
+                    </Text>
+                  </View>
+                )}
 
                 {/* Real-time Red Current Time Line across 24 Hours */}
                 {isToday && (
@@ -775,6 +1055,7 @@ export default function CalendarScreen() {
                   const isHard = block.kind === 'HARD_EVENT';
                   const isRoutine = block.kind === 'ROUTINE_BLOCK';
                   const isDone = block.variance.status === 'ON_TRACK' || !!block.actual;
+                  const isHardSelected = hardSelectBlockId === block.blockId;
 
                   let accentColor = '#E8414A';
                   if (isHard) accentColor = '#EF4444';
@@ -785,7 +1066,12 @@ export default function CalendarScreen() {
                     <TouchableOpacity
                       key={block.blockId}
                       activeOpacity={0.8}
-                      onPress={() => setSelectedBlock(block)}
+                      onLongPress={() => handleHardSelect(block, selectedDate)}
+                      delayLongPress={220}
+                      onPress={() => {
+                        if (floatingState) return;
+                        setSelectedBlock(block);
+                      }}
                       style={[
                         styles.dayBlockCard,
                         {
@@ -793,13 +1079,20 @@ export default function CalendarScreen() {
                           height: blockHeight,
                           borderLeftColor: accentColor,
                         },
+                        isHardSelected && styles.hardSelectedBlockCard,
                       ]}
                     >
                       <View style={styles.dayBlockHeader}>
                         <Text style={styles.dayBlockTitle} numberOfLines={1}>
                           {block.title}
                         </Text>
-                        {isDone && <CheckCircle2 size={13} color="#10B981" />}
+                        {isHardSelected ? (
+                          <View style={styles.floatingBadge}>
+                            <Text style={styles.floatingBadgeText}>FLOATING</Text>
+                          </View>
+                        ) : isDone ? (
+                          <CheckCircle2 size={13} color="#10B981" />
+                        ) : null}
                       </View>
 
                       {block.planned && blockHeight >= 42 && (
@@ -831,16 +1124,24 @@ export default function CalendarScreen() {
                   const isHard = block.kind === 'HARD_EVENT';
                   const isRoutine = block.kind === 'ROUTINE_BLOCK';
                   const isDone = !!block.actual || block.variance.status === 'ON_TRACK';
+                  const isHardSelected = hardSelectBlockId === block.blockId;
 
                   return (
                     <TouchableOpacity
                       key={block.blockId}
+                      activeOpacity={0.8}
+                      onLongPress={() => handleHardSelect(block, selectedDate)}
+                      delayLongPress={220}
                       style={[
                         styles.agendaCard,
                         isHard && styles.hardCard,
                         isRoutine && styles.routineCard,
+                        isHardSelected && styles.hardSelectedBlockCard,
                       ]}
-                      onPress={() => setSelectedBlock(block)}
+                      onPress={() => {
+                        if (floatingState) return;
+                        setSelectedBlock(block);
+                      }}
                     >
                       <View style={styles.agendaCardLeft}>
                         <View
@@ -1943,6 +2244,219 @@ const styles = StyleSheet.create({
     gap: 5,
   },
   logTimeActionBtnText: {
+    color: '#FFFFFF',
+    fontSize: 12,
+    fontWeight: '700',
+  },
+  weekDayPillTarget: {
+    borderColor: '#E8414A',
+    backgroundColor: 'rgba(232, 65, 74, 0.15)',
+    borderWidth: 1.5,
+  },
+  hardSelectedBlockCard: {
+    borderColor: '#E8414A',
+    borderWidth: 2,
+    borderLeftWidth: 4,
+    transform: [{ scale: 1.03 }],
+    shadowColor: '#E8414A',
+    shadowOffset: { width: 0, height: 4 },
+    shadowOpacity: 0.45,
+    shadowRadius: 8,
+    elevation: 8,
+    zIndex: 99,
+  },
+  floatingBadge: {
+    backgroundColor: '#E8414A',
+    paddingHorizontal: 4,
+    paddingVertical: 1,
+    borderRadius: 4,
+  },
+  floatingBadgeText: {
+    color: '#FFFFFF',
+    fontSize: 8,
+    fontWeight: '800',
+    letterSpacing: 0.5,
+  },
+  ghostDropCard: {
+    position: 'absolute',
+    left: 62,
+    right: 8,
+    borderWidth: 2,
+    borderColor: '#E8414A',
+    borderStyle: 'dashed',
+    backgroundColor: 'rgba(232, 65, 74, 0.12)',
+    borderRadius: 8,
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    zIndex: 15,
+    justifyContent: 'center',
+  },
+  ghostDropHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 5,
+  },
+  ghostPulseDot: {
+    width: 6,
+    height: 6,
+    borderRadius: 3,
+    backgroundColor: '#E8414A',
+  },
+  ghostDropTitle: {
+    color: '#E8414A',
+    fontSize: 11,
+    fontWeight: '700',
+    flex: 1,
+  },
+  ghostDropTime: {
+    color: '#FFFDFC',
+    fontSize: 9,
+    fontFamily: 'monospace',
+    marginTop: 1,
+  },
+  hourRowHighlight: {
+    backgroundColor: 'rgba(232, 65, 74, 0.08)',
+  },
+  weekDropSlot: {
+    marginTop: 6,
+    paddingVertical: 8,
+    paddingHorizontal: 10,
+    borderWidth: 1.5,
+    borderColor: '#E8414A',
+    borderStyle: 'dashed',
+    borderRadius: 8,
+    backgroundColor: 'rgba(232, 65, 74, 0.08)',
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  weekDropSlotContent: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  weekDropSlotText: {
+    color: '#E8414A',
+    fontSize: 11,
+    fontWeight: '700',
+  },
+  floatingHudContainer: {
+    backgroundColor: '#1C1F2B',
+    borderWidth: 1.5,
+    borderColor: '#E8414A',
+    borderRadius: 14,
+    padding: 12,
+    marginBottom: 12,
+    shadowColor: '#E8414A',
+    shadowOffset: { width: 0, height: 6 },
+    shadowOpacity: 0.35,
+    shadowRadius: 10,
+    elevation: 10,
+    gap: 8,
+  },
+  floatingHudHeader: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+  },
+  floatingHudLeft: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
+    flex: 1,
+  },
+  floatingHudPill: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: 'rgba(232, 65, 74, 0.2)',
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 4,
+    borderWidth: 1,
+    borderColor: '#E8414A',
+  },
+  floatingDot: {
+    width: 5,
+    height: 5,
+    borderRadius: 2.5,
+    backgroundColor: '#E8414A',
+  },
+  floatingHudStatus: {
+    color: '#E8414A',
+    fontSize: 9,
+    fontWeight: '800',
+  },
+  floatingHudTitle: {
+    color: '#FFFFFF',
+    fontSize: 13,
+    fontWeight: '700',
+    flex: 1,
+  },
+  floatingHudCloseBtn: {
+    padding: 4,
+  },
+  floatingHudTargetRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  floatingHudTargetText: {
+    color: '#FFFDFC',
+    fontSize: 12,
+    fontWeight: '600',
+  },
+  floatingHudDurationText: {
+    color: '#7D8494',
+    fontSize: 11,
+    fontFamily: 'monospace',
+  },
+  floatingHudNudgeRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
+  },
+  nudgeBtn: {
+    flex: 1,
+    backgroundColor: '#262A38',
+    paddingVertical: 5,
+    borderRadius: 6,
+    alignItems: 'center',
+    justifyContent: 'center',
+    borderWidth: 1,
+    borderColor: '#343A4C',
+  },
+  nudgeBtnText: {
+    color: '#ECE7E3',
+    fontSize: 10,
+    fontWeight: '600',
+  },
+  floatingHudActionRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 2,
+  },
+  floatingHudHint: {
+    color: '#7D8494',
+    fontSize: 10,
+    fontStyle: 'italic',
+    flex: 1,
+  },
+  floatingDropBtn: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 4,
+    backgroundColor: '#E8414A',
+    paddingHorizontal: 12,
+    paddingVertical: 6,
+    borderRadius: 8,
+    shadowColor: '#E8414A',
+    shadowOffset: { width: 0, height: 2 },
+    shadowOpacity: 0.3,
+    shadowRadius: 4,
+    elevation: 4,
+  },
+  floatingDropBtnText: {
     color: '#FFFFFF',
     fontSize: 12,
     fontWeight: '700',

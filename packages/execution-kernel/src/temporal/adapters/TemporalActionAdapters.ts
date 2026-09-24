@@ -177,8 +177,54 @@ export class RescheduleOccurrenceAdapter implements IKernelActionAdapter {
           existing.dateOnly = newDate;
           existing.plannedInterval = norm.interval;
           existing.status = "RESCHEDULED";
+          existing.overrideType = "SINGLE_INSTANCE_MODIFIED";
           existing.version += 1;
           await existing.save();
+        }
+      } else if (payload.occurrenceId && payload.occurrenceId.startsWith("proj_")) {
+        const parts = payload.occurrenceId.split("_");
+        const seriesId = parts[1];
+        const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
+        const series = await TemporalSeriesTemplate.findOne({ userId, seriesId });
+        if (series && norm.valid && norm.interval) {
+          await TemporalOccurrence.create({
+            occurrenceId: payload.occurrenceId,
+            userId,
+            seriesId: series.seriesId,
+            title: series.title,
+            kind: series.kind || "ROUTINE_BLOCK",
+            dateOnly: newDate,
+            plannedInterval: norm.interval,
+            locationContext: series.locationContext || { category: "HOME", requiresPhysicalTransit: false },
+            rigidity: (series as any).rigidity || "ELASTIC",
+            status: "RESCHEDULED",
+            overrideType: "SINGLE_INSTANCE_MODIFIED",
+            version: 1,
+          });
+        }
+      } else if (payload.occurrenceId && payload.occurrenceId.startsWith("task_")) {
+        const taskId = payload.occurrenceId.replace("task_", "");
+        const { Task } = await import("@/server/db/models/Task");
+        const task = await Task.findOne({ _id: taskId, userId });
+        if (norm.valid && norm.interval) {
+          await TemporalOccurrence.create({
+            occurrenceId: payload.occurrenceId,
+            userId,
+            title: task?.title || payload.title || "Task",
+            kind: "WORK_SESSION",
+            dateOnly: newDate,
+            plannedInterval: norm.interval,
+            locationContext: { category: "HOME", requiresPhysicalTransit: false },
+            rigidity: "ELASTIC",
+            status: "RESCHEDULED",
+            overrideType: "SINGLE_INSTANCE_MODIFIED",
+            linkedEntity: {
+              entityType: "task",
+              entityId: taskId,
+              taskTitle: task?.title || payload.title || "Task",
+            },
+            version: 1,
+          });
         }
       }
     }

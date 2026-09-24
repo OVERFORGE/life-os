@@ -150,14 +150,42 @@ export default function CalendarPage() {
     }
   }, [viewMode, selectedDate]);
 
-  // Drag and Drop State
+  // Drag and Drop State (Google & Notion Calendar style floating card)
   const [draggedBlock, setDraggedBlock] = useState<{
     occurrenceId?: string;
     taskId?: string;
     title: string;
     duration: number;
+    kind?: string;
+    originDate?: string;
+    originStartMin?: number;
   } | null>(null);
   const [dragOverSlot, setDragOverSlot] = useState<{ date: string; hour: number } | null>(null);
+  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
+  const [hardSelectBlockId, setHardSelectBlockId] = useState<string | null>(null);
+  const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+
+  // Global pointer move listener during drag for 60fps floating card
+  useEffect(() => {
+    const handleGlobalDragOver = (e: DragEvent) => {
+      if (e.clientX !== 0 || e.clientY !== 0) {
+        setMousePos({ x: e.clientX, y: e.clientY });
+      }
+    };
+    const handleGlobalDragEnd = () => {
+      setDraggedBlock(null);
+      setDragOverSlot(null);
+      setMousePos(null);
+      setHardSelectBlockId(null);
+    };
+
+    window.addEventListener("dragover", handleGlobalDragOver);
+    window.addEventListener("dragend", handleGlobalDragEnd);
+    return () => {
+      window.removeEventListener("dragover", handleGlobalDragOver);
+      window.removeEventListener("dragend", handleGlobalDragEnd);
+    };
+  }, []);
 
   // Selected Block for Inspection / Actions
   const [selectedBlock, setSelectedBlock] = useState<TimelineBlock | null>(null);
@@ -280,19 +308,20 @@ export default function CalendarPage() {
     const duration = draggedBlock.duration || 60;
 
     setDragOverSlot(null);
+    setMousePos(null);
+    setHardSelectBlockId(null);
 
     // If it's a scheduled block being moved
     if (draggedBlock.occurrenceId) {
       const occId = draggedBlock.occurrenceId;
 
-      // Optimistic update in UI
+      // Optimistic update in Week View
       setWeekDaysData((prevDays) =>
         prevDays.map((day) => {
-          // Remove from old day if different
           const filtered = day.blocks.filter((b) => b.occurrenceId !== occId);
-          // If this is target day, add/update block
           if (day.dateOnly === targetDate) {
-            const existing = day.blocks.find((b) => b.occurrenceId === occId);
+            const existing = day.blocks.find((b) => b.occurrenceId === occId) ||
+              dayProjection?.blocks.find((b) => b.occurrenceId === occId);
             const updatedBlock: TimelineBlock = existing
               ? {
                   ...existing,
@@ -308,14 +337,14 @@ export default function CalendarPage() {
                   blockId: `block_moved_${Date.now()}`,
                   occurrenceId: occId,
                   title: draggedBlock.title,
-                  kind: "WORK_SESSION",
+                  kind: draggedBlock.kind || "WORK_SESSION",
                   dateOnly: targetDate,
                   planned: {
                     startMinute: newStartMinute,
                     endMinute: newStartMinute + duration,
                     durationMinutes: duration,
                     startIsoUtc: `${targetDate}T${newStartTime}:00Z`,
-                    endIsoUtc: `${targetDate}T${String(targetHour + 1).padStart(2, "0")}:00Z`,
+                    endIsoUtc: `${targetDate}T${String((targetHour + Math.ceil(duration / 60)) % 24).padStart(2, "0")}:00Z`,
                   },
                   variance: { status: "PLANNED_PENDING", durationDeltaMinutes: 0, explanation: "" },
                 };
@@ -324,6 +353,44 @@ export default function CalendarPage() {
           return { ...day, blocks: filtered };
         })
       );
+
+      // Optimistic update in Day View
+      setDayProjection((prev) => {
+        if (!prev) return prev;
+        const filtered = prev.blocks.filter((b) => b.occurrenceId !== occId);
+        if (targetDate === prev.dateOnly) {
+          const existing = prev.blocks.find((b) => b.occurrenceId === occId) ||
+            weekDaysData.flatMap((d) => d.blocks).find((b) => b.occurrenceId === occId);
+          const updatedBlock: TimelineBlock = existing
+            ? {
+                ...existing,
+                dateOnly: targetDate,
+                planned: {
+                  ...existing.planned!,
+                  startMinute: newStartMinute,
+                  endMinute: newStartMinute + duration,
+                  durationMinutes: duration,
+                },
+              }
+            : {
+                blockId: `block_moved_${Date.now()}`,
+                occurrenceId: occId,
+                title: draggedBlock.title,
+                kind: draggedBlock.kind || "WORK_SESSION",
+                dateOnly: targetDate,
+                planned: {
+                  startMinute: newStartMinute,
+                  endMinute: newStartMinute + duration,
+                  durationMinutes: duration,
+                  startIsoUtc: `${targetDate}T${newStartTime}:00Z`,
+                  endIsoUtc: `${targetDate}T${String((targetHour + Math.ceil(duration / 60)) % 24).padStart(2, "0")}:00Z`,
+                },
+                variance: { status: "PLANNED_PENDING", durationDeltaMinutes: 0, explanation: "" },
+              };
+          return { ...prev, blocks: [...filtered, updatedBlock] };
+        }
+        return { ...prev, blocks: filtered };
+      });
 
       try {
         const res = await fetch("/api/calendar/mutate", {
@@ -742,6 +809,9 @@ export default function CalendarPage() {
                               onDragOver={(e) => {
                                 e.preventDefault();
                                 e.stopPropagation();
+                                if (e.clientX !== 0 || e.clientY !== 0) {
+                                  setMousePos({ x: e.clientX, y: e.clientY });
+                                }
                                 if (dragOverSlot?.date !== dayStr || dragOverSlot?.hour !== hour) {
                                   setDragOverSlot({ date: dayStr, hour });
                                 }
@@ -759,10 +829,26 @@ export default function CalendarPage() {
                               onClick={() => openQuickScheduleAt(dayStr, hour)}
                               className={`border-r border-[#2A2B2F]/30 relative group transition-colors cursor-pointer ${
                                 isSlotTarget
-                                  ? "bg-[#E8414A]/20 ring-1 ring-[#E8414A]"
+                                  ? "bg-[#E8414A]/20 ring-2 ring-inset ring-[#E8414A]"
                                   : "hover:bg-[#2A2B2F]/20"
                               }`}
                             >
+                              {/* Live Drop Target Ghost Placeholder */}
+                              {isSlotTarget && draggedBlock && (
+                                <div
+                                  style={{
+                                    height: `${Math.max(26, (draggedBlock.duration / 60) * 56 - 3)}px`,
+                                  }}
+                                  className="absolute left-0.5 right-0.5 top-0.5 z-20 bg-[#E8414A]/25 border-2 border-dashed border-[#E8414A] rounded-lg p-1 pointer-events-none flex flex-col justify-center shadow-lg shadow-[#E8414A]/30 animate-pulse"
+                                >
+                                  <span className="text-[10px] font-bold text-white truncate leading-none">
+                                    {draggedBlock.title}
+                                  </span>
+                                  <span className="text-[9px] font-mono text-[#F9A8AC] mt-0.5 leading-none">
+                                    {formatMinutesToTime(hour * 60)} – {formatMinutesToTime(hour * 60 + draggedBlock.duration)}
+                                  </span>
+                                </div>
+                              )}
                               <span className="opacity-0 group-hover:opacity-40 absolute top-0.5 right-1 text-gray-500 text-[10px]">
                                 +
                               </span>
@@ -787,6 +873,7 @@ export default function CalendarPage() {
                       const isRoutine = block.kind === "ROUTINE_BLOCK";
                       const isDone = block.variance.status === "ON_TRACK" || block.variance.status === "OVERRUN";
                       const isBeingDragged = draggedBlock?.occurrenceId === block.occurrenceId;
+                      const isHardSelected = hardSelectBlockId === block.blockId;
 
                       return (
                         <div
@@ -798,13 +885,41 @@ export default function CalendarPage() {
                               occurrenceId: block.occurrenceId,
                               title: block.title,
                               duration,
+                              kind: block.kind,
+                              originDate: block.dateOnly,
+                              originStartMin: startMin,
                             });
+                            setHardSelectBlockId(block.blockId);
+                            setMousePos({ x: e.clientX, y: e.clientY });
                             e.dataTransfer.setData("text/plain", block.occurrenceId || "");
                             e.dataTransfer.effectAllowed = "move";
+                            // Transparent drag image so custom Notion-style floating card renders cleanly
+                            const img = new Image();
+                            img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
+                            e.dataTransfer.setDragImage(img, 0, 0);
+                          }}
+                          onDrag={(e) => {
+                            if (e.clientX !== 0 || e.clientY !== 0) {
+                              setMousePos({ x: e.clientX, y: e.clientY });
+                            }
                           }}
                           onDragEnd={() => {
                             setDraggedBlock(null);
                             setDragOverSlot(null);
+                            setMousePos(null);
+                            setHardSelectBlockId(null);
+                          }}
+                          onMouseDown={(e) => {
+                            if (e.button !== 0) return;
+                            longPressTimerRef.current = setTimeout(() => {
+                              setHardSelectBlockId(block.blockId);
+                            }, 180);
+                          }}
+                          onMouseUp={() => {
+                            if (longPressTimerRef.current) {
+                              clearTimeout(longPressTimerRef.current);
+                              longPressTimerRef.current = null;
+                            }
                           }}
                           onClick={(e) => {
                             e.stopPropagation();
@@ -820,7 +935,9 @@ export default function CalendarPage() {
                           }}
                           className={`absolute z-10 px-2 py-1 rounded-lg border text-left cursor-grab active:cursor-grabbing transition-all overflow-hidden shadow-md flex flex-col justify-center ${
                             isBeingDragged
-                              ? "opacity-40 ring-2 ring-[#E8414A]"
+                              ? "opacity-30 border-dashed border-[#E8414A] ring-2 ring-[#E8414A]"
+                              : isHardSelected
+                              ? "border-[#E8414A] ring-2 ring-[#E8414A] shadow-2xl scale-[1.03] z-30 bg-[#2E3038]"
                               : isDone
                               ? "bg-[#202227] border-[#2A2B2F] opacity-90"
                               : "bg-[#26282E] border-[#3E424B] hover:border-[#E8414A]/70 hover:bg-[#2E3038] hover:z-20"
@@ -877,77 +994,171 @@ export default function CalendarPage() {
                     const start = b.planned?.startMinute ?? 0;
                     return start >= hourStart && start < hourEnd;
                   });
+                  const isSlotTarget = dragOverSlot?.date === selectedDate && dragOverSlot?.hour === hour;
 
                   return (
-                    <div key={hour} className="flex items-start min-h-[52px] hover:bg-[#2A2B2F]/10 transition-colors">
-                      <div className="w-20 shrink-0 p-2.5 text-right text-xs font-mono text-gray-400 border-r border-[#2A2B2F]">
+                    <div
+                      key={hour}
+                      onDragOver={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        if (e.clientX !== 0 || e.clientY !== 0) {
+                          setMousePos({ x: e.clientX, y: e.clientY });
+                        }
+                        if (dragOverSlot?.date !== selectedDate || dragOverSlot?.hour !== hour) {
+                          setDragOverSlot({ date: selectedDate, hour });
+                        }
+                      }}
+                      onDragLeave={() => {
+                        if (dragOverSlot?.date === selectedDate && dragOverSlot?.hour === hour) {
+                          setDragOverSlot(null);
+                        }
+                      }}
+                      onDrop={(e) => {
+                        e.preventDefault();
+                        e.stopPropagation();
+                        handleDropOnSlot(selectedDate, hour);
+                      }}
+                      className={`flex items-start min-h-[58px] transition-colors relative group ${
+                        isSlotTarget
+                          ? "bg-[#E8414A]/15 ring-2 ring-inset ring-[#E8414A]"
+                          : "hover:bg-[#2A2B2F]/10"
+                      }`}
+                    >
+                      <div className="w-20 shrink-0 p-2.5 text-right text-xs font-mono text-gray-400 border-r border-[#2A2B2F] select-none">
                         {formatHourLabel(hour)}
                       </div>
 
                       <div
-                        className="flex-1 p-2 space-y-2 cursor-pointer relative group"
+                        className="flex-1 p-2 space-y-2 cursor-pointer relative"
                         onClick={() => openQuickScheduleAt(selectedDate, hour)}
                       >
-                        {hourBlocks.length === 0 ? (
+                        {/* Live Drop Preview Placeholder in Day View */}
+                        {isSlotTarget && draggedBlock && (
+                          <div className="p-2.5 bg-[#E8414A]/25 border-2 border-dashed border-[#E8414A] rounded-xl flex items-center justify-between shadow-lg shadow-[#E8414A]/20 animate-pulse pointer-events-none">
+                            <div className="flex items-center gap-2">
+                              <span className="w-2 h-2 rounded-full bg-[#E8414A]" />
+                              <span className="text-xs font-bold text-white">{draggedBlock.title}</span>
+                              <span className="text-[10px] font-mono text-[#F9A8AC]">
+                                {formatMinutesToTime(hour * 60)} – {formatMinutesToTime(hour * 60 + draggedBlock.duration)}
+                              </span>
+                            </div>
+                            <span className="text-[10px] font-semibold text-[#F9A8AC] uppercase">Drop here</span>
+                          </div>
+                        )}
+
+                        {hourBlocks.length === 0 && !isSlotTarget ? (
                           <div className="h-full flex items-center text-xs text-gray-600 group-hover:text-gray-400 transition-colors pl-2">
                             Free
                           </div>
                         ) : (
-                          hourBlocks.map((block) => (
-                            <div
-                              key={block.blockId}
-                              onClick={(e) => {
-                                e.stopPropagation();
-                                setSelectedBlock(block);
-                              }}
-                              className="p-3 bg-[#24262C] border border-[#3A3D46] hover:border-[#E8414A]/50 rounded-xl transition-all flex items-center justify-between shadow-sm"
-                            >
-                              <div className="space-y-1">
-                                <div className="flex items-center gap-2">
-                                  <span
-                                    className={`w-2 h-2 rounded-full ${
-                                      block.kind === "WORK_SESSION" ? "bg-[#E8414A]" : "bg-amber-400"
-                                    }`}
-                                  />
-                                  <h4 className="text-xs font-bold text-white">{block.title}</h4>
-                                  {block.variance.status === "OVERRUN" && (
-                                    <span className="text-[10px] font-semibold text-[#F9A8AC] bg-[#E8414A]/15 px-2 py-0.5 rounded-full border border-[#E8414A]/30">
-                                      +{block.variance.durationDeltaMinutes}m longer
-                                    </span>
-                                  )}
-                                  {block.variance.status === "UNDERRUN" && (
-                                    <span className="text-[10px] font-semibold text-sky-300 bg-sky-500/15 px-2 py-0.5 rounded-full border border-sky-500/30">
-                                      Finished early
-                                    </span>
-                                  )}
-                                  {block.variance.status === "ON_TRACK" && (
-                                    <span className="text-[10px] font-semibold text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
-                                      Completed
-                                    </span>
-                                  )}
-                                </div>
-                                <div className="text-[11px] font-mono text-gray-300 pl-4">
-                                  {formatMinutesToTime(block.planned?.startMinute || 0)} –{" "}
-                                  {formatMinutesToTime(block.planned?.endMinute || 60)} (
-                                  {formatDuration(block.planned?.durationMinutes || 60)})
-                                </div>
-                              </div>
-
-                              <button
+                          hourBlocks.map((block) => {
+                            const isBeingDragged = draggedBlock?.occurrenceId === block.occurrenceId;
+                            const isHardSelected = hardSelectBlockId === block.blockId;
+                            return (
+                              <div
+                                key={block.blockId}
+                                draggable={Boolean(block.occurrenceId)}
+                                onDragStart={(e) => {
+                                  e.stopPropagation();
+                                  setDraggedBlock({
+                                    occurrenceId: block.occurrenceId,
+                                    title: block.title,
+                                    duration: block.planned?.durationMinutes ?? block.actual?.durationMinutes ?? 60,
+                                    kind: block.kind,
+                                    originDate: block.dateOnly,
+                                    originStartMin: block.planned?.startMinute,
+                                  });
+                                  setHardSelectBlockId(block.blockId);
+                                  setMousePos({ x: e.clientX, y: e.clientY });
+                                  e.dataTransfer.setData("text/plain", block.occurrenceId || "");
+                                  e.dataTransfer.effectAllowed = "move";
+                                  const img = new Image();
+                                  img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
+                                  e.dataTransfer.setDragImage(img, 0, 0);
+                                }}
+                                onDrag={(e) => {
+                                  if (e.clientX !== 0 || e.clientY !== 0) {
+                                    setMousePos({ x: e.clientX, y: e.clientY });
+                                  }
+                                }}
+                                onDragEnd={() => {
+                                  setDraggedBlock(null);
+                                  setDragOverSlot(null);
+                                  setMousePos(null);
+                                  setHardSelectBlockId(null);
+                                }}
+                                onMouseDown={(e) => {
+                                  if (e.button !== 0) return;
+                                  longPressTimerRef.current = setTimeout(() => {
+                                    setHardSelectBlockId(block.blockId);
+                                  }, 180);
+                                }}
+                                onMouseUp={() => {
+                                  if (longPressTimerRef.current) {
+                                    clearTimeout(longPressTimerRef.current);
+                                    longPressTimerRef.current = null;
+                                  }
+                                }}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setActiveOccurrenceId(block.occurrenceId || null);
-                                  setLogTitle(block.title);
-                                  setLogDuration(String(block.planned?.durationMinutes || 60));
-                                  setShowLogModal(true);
+                                  setSelectedBlock(block);
                                 }}
-                                className="px-2.5 py-1 bg-[#1F2023] hover:bg-[#2A2B2F] border border-[#2A2B2F] text-xs font-semibold text-gray-300 hover:text-white rounded-lg transition-colors flex items-center gap-1"
+                                className={`p-3 bg-[#24262C] border rounded-xl transition-all flex items-center justify-between shadow-sm cursor-grab active:cursor-grabbing ${
+                                  isBeingDragged
+                                    ? "opacity-30 border-dashed border-[#E8414A] ring-2 ring-[#E8414A]"
+                                    : isHardSelected
+                                    ? "border-[#E8414A] ring-2 ring-[#E8414A] shadow-2xl scale-[1.01] bg-[#2E3038]"
+                                    : "border-[#3A3D46] hover:border-[#E8414A]/50"
+                                }`}
                               >
-                                <Check className="w-3 h-3 text-[#E8414A]" />
-                                <span>Log time</span>
-                              </button>
-                            </div>
-                          ))
+                                <div className="space-y-1">
+                                  <div className="flex items-center gap-2">
+                                    <span
+                                      className={`w-2 h-2 rounded-full ${
+                                        block.kind === "WORK_SESSION" ? "bg-[#E8414A]" : "bg-amber-400"
+                                      }`}
+                                    />
+                                    <h4 className="text-xs font-bold text-white">{block.title}</h4>
+                                    {block.variance.status === "OVERRUN" && (
+                                      <span className="text-[10px] font-semibold text-[#F9A8AC] bg-[#E8414A]/15 px-2 py-0.5 rounded-full border border-[#E8414A]/30">
+                                        +{block.variance.durationDeltaMinutes}m longer
+                                      </span>
+                                    )}
+                                    {block.variance.status === "UNDERRUN" && (
+                                      <span className="text-[10px] font-semibold text-sky-300 bg-sky-500/15 px-2 py-0.5 rounded-full border border-sky-500/30">
+                                        Finished early
+                                      </span>
+                                    )}
+                                    {block.variance.status === "ON_TRACK" && (
+                                      <span className="text-[10px] font-semibold text-emerald-300 bg-emerald-500/15 px-2 py-0.5 rounded-full border border-emerald-500/30">
+                                        Completed
+                                      </span>
+                                    )}
+                                  </div>
+                                  <div className="text-[11px] font-mono text-gray-300 pl-4">
+                                    {formatMinutesToTime(block.planned?.startMinute || 0)} –{" "}
+                                    {formatMinutesToTime(block.planned?.endMinute || 60)} (
+                                    {formatDuration(block.planned?.durationMinutes || 60)})
+                                  </div>
+                                </div>
+
+                                <button
+                                  onClick={(e) => {
+                                    e.stopPropagation();
+                                    setActiveOccurrenceId(block.occurrenceId || null);
+                                    setLogTitle(block.title);
+                                    setLogDuration(String(block.planned?.durationMinutes || 60));
+                                    setShowLogModal(true);
+                                  }}
+                                  className="px-2.5 py-1 bg-[#1F2023] hover:bg-[#2A2B2F] border border-[#2A2B2F] text-xs font-semibold text-gray-300 hover:text-white rounded-lg transition-colors flex items-center gap-1"
+                                >
+                                  <Check className="w-3 h-3 text-[#E8414A]" />
+                                  <span>Log time</span>
+                                </button>
+                              </div>
+                            );
+                          })
                         )}
                       </div>
                     </div>
@@ -1085,11 +1296,22 @@ export default function CalendarPage() {
                         title: t.title,
                         duration: 60,
                       });
+                      setMousePos({ x: e.clientX, y: e.clientY });
                       e.dataTransfer.setData("text/plain", t.id);
+                      e.dataTransfer.effectAllowed = "move";
+                      const img = new Image();
+                      img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
+                      e.dataTransfer.setDragImage(img, 0, 0);
+                    }}
+                    onDrag={(e) => {
+                      if (e.clientX !== 0 || e.clientY !== 0) {
+                        setMousePos({ x: e.clientX, y: e.clientY });
+                      }
                     }}
                     onDragEnd={() => {
                       setDraggedBlock(null);
                       setDragOverSlot(null);
+                      setHardSelectBlockId(null);
                     }}
                     className="p-2.5 bg-[#161618] border border-[#2A2B2F] hover:border-[#E8414A]/40 rounded-xl transition-all flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing group shadow-sm"
                   >
@@ -1462,6 +1684,42 @@ export default function CalendarPage() {
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+
+      {/* ─── FLOATING CARD DRAG PREVIEW (Google Calendar / Notion Calendar Style) ─── */}
+      {draggedBlock && mousePos && (
+        <div
+          className="fixed pointer-events-none z-[9999] transition-transform duration-75 ease-out select-none"
+          style={{
+            left: `${mousePos.x + 14}px`,
+            top: `${mousePos.y + 14}px`,
+            transform: "rotate(2.5deg) scale(1.04)",
+            transformOrigin: "top left",
+          }}
+        >
+          <div className="bg-[#1C1E24]/95 backdrop-blur-md border-2 border-[#E8414A] rounded-xl px-3.5 py-2.5 shadow-[0_16px_40px_rgba(232,65,74,0.4)] min-w-[210px] max-w-[280px]">
+            <div className="flex items-center justify-between gap-2 mb-1">
+              <span className="text-[10px] font-bold uppercase tracking-wider text-[#E8414A] flex items-center gap-1.5">
+                <span className="w-2 h-2 rounded-full bg-[#E8414A] animate-ping" />
+                Moving Card
+              </span>
+              {dragOverSlot ? (
+                <span className="text-[11px] font-mono font-bold text-white bg-[#E8414A]/25 px-2 py-0.5 rounded border border-[#E8414A]/50">
+                  {formatMinutesToTime(dragOverSlot.hour * 60)}
+                </span>
+              ) : (
+                <span className="text-[10px] font-mono text-gray-400">
+                  {formatDuration(draggedBlock.duration || 60)}
+                </span>
+              )}
+            </div>
+            <div className="text-xs font-bold text-white truncate drop-shadow-sm">{draggedBlock.title}</div>
+            <div className="text-[10px] text-gray-400 mt-1 flex items-center justify-between">
+              <span>{dragOverSlot ? dragOverSlot.date : (draggedBlock.originDate || "Drop on timeline")}</span>
+              <span className="text-[#E8414A] font-semibold text-[9px]">Live Drop Target</span>
+            </div>
           </div>
         </div>
       )}
