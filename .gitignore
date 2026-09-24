@@ -59,6 +59,7 @@ apps/desktop/.env.local
 # ============================================
 .DS_Store
 Thumbs.db
+*.apk
 
 
 *.md
