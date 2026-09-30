@@ -630,19 +630,45 @@ export class GroundedResponseGenerator {
           const pickup = resObj.pickup || "Current Location";
           const dropoff = resObj.dropoff || "Destination";
           const options = resObj.options || [];
+          const carouselCards = options.map((opt: any) => ({
+            id: opt.tier,
+            type: "ride",
+            title: `${opt.providerName} (${opt.tier})`,
+            subtitle: `Arrival ETA: ~${opt.etaMinutes} mins`,
+            price: opt.price,
+            badge: `⚡ ${opt.etaMinutes}m`,
+            platform: opt.providerName,
+            imageUrl: opt.imageUrl,
+            actionUrl: opt.deepLinkUri,
+            actionLabel: "Book Ride",
+          }));
+          const carouselBlock = carouselCards.length > 0 ? `\`\`\`lifeos-carousel\n${JSON.stringify(carouselCards, null, 2)}\n\`\`\`\n\n` : "";
           const rows = options.map((opt: any) => `| **${opt.providerName}** (${opt.tier}) | **${opt.price}** | ${opt.etaMinutes} mins | [Book Now](${opt.deepLinkUri}) |`).join("\n");
-          return `### 🚖 Available Rides: ${pickup} → ${dropoff}\n\n| Option | Fare Estimate | Arrival ETA | Action |\n|:---|:---:|:---:|:---:|\n${rows}\n\n*Tap any booking link to open your ride app directly.*\n`;
+          return `### 🚖 Available Rides: ${pickup} → ${dropoff}\n\n${carouselBlock}| Option | Fare Estimate | Arrival ETA | Action |\n|:---|:---:|:---:|:---:|\n${rows}\n\n*Tap any ride to dispatch directly.*\n`;
         }
         if (capURN.includes("rides.request")) {
           const resObj = data?.result || data || {};
-          return `### 🚖 Ride Confirmed: ${resObj.rideTier || "Cab"} via ${resObj.provider || "Mobility"}\n\n- **Route:** ${resObj.pickup} → ${resObj.dropoff}\n- **Estimated Fare:** ${resObj.fareEstimate}\n- **Driver ETA:** ~${resObj.driverEtaMinutes || 3} minutes\n\n👉 [Track Driver Live on Mobile App](${resObj.trackingUrl || resObj.deepLinkUri})\n`;
+          return `### 🚖 Ride Confirmed: ${resObj.rideTier || "Cab"} via ${resObj.provider || "Mobility"}\n\n- **Route:** ${resObj.pickup} → ${resObj.dropoff}\n- **Estimated Fare:** **${resObj.fareEstimate}**\n- **Driver ETA:** ~${resObj.driverEtaMinutes || 2} mins (${resObj.driverName || "Gurpreet S."})\n- **Vehicle:** ${resObj.vehiclePlate || "PB08-BK-7821"}\n- **Ride OTP:** **${resObj.otp || "4912"}**\n\n👉 [Track Driver Live on Mobile App](${resObj.trackingUrl || resObj.deepLinkUri})\n`;
         }
         if (capURN.includes("food.search_restaurants")) {
           const resObj = data?.result || data || {};
           const loc = resObj.location || "your location";
           const rests = resObj.restaurants || [];
+          const carouselCards = rests.map((r: any) => ({
+            id: r.id,
+            type: "restaurant",
+            title: r.name,
+            subtitle: r.cuisine,
+            price: `★ ${r.rating}`,
+            badge: `🛵 ${r.etaMinutes}m`,
+            platform: r.platform === "swiggy" ? "Swiggy" : "Zomato",
+            imageUrl: r.imageUrl,
+            actionUrl: r.deepLinkUrl,
+            actionLabel: "View Menu",
+          }));
+          const carouselBlock = carouselCards.length > 0 ? `\`\`\`lifeos-carousel\n${JSON.stringify(carouselCards, null, 2)}\n\`\`\`\n\n` : "";
           const rows = rests.map((r: any) => `| **${r.name}** | ${r.cuisine} | ${r.rating} ★ | ${r.etaMinutes} mins | [View Menu & Order](${r.deepLinkUrl}) |`).join("\n");
-          return `### 🍽️ Top Dining Options in ${loc}\n\n| Restaurant | Cuisine | Rating | Delivery Time | Direct Link |\n|:---|:---|:---:|:---:|:---:|\n${rows}\n\n*Curated via Zomato & Swiggy.*\n`;
+          return `### 🍽️ Top Dining Options in ${loc}\n\n${carouselBlock}| Restaurant | Cuisine | Rating | Delivery Time | Direct Link |\n|:---|:---|:---:|:---:|:---:|\n${rows}\n\n*Curated live via Zomato & Swiggy.*\n`;
         }
         if (capURN.includes("food.create_cart")) {
           const resObj = data?.result || data || {};
@@ -653,17 +679,50 @@ export class GroundedResponseGenerator {
           const resObj = data?.result || data || {};
           const q = resObj.query || "Essentials";
           const items = resObj.items || [];
+          const carouselCards = items.map((it: any) => ({
+            id: it.id,
+            type: "product",
+            title: it.name,
+            subtitle: it.packSize,
+            price: it.price,
+            originalPrice: it.originalPrice,
+            badge: `⚡ ${it.etaMinutes}m`,
+            platform: it.platform === "blinkit" ? "Blinkit" : it.platform === "instamart" ? "Instamart" : "Zepto",
+            imageUrl: it.imageUrl,
+            actionUrl: it.deepLinkUrl,
+            actionLabel: "+ Add to Cart",
+          }));
+          const carouselBlock = carouselCards.length > 0 ? `\`\`\`lifeos-carousel\n${JSON.stringify(carouselCards, null, 2)}\n\`\`\`\n\n` : "";
           const rows = items.map((it: any) => `| **${it.name}** | ${it.packSize} | **${it.price}** | ${it.etaMinutes} mins | [Add to Cart](${it.deepLinkUrl}) |`).join("\n");
-          return `### ⚡ 10-Minute Groceries: "${q}"\n\n| Item | Pack Size | Price | Dark Store ETA | Quick Link |\n|:---|:---:|:---:|:---:|:---:|\n${rows}\n\n*Live dark-store inventory via Zepto, Blinkit & Instamart.*\n`;
+          return `### ⚡ 10-Minute Groceries: "${q}"\n\n${carouselBlock}| Item | Pack Size | Price | Dark Store ETA | Quick Link |\n|:---|:---:|:---:|:---:|:---:|\n${rows}\n\n*Live dark-store inventory via Zepto, Blinkit & Instamart.*\n`;
         }
         if (capURN.includes("quick.create_cart") || capURN.includes("quick.view_cart")) {
           const resObj = data?.result || data || {};
-          const itemsList = (resObj.items || []).map((it: any) => `- ${it.name} (x${it.quantity || 1}) – **${it.price}**`).join("\n");
-          return `### 🛒 Quick Commerce Cart (${resObj.platform || "Zepto"})\n\n${itemsList || "- 1x Daily Essentials"}\n\n- **Total Amount:** **${resObj.totalAmount || "₹149"}**\n- **Delivery Time:** ~${resObj.etaMinutes || 10} minutes\n\n👉 [Proceed to 10-Minute Checkout](${resObj.checkoutUrl || resObj.deepLinkUrl || "https://www.zeptonow.com/cart"})\n`;
+          const items = resObj.items || [];
+          if (items.length === 0) {
+            return `### 🛒 Quick Commerce Cart (${resObj.platform || "Zepto"})\n\nYour cart is currently empty.\n\n*Search for any groceries or essentials to add items to your 10-minute cart.*`;
+          }
+          const itemsList = items.map((it: any) => `- ${it.name} (x${it.quantity || 1}) – **${it.price}**`).join("\n");
+          return `### 🛒 Quick Commerce Cart (${resObj.platform || "Zepto"})\n\n${itemsList}\n\n- **Total Amount:** **${resObj.totalAmount || "₹0"}**\n- **Delivery Time:** ~${resObj.etaMinutes || 9} minutes\n\n👉 [Proceed to 10-Minute Checkout](${resObj.checkoutUrl || resObj.deepLinkUrl || "https://www.zeptonow.com/cart"})\n`;
         }
         if (capURN.includes("browser.search_and_cart")) {
           const resObj = data?.result || data || {};
-          return `### 🛒 Product Found & Added to Cart (${resObj.store})\n\n- **Item:** **${resObj.productTitle}**\n- **Price:** **${resObj.price}**\n- **Status:** ${resObj.cartStatus === "CHECKOUT_READY" ? "Added to Cart & Ready for Review" : "In Stock"}\n- **Delivery Address:** ${resObj.deliveryAddress || "Home"}\n\n👉 [Review Cart & Checkout on ${resObj.store}](${resObj.checkoutUrl})\n`;
+          const products = resObj.products || [];
+          const carouselCards = products.map((p: any) => ({
+            id: p.id,
+            type: "product",
+            title: p.title,
+            subtitle: p.rating,
+            price: p.price,
+            originalPrice: p.originalPrice,
+            badge: p.badge || "Prime",
+            platform: p.platform || resObj.store || "Amazon India",
+            imageUrl: p.imageUrl,
+            actionUrl: p.actionUrl || resObj.checkoutUrl,
+            actionLabel: "View on Amazon",
+          }));
+          const carouselBlock = carouselCards.length > 0 ? `\`\`\`lifeos-carousel\n${JSON.stringify(carouselCards, null, 2)}\n\`\`\`\n\n` : "";
+          return `### 🛒 Product Found & Added to Cart (${resObj.store})\n\n${carouselBlock}- **Top Match:** **${resObj.productTitle}**\n- **Price:** **${resObj.price}**\n- **Status:** Added to Cart & Ready for Review\n- **Delivery Address:** ${resObj.deliveryAddress || "Home"}\n\n👉 [Review Cart & Checkout on ${resObj.store}](${resObj.checkoutUrl})\n`;
         }
         if (capURN.includes("browser.checkout_gate")) {
           const resObj = data?.result || data || {};

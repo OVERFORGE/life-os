@@ -188,15 +188,18 @@ CRITICAL INVARIANTS:
    - Shopping Cart & Browser Purchase Assist ("add it to my shopping cart on my amazon id", "buy it for me", "order the first one for me", "buy the PS5 controller on Amazon"):
      ALWAYS map ANY autonomous purchasing, cart adding, or buying intent to:
      { "capabilityURN": "shopping.browser.search_and_cart", "providerId": "aven_browser_agent", "parameters": { "productName": "PS5 gaming controller", "store": "amazon", "action": "add_to_cart" }, "requiresConfirmation": false }
-   - Mobility & Rides ("book a cab to airport", "check uber to railway station", "find rides to Chandigarh", "how much is an uber or ola to Delhi"):
-     ALWAYS map ANY ride, cab, taxi, or mobility query to:
-     { "capabilityURN": "mobility.rides.estimate", "providerId": "uber_mobility", "parameters": { "pickup": "", "dropoff": "Chandigarh Airport" }, "requiresConfirmation": false }
-   - Food Delivery ("order butter chicken from zomato", "find good restaurants nearby", "order food from swiggy", "check pizza places"):
+   - Mobility Rides Estimation ("look for a cab to phagwara station", "check uber to railway station", "find rides to Chandigarh", "how much is an uber or ola"):
+     ALWAYS map ANY general ride search, fare check, or mobility comparison query to:
+     { "capabilityURN": "mobility.rides.estimate", "providerId": "uber_mobility", "parameters": { "pickup": "", "dropoff": "Phagwara station" }, "requiresConfirmation": false }
+   - Mobility Ride Booking & Selection ("can you book the rapido bike", "book uber go", "order ola auto to station", "book the bike"):
+     ALWAYS map ANY specific booking, dispatching, or selection request to:
+     { "capabilityURN": "mobility.rides.request", "providerId": "rapido_mobility", "parameters": { "provider": "rapido", "rideTier": "Rapido Bike", "pickup": "", "dropoff": "" }, "requiresConfirmation": true, "confirmationMode": "EXPLICIT_CONFIRMATION" }
+   - Food Delivery ("order butter chicken from zomato", "find best Italian food", "order food from swiggy", "check pizza places"):
      ALWAYS map ANY restaurant search or food delivery order to:
      { "capabilityURN": "commerce.food.search_restaurants", "providerId": "zomato_eats", "parameters": { "query": "butter chicken", "location": "" }, "requiresConfirmation": false }
-   - Quick Commerce (10-minute groceries, essentials) ("order milk and bread from zepto", "get eggs from blinkit", "instamart groceries", "order snacks in 10 mins"):
+   - Quick Commerce (10-minute groceries, essentials) ("can you add 1 milk packet on blinkit", "add a low fat milk 500ml pouch to my blinkit cart", "order milk and bread from zepto", "get eggs from blinkit"):
      ALWAYS map ANY 10-minute grocery or essentials request to:
-     { "capabilityURN": "commerce.quick.search_catalog", "providerId": "zepto_commerce", "parameters": { "query": "milk and bread" }, "requiresConfirmation": false }
+     { "capabilityURN": "commerce.quick.search_catalog", "providerId": "zepto_commerce", "parameters": { "query": "low fat milk 500ml pouch" }, "requiresConfirmation": false }
    - Quick Commerce Cart Inspection ("show me my items in quick commerce", "view my cart", "what is in my cart"):
      ALWAYS map viewing or checking quick commerce items to:
      { "capabilityURN": "commerce.quick.view_cart", "providerId": "zepto_commerce", "parameters": { "platform": "zepto" }, "requiresConfirmation": false }
@@ -209,7 +212,7 @@ CRITICAL INVARIANTS:
 
 13. HUMAN-IN-THE-LOOP (HITL) POLICY:
    - READ and DRAFT operations (checking files, reading drive, inbox, contacts, calendar events, tasks, fit telemetry, pull requests, github repositories, notes, saving email drafts) DO NOT require confirmation: set "requiresConfirmation": false.
-   - Irreversible WRITE operations (writing/creating local/external storage files, sending emails [send_message], scheduling calendar events, creating github issues, logging workouts, creating tasks, deleting items) MUST require confirmation: set "requiresConfirmation": true, "confirmationMode": "EXPLICIT_CONFIRMATION".
+   - Irreversible WRITE operations (writing/creating local/external storage files, sending emails [send_message], dispatching/booking rides [mobility.rides.request], scheduling calendar events, creating github issues, logging workouts, creating tasks, deleting items) MUST require confirmation: set "requiresConfirmation": true, "confirmationMode": "EXPLICIT_CONFIRMATION".
 
 OUTPUT SCHEMA (Return ONLY valid JSON with minimal tokens):
 {

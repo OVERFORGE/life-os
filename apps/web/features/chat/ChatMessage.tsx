@@ -28,6 +28,7 @@ import {
 } from "lucide-react";
 import { useState, useRef, useEffect } from "react";
 import { ToolActivityItem, ConfirmationItem, MissingConnectionItem } from "./useChat";
+import CarouselView, { CarouselCardItem } from "./CarouselView";
 
 type Props = {
   role: "user" | "assistant";
@@ -115,6 +116,31 @@ export default function ChatMessage({
     navigator.clipboard.writeText(displayContent);
     setCopied(true);
     setTimeout(() => setCopied(false), 2000);
+  };
+
+  const handleExternalLinkClick = async (
+    e?: React.MouseEvent<HTMLAnchorElement>,
+    href?: string
+  ) => {
+    if (!href) return;
+    if (e) {
+      e.preventDefault();
+      e.stopPropagation();
+    }
+
+    try {
+      if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
+        const { openUrl } = await import("@tauri-apps/plugin-opener");
+        await openUrl(href);
+        return;
+      }
+    } catch (err) {
+      console.warn("[ChatMessage] Failed to open external URL with Tauri opener plugin:", err);
+    }
+
+    if (typeof window !== "undefined") {
+      window.open(href, "_blank", "noopener,noreferrer");
+    }
   };
 
   const renderToolIcon = (iconName: string, className = "w-4 h-4") => {
@@ -511,7 +537,36 @@ export default function ChatMessage({
                     {children}
                   </blockquote>
                 ),
+                a: ({ href, children }) => (
+                  <a
+                    href={href}
+                    onClick={(e) => handleExternalLinkClick(e, href)}
+                    className="text-[#E8414A] hover:underline font-bold cursor-pointer inline-flex items-center gap-1 mx-0.5"
+                    target="_blank"
+                    rel="noopener noreferrer"
+                  >
+                    <span>{children}</span>
+                    <ExternalLink className="w-3 h-3 inline shrink-0 opacity-70" />
+                  </a>
+                ),
                 code: ({ inline, className, children, ...props }: any) => {
+                  const matchCarousel =
+                    className === "language-lifeos-carousel" ||
+                    className === "language-carousel";
+                  if (matchCarousel && typeof children === "string") {
+                    try {
+                      const parsed = JSON.parse(children.trim());
+                      if (Array.isArray(parsed) && parsed.length > 0) {
+                        return (
+                          <CarouselView
+                            items={parsed}
+                            onOpenLink={(url) => handleExternalLinkClick(undefined, url)}
+                          />
+                        );
+                      }
+                    } catch (_) {}
+                  }
+
                   if (inline) {
                     return (
                       <code className="px-1.5 py-0.5 rounded bg-[#26282E] text-[#ECE7E3] font-mono text-[11px] border border-[#3E424B]">

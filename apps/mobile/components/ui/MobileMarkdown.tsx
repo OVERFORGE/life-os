@@ -1,5 +1,5 @@
 import React from 'react';
-import { View, Text, ScrollView, TouchableOpacity, Linking, StyleSheet } from 'react-native';
+import { View, Text, ScrollView, TouchableOpacity, Linking, StyleSheet, Image } from 'react-native';
 
 interface MobileMarkdownProps {
   content: string;
@@ -8,9 +8,9 @@ interface MobileMarkdownProps {
 export function MobileMarkdown({ content }: MobileMarkdownProps) {
   if (!content) return null;
 
-  // Split into raw lines and group into logical blocks (tables, lists, headers, paragraphs)
+  // Split into raw lines and group into logical blocks (tables, lists, headers, paragraphs, carousel)
   const lines = content.split('\n');
-  const blocks: Array<{ type: 'header' | 'table' | 'quote' | 'list' | 'text'; data: any }> = [];
+  const blocks: Array<{ type: 'header' | 'table' | 'quote' | 'list' | 'text' | 'carousel'; data: any }> = [];
 
   let currentTable: string[] = [];
   let currentList: string[] = [];
@@ -39,6 +39,27 @@ export function MobileMarkdown({ content }: MobileMarkdownProps) {
 
   for (let i = 0; i < lines.length; i++) {
     const line = lines[i].trim();
+
+    // Carousel block detection: starts with ```lifeos-carousel or ```carousel
+    if (line.startsWith('```') && (line.includes('carousel') || line.includes('lifeos-carousel'))) {
+      flushList();
+      flushQuote();
+      flushTable();
+      const codeLines: string[] = [];
+      i++;
+      while (i < lines.length && !lines[i].trim().startsWith('```')) {
+        codeLines.push(lines[i]);
+        i++;
+      }
+      try {
+        const parsed = JSON.parse(codeLines.join('\n').trim());
+        if (Array.isArray(parsed) && parsed.length > 0) {
+          blocks.push({ type: 'carousel', data: parsed });
+          continue;
+        }
+      } catch (_) {}
+      continue;
+    }
 
     // Table detection: starts and ends with '|'
     if (line.startsWith('|') && line.endsWith('|')) {
@@ -258,6 +279,53 @@ export function MobileMarkdown({ content }: MobileMarkdownProps) {
           );
         }
 
+        if (block.type === 'carousel') {
+          const items: any[] = block.data;
+          return (
+            <View key={idx} style={{ marginVertical: 8 }}>
+              <ScrollView horizontal showsHorizontalScrollIndicator={false} contentContainerStyle={{ paddingRight: 8 }}>
+                {items.map((card, cIdx) => (
+                  <View key={card.id || `${card.title}_${cIdx}`} style={styles.carouselCard}>
+                    {card.imageUrl ? (
+                      <View style={styles.carouselImageContainer}>
+                        <Image source={{ uri: card.imageUrl }} style={styles.carouselImage} />
+                        <View style={styles.carouselPlatformBadge}>
+                          <Text style={styles.carouselPlatformText}>{card.platform}</Text>
+                        </View>
+                        {card.badge ? (
+                          <View style={styles.carouselEtaBadge}>
+                            <Text style={styles.carouselEtaText}>{card.badge}</Text>
+                          </View>
+                        ) : null}
+                      </View>
+                    ) : null}
+
+                    <View style={styles.carouselBody}>
+                      <View>
+                        <Text numberOfLines={2} style={styles.carouselTitle}>{card.title}</Text>
+                        {card.subtitle ? (
+                          <Text numberOfLines={1} style={styles.carouselSubtitle}>{card.subtitle}</Text>
+                        ) : null}
+                      </View>
+
+                      <View style={styles.carouselFooter}>
+                        <Text style={styles.carouselPrice}>{card.price || ''}</Text>
+                        <TouchableOpacity
+                          onPress={() => Linking.openURL(card.actionUrl).catch(() => {})}
+                          style={styles.carouselButton}
+                          activeOpacity={0.8}
+                        >
+                          <Text style={styles.carouselButtonText}>{card.actionLabel || 'View'}</Text>
+                        </TouchableOpacity>
+                      </View>
+                    </View>
+                  </View>
+                ))}
+              </ScrollView>
+            </View>
+          );
+        }
+
         // Paragraph text
         return (
           <View key={idx} style={{ marginBottom: 8 }}>
@@ -370,5 +438,95 @@ const styles = StyleSheet.create({
     color: '#ECE7E3',
     fontSize: 12,
     lineHeight: 16,
+  },
+  carouselCard: {
+    width: 195,
+    backgroundColor: '#1F2023',
+    borderRadius: 16,
+    borderWidth: 1,
+    borderColor: '#2A2B2F',
+    marginRight: 10,
+    overflow: 'hidden',
+  },
+  carouselImageContainer: {
+    width: '100%',
+    height: 110,
+    backgroundColor: '#161618',
+    position: 'relative',
+  },
+  carouselImage: {
+    width: '100%',
+    height: '100%',
+  },
+  carouselPlatformBadge: {
+    position: 'absolute',
+    top: 6,
+    left: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(22, 22, 24, 0.85)',
+    borderWidth: 1,
+    borderColor: 'rgba(255, 255, 255, 0.1)',
+  },
+  carouselPlatformText: {
+    color: '#FFFDFC',
+    fontSize: 9.5,
+    fontWeight: '800',
+  },
+  carouselEtaBadge: {
+    position: 'absolute',
+    top: 6,
+    right: 6,
+    paddingHorizontal: 6,
+    paddingVertical: 2,
+    borderRadius: 6,
+    backgroundColor: 'rgba(232, 65, 74, 0.9)',
+  },
+  carouselEtaText: {
+    color: '#FFFDFC',
+    fontSize: 9.5,
+    fontWeight: '800',
+  },
+  carouselBody: {
+    padding: 10,
+    flex: 1,
+    justifyContent: 'space-between',
+  },
+  carouselTitle: {
+    color: '#FFFDFC',
+    fontSize: 12,
+    fontWeight: '700',
+    lineHeight: 16,
+  },
+  carouselSubtitle: {
+    color: 'rgba(236,231,227,0.5)',
+    fontSize: 10.5,
+    marginTop: 2,
+  },
+  carouselFooter: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    justifyContent: 'space-between',
+    marginTop: 8,
+    paddingTop: 6,
+    borderTopWidth: 1,
+    borderTopColor: 'rgba(42,43,47,0.6)',
+  },
+  carouselPrice: {
+    color: '#FFFDFC',
+    fontSize: 13.5,
+    fontWeight: '800',
+  },
+  carouselButton: {
+    backgroundColor: '#E8414A',
+    paddingHorizontal: 8,
+    paddingVertical: 4,
+    borderRadius: 8,
+  },
+  carouselButtonText: {
+    color: '#FFFDFC',
+    fontSize: 10.5,
+    fontWeight: '700',
   },
 });
