@@ -40,8 +40,8 @@ export interface IPendingOperationContext {
   domain: "productivity" | "health" | "wellness" | "context";
   partialPayload: Record<string, any>;
   missingRequirement: {
-    kind: "TARGET_ENTITY_RESOLUTION" | "TEMPORAL_SPECIFICATION" | "PARAMETER_VALUE" | "DUPLICATE_CONFIRMATION";
-    targetEntityType?: "task" | "goal" | "meal" | "workout" | "activity" | "weight" | "context_mode";
+    kind: "TARGET_ENTITY_RESOLUTION" | "TEMPORAL_SPECIFICATION" | "PARAMETER_VALUE" | "DUPLICATE_CONFIRMATION" | "CONFIRMATION_REQUIRED";
+    targetEntityType?: "task" | "goal" | "meal" | "workout" | "activity" | "weight" | "context_mode" | "storage";
     parameterName?: string;
   };
   clarificationQuestion: string;
@@ -51,7 +51,7 @@ export interface IPendingOperationContext {
     temporalAnchor?: string;
     metadata?: Record<string, any>;
   }>;
-  state: "CREATED" | "AWAITING_CLARIFICATION" | "CONTINUED" | "CANCELLED" | "EXPIRED" | "COMPLETED";
+  state: "CREATED" | "AWAITING_CLARIFICATION" | "AWAITING_CONFIRMATION" | "CONTINUED" | "CANCELLED" | "EXPIRED" | "COMPLETED";
   createdAt: Date;
   expiresAt: Date;
 }
@@ -86,6 +86,7 @@ export interface IConversationShortTermMemory extends Document {
   recentToolOutputs: IToolOutput[];
   currentWorkflow: string | null;
   recentModules: string[];
+  authorizedScopes?: string[];
   temporaryAssumptions: Record<string, any>;
   updatedAt: Date;
 }
@@ -229,6 +230,10 @@ const ConversationShortTermMemorySchema = new Schema<IConversationShortTermMemor
       default: null,
     },
     recentModules: {
+      type: [String],
+      default: [],
+    },
+    authorizedScopes: {
       type: [String],
       default: [],
     },

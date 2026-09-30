@@ -15,6 +15,9 @@ export interface PersistOptions {
   userMessage: string;
   assistantResponse: string;
   stmUpdates?: Record<string, any>;
+  toolActivities?: any[];
+  missingConnection?: any;
+  confirmation?: any;
 }
 
 /**
@@ -49,13 +52,17 @@ export class ConversationManager {
       ConversationShortTermMemory.findOne({ conversationId, userId }).lean(),
       ConversationMessage.find({ conversationId, userId })
         .sort({ createdAt: 1, _id: 1 })
-        .select("role content")
+        .select("role content createdAt toolActivities missingConnection confirmation")
         .lean(),
     ]);
 
-    const recentMessages = (rawMessages || []).map((m) => ({
+    const recentMessages = (rawMessages || []).map((m: any) => ({
       role: m.role as "user" | "assistant" | "system",
       content: m.content,
+      createdAt: m.createdAt,
+      toolActivities: m.toolActivities,
+      missingConnection: m.missingConnection,
+      confirmation: m.confirmation,
     }));
 
     return {
@@ -70,7 +77,7 @@ export class ConversationManager {
    * persists updated Short-Term Memory state, and triggers async rolling summarization.
    */
   async persist(options: PersistOptions): Promise<void> {
-    const { conversationId, userId, userMessage, assistantResponse, stmUpdates } = options;
+    const { conversationId, userId, userMessage, assistantResponse, stmUpdates, toolActivities, missingConnection, confirmation } = options;
     const now = new Date();
 
     const userTokens = estimateTokens(userMessage);
@@ -98,6 +105,9 @@ export class ConversationManager {
       role: "assistant",
       content: assistantResponse,
       tokenEstimate: assistantTokens,
+      toolActivities,
+      missingConnection,
+      confirmation,
       createdAt: assistantCreatedAt,
       updatedAt: assistantCreatedAt,
     });

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect } from "react";
-import { ArrowDown, PanelLeft, Plus, Radio } from "lucide-react";
+import { ArrowDown, PanelRight, Plus, Radio } from "lucide-react";
 
 import ChatInput from "./ChatInput";
 import ChatMessage from "./ChatMessage";
@@ -37,10 +37,31 @@ export default function ChatContainer() {
 
   const [isDropdownOpen, setIsDropdownOpen] = useState(false);
   const [isMobileDrawerOpen, setIsMobileDrawerOpen] = useState(false);
+  const [isDesktopSidebarOpen, setIsDesktopSidebarOpen] = useState(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
   const [isVoiceOpen, setIsVoiceOpen] = useState(false);
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const scrollContainerRef = useRef<HTMLDivElement>(null);
+
+  // Restore chat sidebar state from localStorage
+  useEffect(() => {
+    try {
+      const saved = localStorage.getItem("lifeos_chat_sidebar_open");
+      if (saved !== null) {
+        setIsDesktopSidebarOpen(saved === "true");
+      }
+    } catch {}
+  }, []);
+
+  const toggleDesktopSidebar = () => {
+    setIsDesktopSidebarOpen((prev) => {
+      const next = !prev;
+      try {
+        localStorage.setItem("lifeos_chat_sidebar_open", String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   const scrollToBottom = (behavior: ScrollBehavior = "smooth") => {
     messagesEndRef.current?.scrollIntoView({ behavior });
@@ -64,22 +85,8 @@ export default function ChatContainer() {
   };
 
   return (
-    <div className="h-full flex w-full bg-[#161618] overflow-hidden">
-      {/* Desktop Conversation Sidebar */}
-      <div className="hidden md:block h-full">
-        <ConversationSidebar
-          conversations={conversations}
-          activeConversationId={activeConversationId}
-          onSelect={setActiveConversationId}
-          onCreate={() => createConversation()}
-          onDelete={deleteConversation}
-          onRename={renameConversation}
-          searchQuery={searchQuery}
-          onSearchChange={setSearchQuery}
-        />
-      </div>
-
-      {/* Mobile Drawer */}
+    <div className="h-full flex w-full bg-[#161618] overflow-hidden relative">
+      {/* Mobile Drawer (from Right) */}
       <ConversationDrawer
         isOpen={isMobileDrawerOpen}
         onClose={() => setIsMobileDrawerOpen(false)}
@@ -94,41 +101,35 @@ export default function ChatContainer() {
       />
 
       {/* Main Chat Area */}
-      <div className="flex-1 flex flex-col relative h-full min-w-0">
-        {/* Header Controls */}
-        <div className="absolute top-4 left-4 right-4 z-10 flex items-center justify-between pointer-events-none">
-          {/* Mobile Drawer Toggle & Quick New Chat */}
-          <div className="flex items-center gap-2 pointer-events-auto">
+      <div className="flex-1 flex flex-col relative h-full min-w-0 bg-[#161618]">
+        {/* Sleek Dedicated Chat Top Bar */}
+        <div className="h-14 px-4 sm:px-6 border-b border-[#2A2B2F] flex items-center justify-between bg-[#161618] shrink-0 z-10">
+          {/* Left: Realtime Voice Call Launch */}
+          <div className="flex items-center gap-2">
             <button
-              onClick={() => setIsMobileDrawerOpen(true)}
-              className="md:hidden p-2.5 bg-[#1F2023]/90 border border-[#2A2B2F] rounded-xl text-gray-300 hover:text-white shadow-xl backdrop-blur-xl transition-all"
-              title="Open Conversations"
+              onClick={() => setIsVoiceOpen(true)}
+              className="flex items-center gap-2 px-3 py-1.5 rounded-full bg-[#1F2023] hover:bg-[#E8414A]/20 border border-[#2A2B2F] hover:border-[#E8414A]/40 text-gray-200 hover:text-white transition-all active:scale-95 text-xs font-semibold"
+              title="Start Full-Duplex Realtime Voice Call"
             >
-              <PanelLeft size={18} />
-            </button>
-            <button
-              onClick={() => createConversation()}
-              className="md:hidden p-2.5 bg-[#E8414A] rounded-xl text-white shadow-xl transition-all active:scale-95"
-              title="New Chat"
-            >
-              <Plus size={18} />
+              <Radio size={14} className="text-[#E8414A] animate-pulse" />
+              <span className="hidden sm:inline">Voice Call</span>
             </button>
           </div>
 
-          {/* Model Switcher Dropdown */}
-          <div className="pointer-events-auto relative mx-auto md:ml-auto md:mr-auto">
+          {/* Center: Model Switcher Dropdown */}
+          <div className="relative">
             <div
               onClick={() => setIsDropdownOpen(!isDropdownOpen)}
-              className="bg-[#1F2023]/90 border border-[#2A2B2F] rounded-full px-4 py-2.5 shadow-xl backdrop-blur-xl flex items-center justify-between gap-3 transition-all hover:border-gray-500 cursor-pointer min-w-[200px]"
+              className="bg-[#1F2023] border border-[#2A2B2F] rounded-full px-3.5 py-1.5 shadow-sm flex items-center justify-between gap-2.5 transition-all hover:border-gray-500 cursor-pointer min-w-[180px]"
             >
-              <div className="flex items-center gap-2">
-                <div className="w-2 h-2 rounded-full bg-[#E8414A] animate-pulse" />
+              <div className="flex items-center gap-2 truncate">
+                <div className="w-2 h-2 rounded-full bg-[#E8414A] animate-pulse shrink-0" />
                 <span className="text-gray-200 font-medium text-xs truncate">
                   {GROQ_MODELS.find((m) => m.id === selectedModel)?.name}
                 </span>
               </div>
               <div
-                className={`text-[#9ca3af] text-[10px] transition-transform duration-300 ${
+                className={`text-[#9ca3af] text-[10px] transition-transform duration-300 shrink-0 ${
                   isDropdownOpen ? "rotate-180" : ""
                 }`}
               >
@@ -138,7 +139,7 @@ export default function ChatContainer() {
 
             {/* Dropdown Menu */}
             {isDropdownOpen && (
-              <div className="absolute top-12 left-0 w-full bg-[#1F2023]/95 border border-[#2A2B2F] rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-20">
+              <div className="absolute top-11 left-1/2 -translate-x-1/2 w-64 bg-[#1F2023] border border-[#2A2B2F] rounded-2xl shadow-2xl backdrop-blur-xl overflow-hidden animate-in fade-in slide-in-from-top-2 duration-200 z-30">
                 {GROQ_MODELS.map((model) => (
                   <div
                     key={model.id}
@@ -146,9 +147,9 @@ export default function ChatContainer() {
                       setSelectedModel(model.id);
                       setIsDropdownOpen(false);
                     }}
-                    className={`px-4 py-3 text-xs cursor-pointer transition-colors ${
+                    className={`px-4 py-2.5 text-xs cursor-pointer transition-colors ${
                       selectedModel === model.id
-                        ? "bg-[#E8414A]/10 text-[#E8414A]"
+                        ? "bg-[#E8414A]/10 text-[#E8414A] font-semibold"
                         : "text-gray-300 hover:bg-white/5"
                     }`}
                   >
@@ -159,15 +160,35 @@ export default function ChatContainer() {
             )}
           </div>
 
-          {/* Realtime Voice Call Launch Button */}
-          <div className="pointer-events-auto flex items-center gap-2">
+          {/* Right: Quick New Chat & Toggle Chat List (Right Pane) */}
+          <div className="flex items-center gap-2">
+            {!isDesktopSidebarOpen && (
+              <button
+                onClick={() => createConversation()}
+                className="p-2 bg-[#E8414A] hover:bg-[#d0353e] text-white rounded-xl shadow-sm transition-all active:scale-95 flex items-center gap-1.5 text-xs font-semibold px-3 animate-in fade-in duration-200"
+                title="New Chat"
+              >
+                <Plus size={15} />
+                <span className="hidden sm:inline">New Chat</span>
+              </button>
+            )}
+
             <button
-              onClick={() => setIsVoiceOpen(true)}
-              className="flex items-center gap-2 px-3.5 py-2 rounded-full bg-[#1F2023]/90 hover:bg-[#E8414A]/20 border border-[#2A2B2F] hover:border-[#E8414A]/40 text-gray-200 hover:text-white shadow-xl backdrop-blur-xl transition-all active:scale-95 text-xs font-semibold"
-              title="Start Full-Duplex Realtime Voice Call"
+              onClick={() => {
+                if (typeof window !== "undefined" && window.innerWidth < 768) {
+                  setIsMobileDrawerOpen(true);
+                } else {
+                  toggleDesktopSidebar();
+                }
+              }}
+              className={`p-2 rounded-xl border transition-all active:scale-95 ${
+                isDesktopSidebarOpen
+                  ? "bg-white/10 text-white border-white/20"
+                  : "bg-[#1F2023] text-gray-400 hover:text-white border-[#2A2B2F] hover:bg-[#2A2B2F]"
+              }`}
+              title="Toggle Conversations List (Right Pane)"
             >
-              <Radio size={14} className="text-[#E8414A] animate-pulse" />
-              <span className="hidden sm:inline">Voice Call</span>
+              <PanelRight size={17} />
             </button>
           </div>
         </div>
@@ -176,7 +197,7 @@ export default function ChatContainer() {
         <div
           ref={scrollContainerRef}
           onScroll={handleScroll}
-          className="flex-1 overflow-y-auto p-4 md:p-12 space-y-6 pt-24 relative scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
+          className="flex-1 overflow-y-auto p-4 md:p-8 space-y-6 relative scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent"
         >
           <div className="max-w-3xl mx-auto space-y-8 pb-10">
             {messages.length === 0 ? (
@@ -185,7 +206,21 @@ export default function ChatContainer() {
               </div>
             ) : (
               messages.map((m, i) => (
-                <ChatMessage key={i} role={m.role} content={m.content} />
+                <ChatMessage
+                  key={i}
+                  role={m.role}
+                  content={m.content}
+                  statusPhase={m.statusPhase}
+                  toolActivities={m.toolActivities}
+                  confirmation={m.confirmation}
+                  missingConnection={m.missingConnection}
+                  onConfirm={(actionId, confirmed) => {
+                    sendMessage(confirmed ? "Yes, confirm." : "No, cancel.");
+                  }}
+                  onConnect={(providerId) => {
+                    window.location.href = "/settings/connections";
+                  }}
+                />
               ))
             )}
             <div ref={messagesEndRef} />
@@ -221,6 +256,26 @@ export default function ChatContainer() {
             reload();
           }}
         />
+      </div>
+
+      {/* Desktop Conversation Sidebar — Mounted on the RIGHT Side */}
+      <div
+        className={`hidden md:block h-full transition-all duration-300 ease-in-out shrink-0 overflow-hidden ${
+          isDesktopSidebarOpen ? "w-64 border-l border-[#2A2B2F]" : "w-0 border-l-0"
+        }`}
+      >
+        <div className="w-64 h-full">
+          <ConversationSidebar
+            conversations={conversations}
+            activeConversationId={activeConversationId}
+            onSelect={setActiveConversationId}
+            onCreate={() => createConversation()}
+            onDelete={deleteConversation}
+            onRename={renameConversation}
+            searchQuery={searchQuery}
+            onSearchChange={setSearchQuery}
+          />
+        </div>
       </div>
     </div>
   );

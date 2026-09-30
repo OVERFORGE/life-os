@@ -800,6 +800,11 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
   if (!registry.has("create_temporal_series")) registry.register("create_temporal_series", createSeriesAdapter);
   if (!registry.has("log_execution_interval")) registry.register("log_execution_interval", logExecAdapter);
 
+  // Sovereign External Capability Adapter
+  const { ExternalCapabilityAdapter } = require("./ExternalCapabilityAdapter");
+  const externalAdapter = ExternalCapabilityAdapter.getInstance();
+  if (!registry.has("external_capability_action")) registry.register("external_capability_action", externalAdapter);
+
   return registry;
 }
 

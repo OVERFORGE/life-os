@@ -3,7 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Dimensions, RefreshControl } from 'react-native';
 import { ArrowLeft, ChevronLeft, ChevronRight, Flame } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import { fetchWithAuth } from '../../../utils/api';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -80,7 +80,7 @@ export default function CaloriesChartScreen() {
     }
   }, [weekOffset]);
 
-  useFocusEffect(useCallback(() => { loadData(); }, [loadData]));
+  useSafeFocusEffect(useCallback(() => { loadData(); }, [loadData]));
 
   const onRefresh = () => {
     setRefreshing(true);

@@ -5,7 +5,7 @@ import {
   ActivityIndicator, RefreshControl, TextInput, Modal, Alert
 } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 
 import {
   Heart, Flame, Dumbbell, ChevronRight,
@@ -59,7 +59,7 @@ export default function HealthScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useSafeFocusEffect(useCallback(() => { load(); }, [load]));
   const onRefresh = () => { setRefreshing(true); load(); };
 
   const openEdit = (field: string, label: string, current: any, date?: string) => {

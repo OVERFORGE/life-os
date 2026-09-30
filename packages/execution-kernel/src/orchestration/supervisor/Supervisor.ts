@@ -15,9 +15,12 @@ import {
   IContextEntityRef,
   IExecutedOperationSnapshot,
   IPendingOperationContext,
+  SemanticOperation,
   SemanticTurn,
 } from "../contracts/SemanticTurnContracts";
 import mongoose from "mongoose";
+import { AvenStreamEvent } from "../contracts/AvenStreamContracts";
+import { CapabilityPresentationRegistry } from "../external/presentation/CapabilityPresentationRegistry";
 
 export interface SupervisorRequest {
   userId: string;
@@ -27,6 +30,7 @@ export interface SupervisorRequest {
   requestId?: string;
   knownTasks?: Array<{ id: string; title: string }>;
   onChunk?: (chunk: string) => void;
+  onEvent?: (event: AvenStreamEvent) => void;
 }
 
 export interface SupervisorResponse {
@@ -86,6 +90,12 @@ export class Supervisor {
     const executionId = generateId("exec");
     const requestId = req.requestId || generateId("req");
     const conversationId = req.conversationId || "default";
+
+    req.onEvent?.({
+      type: "status",
+      status: "understanding",
+      message: "Understanding your request...",
+    });
 
     let earlyFillerEmitted = false;
     let mainExecutionFinished = false;
@@ -365,6 +375,345 @@ export class Supervisor {
         }
       }
 
+      // Check for external capability requirements and provider connections
+      let missingProviderInfo: { providerId: string; providerDisplayName: string; capabilityURN: string } | null = null;
+      for (const op of semanticTurn.operations) {
+        let reqProviderId: string | null = null;
+        let capURN: string = op.capabilityURN || "";
+
+        if (op.actionType === "external_capability_action") {
+          reqProviderId = op.payload?.providerId || op.providerHint || null;
+          capURN = op.payload?.capabilityURN || op.capabilityURN || "";
+        } else if (op.providerHint) {
+          reqProviderId = op.providerHint;
+        } else if (op.capabilityURN) {
+          if (op.capabilityURN.startsWith("productivity.calendar")) reqProviderId = "google_calendar";
+          else if (op.capabilityURN.startsWith("wellness.media")) reqProviderId = "spotify";
+          else if (op.capabilityURN.startsWith("productivity.git")) reqProviderId = "github";
+          else if (op.capabilityURN.startsWith("productivity.email")) reqProviderId = "gmail";
+          else if (op.capabilityURN.startsWith("productivity.contacts")) reqProviderId = "google_contacts";
+          else if (op.capabilityURN.startsWith("productivity.task")) reqProviderId = "google_tasks";
+          else if (op.capabilityURN.startsWith("health.")) reqProviderId = "google_fit";
+        }
+
+        if (reqProviderId) {
+          const connCheck = await this.checkProviderConnection(req.userId, reqProviderId);
+          if (!connCheck.connected) {
+            missingProviderInfo = {
+              providerId: reqProviderId,
+              providerDisplayName: connCheck.providerDisplayName,
+              capabilityURN: capURN || `productivity.${reqProviderId}`,
+            };
+            break;
+          }
+        }
+      }
+
+      if (missingProviderInfo) {
+        const pName = missingProviderInfo.providerDisplayName;
+        const connectMsg = missingProviderInfo.providerId === "spotify"
+          ? `I can do that once ${pName} is connected.`
+          : `I can handle that, but ${pName} isn't connected yet.`;
+
+        req.onEvent?.({
+          type: "missing_connection",
+          providerId: missingProviderInfo.providerId,
+          providerDisplayName: pName,
+          capabilityURN: missingProviderInfo.capabilityURN,
+          message: connectMsg,
+          connectUrl: "/settings/connections",
+        });
+
+        const op = semanticTurn.operations[0];
+        const newPendingOp: IPendingOperationContext = {
+          operationId: op?.operationId || generateId("pop"),
+          turnId: semanticTurn.turnId,
+          actionType: op?.actionType || "external_capability_action",
+          domain: op?.domain || "productivity",
+          partialPayload: op?.payload || { providerId: missingProviderInfo.providerId },
+          missingRequirement: {
+            kind: "PARAMETER_VALUE",
+            targetEntityType: "task",
+            parameterName: "provider_connection",
+          },
+          clarificationQuestion: connectMsg,
+          state: "AWAITING_CLARIFICATION",
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        };
+
+        const stmUpdates = { pendingOperation: newPendingOp };
+        try {
+          if (mongoose.connection && mongoose.connection.readyState === 1) {
+            const { ConversationShortTermMemory } = await import("@/server/db/models/ConversationShortTermMemory");
+            await ConversationShortTermMemory.updateOne(
+              { conversationId, userId: req.userId },
+              { $set: stmUpdates },
+              { upsert: true }
+            );
+          }
+        } catch (_) {}
+
+        mainExecutionFinished = true;
+        req.onChunk?.(connectMsg);
+        req.onEvent?.({ type: "assistant_delta", text: connectMsg });
+
+        return {
+          executionId,
+          requestId,
+          routingDecision,
+          response: connectMsg,
+          durationMs: Date.now() - startTime,
+          actionsExecuted: 0,
+          workspaceStatus: "COMPLETED",
+          terminationReason: "MISSING_CONNECTION",
+          stmUpdates,
+          pendingOperation: newPendingOp,
+        };
+      }
+
+      // HITL Confirmation Check (Human-In-The-Loop Security Gate per Claude Desktop / MCP standards)
+      // Enforces explicit user permission for sensitive filesystem scopes (e.g. root drives D:\, C:\) or write/mutation operations
+      const sessionAuthorizedScopes: string[] = [...((stm as any)?.authorizedScopes || [])];
+      const userConfirmedPending =
+        pendingOp &&
+        (pendingOp as any).state === "AWAITING_CONFIRMATION" &&
+        (semanticTurn.primaryClassification === "CONFIRMATION" ||
+         semanticTurn.primaryClassification === "CLARIFICATION_RESPONSE" ||
+         /^(?:yes|yep|yeah|sure|confirm|proceed|ok|okay|allow|do it|send it|go ahead)/i.test((req.message || "").trim()) ||
+         (semanticTurn.operations.length > 0 &&
+          Boolean((semanticTurn.operations[0] as any).confirmationGranted || semanticTurn.operations[0].executionEligibility === "READY")));
+
+      if (userConfirmedPending) {
+        if (semanticTurn.operations.length === 0 && pendingOp) {
+          const restoredPayload = { ...(pendingOp.partialPayload || {}) };
+          const capURN = restoredPayload.capabilityURN || (restoredPayload as any)?.parameters?.capabilityURN || (pendingOp as any).capabilityURN;
+          const providerId = restoredPayload.providerId || (restoredPayload as any)?.parameters?.providerId || (pendingOp as any).providerHint;
+          const restoredOp: SemanticOperation = {
+            operationId: pendingOp.operationId || generateId("op_conf"),
+            domain: (pendingOp.domain as any) || "productivity",
+            actionType: (pendingOp.actionType as any) || "external_capability_action",
+            riskClass: "LOW_REVERSIBLE",
+            payload: restoredPayload,
+            dependencies: [],
+            executionEligibility: "READY",
+            capabilityURN: capURN,
+            providerHint: providerId,
+          };
+          (restoredOp as any).confirmationGranted = true;
+          const p = String(restoredPayload?.parameters?.path || restoredPayload?.path || "").trim();
+          if (p && !sessionAuthorizedScopes.includes(p)) {
+            sessionAuthorizedScopes.push(p);
+          }
+          semanticTurn.operations.push(restoredOp);
+        } else {
+          for (const op of semanticTurn.operations) {
+            (op as any).confirmationGranted = true;
+            const p = String(op.payload?.parameters?.path || op.payload?.path || pendingOp?.partialPayload?.parameters?.path || pendingOp?.partialPayload?.path || "").trim();
+            if (p && !sessionAuthorizedScopes.includes(p)) {
+              sessionAuthorizedScopes.push(p);
+            }
+          }
+        }
+      }
+
+      let hitlRequiredOp: any = null;
+      for (const op of semanticTurn.operations) {
+        if ((op as any).confirmationGranted) continue;
+
+        const isExplicitConf =
+          (op as any).requiresConfirmation === true ||
+          (op as any).confirmationMode === "EXPLICIT_CONFIRMATION" ||
+          op.riskClass === "HIGH_IRREVERSIBLE";
+
+        const capURN = (op as any).capabilityURN || op.payload?.capabilityURN || "";
+        const reqPath = String(op.payload?.parameters?.path || op.payload?.path || "").trim();
+
+        // If path has already been authorized for this conversation session or was executed in recent turns, skip confirmation prompt
+        const wasRecentlyExecuted = (stm?.recentlyExecutedOperations || []).some((recentOp: any) => {
+          const recentPath = String(recentOp.payloadSnapshot?.parameters?.path || recentOp.payloadSnapshot?.path || "").trim();
+          return recentPath && reqPath.toLowerCase().startsWith(recentPath.toLowerCase());
+        });
+
+        if (reqPath && (sessionAuthorizedScopes.some((s) => reqPath.toLowerCase().startsWith(s.toLowerCase())) || wasRecentlyExecuted)) {
+          continue;
+        }
+
+        // HITL Policy: Read operations and safe drafts do NOT require HITL. Only irreversible WRITE/MUTATION operations require HITL!
+        const isReadOperation =
+          capURN.includes("storage.list_files") ||
+          capURN.includes("storage.read_file") ||
+          capURN.includes("calendar.read_events") ||
+          capURN.includes("email.search_messages") ||
+          capURN.includes("email.read_thread") ||
+          capURN.includes("email.read_message") ||
+          capURN.includes("email.create_draft") ||
+          capURN.includes("contacts.search_contacts") ||
+          capURN.includes("contacts.get_contact") ||
+          capURN.includes("task.sync_tasks") ||
+          capURN.includes("biometrics.read") ||
+          capURN.includes("activity.sync_telemetry") ||
+          capURN.includes("activity.read_daily_summary") ||
+          capURN.includes("activity.read_sleep") ||
+          capURN.includes("git.list_prs") ||
+          capURN.includes("git.list_repos") ||
+          capURN.includes("git.search_code") ||
+          capURN.includes("media.read_current_track") ||
+          capURN.includes("context.system.search_web") ||
+          capURN.includes("context.system.open_url") ||
+          capURN.includes("context.system.read_clipboard");
+
+        const isWriteMutation =
+          !isReadOperation &&
+          (capURN.includes("write_file") ||
+           capURN.includes("delete") ||
+           capURN.includes("email.send_message") ||
+           capURN.includes("calendar.create_event") ||
+           capURN.includes("calendar.update_event") ||
+           capURN.includes("calendar.delete_event") ||
+           capURN.includes("task.create_external") ||
+           capURN.includes("git.create_issue") ||
+           capURN.includes("activity.record_workout") ||
+           op.actionType === "delete_task" ||
+           op.actionType === "delete_goal" ||
+           (isExplicitConf && !isReadOperation));
+
+        if (isWriteMutation) {
+          hitlRequiredOp = op;
+          break;
+        }
+      }
+
+      if (hitlRequiredOp) {
+        const op = hitlRequiredOp;
+        const capURN = op.capabilityURN || op.payload?.capabilityURN || "";
+        const pres = CapabilityPresentationRegistry.getInstance().get(capURN as any) || {
+          displayName: "External Service",
+          providerDisplayName: "System",
+          iconName: "Shield",
+        };
+
+        const targetPath = String(op.payload?.parameters?.path || op.payload?.path || "").trim();
+        const isWriteFile = capURN.includes("write_file");
+        const isDelete = capURN.includes("delete");
+        const isEmailSend = capURN.includes("email.send_message");
+        const isCalendarCreate = capURN.includes("calendar.create_event");
+        const isGitIssue = capURN.includes("git.create_issue");
+        const isWorkout = capURN.includes("activity.record_workout");
+
+        let verbalPrompt = `I'll need your permission to perform this action. Would you like me to proceed?`;
+        let confirmTitle = `Confirm Action?`;
+        let confirmMessage = `Aven requires your approval to proceed.`;
+        let actionLabel = "Write Operation";
+
+        if (isWriteFile) {
+          const fileName = require("path").basename(targetPath) || "file";
+          verbalPrompt = `I'll need your permission to create ${fileName}. Would you like me to proceed?`;
+          confirmTitle = `Allow Creating ${fileName}?`;
+          confirmMessage = `Aven requires your approval to write and save ${targetPath || fileName}.`;
+          actionLabel = "Create File";
+        } else if (isDelete) {
+          const fileName = targetPath ? require("path").basename(targetPath) : (op.payload?.title || "item");
+          verbalPrompt = `I'll need your permission to delete ${fileName}. Would you like me to proceed?`;
+          confirmTitle = `Allow Deleting ${fileName}?`;
+          confirmMessage = `Aven requires your approval to delete ${fileName}.`;
+          actionLabel = "Delete Item";
+        } else if (isEmailSend) {
+          const rawTo = op.payload?.parameters?.to;
+          const toList = Array.isArray(rawTo) ? rawTo.filter(Boolean).join(", ") : (rawTo || "");
+          const to = toList.trim() || "the recipient";
+          verbalPrompt = `I'll need your permission to send an email to ${to}. Would you like me to proceed?`;
+          confirmTitle = `Confirm Sending Email?`;
+          confirmMessage = `Aven requires your approval to send email to ${to}.`;
+          actionLabel = "Send Email";
+        } else if (isCalendarCreate) {
+          const title = op.payload?.parameters?.title || "event";
+          verbalPrompt = `I'll need your permission to schedule "${title}" on your calendar. Would you like me to proceed?`;
+          confirmTitle = `Confirm Calendar Event?`;
+          confirmMessage = `Aven requires your approval to schedule "${title}".`;
+          actionLabel = "Schedule Event";
+        } else if (isGitIssue) {
+          const title = op.payload?.parameters?.title || "issue";
+          verbalPrompt = `I'll need your permission to create issue "${title}" on GitHub. Would you like me to proceed?`;
+          confirmTitle = `Create GitHub Issue?`;
+          confirmMessage = `Aven requires your approval to open issue "${title}".`;
+          actionLabel = "Create Issue";
+        } else if (isWorkout) {
+          const wType = op.payload?.parameters?.workoutType || "workout";
+          verbalPrompt = `I'll need your permission to log this ${wType} in Google Fit. Would you like me to proceed?`;
+          confirmTitle = `Log Workout?`;
+          confirmMessage = `Aven requires your approval to record this ${wType}.`;
+          actionLabel = "Record Workout";
+        }
+
+        const newPendingOp: IPendingOperationContext = {
+          operationId: op.operationId || generateId("pop"),
+          turnId: semanticTurn.turnId,
+          actionType: op.actionType,
+          domain: op.domain,
+          partialPayload: op.payload,
+          missingRequirement: {
+            kind: "CONFIRMATION" as any,
+            targetEntityType: "storage" as any,
+          },
+          clarificationQuestion: verbalPrompt,
+          state: "AWAITING_CONFIRMATION" as any,
+          createdAt: new Date(),
+          expiresAt: new Date(Date.now() + 10 * 60 * 1000),
+        };
+
+        req.onEvent?.({
+          type: "status",
+          status: "waiting_for_confirmation",
+          message: "Awaiting permission...",
+        });
+
+        req.onEvent?.({
+          type: "confirmation_required",
+          actionId: newPendingOp.operationId,
+          capabilityURN: capURN,
+          providerDisplayName: pres.providerDisplayName,
+          title: confirmTitle,
+          message: confirmMessage,
+          details: {
+            Target: targetPath || (op.payload?.title || pres.displayName),
+            Action: actionLabel,
+            Security: "Human-in-the-Loop Required",
+          },
+          confirmLabel: "Allow",
+          cancelLabel: "Deny",
+        });
+
+        const stmUpdates = { pendingOperation: newPendingOp };
+        try {
+          if (mongoose.connection && mongoose.connection.readyState === 1) {
+            const { ConversationShortTermMemory } = await import("@/server/db/models/ConversationShortTermMemory");
+            await ConversationShortTermMemory.updateOne(
+              { conversationId, userId: req.userId },
+              { $set: stmUpdates },
+              { upsert: true }
+            );
+          }
+        } catch (_) {}
+
+        mainExecutionFinished = true;
+        req.onChunk?.(verbalPrompt);
+        req.onEvent?.({ type: "assistant_delta", text: verbalPrompt });
+
+        return {
+          executionId,
+          requestId,
+          routingDecision,
+          response: verbalPrompt,
+          durationMs: Date.now() - startTime,
+          actionsExecuted: 0,
+          workspaceStatus: "COMPLETED",
+          terminationReason: "AWAITING_CONFIRMATION",
+          stmUpdates,
+          pendingOperation: newPendingOp,
+        };
+      }
+
       const proposals: ActionProposal[] = semanticTurn.operations.map((op, idx) => {
         const payload = { ...(op.payload || {}) };
         if (!payload.title) {
@@ -458,14 +807,142 @@ export class Supervisor {
         };
       }
 
+      req.onEvent?.({ type: "status", status: "executing", message: "Executing..." });
+      for (const op of semanticTurn.operations) {
+        const capURN = op.capabilityURN || (op.actionType === "external_capability_action" ? (op.payload?.capabilityURN as any) : undefined);
+        if (capURN) {
+          const reqProvId = op.providerHint || op.payload?.providerId;
+          const pres = CapabilityPresentationRegistry.getInstance().get(capURN as any, reqProvId);
+          req.onEvent?.({
+            type: "tool_activity",
+            providerId: reqProvId || pres.providerDisplayName.toLowerCase().replace(/\s+/g, "_"),
+            providerDisplayName: pres.providerDisplayName,
+            capabilityURN: capURN,
+            iconName: pres.iconName,
+            humanMessage: pres.progressPhrase,
+            state: "started",
+          });
+        }
+      }
+
+      const rejectedResults: any[] = (validation.rejectedProposals || []).map((r: any) => ({
+        actionId: r.proposalId || r.proposal?.id || generateId("act"),
+        operationId: r.proposal?.operationId,
+        idempotencyKey: r.proposal?.idempotencyKey || generateId("idem"),
+        actionType: r.proposal?.actionType || "external_capability_action",
+        status: "FAILED" as const,
+        success: false,
+        error: r.reason || "Validation failed",
+        targetEntityId: r.proposal?.targetEntityId,
+        timestamp: Date.now(),
+        data: r.proposal?.payload,
+      }));
+
+      for (const rej of rejectedResults) {
+        const payload = rej.data || {};
+        const capURN = payload.capabilityURN || rej.actionType;
+        const reqProvId = payload.providerId;
+        const pres = CapabilityPresentationRegistry.getInstance().get(capURN as any, reqProvId);
+        req.onEvent?.({
+          type: "tool_activity",
+          providerId: reqProvId || pres.providerDisplayName.toLowerCase().replace(/\s+/g, "_"),
+          providerDisplayName: pres.providerDisplayName,
+          capabilityURN: capURN,
+          iconName: pres.iconName,
+          humanMessage: rej.error || pres.failedPhrase || "Validation failed",
+          state: "failed",
+          error: rej.error,
+        });
+      }
+
       const kernelResults = await kernel.executeActionBatch(req.userId, validation.validDecisions);
-      const successfulExecutions = kernelResults.filter((r: any) => r.success);
+      const allExecutionResults = [...kernelResults, ...rejectedResults];
+      const successfulExecutions = allExecutionResults.filter((r: any) => r.success);
+
+      for (let i = 0; i < kernelResults.length; i++) {
+        const res = kernelResults[i];
+        const op = semanticTurn.operations[i] || semanticTurn.operations[0];
+        const capURN = op.capabilityURN || (op.actionType === "external_capability_action" ? (op.payload?.capabilityURN as any) : undefined);
+        if (capURN) {
+          const reqProvId = op.providerHint || op.payload?.providerId;
+          const pres = CapabilityPresentationRegistry.getInstance().get(capURN as any, reqProvId);
+          const resData = res.data || res.result || {};
+          let humanMessage = res.success ? pres.completedPhrase : (res.error?.message || pres.failedPhrase);
+
+          if (res.success && (capURN.includes("playback") || capURN.includes("spotify"))) {
+            if (resData.nowPlaying) {
+              humanMessage = resData.isPlaying ? `Playing "${resData.nowPlaying}"` : `Paused "${resData.nowPlaying}"`;
+            } else if (resData.command === "pause" || resData.isPlaying === false) {
+              humanMessage = "Playback paused";
+            } else if (resData.command === "resume") {
+              humanMessage = "Playback resumed";
+            } else if (resData.command === "next" || resData.command === "skip") {
+              humanMessage = "Skipped to next track";
+            }
+          } else if (res.success && capURN.includes("storage.list_files")) {
+            const count = resData.totalCount ?? (resData.files?.length || 0);
+            const ext = resData.extension ? ` ${resData.extension}` : "";
+            const dir = String(resData.searchDirectory || op.payload?.parameters?.path || "").trim();
+            let loc = "on desktop";
+            if (reqProvId === "google_drive" || dir === "Google Drive") {
+              loc = "in Google Drive";
+            } else if (reqProvId === "obsidian_vault" || dir.toLowerCase().includes("obsidian")) {
+              loc = "in Obsidian vault";
+            } else if (reqProvId === "notion" || dir.toLowerCase().includes("notion")) {
+              loc = "in Notion workspace";
+            } else if (dir.startsWith("D:") || dir.startsWith("d:") || dir.toLowerCase().includes("d drive")) {
+              loc = "on D drive";
+            } else if (dir.startsWith("C:") || dir.startsWith("c:") || dir.toLowerCase().includes("c drive")) {
+              loc = "on C drive";
+            } else if (dir.toLowerCase() === "downloads") {
+              loc = "in Downloads";
+            } else if (dir.toLowerCase() === "documents") {
+              loc = "in Documents";
+            }
+            const reqT = String(op.payload?.parameters?.type || "").toLowerCase();
+            const n = reqT.includes("folder") ? "folder" : "file";
+            humanMessage = count === 0 ? `No${ext} ${n}s found ${loc}` : `Found ${count}${ext} ${n}${count === 1 ? "" : "s"} ${loc}`;
+          } else if (res.success && capURN.includes("git.list_repos")) {
+            const count = resData.repositories?.length || 0;
+            humanMessage = count === 0 ? "No repositories found on GitHub" : `Found ${count} GitHub repositor${count === 1 ? "y" : "ies"}`;
+          } else if (res.success && capURN.includes("git.list_prs")) {
+            const count = resData.pullRequests?.length || 0;
+            humanMessage = count === 0 ? "No open pull requests" : `Found ${count} open pull request${count === 1 ? "" : "s"}`;
+          } else if (res.success && capURN.includes("open_url")) {
+            humanMessage = `Opened in browser`;
+          }
+
+          req.onEvent?.({
+            type: "tool_activity",
+            providerId: reqProvId || pres.providerDisplayName.toLowerCase().replace(/\s+/g, "_"),
+            providerDisplayName: pres.providerDisplayName,
+            capabilityURN: capURN,
+            iconName: pres.iconName,
+            humanMessage,
+            state: res.success ? "completed" : "failed",
+            error: res.success ? undefined : (res.error?.message || "Execution failed"),
+            details: {
+              nowPlaying: resData.nowPlaying,
+              deviceName: resData.deviceName,
+              command: resData.command,
+              isPlaying: resData.isPlaying,
+              itemType: resData.itemType,
+              spotifyId: resData.spotifyId,
+              spotifyUri: resData.spotifyUri,
+              spotifyUrl: resData.spotifyUrl,
+              imageUrl: resData.imageUrl,
+              artistName: resData.artistName,
+              trackName: resData.trackName,
+            },
+          });
+        }
+      }
 
       // Synthesize grounded truthful user response via GroundedResponseGenerator
       const { GroundedResponseGenerator } = await import("../grounding/GroundedResponseGenerator");
       let response = GroundedResponseGenerator.getInstance().generateResponse(
         semanticTurn,
-        kernelResults,
+        allExecutionResults,
         { userMessage: req.message, conversationalSummary: semanticTurn.conversationalSummary }
       );
 
@@ -478,10 +955,53 @@ export class Supervisor {
         const res = successfulExecutions[i];
         const op = semanticTurn.operations[i] || semanticTurn.operations[0];
         const cap = DOMAIN_CAPABILITIES[res.actionType as DomainActionType];
-        const entityId = res.targetEntity?.entityId || res.targetEntityId || res.data?.taskId || res.data?.goalId || res.data?._id || res.data?.id;
-        const displayName = res.targetEntity?.displayName || res.data?.title || res.data?.taskTitle || res.data?.mealName || res.data?.name || cap?.verbalization?.entityNoun || "item";
-        const entityType = res.targetEntity?.entityType || cap?.targetEntityType || "task";
+        let entityId = res.targetEntity?.entityId || res.targetEntityId || res.data?.taskId || res.data?.goalId || res.data?._id || res.data?.id;
+        let displayName = res.targetEntity?.displayName || res.data?.title || res.data?.taskTitle || res.data?.mealName || res.data?.name;
+        let entityType: any = res.targetEntity?.entityType || cap?.targetEntityType || "task";
         const domain = res.targetEntity?.domain || op?.domain || "productivity";
+
+        if (res.actionType === "external_capability_action") {
+          const capURN = op?.capabilityURN || (op?.payload?.capabilityURN as string) || "";
+          if (capURN.includes("storage.read_file") || capURN.includes("storage.write_file")) {
+            entityType = "file";
+            displayName = res.data?.fileName || (res.data?.path ? require("path").basename(res.data.path) : undefined) || displayName || "file";
+            entityId = res.data?.fileName || res.data?.path || displayName;
+          } else if (capURN.includes("email.read_message") || capURN.includes("email.read_thread")) {
+            entityType = "email";
+            displayName = res.data?.subject || displayName || "email";
+            entityId = res.data?.id || res.data?.threadId || entityId || displayName;
+          } else if (capURN.includes("email.search_messages")) {
+            entityType = "email";
+            const firstMsg = res.data?.messages?.[0];
+            if (firstMsg) {
+              displayName = firstMsg.subject || firstMsg.from || "email";
+              entityId = firstMsg.id || "email_message";
+            }
+            if (res.data?.messages && Array.isArray(res.data.messages)) {
+              for (const m of res.data.messages.slice(0, 5)) {
+                if (m.id && !recentEntities.some((e) => e.entityId === m.id)) {
+                  recentEntities.push({
+                    entityType: "email",
+                    entityId: m.id,
+                    displayName: `${m.subject} (from ${m.from})`,
+                    domain: "productivity",
+                    updatedAt: new Date(),
+                    lastReferencedTurnId: semanticTurn.turnId,
+                  });
+                }
+              }
+            }
+          } else if (capURN.includes("contacts")) {
+            entityType = "contact";
+            const firstContact = res.data?.contacts?.[0] || res.data?.contact;
+            displayName = firstContact?.name || displayName || "contact";
+            entityId = firstContact?.id || firstContact?.email || displayName;
+          }
+        }
+
+        if (!displayName) {
+          displayName = cap?.verbalization?.entityNoun || "item";
+        }
 
         if (entityId) {
           activeFocus = {
@@ -539,6 +1059,18 @@ export class Supervisor {
           createdAt: new Date(),
           expiresAt: new Date(Date.now() + 10 * 60 * 1000),
         };
+
+        req.onEvent?.({ type: "status", status: "waiting_for_confirmation", message: "Waiting for your confirmation..." });
+        req.onEvent?.({
+          type: "confirmation_required",
+          actionId: nextPendingOperation.operationId,
+          capabilityURN: "productivity.goal",
+          providerDisplayName: "LifeOS",
+          title: pGoalTitle,
+          message: response,
+          confirmLabel: "Confirm",
+          cancelLabel: "Cancel",
+        });
       }
 
       const stmUpdates = {
@@ -546,6 +1078,7 @@ export class Supervisor {
         recentEntities,
         pendingOperation: nextPendingOperation,
         recentlyExecutedOperations,
+        authorizedScopes: sessionAuthorizedScopes,
       };
 
       try {
@@ -561,6 +1094,7 @@ export class Supervisor {
 
       mainExecutionFinished = true;
       req.onChunk?.(response);
+      req.onEvent?.({ type: "assistant_delta", text: response });
 
       const actionIds = kernelResults.map((r: any) => r.actionId);
       const traceContext = ProductionTracer.getInstance().recordTrace({
@@ -720,7 +1254,8 @@ export class Supervisor {
         "2. When explaining instructions, recipes, or workflows, keep them concise, structured with clear steps, and spoken naturally in active English.\n" +
         "3. Every sentence must end with clear punctuation (. or !) so voice synthesis streams and speaks aloud smoothly.\n" +
         "4. When the user interrupts or asks to pause/hold on, acknowledge gracefully in 1 composed sentence and wait for their direction.\n" +
-        "5. Never output internal thought tags, raw JSON, or robotic preamble.";
+        "5. Never output internal thought tags, raw JSON, or robotic preamble.\n" +
+        "6. INVARIANT 9 (ZERO HALLUCINATED ACTIONS): You are in pure conversational dialogue. You did NOT execute any external tools, database actions, or media playback commands in this turn. NEVER claim, state, or pretend that you are playing music, pausing music, or modifying external systems.";
 
       const messages: { role: "system" | "user" | "assistant"; content: string }[] = [
         { role: "system", content: systemPrompt },
@@ -772,6 +1307,16 @@ export class Supervisor {
           if (!referencesGoal) {
             responseText = `I proposed "${goalName}" as a daily habit. Would you like me to confirm and activate it?`;
           }
+        }
+
+        // Post-LLM Invariant 9 Guard: Prevent conversational LLM from claiming tool/playback execution
+        const claimsPlayback =
+          (lowerResp.includes("playing ") && (lowerResp.includes("spotify") || lowerResp.includes("track") || lowerResp.includes("playlist"))) ||
+          (lowerResp.includes("pausing ") && (lowerResp.includes("track") || lowerResp.includes("music") || lowerResp.includes("spotify"))) ||
+          lowerResp.includes("paused spotify");
+
+        if (claimsPlayback) {
+          responseText = `I couldn't trigger that playback right now, ${activeUserName}. Would you like me to try again?`;
         }
       }
 
@@ -828,6 +1373,7 @@ export class Supervisor {
 
       mainExecutionFinished = true;
       req.onChunk?.(responseText);
+      req.onEvent?.({ type: "assistant_delta", text: responseText });
 
       return {
         executionId,
@@ -1067,5 +1613,67 @@ export class Supervisor {
       "Reviewing that across your system now.",
     ];
     return defaultOptions[Math.floor(Math.random() * defaultOptions.length)];
+  }
+
+  private async checkProviderConnection(
+    userId: string,
+    providerId: string
+  ): Promise<{ connected: boolean; providerDisplayName: string }> {
+    const { ProviderRegistry } = require("../external/providers/ProviderRegistry");
+    const prov = ProviderRegistry.getInstance().get(providerId as any);
+    const resolvedId = prov?.providerId || providerId;
+    const displayName = prov?.displayName || providerId;
+
+    if (
+      prov?.authType === "NONE" ||
+      resolvedId === "filesystem_desktop" ||
+      resolvedId === "brave_search" ||
+      resolvedId === "open_meteo" ||
+      resolvedId === "openstreetmap_travel" ||
+      resolvedId === "flight_tracker" ||
+      resolvedId === "hotel_finder" ||
+      resolvedId === "shopping_agent" ||
+      resolvedId === "uber_mobility" ||
+      resolvedId === "ola_mobility" ||
+      resolvedId === "rapido_mobility" ||
+      resolvedId === "zomato_eats" ||
+      resolvedId === "zepto_commerce" ||
+      resolvedId === "swiggy_suite" ||
+      resolvedId === "aven_browser_agent"
+    ) {
+      return { connected: true, providerDisplayName: displayName };
+    }
+
+    try {
+      let UserProviderConnectionModel: any = null;
+      try {
+        const mod = (await import("@/server/db/models/UserProviderConnection")) as any;
+        UserProviderConnectionModel = mod.UserProviderConnection || mod.default;
+      } catch (_) {}
+
+      if (!UserProviderConnectionModel) {
+        const g = globalThis as any;
+        const gMongoose = g.mongoose?.conn || g.mongoose;
+        UserProviderConnectionModel =
+          gMongoose?.models?.UserProviderConnection ||
+          require("mongoose").models?.UserProviderConnection;
+      }
+
+      if (UserProviderConnectionModel) {
+        const conn = await UserProviderConnectionModel.findOne({
+          $or: [
+            { userId: { $in: [userId, userId?.toString()] }, providerId: { $in: [providerId, resolvedId] }, status: "ACTIVE" },
+            { providerId: { $in: [providerId, resolvedId] }, status: "ACTIVE" },
+          ],
+        }).lean();
+        return { connected: !!conn, providerDisplayName: displayName };
+      }
+    } catch (err) {
+      console.error(`[Supervisor] checkProviderConnection DB error for '${providerId}':`, err);
+    }
+
+    // SAFETY: If DB lookup failed or Mongoose isn't ready, default to DISCONNECTED.
+    // Never assume connected — this prevents hallucinated tool executions for unconfigured services.
+    return { connected: false, providerDisplayName: displayName };
   }
 }

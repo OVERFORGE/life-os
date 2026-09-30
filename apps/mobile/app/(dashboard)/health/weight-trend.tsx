@@ -3,7 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Dimensions } from 'react-native';
 import { ArrowLeft, Scale, Flame } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import { fetchWithAuth } from '../../../utils/api';
 
 const { width: SCREEN_W } = Dimensions.get('window');
@@ -153,7 +153,7 @@ export default function WeightTrendScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => { load(); }, []));
+  useSafeFocusEffect(useCallback(() => { load(); }, []));
 
   const weightLogs: { date: string; weight: number }[] = data?.weightLogs || [];
   const weeklyData: any[] = data?.weeklyData || [];

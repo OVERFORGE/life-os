@@ -13,7 +13,7 @@ import {
   Timer,
   Sparkles,
   Trash2,
-  Edit3,
+
   Check,
   CalendarDays,
   LayoutGrid,
@@ -79,6 +79,19 @@ interface DayProjection {
   };
 }
 
+// ─── Drag State Interface ───
+
+interface DragState {
+  occurrenceId?: string;
+  taskId?: string;
+  title: string;
+  duration: number;
+  kind?: string;
+  originDate?: string;
+  originStartMin?: number;
+  blockId?: string;
+}
+
 // ─── Utilities ───
 
 function formatMinutesToTime(min: number): string {
@@ -128,6 +141,194 @@ function getWeekDays(referenceDate: string): string[] {
 
 const DAY_NAMES = ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"];
 
+/** Convert startMinute (0-1439) to "HH:MM" for <input type="time"> */
+function minutesToTimeInput(min: number): string {
+  const h = Math.floor(((min % 1440) + 1440) % 1440 / 60);
+  const m = ((min % 1440) + 1440) % 1440 % 60;
+  return `${String(h).padStart(2, "0")}:${String(m).padStart(2, "0")}`;
+}
+
+/** Convert "HH:MM" string to minutes-of-day */
+function timeInputToMinutes(timeStr: string): number {
+  const [h, m] = timeStr.split(":").map(Number);
+  return (h || 0) * 60 + (m || 0);
+}
+
+// ─── Block Details Modal (Editable) ───
+
+function BlockDetailsModal({
+  block,
+  onClose,
+  onLogTime,
+  onDelete,
+  onSkip,
+  onSave,
+  submitting,
+}: {
+  block: TimelineBlock;
+  onClose: () => void;
+  onLogTime: () => void;
+  onDelete: () => void;
+  onSkip?: () => void;
+  onSave: (newDate: string, newStartTime: string, newDurationMinutes: number) => Promise<void>;
+  submitting: boolean;
+}) {
+  const origDate = block.dateOnly;
+  const origStartMin = block.planned?.startMinute ?? 0;
+  const origDuration = block.planned?.durationMinutes ?? 60;
+  const origStartTime = minutesToTimeInput(origStartMin);
+
+  const [editDate, setEditDate] = React.useState(origDate);
+  const [editStartTime, setEditStartTime] = React.useState(origStartTime);
+  const [editDuration, setEditDuration] = React.useState(String(origDuration));
+
+  // Detect if anything changed
+  const hasChanges =
+    editDate !== origDate ||
+    editStartTime !== origStartTime ||
+    editDuration !== String(origDuration);
+
+  // Compute derived end time for display
+  const startMin = timeInputToMinutes(editStartTime);
+  const durationMin = parseInt(editDuration, 10) || origDuration;
+  const endMin = startMin + durationMin;
+
+  const handleSave = async () => {
+    await onSave(editDate, editStartTime, durationMin);
+  };
+
+  return (
+    <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
+      <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl max-w-sm w-full p-6 text-[#FFFDFC] shadow-2xl animate-in zoom-in-95 duration-150">
+        {/* Header */}
+        <div className="flex items-start justify-between mb-4">
+          <div>
+            <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
+              {block.kind.replace("_", " ")}
+            </span>
+            <h3 className="text-base font-bold text-white mt-0.5">{block.title}</h3>
+          </div>
+          <button
+            onClick={onClose}
+            className="text-gray-400 hover:text-white p-1"
+          >
+            <X className="w-4 h-4" />
+          </button>
+        </div>
+
+        {/* Editable Fields */}
+        <div className="space-y-3 border-t border-[#2A2B2F] pt-4 mb-5">
+          {/* Date */}
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Date</label>
+            <input
+              type="date"
+              value={editDate}
+              onChange={(e) => setEditDate(e.target.value)}
+              className="w-full bg-[#161618] border border-[#2A2B2F] focus:border-[#E8414A] rounded-xl px-3 py-2 text-xs text-[#FFFDFC] outline-none transition-colors"
+            />
+          </div>
+
+          {/* Start Time & End Time */}
+          <div className="grid grid-cols-2 gap-3">
+            <div>
+              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Start Time</label>
+              <input
+                type="time"
+                value={editStartTime}
+                onChange={(e) => setEditStartTime(e.target.value)}
+                className="w-full bg-[#161618] border border-[#2A2B2F] focus:border-[#E8414A] rounded-xl px-3 py-2 text-xs text-[#FFFDFC] outline-none transition-colors"
+              />
+            </div>
+            <div>
+              <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">End Time</label>
+              <div className="w-full bg-[#161618]/50 border border-[#2A2B2F]/60 rounded-xl px-3 py-2 text-xs text-gray-400 font-mono">
+                {formatMinutesToTime(endMin)}
+              </div>
+            </div>
+          </div>
+
+          {/* Duration */}
+          <div>
+            <label className="block text-[10px] font-semibold text-gray-400 uppercase tracking-wider mb-1">Duration</label>
+            <div className="grid grid-cols-5 gap-1.5">
+              {["30", "45", "60", "90", "120"].map((d) => (
+                <button
+                  key={d}
+                  type="button"
+                  onClick={() => setEditDuration(d)}
+                  className={`py-1.5 text-[10px] font-bold rounded-lg border transition-all ${
+                    editDuration === d
+                      ? "bg-[#E8414A] border-[#E8414A] text-white shadow-sm shadow-[#E8414A]/20"
+                      : "bg-[#161618] border-[#2A2B2F] text-gray-400 hover:text-white hover:border-[#3E424B]"
+                  }`}
+                >
+                  {formatDuration(parseInt(d, 10))}
+                </button>
+              ))}
+            </div>
+            {/* Custom duration input */}
+            <div className="mt-2 flex items-center gap-2">
+              <input
+                type="number"
+                min="5"
+                step="5"
+                value={editDuration}
+                onChange={(e) => setEditDuration(e.target.value)}
+                className="flex-1 bg-[#161618] border border-[#2A2B2F] focus:border-[#E8414A] rounded-xl px-3 py-1.5 text-xs text-[#FFFDFC] outline-none transition-colors"
+              />
+              <span className="text-[10px] text-gray-400 font-semibold">minutes</span>
+            </div>
+          </div>
+        </div>
+
+        {/* Action Buttons */}
+        <div className="flex items-center gap-2 pt-3 border-t border-[#2A2B2F]">
+          {hasChanges ? (
+            /* Show Save button when fields are modified */
+            <button
+              onClick={handleSave}
+              disabled={submitting}
+              className="flex-1 py-2 bg-[#E8414A] hover:bg-[#D62C35] text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-[#E8414A]/20 flex items-center justify-center gap-1.5"
+            >
+              <Check className="w-3.5 h-3.5" />
+              <span>{submitting ? "Saving..." : "Save changes"}</span>
+            </button>
+          ) : (
+            /* Default: Log time */
+            <button
+              onClick={onLogTime}
+              className="flex-1 py-2 bg-[#E8414A] hover:bg-[#D62C35] text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-[#E8414A]/20"
+            >
+              Log time
+            </button>
+          )}
+
+          {block.occurrenceId && onSkip && (
+            <button
+              onClick={onSkip}
+              className="px-3 py-2 bg-[#161618] hover:bg-amber-500/20 hover:text-amber-400 border border-[#2A2B2F] text-gray-400 text-xs font-semibold rounded-xl transition-colors"
+              title="Mark as skipped"
+            >
+              Skip
+            </button>
+          )}
+
+          {block.occurrenceId && (
+            <button
+              onClick={onDelete}
+              className="px-3 py-2 bg-[#161618] hover:bg-[#E8414A]/20 hover:text-[#E8414A] border border-[#2A2B2F] text-gray-400 text-xs font-semibold rounded-xl transition-colors"
+              title="Delete"
+            >
+              <Trash2 className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export default function CalendarPage() {
   const [selectedDate, setSelectedDate] = useState(() => new Date().toISOString().split("T")[0]);
   const [viewMode, setViewMode] = useState<"day" | "week" | "agenda">("week");
@@ -136,6 +337,7 @@ export default function CalendarPage() {
 
   // Projections: Day or Week
   const [dayProjection, setDayProjection] = useState<DayProjection | null>(null);
+  const [todayProjection, setTodayProjection] = useState<DayProjection | null>(null);
   const [weekDaysData, setWeekDaysData] = useState<DayProjection[]>([]);
   const [unscheduledTasks, setUnscheduledTasks] = useState<UnscheduledTask[]>([]);
 
@@ -150,41 +352,191 @@ export default function CalendarPage() {
     }
   }, [viewMode, selectedDate]);
 
-  // Drag and Drop State (Google & Notion Calendar style floating card)
-  const [draggedBlock, setDraggedBlock] = useState<{
-    occurrenceId?: string;
-    taskId?: string;
-    title: string;
-    duration: number;
-    kind?: string;
-    originDate?: string;
-    originStartMin?: number;
-  } | null>(null);
-  const [dragOverSlot, setDragOverSlot] = useState<{ date: string; hour: number } | null>(null);
-  const [mousePos, setMousePos] = useState<{ x: number; y: number } | null>(null);
-  const [hardSelectBlockId, setHardSelectBlockId] = useState<string | null>(null);
+  // ─── Custom Pointer-Based Drag System (Google Calendar Style) ───
+  const [dragState, setDragState] = useState<DragState | null>(null);
+  const [pointerPos, setPointerPos] = useState<{ x: number; y: number } | null>(null);
+  const [hoverSlot, setHoverSlot] = useState<{ date: string; hour: number } | null>(null);
+  const [isDragging, setIsDragging] = useState(false);
   const longPressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const dragStartPosRef = useRef<{ x: number; y: number } | null>(null);
+  const hasMovedRef = useRef(false);
+  const dragJustEndedRef = useRef(false);
 
-  // Global pointer move listener during drag for 60fps floating card
+  // Cleanup long-press timer on unmount
   useEffect(() => {
-    const handleGlobalDragOver = (e: DragEvent) => {
-      if (e.clientX !== 0 || e.clientY !== 0) {
-        setMousePos({ x: e.clientX, y: e.clientY });
+    return () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
       }
     };
-    const handleGlobalDragEnd = () => {
-      setDraggedBlock(null);
-      setDragOverSlot(null);
-      setMousePos(null);
-      setHardSelectBlockId(null);
+  }, []);
+
+  // Global pointermove + pointerup listeners during drag
+  useEffect(() => {
+    if (!isDragging) return;
+
+    const handlePointerMove = (e: PointerEvent) => {
+      e.preventDefault();
+      setPointerPos({ x: e.clientX, y: e.clientY });
+
+      // Detect which slot the pointer is over by checking elements under cursor
+      const elemBelow = document.elementFromPoint(e.clientX, e.clientY);
+      if (elemBelow) {
+        const slotEl = elemBelow.closest("[data-drop-slot]") as HTMLElement | null;
+        if (slotEl) {
+          const slotDate = slotEl.dataset.dropDate || "";
+          const slotHour = parseInt(slotEl.dataset.dropHour || "0", 10);
+          setHoverSlot({ date: slotDate, hour: slotHour });
+        } else {
+          setHoverSlot(null);
+        }
+      }
     };
 
-    window.addEventListener("dragover", handleGlobalDragOver);
-    window.addEventListener("dragend", handleGlobalDragEnd);
-    return () => {
-      window.removeEventListener("dragover", handleGlobalDragOver);
-      window.removeEventListener("dragend", handleGlobalDragEnd);
+    const handlePointerUp = (e: PointerEvent) => {
+      // If we have a drag state and hover slot, commit the drop
+      if (dragState && hoverSlot) {
+        handleDropOnSlot(hoverSlot.date, hoverSlot.hour);
+      }
+      // Reset everything
+      cleanupDrag();
     };
+
+    window.addEventListener("pointermove", handlePointerMove, { passive: false });
+    window.addEventListener("pointerup", handlePointerUp);
+
+    // Prevent text selection during drag
+    const preventSelect = (e: Event) => e.preventDefault();
+    document.addEventListener("selectstart", preventSelect);
+
+    return () => {
+      window.removeEventListener("pointermove", handlePointerMove);
+      window.removeEventListener("pointerup", handlePointerUp);
+      document.removeEventListener("selectstart", preventSelect);
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isDragging, dragState, hoverSlot]);
+
+  const cleanupDrag = useCallback(() => {
+    const wasDragging = isDragging;
+    setDragState(null);
+    setPointerPos(null);
+    setHoverSlot(null);
+    setIsDragging(false);
+    hasMovedRef.current = false;
+    dragStartPosRef.current = null;
+    if (longPressTimerRef.current) {
+      clearTimeout(longPressTimerRef.current);
+      longPressTimerRef.current = null;
+    }
+    document.body.style.cursor = "";
+    document.body.style.userSelect = "";
+    // Prevent the subsequent click event from opening the modal after a drag
+    if (wasDragging) {
+      dragJustEndedRef.current = true;
+      setTimeout(() => { dragJustEndedRef.current = false; }, 100);
+    }
+  }, [isDragging]);
+
+  // Start the long-press detection on a calendar block
+  const handleBlockPointerDown = useCallback((e: React.PointerEvent, block: TimelineBlock) => {
+    if (e.button !== 0) return; // Only left click
+    // Don't preventDefault — let normal click events fire for opening the modal
+
+    const startPos = { x: e.clientX, y: e.clientY };
+    dragStartPosRef.current = startPos;
+    hasMovedRef.current = false;
+
+    const duration = block.planned?.durationMinutes ?? block.actual?.durationMinutes ?? 60;
+    const startMin = block.planned?.startMinute ?? 0;
+
+    // Start long-press timer (500ms) — only activates drag after a deliberate hold
+    longPressTimerRef.current = setTimeout(() => {
+      // Activate drag mode
+      setDragState({
+        occurrenceId: block.occurrenceId,
+        title: block.title,
+        duration,
+        kind: block.kind,
+        originDate: block.dateOnly,
+        originStartMin: startMin,
+        blockId: block.blockId,
+      });
+      setPointerPos(startPos);
+      setIsDragging(true);
+      document.body.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+    }, 500);
+
+    // If the user moves mouse before the timer fires, cancel long-press
+    const handleEarlyMove = (moveE: PointerEvent) => {
+      const dx = moveE.clientX - startPos.x;
+      const dy = moveE.clientY - startPos.y;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+        window.removeEventListener("pointermove", handleEarlyMove);
+      }
+    };
+
+    const handleEarlyUp = () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      window.removeEventListener("pointermove", handleEarlyMove);
+      window.removeEventListener("pointerup", handleEarlyUp);
+    };
+
+    window.addEventListener("pointermove", handleEarlyMove);
+    window.addEventListener("pointerup", handleEarlyUp);
+  }, []);
+
+  // Start the long-press detection on an unscheduled task
+  const handleTaskPointerDown = useCallback((e: React.PointerEvent, task: UnscheduledTask) => {
+    if (e.button !== 0) return;
+    // Don't preventDefault — let normal click events fire
+
+    const startPos = { x: e.clientX, y: e.clientY };
+    dragStartPosRef.current = startPos;
+
+    longPressTimerRef.current = setTimeout(() => {
+      setDragState({
+        taskId: task.id,
+        title: task.title,
+        duration: 60,
+      });
+      setPointerPos(startPos);
+      setIsDragging(true);
+      document.body.style.cursor = "grabbing";
+      document.body.style.userSelect = "none";
+    }, 500);
+
+    const handleEarlyMove = (moveE: PointerEvent) => {
+      const dx = moveE.clientX - startPos.x;
+      const dy = moveE.clientY - startPos.y;
+      if (Math.abs(dx) > 5 || Math.abs(dy) > 5) {
+        if (longPressTimerRef.current) {
+          clearTimeout(longPressTimerRef.current);
+          longPressTimerRef.current = null;
+        }
+        window.removeEventListener("pointermove", handleEarlyMove);
+      }
+    };
+
+    const handleEarlyUp = () => {
+      if (longPressTimerRef.current) {
+        clearTimeout(longPressTimerRef.current);
+        longPressTimerRef.current = null;
+      }
+      window.removeEventListener("pointermove", handleEarlyMove);
+      window.removeEventListener("pointerup", handleEarlyUp);
+    };
+
+    window.addEventListener("pointermove", handleEarlyMove);
+    window.addEventListener("pointerup", handleEarlyUp);
   }, []);
 
   // Selected Block for Inspection / Actions
@@ -193,7 +545,7 @@ export default function CalendarPage() {
   // Modals
   const [showScheduleModal, setShowScheduleModal] = useState(false);
   const [showLogModal, setShowLogModal] = useState(false);
-  const [showRescheduleModal, setShowRescheduleModal] = useState(false);
+
 
   // Form State: Schedule
   const [blockTitle, setBlockTitle] = useState("");
@@ -209,9 +561,7 @@ export default function CalendarPage() {
   const [logNotes, setLogNotes] = useState("");
   const [activeOccurrenceId, setActiveOccurrenceId] = useState<string | null>(null);
 
-  // Form State: Reschedule
-  const [rescheduleDate, setRescheduleDate] = useState("");
-  const [rescheduleTime, setRescheduleTime] = useState("");
+
 
   // Current Time Indicator
   const [currentMinuteOfDay, setCurrentMinuteOfDay] = useState(() => {
@@ -233,6 +583,23 @@ export default function CalendarPage() {
 
   // ─── Data Fetching ───
 
+  const loadTodayData = useCallback(async () => {
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+      const res = await fetch(
+        `/api/calendar/timeline?date=${todayStr}&view=day&timezone=${encodeURIComponent(tz)}`
+      );
+      const json = await res.json();
+      if (res.ok && (json.ok || json.success)) {
+        setTodayProjection(json.data);
+      }
+    } catch (_) {}
+  }, [todayStr]);
+
+  useEffect(() => {
+    loadTodayData();
+  }, [loadTodayData]);
+
   const loadData = useCallback(async () => {
     setLoading(true);
     setError(null);
@@ -249,9 +616,14 @@ export default function CalendarPage() {
           setUnscheduledTasks(json.data.unscheduledTasks || []);
           const matchedDay = (json.data.days || []).find((d: any) => d.dateOnly === selectedDate);
           if (matchedDay) setDayProjection(matchedDay);
+          const matchedToday = (json.data.days || []).find((d: any) => d.dateOnly === todayStr);
+          if (matchedToday) setTodayProjection(matchedToday);
         } else {
           setDayProjection(json.data);
           setUnscheduledTasks(json.data.unscheduledTasks || []);
+          if (selectedDate === todayStr) {
+            setTodayProjection(json.data);
+          }
         }
       } else {
         const errMsg = json.error?.message || (typeof json.error === "string" ? json.error : "Failed to load schedule");
@@ -262,7 +634,7 @@ export default function CalendarPage() {
     } finally {
       setLoading(false);
     }
-  }, [selectedDate, viewMode]);
+  }, [selectedDate, viewMode, todayStr]);
 
   useEffect(() => {
     loadData();
@@ -299,21 +671,17 @@ export default function CalendarPage() {
     });
   }, [selectedDate, viewMode, currentWeekDays]);
 
-  // ─── Drag and Drop Handler ───
+  // ─── Drop Handler ───
 
   const handleDropOnSlot = async (targetDate: string, targetHour: number) => {
-    if (!draggedBlock) return;
+    if (!dragState) return;
     const newStartTime = `${String(targetHour).padStart(2, "0")}:00`;
     const newStartMinute = targetHour * 60;
-    const duration = draggedBlock.duration || 60;
-
-    setDragOverSlot(null);
-    setMousePos(null);
-    setHardSelectBlockId(null);
+    const duration = dragState.duration || 60;
 
     // If it's a scheduled block being moved
-    if (draggedBlock.occurrenceId) {
-      const occId = draggedBlock.occurrenceId;
+    if (dragState.occurrenceId) {
+      const occId = dragState.occurrenceId;
 
       // Optimistic update in Week View
       setWeekDaysData((prevDays) =>
@@ -336,8 +704,8 @@ export default function CalendarPage() {
               : {
                   blockId: `block_moved_${Date.now()}`,
                   occurrenceId: occId,
-                  title: draggedBlock.title,
-                  kind: draggedBlock.kind || "WORK_SESSION",
+                  title: dragState.title,
+                  kind: dragState.kind || "WORK_SESSION",
                   dateOnly: targetDate,
                   planned: {
                     startMinute: newStartMinute,
@@ -375,8 +743,8 @@ export default function CalendarPage() {
             : {
                 blockId: `block_moved_${Date.now()}`,
                 occurrenceId: occId,
-                title: draggedBlock.title,
-                kind: draggedBlock.kind || "WORK_SESSION",
+                title: dragState.title,
+                kind: dragState.kind || "WORK_SESSION",
                 dateOnly: targetDate,
                 planned: {
                   startMinute: newStartMinute,
@@ -414,7 +782,7 @@ export default function CalendarPage() {
         console.error("Drop reschedule error:", e);
         loadData();
       }
-    } else if (draggedBlock.taskId) {
+    } else if (dragState.taskId) {
       // It's an unscheduled task being dragged onto the calendar
       try {
         const res = await fetch("/api/calendar/mutate", {
@@ -423,12 +791,12 @@ export default function CalendarPage() {
           body: JSON.stringify({
             actionType: "schedule_occurrence",
             payload: {
-              title: draggedBlock.title,
+              title: dragState.title,
               dateOnly: targetDate,
               startTime: newStartTime,
               durationMinutes: duration,
               kind: "WORK_SESSION",
-              linkedEntity: { entityType: "task", entityId: draggedBlock.taskId, taskTitle: draggedBlock.title },
+              linkedEntity: { entityType: "task", entityId: dragState.taskId, taskTitle: dragState.title },
             },
           }),
         });
@@ -442,7 +810,7 @@ export default function CalendarPage() {
       }
     }
 
-    setDraggedBlock(null);
+    cleanupDrag();
   };
 
   // ─── Actions (Dispatch to Kernel) ───
@@ -522,6 +890,7 @@ export default function CalendarPage() {
         setActiveOccurrenceId(null);
         setSelectedBlock(null);
         loadData();
+        loadTodayData();
       } else {
         alert(json.error?.message || json.error || "Failed to log time");
       }
@@ -532,40 +901,24 @@ export default function CalendarPage() {
     }
   };
 
-  const handleRescheduleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!selectedBlock?.occurrenceId || !rescheduleTime) return;
-
-    setSubmitting(true);
+  const handleSkipOccurrence = async (occurrenceId: string) => {
     try {
-      const payload = {
-        occurrenceId: selectedBlock.occurrenceId,
-        newDateOnly: rescheduleDate || selectedBlock.dateOnly,
-        newStartTime: rescheduleTime,
-        newDurationMinutes: selectedBlock.planned?.durationMinutes || 60,
-      };
-
       const res = await fetch("/api/calendar/mutate", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
-          actionType: "reschedule_occurrence",
-          payload,
+          actionType: "cancel_occurrence",
+          payload: { occurrenceId, status: "SKIPPED" },
         }),
       });
-
       const json = await res.json();
       if (res.ok && (json.ok || json.success)) {
-        setShowRescheduleModal(false);
         setSelectedBlock(null);
         loadData();
-      } else {
-        alert(json.error?.message || json.error || "Failed to reschedule");
+        loadTodayData();
       }
     } catch (err: any) {
-      alert(err.message || "Network error");
-    } finally {
-      setSubmitting(false);
+      console.error("Skip failed:", err);
     }
   };
 
@@ -584,6 +937,7 @@ export default function CalendarPage() {
       if (res.ok && (json.ok || json.success)) {
         setSelectedBlock(null);
         loadData();
+        loadTodayData();
       }
     } catch (err: any) {
       console.error("Cancel failed:", err);
@@ -594,6 +948,7 @@ export default function CalendarPage() {
   const hours24 = useMemo(() => Array.from({ length: 24 }, (_, i) => i), []);
 
   const openQuickScheduleAt = (dateStr: string, hour: number) => {
+    if (isDragging) return; // Don't open modal while dragging
     setBlockDate(dateStr);
     setBlockStartTime(`${String(hour).padStart(2, "0")}:00`);
     setBlockDuration("60");
@@ -786,7 +1141,7 @@ export default function CalendarPage() {
                     </div>
                   )}
 
-                  {/* 24 Hour Rows */}
+                  {/* 24 Hour Rows — each row is a drop zone */}
                   {hours24.map((hour) => {
                     const timeLabel = formatHourLabel(hour);
                     return (
@@ -800,32 +1155,15 @@ export default function CalendarPage() {
                           {timeLabel}
                         </div>
 
-                        {/* 7 Day Hour Slots with Drop Zone */}
+                        {/* 7 Day Hour Slots — Drop Zones with data attributes */}
                         {currentWeekDays.map((dayStr) => {
-                          const isSlotTarget = dragOverSlot?.date === dayStr && dragOverSlot?.hour === hour;
+                          const isSlotTarget = isDragging && hoverSlot?.date === dayStr && hoverSlot?.hour === hour;
                           return (
                             <div
                               key={dayStr}
-                              onDragOver={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                if (e.clientX !== 0 || e.clientY !== 0) {
-                                  setMousePos({ x: e.clientX, y: e.clientY });
-                                }
-                                if (dragOverSlot?.date !== dayStr || dragOverSlot?.hour !== hour) {
-                                  setDragOverSlot({ date: dayStr, hour });
-                                }
-                              }}
-                              onDragLeave={() => {
-                                if (dragOverSlot?.date === dayStr && dragOverSlot?.hour === hour) {
-                                  setDragOverSlot(null);
-                                }
-                              }}
-                              onDrop={(e) => {
-                                e.preventDefault();
-                                e.stopPropagation();
-                                handleDropOnSlot(dayStr, hour);
-                              }}
+                              data-drop-slot="true"
+                              data-drop-date={dayStr}
+                              data-drop-hour={hour}
                               onClick={() => openQuickScheduleAt(dayStr, hour)}
                               className={`border-r border-[#2A2B2F]/30 relative group transition-colors cursor-pointer ${
                                 isSlotTarget
@@ -834,18 +1172,18 @@ export default function CalendarPage() {
                               }`}
                             >
                               {/* Live Drop Target Ghost Placeholder */}
-                              {isSlotTarget && draggedBlock && (
+                              {isSlotTarget && dragState && (
                                 <div
                                   style={{
-                                    height: `${Math.max(26, (draggedBlock.duration / 60) * 56 - 3)}px`,
+                                    height: `${Math.max(26, (dragState.duration / 60) * 56 - 3)}px`,
                                   }}
                                   className="absolute left-0.5 right-0.5 top-0.5 z-20 bg-[#E8414A]/25 border-2 border-dashed border-[#E8414A] rounded-lg p-1 pointer-events-none flex flex-col justify-center shadow-lg shadow-[#E8414A]/30 animate-pulse"
                                 >
                                   <span className="text-[10px] font-bold text-white truncate leading-none">
-                                    {draggedBlock.title}
+                                    {dragState.title}
                                   </span>
                                   <span className="text-[9px] font-mono text-[#F9A8AC] mt-0.5 leading-none">
-                                    {formatMinutesToTime(hour * 60)} – {formatMinutesToTime(hour * 60 + draggedBlock.duration)}
+                                    {formatMinutesToTime(hour * 60)} – {formatMinutesToTime(hour * 60 + dragState.duration)}
                                   </span>
                                 </div>
                               )}
@@ -859,7 +1197,7 @@ export default function CalendarPage() {
                     );
                   })}
 
-                  {/* Overlaid Draggable Blocks */}
+                  {/* Overlaid Blocks (calendar events) */}
                   {weekDaysData.map((dayProj, colIdx) => {
                     const colLeftPercent = 12.5 + colIdx * 12.5;
 
@@ -871,59 +1209,17 @@ export default function CalendarPage() {
 
                       const isFocus = block.kind === "WORK_SESSION";
                       const isRoutine = block.kind === "ROUTINE_BLOCK";
-                      const isDone = block.variance.status === "ON_TRACK" || block.variance.status === "OVERRUN";
-                      const isBeingDragged = draggedBlock?.occurrenceId === block.occurrenceId;
-                      const isHardSelected = hardSelectBlockId === block.blockId;
+                      const isSkipped = (block.variance?.status as string) === "SKIPPED" || (block as any).status === "SKIPPED";
+                      const isDone = block.variance?.status === "ON_TRACK" || block.variance?.status === "OVERRUN" || (block as any).status === "COMPLETED";
+                      const isBeingDragged = isDragging && dragState?.blockId === block.blockId;
 
                       return (
                         <div
                           key={block.blockId}
-                          draggable={Boolean(block.occurrenceId)}
-                          onDragStart={(e) => {
-                            e.stopPropagation();
-                            setDraggedBlock({
-                              occurrenceId: block.occurrenceId,
-                              title: block.title,
-                              duration,
-                              kind: block.kind,
-                              originDate: block.dateOnly,
-                              originStartMin: startMin,
-                            });
-                            setHardSelectBlockId(block.blockId);
-                            setMousePos({ x: e.clientX, y: e.clientY });
-                            e.dataTransfer.setData("text/plain", block.occurrenceId || "");
-                            e.dataTransfer.effectAllowed = "move";
-                            // Transparent drag image so custom Notion-style floating card renders cleanly
-                            const img = new Image();
-                            img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
-                            e.dataTransfer.setDragImage(img, 0, 0);
-                          }}
-                          onDrag={(e) => {
-                            if (e.clientX !== 0 || e.clientY !== 0) {
-                              setMousePos({ x: e.clientX, y: e.clientY });
-                            }
-                          }}
-                          onDragEnd={() => {
-                            setDraggedBlock(null);
-                            setDragOverSlot(null);
-                            setMousePos(null);
-                            setHardSelectBlockId(null);
-                          }}
-                          onMouseDown={(e) => {
-                            if (e.button !== 0) return;
-                            longPressTimerRef.current = setTimeout(() => {
-                              setHardSelectBlockId(block.blockId);
-                            }, 180);
-                          }}
-                          onMouseUp={() => {
-                            if (longPressTimerRef.current) {
-                              clearTimeout(longPressTimerRef.current);
-                              longPressTimerRef.current = null;
-                            }
-                          }}
+                          onPointerDown={(e) => handleBlockPointerDown(e, block)}
                           onClick={(e) => {
                             e.stopPropagation();
-                            setSelectedBlock(block);
+                            if (!isDragging && !dragJustEndedRef.current) setSelectedBlock(block);
                           }}
                           title={`${block.title} (${formatMinutesToTime(startMin)} – ${formatMinutesToTime(startMin + duration)})`}
                           style={{
@@ -932,28 +1228,43 @@ export default function CalendarPage() {
                             left: `calc(${colLeftPercent}% + 2px)`,
                             width: "calc(12.5% - 4px)",
                             minHeight: "26px",
+                            touchAction: "none",
                           }}
-                          className={`absolute z-10 px-2 py-1 rounded-lg border text-left cursor-grab active:cursor-grabbing transition-all overflow-hidden shadow-md flex flex-col justify-center ${
+                          className={`absolute z-10 px-2 py-1 rounded-lg border text-left transition-all overflow-hidden shadow-md flex flex-col justify-center ${
                             isBeingDragged
-                              ? "opacity-30 border-dashed border-[#E8414A] ring-2 ring-[#E8414A]"
-                              : isHardSelected
-                              ? "border-[#E8414A] ring-2 ring-[#E8414A] shadow-2xl scale-[1.03] z-30 bg-[#2E3038]"
+                              ? "opacity-30 border-dashed border-[#E8414A] ring-2 ring-[#E8414A] scale-95"
+                              : isSkipped
+                              ? "bg-[#18191C]/70 border-dashed border-[#3A3B40] opacity-50 cursor-grab"
                               : isDone
-                              ? "bg-[#202227] border-[#2A2B2F] opacity-90"
-                              : "bg-[#26282E] border-[#3E424B] hover:border-[#E8414A]/70 hover:bg-[#2E3038] hover:z-20"
+                              ? "bg-[#18231C] border-[#2A3F30] opacity-95 cursor-grab border-l-[3.5px] border-l-emerald-500"
+                              : "bg-[#26282E] border-[#3E424B] hover:border-[#E8414A]/70 hover:bg-[#2E3038] hover:z-20 cursor-grab"
                           } ${
-                            isFocus
-                              ? "border-l-[3.5px] border-l-[#E8414A]"
-                              : isRoutine
-                              ? "border-l-[3.5px] border-l-amber-500"
-                              : "border-l-[3.5px] border-l-[#E8414A]/70"
+                            !isDone && !isSkipped
+                              ? isFocus
+                                ? "border-l-[3.5px] border-l-[#E8414A]"
+                                : isRoutine
+                                ? "border-l-[3.5px] border-l-amber-500"
+                                : "border-l-[3.5px] border-l-[#E8414A]/70"
+                              : ""
                           }`}
                         >
                           {/* Task Title (High Contrast & Visible) */}
                           <div className="flex items-center gap-1 leading-none">
-                            <span className="text-[11px] font-bold text-white truncate drop-shadow-sm flex-1">
+                            <span
+                              className={`text-[11px] font-bold truncate drop-shadow-sm flex-1 ${
+                                isSkipped ? "line-through text-gray-400" : "text-white"
+                              }`}
+                            >
                               {block.title}
                             </span>
+                            {isDone && (
+                              <span className="text-[10px] text-emerald-400 font-bold" title="Completed">✓</span>
+                            )}
+                            {isSkipped && (
+                              <span className="text-[8px] uppercase tracking-wider bg-gray-700/60 text-gray-300 px-1 py-0.2 rounded font-mono">
+                                Skip
+                              </span>
+                            )}
                           </div>
 
                           {/* Time & Duration Subtitle */}
@@ -994,31 +1305,14 @@ export default function CalendarPage() {
                     const start = b.planned?.startMinute ?? 0;
                     return start >= hourStart && start < hourEnd;
                   });
-                  const isSlotTarget = dragOverSlot?.date === selectedDate && dragOverSlot?.hour === hour;
+                  const isSlotTarget = isDragging && hoverSlot?.date === selectedDate && hoverSlot?.hour === hour;
 
                   return (
                     <div
                       key={hour}
-                      onDragOver={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        if (e.clientX !== 0 || e.clientY !== 0) {
-                          setMousePos({ x: e.clientX, y: e.clientY });
-                        }
-                        if (dragOverSlot?.date !== selectedDate || dragOverSlot?.hour !== hour) {
-                          setDragOverSlot({ date: selectedDate, hour });
-                        }
-                      }}
-                      onDragLeave={() => {
-                        if (dragOverSlot?.date === selectedDate && dragOverSlot?.hour === hour) {
-                          setDragOverSlot(null);
-                        }
-                      }}
-                      onDrop={(e) => {
-                        e.preventDefault();
-                        e.stopPropagation();
-                        handleDropOnSlot(selectedDate, hour);
-                      }}
+                      data-drop-slot="true"
+                      data-drop-date={selectedDate}
+                      data-drop-hour={hour}
                       className={`flex items-start min-h-[58px] transition-colors relative group ${
                         isSlotTarget
                           ? "bg-[#E8414A]/15 ring-2 ring-inset ring-[#E8414A]"
@@ -1034,13 +1328,13 @@ export default function CalendarPage() {
                         onClick={() => openQuickScheduleAt(selectedDate, hour)}
                       >
                         {/* Live Drop Preview Placeholder in Day View */}
-                        {isSlotTarget && draggedBlock && (
+                        {isSlotTarget && dragState && (
                           <div className="p-2.5 bg-[#E8414A]/25 border-2 border-dashed border-[#E8414A] rounded-xl flex items-center justify-between shadow-lg shadow-[#E8414A]/20 animate-pulse pointer-events-none">
                             <div className="flex items-center gap-2">
                               <span className="w-2 h-2 rounded-full bg-[#E8414A]" />
-                              <span className="text-xs font-bold text-white">{draggedBlock.title}</span>
+                              <span className="text-xs font-bold text-white">{dragState.title}</span>
                               <span className="text-[10px] font-mono text-[#F9A8AC]">
-                                {formatMinutesToTime(hour * 60)} – {formatMinutesToTime(hour * 60 + draggedBlock.duration)}
+                                {formatMinutesToTime(hour * 60)} – {formatMinutesToTime(hour * 60 + dragState.duration)}
                               </span>
                             </div>
                             <span className="text-[10px] font-semibold text-[#F9A8AC] uppercase">Drop here</span>
@@ -1053,62 +1347,19 @@ export default function CalendarPage() {
                           </div>
                         ) : (
                           hourBlocks.map((block) => {
-                            const isBeingDragged = draggedBlock?.occurrenceId === block.occurrenceId;
-                            const isHardSelected = hardSelectBlockId === block.blockId;
+                            const isBeingDragged = isDragging && dragState?.blockId === block.blockId;
                             return (
                               <div
                                 key={block.blockId}
-                                draggable={Boolean(block.occurrenceId)}
-                                onDragStart={(e) => {
-                                  e.stopPropagation();
-                                  setDraggedBlock({
-                                    occurrenceId: block.occurrenceId,
-                                    title: block.title,
-                                    duration: block.planned?.durationMinutes ?? block.actual?.durationMinutes ?? 60,
-                                    kind: block.kind,
-                                    originDate: block.dateOnly,
-                                    originStartMin: block.planned?.startMinute,
-                                  });
-                                  setHardSelectBlockId(block.blockId);
-                                  setMousePos({ x: e.clientX, y: e.clientY });
-                                  e.dataTransfer.setData("text/plain", block.occurrenceId || "");
-                                  e.dataTransfer.effectAllowed = "move";
-                                  const img = new Image();
-                                  img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
-                                  e.dataTransfer.setDragImage(img, 0, 0);
-                                }}
-                                onDrag={(e) => {
-                                  if (e.clientX !== 0 || e.clientY !== 0) {
-                                    setMousePos({ x: e.clientX, y: e.clientY });
-                                  }
-                                }}
-                                onDragEnd={() => {
-                                  setDraggedBlock(null);
-                                  setDragOverSlot(null);
-                                  setMousePos(null);
-                                  setHardSelectBlockId(null);
-                                }}
-                                onMouseDown={(e) => {
-                                  if (e.button !== 0) return;
-                                  longPressTimerRef.current = setTimeout(() => {
-                                    setHardSelectBlockId(block.blockId);
-                                  }, 180);
-                                }}
-                                onMouseUp={() => {
-                                  if (longPressTimerRef.current) {
-                                    clearTimeout(longPressTimerRef.current);
-                                    longPressTimerRef.current = null;
-                                  }
-                                }}
+                                onPointerDown={(e) => handleBlockPointerDown(e, block)}
                                 onClick={(e) => {
                                   e.stopPropagation();
-                                  setSelectedBlock(block);
+                                  if (!isDragging && !dragJustEndedRef.current) setSelectedBlock(block);
                                 }}
-                                className={`p-3 bg-[#24262C] border rounded-xl transition-all flex items-center justify-between shadow-sm cursor-grab active:cursor-grabbing ${
+                                style={{ touchAction: "none" }}
+                                className={`p-3 bg-[#24262C] border rounded-xl transition-all flex items-center justify-between shadow-sm cursor-grab ${
                                   isBeingDragged
-                                    ? "opacity-30 border-dashed border-[#E8414A] ring-2 ring-[#E8414A]"
-                                    : isHardSelected
-                                    ? "border-[#E8414A] ring-2 ring-[#E8414A] shadow-2xl scale-[1.01] bg-[#2E3038]"
+                                    ? "opacity-30 border-dashed border-[#E8414A] ring-2 ring-[#E8414A] scale-95"
                                     : "border-[#3A3D46] hover:border-[#E8414A]/50"
                                 }`}
                               >
@@ -1120,6 +1371,11 @@ export default function CalendarPage() {
                                       }`}
                                     />
                                     <h4 className="text-xs font-bold text-white">{block.title}</h4>
+                                    {(block.variance.status as string) === "SKIPPED" && (
+                                      <span className="text-[10px] font-semibold text-gray-400 bg-gray-700/40 px-2 py-0.5 rounded-full border border-gray-600/40">
+                                        Skipped
+                                      </span>
+                                    )}
                                     {block.variance.status === "OVERRUN" && (
                                       <span className="text-[10px] font-semibold text-[#F9A8AC] bg-[#E8414A]/15 px-2 py-0.5 rounded-full border border-[#E8414A]/30">
                                         +{block.variance.durationDeltaMinutes}m longer
@@ -1235,23 +1491,28 @@ export default function CalendarPage() {
         <aside className="lg:col-span-1 h-full flex flex-col min-h-0 space-y-4 overflow-y-auto pr-1">
           {/* Today Summary Card */}
           <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-4 shadow-lg flex-shrink-0">
-            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center gap-1.5">
-              <Clock className="w-3.5 h-3.5 text-[#E8414A]" />
-              <span>Today</span>
+            <h3 className="text-xs font-bold uppercase tracking-wider text-gray-400 mb-3 flex items-center justify-between">
+              <span className="flex items-center gap-1.5">
+                <Clock className="w-3.5 h-3.5 text-[#E8414A]" />
+                <span>Today</span>
+              </span>
+              <span className="text-[10px] text-gray-500 font-mono font-normal">
+                {new Date().toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+              </span>
             </h3>
 
             <div className="grid grid-cols-2 gap-2 mb-3">
               <div className="bg-[#161618] border border-[#2A2B2F] rounded-xl p-2.5">
                 <div className="text-[10px] text-gray-400">Planned focus</div>
                 <div className="text-base font-bold text-[#FFFDFC] mt-0.5">
-                  {formatDuration(dayProjection?.summary.totalPlannedMinutes || 0)}
+                  {formatDuration((todayProjection || (isToday ? dayProjection : null))?.summary.totalPlannedMinutes || 0)}
                 </div>
               </div>
 
               <div className="bg-[#161618] border border-[#2A2B2F] rounded-xl p-2.5">
                 <div className="text-[10px] text-gray-400">Time spent</div>
                 <div className="text-base font-bold text-[#E8414A] mt-0.5">
-                  {formatDuration(dayProjection?.summary.totalActualMinutes || 0)}
+                  {formatDuration((todayProjection || (isToday ? dayProjection : null))?.summary.totalActualMinutes || 0)}
                 </div>
               </div>
             </div>
@@ -1260,13 +1521,13 @@ export default function CalendarPage() {
               <div className="flex justify-between">
                 <span>Completed</span>
                 <span className="text-[#FFFDFC] font-semibold">
-                  {dayProjection?.summary.completedOccurrencesCount || 0}
+                  {(todayProjection || (isToday ? dayProjection : null))?.summary.completedOccurrencesCount || 0}
                 </span>
               </div>
               <div className="flex justify-between">
                 <span>Extra work</span>
                 <span className="text-[#FFFDFC] font-semibold">
-                  {dayProjection?.summary.adHocSessionsCount || 0}
+                  {(todayProjection || (isToday ? dayProjection : null))?.summary.adHocSessionsCount || 0}
                 </span>
               </div>
             </div>
@@ -1282,59 +1543,43 @@ export default function CalendarPage() {
               <span className="text-xs font-bold text-gray-500">{unscheduledTasks.length}</span>
             </div>
 
-            <p className="text-[10px] text-gray-500 mb-2">Drag tasks onto the calendar or click Schedule</p>
+            <p className="text-[10px] text-gray-500 mb-2">Long-press tasks to pick up and drag onto the calendar</p>
 
             <div className="flex-1 min-h-0 overflow-y-auto space-y-2 pr-1">
               {unscheduledTasks.length > 0 ? (
-                unscheduledTasks.map((t) => (
-                  <div
-                    key={t.id}
-                    draggable
-                    onDragStart={(e) => {
-                      setDraggedBlock({
-                        taskId: t.id,
-                        title: t.title,
-                        duration: 60,
-                      });
-                      setMousePos({ x: e.clientX, y: e.clientY });
-                      e.dataTransfer.setData("text/plain", t.id);
-                      e.dataTransfer.effectAllowed = "move";
-                      const img = new Image();
-                      img.src = "data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'%3E%3C/svg%3E";
-                      e.dataTransfer.setDragImage(img, 0, 0);
-                    }}
-                    onDrag={(e) => {
-                      if (e.clientX !== 0 || e.clientY !== 0) {
-                        setMousePos({ x: e.clientX, y: e.clientY });
-                      }
-                    }}
-                    onDragEnd={() => {
-                      setDraggedBlock(null);
-                      setDragOverSlot(null);
-                      setHardSelectBlockId(null);
-                    }}
-                    className="p-2.5 bg-[#161618] border border-[#2A2B2F] hover:border-[#E8414A]/40 rounded-xl transition-all flex items-center justify-between gap-2 cursor-grab active:cursor-grabbing group shadow-sm"
-                  >
-                    <div className="truncate flex items-center gap-1.5 min-w-0">
-                      <GripVertical className="w-3 h-3 text-gray-600 group-hover:text-gray-400 shrink-0" />
-                      <div className="truncate">
-                        <div className="text-xs font-semibold text-[#FFFDFC] truncate">{t.title}</div>
-                        <div className="text-[9px] text-gray-400 capitalize">{t.priority} priority</div>
-                      </div>
-                    </div>
-                    <button
-                      onClick={() => {
-                        setBlockTitle(t.title);
-                        setBlockDate(t.dueDate || selectedDate);
-                        setBlockStartTime("10:00");
-                        setShowScheduleModal(true);
-                      }}
-                      className="px-2 py-1 bg-[#1F2023] hover:bg-[#E8414A] hover:text-white border border-[#2A2B2F] text-[10px] font-bold text-gray-300 rounded-lg transition-colors shrink-0"
+                unscheduledTasks.map((t) => {
+                  const isBeingDragged = isDragging && dragState?.taskId === t.id;
+                  return (
+                    <div
+                      key={t.id}
+                      onPointerDown={(e) => handleTaskPointerDown(e, t)}
+                      style={{ touchAction: "none" }}
+                      className={`p-2.5 bg-[#161618] border border-[#2A2B2F] hover:border-[#E8414A]/40 rounded-xl transition-all flex items-center justify-between gap-2 cursor-grab group shadow-sm ${
+                        isBeingDragged ? "opacity-30 scale-95 border-dashed border-[#E8414A]" : ""
+                      }`}
                     >
-                      + Schedule
-                    </button>
-                  </div>
-                ))
+                      <div className="truncate flex items-center gap-1.5 min-w-0">
+                        <GripVertical className="w-3 h-3 text-gray-600 group-hover:text-gray-400 shrink-0" />
+                        <div className="truncate">
+                          <div className="text-xs font-semibold text-[#FFFDFC] truncate">{t.title}</div>
+                          <div className="text-[9px] text-gray-400 capitalize">{t.priority} priority</div>
+                        </div>
+                      </div>
+                      <button
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setBlockTitle(t.title);
+                          setBlockDate(t.dueDate || selectedDate);
+                          setBlockStartTime("10:00");
+                          setShowScheduleModal(true);
+                        }}
+                        className="px-2 py-1 bg-[#1F2023] hover:bg-[#E8414A] hover:text-white border border-[#2A2B2F] text-[10px] font-bold text-gray-300 rounded-lg transition-colors shrink-0"
+                      >
+                        + Schedule
+                      </button>
+                    </div>
+                  );
+                })
               ) : (
                 <p className="text-xs text-gray-500 mt-2">All tasks for today are scheduled.</p>
               )}
@@ -1367,82 +1612,56 @@ export default function CalendarPage() {
         </aside>
       </div>
 
-      {/* ─── Block Details Modal ─── */}
+      {/* ─── Block Details Modal (Editable) ─── */}
       {selectedBlock && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl max-w-sm w-full p-6 text-[#FFFDFC] shadow-2xl animate-in zoom-in-95 duration-150">
-            <div className="flex items-start justify-between mb-4">
-              <div>
-                <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">
-                  {selectedBlock.kind.replace("_", " ")}
-                </span>
-                <h3 className="text-base font-bold text-white mt-0.5">{selectedBlock.title}</h3>
-              </div>
-              <button
-                onClick={() => setSelectedBlock(null)}
-                className="text-gray-400 hover:text-white p-1"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
-
-            <div className="space-y-2.5 text-xs text-gray-300 border-t border-[#2A2B2F] pt-3 mb-5">
-              <div className="flex justify-between">
-                <span className="text-gray-400">Date</span>
-                <span className="font-semibold text-white">{selectedBlock.dateOnly}</span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Time</span>
-                <span className="font-semibold text-white">
-                  {formatMinutesToTime(selectedBlock.planned?.startMinute || 0)} –{" "}
-                  {formatMinutesToTime(selectedBlock.planned?.endMinute || 60)}
-                </span>
-              </div>
-              <div className="flex justify-between">
-                <span className="text-gray-400">Duration</span>
-                <span className="font-semibold text-white">
-                  {formatDuration(selectedBlock.planned?.durationMinutes || 60)}
-                </span>
-              </div>
-            </div>
-
-            <div className="flex items-center gap-2 pt-2 border-t border-[#2A2B2F]">
-              <button
-                onClick={() => {
-                  setActiveOccurrenceId(selectedBlock.occurrenceId || null);
-                  setLogTitle(selectedBlock.title);
-                  setLogDuration(String(selectedBlock.planned?.durationMinutes || 60));
-                  setShowLogModal(true);
-                }}
-                className="flex-1 py-2 bg-[#E8414A] hover:bg-[#D62C35] text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-[#E8414A]/20"
-              >
-                Log time
-              </button>
-
-              <button
-                onClick={() => {
-                  setRescheduleDate(selectedBlock.dateOnly);
-                  setRescheduleTime(formatMinutesToTime(selectedBlock.planned?.startMinute || 600));
-                  setShowRescheduleModal(true);
-                }}
-                className="px-3 py-2 bg-[#161618] hover:bg-[#2A2B2F] border border-[#2A2B2F] text-gray-300 text-xs font-semibold rounded-xl transition-colors"
-                title="Reschedule"
-              >
-                <Edit3 className="w-3.5 h-3.5" />
-              </button>
-
-              {selectedBlock.occurrenceId && (
-                <button
-                  onClick={() => handleCancelOccurrence(selectedBlock.occurrenceId!)}
-                  className="px-3 py-2 bg-[#161618] hover:bg-[#E8414A]/20 hover:text-[#E8414A] border border-[#2A2B2F] text-gray-400 text-xs font-semibold rounded-xl transition-colors"
-                  title="Delete"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                </button>
-              )}
-            </div>
-          </div>
-        </div>
+        <BlockDetailsModal
+          block={selectedBlock}
+          onClose={() => setSelectedBlock(null)}
+          onLogTime={() => {
+            setActiveOccurrenceId(selectedBlock.occurrenceId || null);
+            setLogTitle(selectedBlock.title);
+            setLogDuration(String(selectedBlock.planned?.durationMinutes || 60));
+            setShowLogModal(true);
+          }}
+          onDelete={() => {
+            if (selectedBlock.occurrenceId) handleCancelOccurrence(selectedBlock.occurrenceId);
+          }}
+          onSkip={() => {
+            if (selectedBlock.occurrenceId) handleSkipOccurrence(selectedBlock.occurrenceId);
+          }}
+          onSave={async (newDate, newStartTime, newDurationMinutes) => {
+            if (!selectedBlock.occurrenceId) return;
+            setSubmitting(true);
+            try {
+              const res = await fetch("/api/calendar/mutate", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  actionType: "reschedule_occurrence",
+                  payload: {
+                    occurrenceId: selectedBlock.occurrenceId,
+                    newDateOnly: newDate,
+                    newStartTime,
+                    newDurationMinutes,
+                  },
+                }),
+              });
+              const json = await res.json();
+              if (res.ok && (json.ok || json.success)) {
+                setSelectedBlock(null);
+                loadData();
+                loadTodayData();
+              } else {
+                alert(json.error?.message || json.error || "Failed to save changes");
+              }
+            } catch (err: any) {
+              alert(err.message || "Network error");
+            } finally {
+              setSubmitting(false);
+            }
+          }}
+          submitting={submitting}
+        />
       )}
 
       {/* ─── Schedule Block Modal ─── */}
@@ -1630,99 +1849,66 @@ export default function CalendarPage() {
         </div>
       )}
 
-      {/* ─── Reschedule Modal ─── */}
-      {showRescheduleModal && selectedBlock && (
-        <div className="fixed inset-0 bg-black/75 backdrop-blur-sm z-50 flex items-center justify-center p-4">
-          <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl max-w-sm w-full p-6 text-[#FFFDFC] shadow-2xl animate-in zoom-in-95 duration-150">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="text-base font-bold text-white">Move Event</h3>
-              <button
-                onClick={() => setShowRescheduleModal(false)}
-                className="text-gray-400 hover:text-white"
-              >
-                <X className="w-4 h-4" />
-              </button>
-            </div>
 
-            <form onSubmit={handleRescheduleSubmit} className="space-y-4">
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 mb-1.5">New Date</label>
-                <input
-                  type="date"
-                  required
-                  value={rescheduleDate}
-                  onChange={(e) => setRescheduleDate(e.target.value)}
-                  className="w-full bg-[#161618] border border-[#2A2B2F] focus:border-[#E8414A] rounded-xl px-3 py-2 text-xs text-[#FFFDFC] outline-none"
-                />
-              </div>
 
-              <div>
-                <label className="block text-xs font-semibold text-gray-400 mb-1.5">New Time</label>
-                <input
-                  type="time"
-                  required
-                  value={rescheduleTime}
-                  onChange={(e) => setRescheduleTime(e.target.value)}
-                  className="w-full bg-[#161618] border border-[#2A2B2F] focus:border-[#E8414A] rounded-xl px-3 py-2 text-xs text-[#FFFDFC] outline-none"
-                />
-              </div>
-
-              <div className="flex items-center justify-end gap-2.5 pt-3">
-                <button
-                  type="button"
-                  onClick={() => setShowRescheduleModal(false)}
-                  className="px-4 py-2 bg-[#161618] hover:bg-[#2A2B2F] border border-[#2A2B2F] text-gray-300 text-xs font-semibold rounded-xl transition-colors"
-                >
-                  Cancel
-                </button>
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="px-5 py-2 bg-[#E8414A] hover:bg-[#D62C35] text-white text-xs font-bold rounded-xl transition-all shadow-md shadow-[#E8414A]/20"
-                >
-                  {submitting ? "Moving..." : "Save changes"}
-                </button>
-              </div>
-            </form>
-          </div>
-        </div>
-      )}
-
-      {/* ─── FLOATING CARD DRAG PREVIEW (Google Calendar / Notion Calendar Style) ─── */}
-      {draggedBlock && mousePos && (
+      {/* ─── FLOATING CARD (Google Calendar "Pick Up" Style) ─── */}
+      {/* This renders as a fixed-position portal that follows the pointer during drag */}
+      {isDragging && dragState && pointerPos && (
         <div
-          className="fixed pointer-events-none z-[9999] transition-transform duration-75 ease-out select-none"
+          className="fixed pointer-events-none z-[9999] select-none"
           style={{
-            left: `${mousePos.x + 14}px`,
-            top: `${mousePos.y + 14}px`,
-            transform: "rotate(2.5deg) scale(1.04)",
-            transformOrigin: "top left",
+            left: `${pointerPos.x}px`,
+            top: `${pointerPos.y}px`,
+            transform: "translate(-50%, -120%) rotate(1.5deg) scale(1.05)",
+            transformOrigin: "center bottom",
           }}
         >
-          <div className="bg-[#1C1E24]/95 backdrop-blur-md border-2 border-[#E8414A] rounded-xl px-3.5 py-2.5 shadow-[0_16px_40px_rgba(232,65,74,0.4)] min-w-[210px] max-w-[280px]">
-            <div className="flex items-center justify-between gap-2 mb-1">
-              <span className="text-[10px] font-bold uppercase tracking-wider text-[#E8414A] flex items-center gap-1.5">
-                <span className="w-2 h-2 rounded-full bg-[#E8414A] animate-ping" />
-                Moving Card
+          <div
+            className="bg-[#1C1E24]/95 backdrop-blur-md border-2 border-[#E8414A] rounded-xl px-4 py-3 shadow-[0_20px_50px_rgba(232,65,74,0.45),0_0_0_1px_rgba(232,65,74,0.2)] min-w-[200px] max-w-[260px]"
+            style={{
+              animation: "floatCardIn 0.15s ease-out",
+            }}
+          >
+            {/* Card header with "Picked up" indicator */}
+            <div className="flex items-center gap-2 mb-1.5">
+              <span className="w-2.5 h-2.5 rounded-full bg-[#E8414A] shadow-[0_0_8px_rgba(232,65,74,0.6)]" />
+              <span className="text-xs font-bold text-white truncate flex-1">
+                {dragState.title}
               </span>
-              {dragOverSlot ? (
-                <span className="text-[11px] font-mono font-bold text-white bg-[#E8414A]/25 px-2 py-0.5 rounded border border-[#E8414A]/50">
-                  {formatMinutesToTime(dragOverSlot.hour * 60)}
+            </div>
+
+            {/* Duration chip */}
+            <div className="flex items-center justify-between">
+              <span className="text-[10px] font-mono text-gray-400">
+                {formatDuration(dragState.duration || 60)}
+              </span>
+              {hoverSlot ? (
+                <span className="text-[10px] font-bold text-[#E8414A] bg-[#E8414A]/15 px-2 py-0.5 rounded-full border border-[#E8414A]/30">
+                  {formatMinutesToTime(hoverSlot.hour * 60)} • {hoverSlot.date.split("-").slice(1).join("/")}
                 </span>
               ) : (
-                <span className="text-[10px] font-mono text-gray-400">
-                  {formatDuration(draggedBlock.duration || 60)}
+                <span className="text-[10px] text-gray-500 italic">
+                  Drag to a time slot
                 </span>
               )}
             </div>
-            <div className="text-xs font-bold text-white truncate drop-shadow-sm">{draggedBlock.title}</div>
-            <div className="text-[10px] text-gray-400 mt-1 flex items-center justify-between">
-              <span>{dragOverSlot ? dragOverSlot.date : (draggedBlock.originDate || "Drop on timeline")}</span>
-              <span className="text-[#E8414A] font-semibold text-[9px]">Live Drop Target</span>
-            </div>
           </div>
         </div>
       )}
+
+      {/* Inject keyframe animation for floating card entrance */}
+      <style dangerouslySetInnerHTML={{ __html: `
+        @keyframes floatCardIn {
+          0% {
+            opacity: 0;
+            transform: translate(-50%, -100%) scale(0.9) rotate(0deg);
+          }
+          100% {
+            opacity: 1;
+            transform: translate(-50%, -120%) rotate(1.5deg) scale(1.05);
+          }
+        }
+      `}} />
     </div>
   );
 }

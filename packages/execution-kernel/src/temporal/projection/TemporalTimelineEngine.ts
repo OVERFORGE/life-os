@@ -22,6 +22,7 @@ export type ExecutionVarianceStatus =
   | "OVERRUN"               // Actual execution duration exceeded planned duration
   | "UNDERRUN"              // Actual execution ended earlier than planned
   | "MISSED"                // Planned interval has passed with no execution evidence
+  | "SKIPPED"               // Explicitly skipped by user
   | "UNPLANNED_EXECUTION";   // Execution logged without a scheduled occurrence
 
 export interface TimelineBlockProjection {
@@ -31,6 +32,7 @@ export interface TimelineBlockProjection {
   title: string;
   kind: string;
   dateOnly: string;
+  status?: string;
   planned?: {
     startMinute: number;
     endMinute: number;
@@ -62,6 +64,7 @@ export interface DayTimelineProjection {
     totalActualMinutes: number;
     completedOccurrencesCount: number;
     missedOccurrencesCount: number;
+    skippedOccurrencesCount?: number;
     adHocSessionsCount: number;
   };
   projectedAt: number;
@@ -95,6 +98,7 @@ export class TemporalTimelineEngine {
     let totalActualMinutes = 0;
     let completedCount = 0;
     let missedCount = 0;
+    let skippedCount = 0;
     let adHocCount = 0;
 
     // 1. Process Planned Occurrences
@@ -139,6 +143,7 @@ export class TemporalTimelineEngine {
           title: occ.title,
           kind: occ.kind,
           dateOnly,
+          status: occ.status,
           planned: {
             startMinute: p.startMinute,
             endMinute: p.endMinute,
@@ -161,10 +166,13 @@ export class TemporalTimelineEngine {
         });
       } else {
         // No execution chronicle logged yet
+        const isSkipped = occ.status === "SKIPPED";
         const endMs = new Date(p.endIsoUtc).getTime();
         const isPast = referenceTimeMs > endMs;
 
-        if (isPast && occ.status !== "COMPLETED") {
+        if (isSkipped) {
+          skippedCount++;
+        } else if (isPast && occ.status !== "COMPLETED") {
           missedCount++;
         }
 
@@ -174,6 +182,7 @@ export class TemporalTimelineEngine {
           title: occ.title,
           kind: occ.kind,
           dateOnly,
+          status: occ.status,
           planned: {
             startMinute: p.startMinute,
             endMinute: p.endMinute,
@@ -182,9 +191,11 @@ export class TemporalTimelineEngine {
             endIsoUtc: p.endIsoUtc,
           },
           variance: {
-            status: isPast ? "MISSED" : "PLANNED_PENDING",
+            status: isSkipped ? "SKIPPED" : isPast ? "MISSED" : "PLANNED_PENDING",
             durationDeltaMinutes: -p.durationMinutes,
-            explanation: isPast
+            explanation: isSkipped
+              ? "Explicitly skipped by user"
+              : isPast
               ? "Scheduled block passed without logged execution"
               : "Upcoming scheduled block",
           },
@@ -239,6 +250,7 @@ export class TemporalTimelineEngine {
         totalActualMinutes,
         completedOccurrencesCount: completedCount,
         missedOccurrencesCount: missedCount,
+        skippedOccurrencesCount: skippedCount,
         adHocSessionsCount: adHocCount,
       },
       projectedAt: Date.now(),

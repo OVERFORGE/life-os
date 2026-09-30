@@ -4,7 +4,8 @@ import {
   View, Text, ScrollView, TouchableOpacity, ActivityIndicator,
   Modal, Alert, Animated, PanResponder, Dimensions, TextInput
 } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useSafeFocusEffect } from '../../../../utils/useSafeFocusEffect';
 import {
   ArrowLeft, Plus, CheckCircle2, Circle, Clock,
   Trash2, Edit3, X, ChevronRight, AlertCircle, Calendar,
@@ -31,7 +32,7 @@ export default function TasksScreen() {
   const [rescheduleTime, setRescheduleTime] = useState('');
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
-  useFocusEffect(useCallback(() => { loadTasks(); }, []));
+  useSafeFocusEffect(useCallback(() => { loadTasks(); }, []));
 
   const loadTasks = async (silent = false) => {
     if (!silent && !tasksData) setLoading(true);

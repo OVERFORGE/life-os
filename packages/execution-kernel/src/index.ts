@@ -392,3 +392,6 @@ export * from "./temporal/projection/TemporalTimelineEngine";
 export * from "./temporal/cadence/CadenceLearningEngine";
 export * from "./temporal/adapters/TemporalActionAdapters";
 
+// Security & Vault Infrastructure
+export * from "./shared/CredentialVault";
+

@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { ArrowLeft, TrendingUp, TrendingDown, Minus, Zap } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import { fetchWithAuth } from '../../../utils/api';
 
 const THEME_COLORS: Record<string, string> = {
@@ -51,7 +51,7 @@ export default function EraDetailScreen() {
     finally { setLoading(false); }
   }, [id]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useSafeFocusEffect(useCallback(() => { load(); }, [load]));
 
   const themeColor = era ? (THEME_COLORS[era.narrative?.theme] || '#E8414A') : '#E8414A';
   const totalDays = era?.phases?.reduce((a: number, p: any) => a + (p.durationDays || 0), 0) || 0;

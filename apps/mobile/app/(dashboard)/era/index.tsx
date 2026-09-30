@@ -3,7 +3,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { ArrowLeft, ChevronRight, TrendingUp, TrendingDown, Minus } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import { fetchWithAuth } from '../../../utils/api';
 
 const THEME_COLORS: Record<string, string> = {
@@ -38,7 +38,7 @@ export default function ErasListScreen() {
     finally { setLoading(false); }
   }, []);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useSafeFocusEffect(useCallback(() => { load(); }, [load]));
 
   return (
     <View style={{ flex: 1, backgroundColor: '#161618' }}>

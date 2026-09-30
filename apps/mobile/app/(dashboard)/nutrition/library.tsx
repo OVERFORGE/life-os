@@ -3,7 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, Image, ActivityIndicator, Modal, TextInput, SafeAreaView } from 'react-native';
 import { ArrowLeft, Plus, Dna, Layers, Leaf, Camera, Edit2, Trash2, X, Check, Coffee, Sun, Moon, Apple, Clock } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import { useToast } from '../../../components/ui/Toast';
 import { fetchWithAuth } from '../../../utils/api';
 
@@ -70,7 +70,7 @@ export default function FoodLibraryScreen() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { loadLibrary(); }, [loadLibrary]));
+  useSafeFocusEffect(useCallback(() => { loadLibrary(); }, [loadLibrary]));
 
   const openEditTemplate = (t: any) => {
     setEditTemplate(t);

@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { Camera, Activity, ChevronRight, BookOpen, Layers, X, Plus, Minus, Check, ArrowLeft, CalendarDays } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import { useToast } from '../../../components/ui/Toast';
 import { fetchWithAuth } from '../../../utils/api';
 
@@ -84,7 +84,7 @@ export default function NutritionDashboard() {
   }, [fetchAll]);
 
   // Re-fetch every time the screen comes into focus
-  useFocusEffect(useCallback(() => {
+  useSafeFocusEffect(useCallback(() => {
     fetchAll();
   }, [fetchAll]));
 

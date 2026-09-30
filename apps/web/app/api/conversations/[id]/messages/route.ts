@@ -2,6 +2,7 @@ import { NextRequest } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { getAuthSession } from "@/lib/auth";
 import { Conversation } from "@/server/db/models/Conversation";
+import "@/server/db/models/UserProviderConnection";
 import { Kernel } from "@life-os/execution-kernel";
 
 type RouteParams = { params: Promise<{ id: string }> };
@@ -29,7 +30,7 @@ export async function POST(req: NextRequest, props: RouteParams) {
   }
 
   const { id: conversationId } = await props.params;
-  const { message, model, mode = "general" } = await req.json();
+  const { message, model, mode = "general", streamFormat } = await req.json();
 
   if (!message) {
     return Response.json({ error: "Message is required" }, { status: 400 });
@@ -72,6 +73,7 @@ export async function POST(req: NextRequest, props: RouteParams) {
       message,
       model,
       mode,
+      streamFormat: streamFormat || (req.headers.get("accept")?.includes("text/event-stream") ? "events" : "raw"),
     });
   } catch (err: any) {
     console.error("POST /api/conversations/[id]/messages Error:", err);

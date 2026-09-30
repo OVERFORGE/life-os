@@ -185,6 +185,35 @@ export class KernelCapabilityService implements IKernelCapabilityService {
       try {
         const executionData = await adapter.execute(action, userId);
 
+        if (executionData && executionData.success === false) {
+          const errMsg = executionData.error?.message || executionData.error || "Action execution failed";
+          const failStatus = executionData.status || "FAILED";
+
+          this.auditStore.set(idempotencyKey, {
+            idempotencyKey,
+            actionId: action.id,
+            status: failStatus,
+            error: errMsg,
+            timestamp: Date.now(),
+          });
+
+          results.push({
+            actionId: action.id,
+            idempotencyKey,
+            actionType: action.actionType,
+            status: failStatus,
+            success: false,
+            error: errMsg,
+            data: executionData,
+            targetEntityId: action.targetEntityId,
+            timestamp: Date.now(),
+          });
+
+          // Trigger Reverse Compensation Saga if prior actions succeeded
+          await this.runCompensatingSaga(executedStack, userId, results);
+          break; // Stop batch execution
+        }
+
         this.auditStore.set(idempotencyKey, {
           idempotencyKey,
           actionId: action.id,

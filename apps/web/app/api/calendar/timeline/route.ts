@@ -69,7 +69,6 @@ export async function GET(req: NextRequest) {
         TemporalOccurrence.find({
           userId,
           dateOnly: { $in: weekDays },
-          status: { $ne: "CANCELLED" },
         }).lean(),
         ExecutionChronicle.find({
           userId,
@@ -228,7 +227,6 @@ export async function GET(req: NextRequest) {
     const occurrences = await TemporalOccurrence.find({
       userId,
       dateOnly,
-      status: { $ne: "CANCELLED" },
     }).lean();
 
     const dayStartMs = new Date(`${dateOnly}T00:00:00Z`).getTime() - 6 * 3600 * 1000;

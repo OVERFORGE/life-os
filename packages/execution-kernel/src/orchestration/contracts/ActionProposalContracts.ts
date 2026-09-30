@@ -37,7 +37,9 @@ export type DomainActionType =
   | "reschedule_occurrence"
   | "cancel_occurrence"
   | "create_temporal_series"
-  | "log_execution_interval";
+  | "log_execution_interval"
+  // Sovereign External Capability Action
+  | "external_capability_action";
 
 export interface DomainActionCapability {
   actionType: DomainActionType;
@@ -346,6 +348,16 @@ export const DOMAIN_CAPABILITIES: Record<DomainActionType, DomainActionCapabilit
     idempotencyScope: "TRANSACTION_KEY",
     verbalization: { entityNoun: "work session", actionVerbPast: "recorded" },
   },
+  external_capability_action: {
+    actionType: "external_capability_action",
+    domain: "productivity",
+    operationKind: "UPDATE",
+    requiresTargetEntity: false,
+    supportsContinuation: true,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "external action", actionVerbPast: "executed" },
+  },
 };
 
 export type ConversationalModificationKind =
@@ -405,7 +417,7 @@ export type ActionExecutionStatus =
 export interface ICanonicalExecutionEntity {
   entityId: string;
   displayName: string;
-  entityType: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "weight" | "context_mode";
+  entityType: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "weight" | "context_mode" | "file" | "email" | "contact";
   domain: "productivity" | "health" | "wellness" | "context";
   status?: string;
   metadata?: Record<string, any>;

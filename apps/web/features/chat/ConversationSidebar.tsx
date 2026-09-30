@@ -46,7 +46,7 @@ export default function ConversationSidebar({
   };
 
   return (
-    <aside className="w-64 shrink-0 h-full bg-[#18181A] border-r border-[#2A2B2F] flex flex-col pt-4 pb-4 px-3 select-none">
+    <aside className="w-64 shrink-0 h-full bg-[#18181A] flex flex-col pt-4 pb-4 px-3 select-none">
       {/* New Chat Button */}
       <button
         onClick={onCreate}

@@ -32,15 +32,15 @@ export default function ConversationDrawer({
   if (!isOpen) return null;
 
   return (
-    <div className="fixed inset-0 z-50 md:hidden flex">
+    <div className="fixed inset-0 z-50 md:hidden flex justify-end">
       {/* Backdrop */}
       <div
         className="fixed inset-0 bg-black/60 backdrop-blur-sm transition-opacity animate-in fade-in"
         onClick={onClose}
       />
 
-      {/* Slide-out Panel */}
-      <div className="relative z-10 w-72 h-full bg-[#18181A] shadow-2xl flex flex-col animate-in slide-in-from-left duration-200">
+      {/* Slide-out Panel from Right */}
+      <div className="relative z-10 w-72 h-full bg-[#18181A] shadow-2xl flex flex-col animate-in slide-in-from-right duration-200 border-l border-[#2A2B2F]">
         <div className="flex items-center justify-between p-3 border-b border-[#2A2B2F]">
           <span className="text-xs font-semibold text-gray-300 uppercase tracking-wider">
             Conversations

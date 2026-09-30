@@ -2,7 +2,7 @@ import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { ArrowLeft, Gauge, Activity, Compass, AlertTriangle } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import { fetchWithAuth } from '../../../utils/api';
 
 const PHASE_COLORS: Record<string, string> = {
@@ -46,7 +46,7 @@ export default function PhaseDetailScreen() {
     finally { setLoading(false); }
   }, [id]);
 
-  useFocusEffect(useCallback(() => { load(); }, [load]));
+  useSafeFocusEffect(useCallback(() => { load(); }, [load]));
 
   const phase = phaseData?.phase;
   const selfExplanation = phaseData?.selfExplanation;

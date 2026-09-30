@@ -2,10 +2,43 @@
 
 import { useState, useEffect, useCallback, useRef } from "react";
 
+export interface ToolActivityItem {
+  id: string;
+  providerId: string;
+  providerDisplayName: string;
+  capabilityURN: string;
+  iconName: string;
+  humanMessage: string;
+  state: "started" | "completed" | "failed";
+  error?: string;
+  details?: Record<string, any>;
+}
+
+export interface ConfirmationItem {
+  actionId: string;
+  title: string;
+  message: string;
+  details?: Record<string, string>;
+  confirmLabel: string;
+  cancelLabel: string;
+}
+
+export interface MissingConnectionItem {
+  providerId: string;
+  providerDisplayName: string;
+  iconName: string;
+  message: string;
+  connectUrl: string;
+}
+
 export interface ChatMessageItem {
   role: "user" | "assistant";
   content: string;
   createdAt?: string;
+  statusPhase?: string;
+  toolActivities?: ToolActivityItem[];
+  confirmation?: ConfirmationItem;
+  missingConnection?: MissingConnectionItem;
 }
 
 interface UseChatOptions {
@@ -39,6 +72,9 @@ export function useChat(options?: UseChatOptions) {
         role: m.role as "user" | "assistant",
         content: m.content || "",
         createdAt: m.createdAt,
+        toolActivities: m.toolActivities && m.toolActivities.length > 0 ? m.toolActivities : undefined,
+        missingConnection: m.missingConnection,
+        confirmation: m.confirmation,
       }));
       setMessages(history);
     } catch (err) {
@@ -67,7 +103,7 @@ export function useChat(options?: UseChatOptions) {
       setMessages((prev) => [
         ...prev,
         { role: "user", content: trimmed },
-        { role: "assistant", content: "" },
+        { role: "assistant", content: "", statusPhase: "understanding" },
       ]);
       setLoading(true);
 
@@ -78,11 +114,15 @@ export function useChat(options?: UseChatOptions) {
         const endpoint = `/api/conversations/${encodeURIComponent(activeId)}/messages`;
         const res = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            Accept: "text/event-stream",
+          },
           body: JSON.stringify({
             message: trimmed,
             model: selectedModel,
             mode: "general",
+            streamFormat: "events",
           }),
           signal: abortController.signal,
         });
@@ -102,16 +142,14 @@ export function useChat(options?: UseChatOptions) {
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
+        let buffer = "";
         let assistantAccumulated = "";
+        let currentActivities: ToolActivityItem[] = [];
+        let currentConfirmation: ConfirmationItem | undefined = undefined;
+        let currentMissingConnection: MissingConnectionItem | undefined = undefined;
+        let currentStatusPhase = "understanding";
 
-        while (true) {
-          const { done, value } = await reader.read();
-          if (done) break;
-
-          const chunkText = decoder.decode(value, { stream: true });
-          assistantAccumulated += chunkText;
-
-          // Stream chunks in real time directly to the active assistant bubble
+        const updateBubble = () => {
           setMessages((prev) => {
             if (prev.length === 0) return prev;
             const updated = [...prev];
@@ -120,12 +158,100 @@ export function useChat(options?: UseChatOptions) {
               updated[lastIdx] = {
                 ...updated[lastIdx],
                 content: assistantAccumulated,
+                statusPhase: currentStatusPhase,
+                toolActivities: currentActivities.length > 0 ? [...currentActivities] : undefined,
+                confirmation: currentConfirmation,
+                missingConnection: currentMissingConnection,
               };
             }
             return updated;
           });
+        };
+
+        while (true) {
+          const { done, value } = await reader.read();
+          if (done) break;
+
+          const chunkText = decoder.decode(value, { stream: true });
+          buffer += chunkText;
+
+          // Process SSE lines
+          if (buffer.includes("\n\n")) {
+            const parts = buffer.split("\n\n");
+            buffer = parts.pop() || "";
+
+            for (const part of parts) {
+              const lines = part.split("\n");
+              for (const line of lines) {
+                const trimmedLine = line.trim();
+                if (trimmedLine.startsWith("data: ")) {
+                  try {
+                    const eventData = JSON.parse(trimmedLine.slice(6));
+                    if (eventData.type === "assistant_delta") {
+                      assistantAccumulated += eventData.text || "";
+                    } else if (eventData.type === "status") {
+                      currentStatusPhase = eventData.status;
+                    } else if (eventData.type === "tool_activity") {
+                      const existingIdx = currentActivities.findIndex(
+                        (a) =>
+                          a.capabilityURN === eventData.capabilityURN &&
+                          a.providerId === eventData.providerId
+                      );
+                      const activityObj: ToolActivityItem = {
+                        id: `${eventData.providerId}_${eventData.capabilityURN}`,
+                        providerId: eventData.providerId,
+                        providerDisplayName: eventData.providerDisplayName,
+                        capabilityURN: eventData.capabilityURN,
+                        iconName: eventData.iconName,
+                        humanMessage: eventData.humanMessage,
+                        state: eventData.state,
+                        error: eventData.error,
+                        details: eventData.details,
+                      };
+                      if (existingIdx !== -1) {
+                        currentActivities[existingIdx] = activityObj;
+                      } else {
+                        currentActivities.push(activityObj);
+                      }
+                    } else if (eventData.type === "confirmation_required") {
+                      currentConfirmation = {
+                        actionId: eventData.actionId,
+                        title: eventData.title,
+                        message: eventData.message,
+                        details: eventData.details,
+                        confirmLabel: eventData.confirmLabel || "Allow",
+                        cancelLabel: eventData.cancelLabel || "Deny",
+                      };
+                    } else if (eventData.type === "missing_connection") {
+                      currentMissingConnection = {
+                        providerId: eventData.providerId,
+                        providerDisplayName: eventData.providerDisplayName,
+                        iconName: eventData.iconName,
+                        message: eventData.message,
+                        connectUrl: eventData.connectUrl || "/settings/connections",
+                      };
+                    } else if (eventData.type === "error") {
+                      assistantAccumulated += `\n${eventData.message}`;
+                    }
+                  } catch (_) {
+                    assistantAccumulated += trimmedLine.slice(6);
+                  }
+                } else if (trimmedLine.length > 0 && !trimmedLine.startsWith("event:")) {
+                  // Fallback raw text stream
+                  assistantAccumulated += trimmedLine;
+                }
+              }
+            }
+            updateBubble();
+          } else if (!buffer.startsWith("data:") && !buffer.startsWith("event:")) {
+            // Raw text chunking fallback
+            assistantAccumulated += buffer;
+            buffer = "";
+            updateBubble();
+          }
         }
 
+        updateBubble();
         onMessageSent?.();
       } catch (err: any) {
         if (err.name === "AbortError") {

@@ -6,6 +6,33 @@ export interface IConversationMessage extends Document {
   role: "user" | "assistant" | "system";
   content: string;
   tokenEstimate: number;
+  toolActivities?: Array<{
+    id: string;
+    providerId: string;
+    providerDisplayName: string;
+    capabilityURN: string;
+    iconName: string;
+    humanMessage: string;
+    state: "started" | "completed" | "failed";
+    error?: string;
+    details?: any;
+  }>;
+  missingConnection?: {
+    providerId: string;
+    providerDisplayName: string;
+    capabilityURN?: string;
+    message: string;
+    connectUrl?: string;
+    iconName?: string;
+  };
+  confirmation?: {
+    actionId: string;
+    title: string;
+    description: string;
+    impactSummary?: string;
+    riskClass?: string;
+    previewData?: any;
+  };
   createdAt: Date;
   updatedAt: Date;
 }
@@ -35,6 +62,18 @@ const ConversationMessageSchema = new Schema<IConversationMessage>(
     tokenEstimate: {
       type: Number,
       default: 0,
+    },
+    toolActivities: {
+      type: [Schema.Types.Mixed],
+      default: undefined,
+    },
+    missingConnection: {
+      type: Schema.Types.Mixed,
+      default: undefined,
+    },
+    confirmation: {
+      type: Schema.Types.Mixed,
+      default: undefined,
     },
   },
   {

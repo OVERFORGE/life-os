@@ -13,6 +13,7 @@ import {
   Scale,
   Settings as SettingsIcon,
   ShieldCheck,
+  Plug,
 } from "lucide-react";
 
 interface UserProfile {
@@ -45,6 +46,13 @@ export default function SettingsDashboard() {
   };
 
   const navItems = [
+    {
+      title: "Connections",
+      desc: "Connect the apps and services Aven can work with",
+      icon: Plug,
+      iconBg: "bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] group-hover:text-[#E8414A] group-hover:border-[#E8414A]/40",
+      route: "/settings/connections",
+    },
     {
       title: "Personalization & Voice",
       desc: "Aven voice identity, name pronunciation, daily rollover & reminders",

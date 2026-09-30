@@ -4,7 +4,7 @@ import { useRouter } from 'expo-router';
 import { ArrowLeft, Calendar, Trash2, Clock, PenLine } from 'lucide-react-native';
 import { useState, useCallback } from 'react';
 import { fetchWithAuth } from '../../../utils/api';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import React from 'react';
 
 const C = {
@@ -74,7 +74,7 @@ export default function HistoryPage() {
     }
   }, []);
 
-  useFocusEffect(
+  useSafeFocusEffect(
     useCallback(() => {
       loadSessions();
     }, [loadSessions])

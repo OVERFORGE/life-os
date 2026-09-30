@@ -12,20 +12,20 @@ function getGroqClient(): Groq | null {
     if (!cachedClient || lastApiKey !== currentKey) {
         cachedClient = new Groq({
             apiKey: currentKey,
-            maxRetries: 1,
+            maxRetries: 0,
         });
         lastApiKey = currentKey;
     }
     return cachedClient;
 }
 
-const DEFAULT_MODEL = process.env.GROQ_MODEL || "openai/gpt-oss-120b";
+const DEFAULT_MODEL = process.env.GROQ_MODEL || "qwen/qwen3.8-27b";
 const RESILIENT_FALLBACK_MODELS = [
+    "qwen/qwen3.8-27b",
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
-    "qwen/qwen3.8-27b",
 ];
-const RESILIENT_FALLBACK_MODEL = "openai/gpt-oss-120b";
+const RESILIENT_FALLBACK_MODEL = "qwen/qwen3.8-27b";
 
 export async function groqChat({
     messages,
@@ -40,48 +40,71 @@ export async function groqChat({
 }) {
     const client = getGroqClient();
 
-    // Tier 1: Primary Model
-    if (client) {
-        try {
-            const response = await client.chat.completions.create({
-                model,
-                messages,
-                temperature,
-                max_tokens,
-            });
-            const content = response.choices[0]?.message?.content || "";
-            if (content.trim()) return content;
-        } catch (primaryErr: any) {
-            console.warn(`[GROQ] Primary model ${model} failed (${primaryErr?.status || primaryErr?.message}), trying resilient fallbacks`);
+    // Helper to extract text from chat completion choices
+    const extractContent = (choice: any): string => {
+        const msg = choice?.message;
+        if (!msg) return "";
+        let text = msg.content || "";
+        if (!text.trim() && msg.reasoning) {
+            text = msg.reasoning;
         }
+        return text.trim();
+    };
 
-        // Tier 2: Resilient Groq Fallback Models
-        for (const fallbackModel of RESILIENT_FALLBACK_MODELS) {
-            if (fallbackModel === model) continue;
+    // Tier 1 & Tier 2: Resilient Groq Models
+    if (client) {
+        const modelsToTry = [
+            model,
+            ...RESILIENT_FALLBACK_MODELS.filter((m) => m !== model),
+        ];
+
+        let authFailed = false;
+
+        for (const targetModel of modelsToTry) {
+            if (authFailed) break;
             try {
-                const fallbackResponse = await client.chat.completions.create({
-                    model: fallbackModel,
+                const requestPayload: any = {
+                    model: targetModel,
                     messages,
                     temperature,
                     max_tokens,
-                });
-                const content = fallbackResponse.choices[0]?.message?.content || "";
-                if (content.trim()) return content;
-            } catch (fallbackErr: any) {
-                console.warn(`[GROQ] Resilient model ${fallbackModel} failed (${fallbackErr?.status || fallbackErr?.message})`);
+                };
+                // Hide reasoning tokens to prevent quota exhaustion and JSON truncation
+                if (targetModel.includes("gpt-oss")) {
+                    requestPayload.reasoning_format = "hidden";
+                }
+                const callPromise = client.chat.completions.create(requestPayload);
+                const timeoutPromise = new Promise((_, reject) =>
+                    setTimeout(() => reject(new Error(`Groq call to ${targetModel} timed out`)), 4500)
+                );
+                const response: any = await Promise.race([callPromise, timeoutPromise]);
+                const content = extractContent(response.choices[0]);
+                if (content) return content;
+            } catch (err: any) {
+                const status = err?.status;
+                if (status === 401 || status === 403) {
+                    authFailed = true;
+                    console.warn(`[GROQ] Authentication failure (${status}) on ${targetModel}, skipping Groq tier`);
+                    break;
+                }
+                console.warn(`[GROQ] Model ${targetModel} failed (${status || err?.message}), attempting next resilient model`);
             }
         }
     }
 
-    // Tier 3: Tertiary Gemini 3.6 Flash Fallback
+    // Tier 3: Tertiary Gemini 2.5 Flash Fallback
     if (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "mock_key_for_dev") {
         try {
             const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
             const prompt = messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
-            const geminiRes = await ai.models.generateContent({
+            const geminiPromise = ai.models.generateContent({
                 model: "gemini-2.5-flash",
                 contents: prompt,
             });
+            const timeoutPromise = new Promise((_, reject) =>
+                setTimeout(() => reject(new Error("Gemini fallback timed out")), 5000)
+            );
+            const geminiRes: any = await Promise.race([geminiPromise, timeoutPromise]);
             const text = geminiRes.text?.trim() || "";
             if (text) {
                 console.log("[GROQ] Recovered successfully using tertiary Gemini 2.5 Flash fallback");

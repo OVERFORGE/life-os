@@ -54,7 +54,7 @@ export async function POST(req: Request) {
       } catch (_) {}
     }
 
-    const { message, model, mode = "general" } = await req.json();
+    const { message, model, mode = "general", streamFormat } = await req.json();
 
     if (!message || typeof message !== "string" || message.trim().length === 0) {
       return apiError("Message string is required", "BAD_REQUEST", 400);
@@ -69,6 +69,7 @@ export async function POST(req: Request) {
       message,
       model,
       mode,
+      streamFormat: streamFormat || (req.headers.get("accept")?.includes("text/event-stream") ? "events" : "raw"),
     });
   } catch (err: any) {
     console.error("POST /api/conversation Error:", err);

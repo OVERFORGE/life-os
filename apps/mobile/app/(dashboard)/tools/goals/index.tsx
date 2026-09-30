@@ -2,7 +2,7 @@
 import React, { useEffect, useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator } from 'react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../../utils/useSafeFocusEffect';
 import { fetchWithAuth } from '../../../../utils/api';
 import { ArrowLeft, Plus } from 'lucide-react-native';
 
@@ -40,7 +40,7 @@ export default function GoalsListScreen() {
     setLoading(false);
   }, []);
 
-  useFocusEffect(useCallback(() => { loadGoals(); }, [loadGoals]));
+  useSafeFocusEffect(useCallback(() => { loadGoals(); }, [loadGoals]));
 
   async function bootstrap() {
     setBootstrapping(true);

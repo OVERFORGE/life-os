@@ -1,7 +1,8 @@
 // CACHE BUST 
 import { useEffect, useState, useCallback } from 'react';
 import { View, Text, TouchableOpacity, ActivityIndicator } from 'react-native';
-import { useRouter, useFocusEffect } from 'expo-router';
+import { useRouter } from 'expo-router';
+import { useSafeFocusEffect } from '../../utils/useSafeFocusEffect';
 import { CheckCircle2, Circle, ChevronRight, AlertCircle, ArrowRight } from 'lucide-react-native';
 import { fetchWithAuth } from '../../utils/api';
 import { scheduleAllTaskReminders } from '../../utils/notifications';
@@ -11,7 +12,7 @@ export function DashboardTaskCard() {
   const [tasksData, setTasksData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  useFocusEffect(useCallback(() => {
+  useSafeFocusEffect(useCallback(() => {
     loadTasks();
   }, []));
 

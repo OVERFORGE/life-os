@@ -267,40 +267,143 @@ export class RescheduleOccurrenceAdapter implements IKernelActionAdapter {
 }
 
 /**
- * Adapter for cancelling an existing TemporalOccurrence
+ * Adapter for cancelling or skipping an existing TemporalOccurrence
  */
 export class CancelOccurrenceAdapter implements IKernelActionAdapter {
   async validatePreconditions(
     proposal: ActionProposal,
     userId: string
   ): Promise<{ valid: boolean; reason?: string }> {
-    if (!proposal.payload?.occurrenceId) {
-      return { valid: false, reason: "occurrenceId is required to cancel" };
+    const p = proposal.payload;
+    if (!p?.occurrenceId && !p?.title) {
+      return { valid: false, reason: "occurrenceId or title is required to cancel or skip" };
     }
     return { valid: true };
   }
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
-    const occId = proposal.payload.occurrenceId;
+    const p = proposal.payload;
+    let occId = p.occurrenceId;
+    const targetStatus = p.status === "SKIPPED" ? "SKIPPED" : "CANCELLED";
     let previousStatus = "SCHEDULED";
+    let title = p.title || "Scheduled block";
 
     if (isDbConnected()) {
       const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
-      const existing = await TemporalOccurrence.findOne({ userId, occurrenceId: occId });
-      if (existing) {
-        previousStatus = existing.status;
-        existing.status = "CANCELLED";
-        existing.overrideType = "SINGLE_INSTANCE_CANCELLED";
-        existing.version += 1;
-        await existing.save();
+      const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
+
+      // 1. If no occurrenceId, attempt to find occurrence by title + dateOnly
+      if (!occId && p.title) {
+        const todayStr = p.dateOnly || new Date().toISOString().split("T")[0];
+        const titleRegex = new RegExp(p.title.trim().split(" ")[0], "i");
+
+        const foundOcc = await TemporalOccurrence.findOne({
+          userId,
+          dateOnly: todayStr,
+          title: titleRegex,
+        });
+
+        if (foundOcc) {
+          occId = foundOcc.occurrenceId;
+          previousStatus = foundOcc.status;
+          foundOcc.status = targetStatus;
+          foundOcc.overrideType = "SINGLE_INSTANCE_CANCELLED";
+          foundOcc.version += 1;
+          await foundOcc.save();
+          title = foundOcc.title;
+        } else {
+          // Search in recurring series template
+          const foundSeries = await TemporalSeriesTemplate.findOne({
+            userId,
+            title: titleRegex,
+            status: "ACTIVE",
+          });
+          if (foundSeries) {
+            occId = `proj_${foundSeries.seriesId}_${todayStr}`;
+            title = foundSeries.title;
+            const [sh, sm] = (foundSeries.baseStartTime || "09:00").split(":").map(Number);
+            const startMinute = (sh || 0) * 60 + (sm || 0);
+            const dur = foundSeries.baseDurationMinutes || 60;
+            await TemporalOccurrence.create({
+              occurrenceId: occId,
+              userId,
+              seriesId: foundSeries.seriesId,
+              title: foundSeries.title,
+              kind: foundSeries.kind || "ROUTINE_BLOCK",
+              dateOnly: todayStr,
+              plannedInterval: {
+                dateOnly: todayStr,
+                startMinute,
+                endMinute: startMinute + dur,
+                durationMinutes: dur,
+                startIsoUtc: `${todayStr}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00Z`,
+                endIsoUtc: `${todayStr}T${String(Math.floor((startMinute + dur) / 60)).padStart(2, "0")}:${String((startMinute + dur) % 60).padStart(2, "0")}:00Z`,
+                timezone: "UTC",
+                isMidnightCrossing: false,
+              },
+              locationContext: foundSeries.locationContext || { category: "HOME", requiresPhysicalTransit: false },
+              rigidity: (foundSeries as any).rigidity || "ELASTIC",
+              status: targetStatus,
+              overrideType: "SINGLE_INSTANCE_CANCELLED",
+              version: 1,
+            });
+          }
+        }
+      } else if (occId) {
+        // Occurrence ID was explicitly given
+        const existing = await TemporalOccurrence.findOne({ userId, occurrenceId: occId });
+        if (existing) {
+          previousStatus = existing.status;
+          existing.status = targetStatus;
+          existing.overrideType = "SINGLE_INSTANCE_CANCELLED";
+          existing.version += 1;
+          await existing.save();
+          title = existing.title;
+        } else if (occId.startsWith("proj_")) {
+          // Materialize single cancelled instance from recurring series template
+          const parts = occId.split("_");
+          const seriesId = parts[1];
+          const dateOnly = parts[2] || (p.dateOnly || new Date().toISOString().split("T")[0]);
+          const series = await TemporalSeriesTemplate.findOne({ userId, seriesId });
+          if (series) {
+            title = series.title;
+            const [sh, sm] = (series.baseStartTime || "09:00").split(":").map(Number);
+            const startMinute = (sh || 0) * 60 + (sm || 0);
+            const dur = series.baseDurationMinutes || 60;
+            await TemporalOccurrence.create({
+              occurrenceId: occId,
+              userId,
+              seriesId: series.seriesId,
+              title: series.title,
+              kind: series.kind || "ROUTINE_BLOCK",
+              dateOnly,
+              plannedInterval: {
+                dateOnly,
+                startMinute,
+                endMinute: startMinute + dur,
+                durationMinutes: dur,
+                startIsoUtc: `${dateOnly}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00Z`,
+                endIsoUtc: `${dateOnly}T${String(Math.floor((startMinute + dur) / 60)).padStart(2, "0")}:${String((startMinute + dur) % 60).padStart(2, "0")}:00Z`,
+                timezone: "UTC",
+                isMidnightCrossing: false,
+              },
+              locationContext: series.locationContext || { category: "HOME", requiresPhysicalTransit: false },
+              rigidity: (series as any).rigidity || "ELASTIC",
+              status: targetStatus,
+              overrideType: "SINGLE_INSTANCE_CANCELLED",
+              version: 1,
+            });
+          }
+        }
       }
     }
 
     return {
       success: true,
-      occurrenceId: occId,
+      occurrenceId: occId || "unknown",
+      title,
       previousStatus,
-      status: "CANCELLED",
+      status: targetStatus,
     };
   }
 
@@ -309,7 +412,7 @@ export class CancelOccurrenceAdapter implements IKernelActionAdapter {
     previousResult: any,
     userId: string
   ): Promise<CompensationResult> {
-    const occId = proposal.payload?.occurrenceId;
+    const occId = proposal.payload?.occurrenceId || previousResult?.occurrenceId;
     if (occId && previousResult?.previousStatus && isDbConnected()) {
       const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
       await TemporalOccurrence.updateOne(
@@ -508,9 +611,29 @@ export class LogExecutionIntervalAdapter implements IKernelActionAdapter {
     if (!p?.title || typeof p.title !== "string") {
       return { valid: false, reason: "Title is required for logged execution interval" };
     }
+
+    // Auto-calculate timestamps if not given as numbers
     if (typeof p?.startedAtMs !== "number" || typeof p?.endedAtMs !== "number") {
-      return { valid: false, reason: "startedAtMs and endedAtMs (epoch numbers) are required" };
+      const todayIso = p.dateOnly || new Date().toISOString().split("T")[0];
+      const startStr = p.startTime || p.time || "09:00";
+      const [sh, sm] = startStr.split(":").map(Number);
+      const startMin = (sh || 0) * 60 + (sm || 0);
+
+      let dur = typeof p.durationMinutes === "number" ? p.durationMinutes : 60;
+      if (p.endTime) {
+        const [eh, em] = p.endTime.split(":").map(Number);
+        const endMin = (eh || 0) * 60 + (em || 0);
+        dur = Math.max(1, endMin - startMin);
+      }
+
+      const startMs = new Date(`${todayIso}T${String(sh || 0).padStart(2, "0")}:${String(sm || 0).padStart(2, "0")}:00Z`).getTime();
+      const endMs = startMs + dur * 60 * 1000;
+
+      p.startedAtMs = startMs;
+      p.endedAtMs = endMs;
+      p.durationMinutes = dur;
     }
+
     if (p.endedAtMs < p.startedAtMs) {
       return { valid: false, reason: "endedAtMs cannot be earlier than startedAtMs" };
     }
@@ -522,32 +645,100 @@ export class LogExecutionIntervalAdapter implements IKernelActionAdapter {
     const chronicleId = `chron_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
     const durationMinutes = Math.max(1, Math.round((p.endedAtMs - p.startedAtMs) / (1000 * 60)));
 
-    const entryData = {
-      chronicleId,
-      userId,
-      occurrenceId: p.occurrenceId,
-      entityType: p.entityType || "general",
-      entityId: p.entityId,
-      title: p.title.trim(),
-      startedAtMs: p.startedAtMs,
-      endedAtMs: p.endedAtMs,
-      durationMinutes,
-      interruptionsCount: p.interruptionsCount || 0,
-      completedWorkUnits: p.completedWorkUnits || [],
-      notes: p.notes,
-      source: p.source || "web_manual",
-    };
+    let occurrenceId = p.occurrenceId;
 
     if (isDbConnected()) {
       const { ExecutionChronicle } = await import("@/server/db/models/ExecutionChronicle");
+      const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
+
+      // Attempt to link matching occurrence and mark it completed
+      const todayIso = new Date(p.startedAtMs).toISOString().split("T")[0];
+      const titleKeyword = p.title.trim().split(" ")[0];
+      const titleRegex = new RegExp(titleKeyword, "i");
+
+      if (!occurrenceId) {
+        const matchOcc = await TemporalOccurrence.findOne({
+          userId,
+          dateOnly: todayIso,
+          title: titleRegex,
+          status: { $ne: "CANCELLED" },
+        });
+
+        if (matchOcc) {
+          occurrenceId = matchOcc.occurrenceId;
+          matchOcc.status = "COMPLETED";
+          await matchOcc.save();
+        } else {
+          // Check if there is a recurring series template matching today
+          const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
+          const matchSeries = await TemporalSeriesTemplate.findOne({
+            userId,
+            title: titleRegex,
+            status: "ACTIVE",
+          });
+          if (matchSeries) {
+            occurrenceId = `proj_${matchSeries.seriesId}_${todayIso}`;
+            const [sh, sm] = (matchSeries.baseStartTime || "09:00").split(":").map(Number);
+            const startMinute = (sh || 0) * 60 + (sm || 0);
+            const dur = matchSeries.baseDurationMinutes || 60;
+            await TemporalOccurrence.create({
+              occurrenceId,
+              userId,
+              seriesId: matchSeries.seriesId,
+              title: matchSeries.title,
+              kind: matchSeries.kind || "ROUTINE_BLOCK",
+              dateOnly: todayIso,
+              plannedInterval: {
+                dateOnly: todayIso,
+                startMinute,
+                endMinute: startMinute + dur,
+                durationMinutes: dur,
+                startIsoUtc: `${todayIso}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00Z`,
+                endIsoUtc: `${todayIso}T${String(Math.floor((startMinute + dur) / 60)).padStart(2, "0")}:${String((startMinute + dur) % 60).padStart(2, "0")}:00Z`,
+                timezone: "UTC",
+                isMidnightCrossing: false,
+              },
+              locationContext: matchSeries.locationContext || { category: "HOME", requiresPhysicalTransit: false },
+              rigidity: (matchSeries as any).rigidity || "ELASTIC",
+              status: "COMPLETED",
+              version: 1,
+              overrideType: "NONE",
+            });
+          }
+        }
+      } else {
+        const matchOcc = await TemporalOccurrence.findOne({ userId, occurrenceId });
+        if (matchOcc) {
+          matchOcc.status = "COMPLETED";
+          await matchOcc.save();
+        }
+      }
+
+      const entryData = {
+        chronicleId,
+        userId,
+        occurrenceId,
+        entityType: p.entityType || "general",
+        entityId: p.entityId,
+        title: p.title.trim(),
+        startedAtMs: p.startedAtMs,
+        endedAtMs: p.endedAtMs,
+        durationMinutes,
+        interruptionsCount: p.interruptionsCount || 0,
+        completedWorkUnits: p.completedWorkUnits || [],
+        notes: p.notes,
+        source: p.source || "web_manual",
+      };
+
       await ExecutionChronicle.create(entryData);
     }
 
     return {
       success: true,
       chronicleId,
-      title: entryData.title,
+      title: p.title.trim(),
       durationMinutes,
+      occurrenceId,
     };
   }
 

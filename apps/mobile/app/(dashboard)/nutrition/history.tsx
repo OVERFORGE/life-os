@@ -3,7 +3,7 @@ import React, { useState, useCallback, useMemo } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView } from 'react-native';
 import { ArrowLeft, ChevronLeft, ChevronRight, CalendarDays, Activity } from 'lucide-react-native';
 import { Stack, useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import { fetchWithAuth } from '../../../utils/api';
 
 const C = {
@@ -73,7 +73,7 @@ export default function NutritionHistoryScreen() {
   }, [weekStart, weekEnd]);
 
   // Use focus effect so going back from Daily Log forces a refetch of history
-  useFocusEffect(useCallback(() => { 
+  useSafeFocusEffect(useCallback(() => { 
     // Always enforce the current weekStart when refocused to prevent stale UI
     loadHistory(); 
   }, [loadHistory]));

@@ -33,7 +33,7 @@ export async function GET(_req: NextRequest, props: RouteParams) {
 
   const messages = await ConversationMessage.find({ conversationId, userId })
     .sort({ createdAt: 1, _id: 1 })
-    .select("role content createdAt tokenEstimate")
+    .select("role content createdAt tokenEstimate toolActivities missingConnection confirmation")
     .lean();
 
   messages.sort((a: any, b: any) => {

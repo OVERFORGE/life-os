@@ -20,6 +20,26 @@ export const authOptions: NextAuthOptions = {
     GoogleProvider({
       clientId: process.env.GOOGLE_CLIENT_ID!,
       clientSecret: process.env.GOOGLE_CLIENT_SECRET!,
+      authorization: {
+        params: {
+          prompt: "consent",
+          access_type: "offline",
+          response_type: "code",
+          scope: [
+            "openid",
+            "email",
+            "profile",
+            "https://www.googleapis.com/auth/calendar",
+            "https://www.googleapis.com/auth/tasks",
+            "https://www.googleapis.com/auth/gmail.modify",
+            "https://www.googleapis.com/auth/drive",
+            "https://www.googleapis.com/auth/contacts",
+            "https://www.googleapis.com/auth/fitness.activity.read",
+            "https://www.googleapis.com/auth/fitness.body.read",
+            "https://www.googleapis.com/auth/fitness.sleep.read",
+          ].join(" "),
+        },
+      },
     }),
     CredentialsProvider({
       name: "Credentials",
@@ -104,6 +124,75 @@ export const authOptions: NextAuthOptions = {
       if (trigger === "signIn" || !token.sessionId) {
         token.sessionId = crypto.randomUUID();
       }
+
+      if (account && account.provider === "google" && account.access_token) {
+        try {
+          const { UserProviderConnection } = await import("@/server/db/models/UserProviderConnection");
+          const { CredentialVault } = await import("@life-os/execution-kernel");
+          await connectDB();
+          const dbUser = await User.findOne({ email: token.email });
+          if (dbUser) {
+            const userId = dbUser._id.toString();
+            const GOOGLE_SERVICES = [
+              { providerId: "google_calendar", displayName: "Google Calendar" },
+              { providerId: "google_tasks", displayName: "Google Tasks" },
+              { providerId: "gmail", displayName: "Gmail" },
+              { providerId: "google_drive", displayName: "Google Drive" },
+              { providerId: "google_contacts", displayName: "Google Contacts" },
+              { providerId: "google_fit", displayName: "Google Fit" },
+            ];
+
+            const updates = GOOGLE_SERVICES.map(async ({ providerId, displayName }) => {
+              const existingConn = await UserProviderConnection.findOne({ userId, providerId }).lean();
+              const existingPrefs = existingConn?.preferences instanceof Map
+                ? Object.fromEntries(existingConn.preferences)
+                : (existingConn?.preferences as any) || {};
+
+              const updatedPrefs: Record<string, string> = {
+                ...existingPrefs,
+                token: account.access_token as string,
+              };
+              if (account.refresh_token) {
+                updatedPrefs.refreshToken = CredentialVault.encrypt(account.refresh_token as string);
+              }
+              if (process.env.GOOGLE_CLIENT_ID) {
+                updatedPrefs.clientId = process.env.GOOGLE_CLIENT_ID;
+              }
+              if (process.env.GOOGLE_CLIENT_SECRET) {
+                updatedPrefs.clientSecret = CredentialVault.encrypt(process.env.GOOGLE_CLIENT_SECRET);
+              }
+
+              return UserProviderConnection.findOneAndUpdate(
+                { userId, providerId },
+                {
+                  $set: {
+                    providerDisplayName: displayName,
+                    status: "ACTIVE",
+                    authType: "OAUTH2",
+                    connectedAccount: token.email || "google_account",
+                    encryptedTokenPayload: CredentialVault.encrypt(account.access_token as string),
+                    grantedScopes: account.scope ? (account.scope as string).split(" ") : [],
+                    expiresAt: account.expires_at ? new Date((account.expires_at as number) * 1000) : undefined,
+                    lastSuccessfulSync: new Date(),
+                    consecutiveFailures: 0,
+                    preferences: updatedPrefs,
+                    updatedAt: new Date(),
+                  },
+                  $setOnInsert: {
+                    createdAt: new Date(),
+                  },
+                },
+                { upsert: true }
+              );
+            });
+
+            await Promise.all(updates);
+          }
+        } catch (e) {
+          console.error("Failed to sync NextAuth Google tokens to connections:", e);
+        }
+      }
+
       return token;
     },
 

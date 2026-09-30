@@ -4,7 +4,7 @@ import { View, Text, TouchableOpacity, ScrollView, ActivityIndicator, Alert, Saf
 import { useRouter } from 'expo-router';
 import { Dumbbell, Play, ChevronRight, Trash2, ChevronDown, ChevronUp, Clock, Calendar, Flame, ArrowLeft } from 'lucide-react-native';
 import { fetchWithAuth } from '../../../utils/api';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 
 const C = {
   bg: '#161618', card: '#1F2023', border: '#2A2B2F',
@@ -82,7 +82,7 @@ export default function GymHub() {
     }
   }, []);
 
-  useFocusEffect(useCallback(() => { loadGymData(); }, [loadGymData]));
+  useSafeFocusEffect(useCallback(() => { loadGymData(); }, [loadGymData]));
 
   const deleteRoutine = (id: string) => {
     Alert.alert("Delete Routine", "Are you sure?", [

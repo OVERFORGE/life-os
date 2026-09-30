@@ -58,6 +58,7 @@ export interface HandleInput {
   message: string;
   model?: string;
   mode?: string;
+  streamFormat?: "events" | "raw";
 }
 
 /**

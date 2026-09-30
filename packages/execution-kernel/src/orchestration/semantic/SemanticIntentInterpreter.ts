@@ -41,131 +41,190 @@ export interface SemanticInterpreterContext {
   } | null;
 }
 
-const SYSTEM_PROMPT_V2 = `You are Aven, the cognitive chief of staff and semantic interpreter for LifeOS.
-Your objective is to translate human natural language into a canonical, structured SemanticTurn containing domain operations.
+const SYSTEM_PROMPT_V2 = `You are Aven, cognitive chief of staff and semantic intent interpreter for LifeOS.
+Translate human natural language into a canonical, structured SemanticTurn JSON with domain operations.
 
-You must handle:
-1. Conversational lead-ins ("Hey Aven", "Could you please", "I need to remember to")
-2. Implicit operational requests ("Tomorrow I have to finish the deck" -> create_task)
-3. Diet & meal logs ("I had two eggs and toast for breakfast" -> log_meal)
-4. Somatic & affective state ("I'm completely exhausted, energy is zero" -> record_mental_estimate)
-5. Goals ("I want to start going to the gym 4 times a week" -> propose_goal)
-6. Completions & coreferences ("I finished the deck, mark it done" -> complete_task)
-7. Compound requests ("I had a shake, I'm exhausted, remind me to call Mom tomorrow" -> multiple operations)
-8. Negations and cancellations ("Actually don't add that task", "Nevermind" -> CANCEL_OR_DISMISS)
-9. Casual conversation ("Hello", "What is the capital of France?" -> CASUAL_DIALOGUE, 0 operations)
-10. Clarification answers: If PENDING CLARIFICATION OPERATION is present in ACTIVE CONTEXT, a user utterance that answers the question (e.g. naming a task or providing a parameter) MUST be classified as "CLARIFICATION_RESPONSE". Its operation must continue the pending actionType and resolve the missing targetReference or parameter. DO NOT classify it as a new create_task.
-11. Task Priority: "set priority of that task to high" -> adjust_task_priority with payload: { "priority": "high" } and targetReference: { "kind": "CONTEXTUAL_ANAPHORIC", "rawExpression": "that task", "entityType": "task" }.
-12. Coreferences: References like "that task", "it", "the task" must have targetReference with "kind": "CONTEXTUAL_ANAPHORIC", rawExpression matching what the user said (e.g. "that task").
-13. Task Scheduling: Commands like "Schedule [Task] for [Date]" or "Add task [Task] for [Date]" MUST ALWAYS be classified as "create_task" for that date. Distinct dates represent separate temporal instances. NEVER convert "Schedule [Task] for [Date]" into "reschedule_task" or "update_task" unless the user explicitly said "reschedule" or "move".
-14. Structured Entity References: For descriptive references (e.g. "done with the that project budget task", "delete the workout from Tuesday"), targetReference MUST specify "kind": "DESCRIPTIVE", "rawExpression" as the user's reference phrase ("that project budget task"), and "semanticDescriptor" as the clean descriptive title/concept ("project budget"). For coreferences ("that task", "it"), specify "kind": "CONTEXTUAL_ANAPHORIC". For explicit exact IDs/titles, specify "kind": "EXPLICIT_IDENTIFIER".
-15. Habits are Goals, NOT Tasks: When user requests to establish a daily habit, morning routine, or ongoing tracking objective (e.g. "I want to start reading 15 pages of non-fiction every morning. Can we set that up as a daily habit?"), classify as "ACTION_REQUEST" with actionType: "propose_goal" and payload with "cadence": "daily", "type": "maintenance" or "identity". NEVER classify a habit request as "create_task". Tasks are for single discrete calendar commitments.
-16. State-Driven Confirmation: If an active PENDING OPERATION exists in context (e.g. confirm_goal for an active proposal), and the user confirms or gives assent (e.g. "yes", "sure", "yes sure do that", "let's do it", "go ahead"), classify as "CONFIRMATION" or "CLARIFICATION_RESPONSE" and continue the pending operation (e.g. confirm_goal) for that target entity. DO NOT spawn a new create_task or duplicate create_goal.
-17. Gratitude, Appreciation & Compliments (Strict Zero Operations): When the user expresses gratitude, relief, appreciation, or compliments (such as "Thank you so much", "You're a life saver", "You're a lifesaver", "Thanks", "Awesome", "Great job", "Appreciate your help", "Perfect"): The turn MUST be classified as "CASUAL_DIALOGUE" with operations: []. It represents conversational acknowledgment of a previously completed interaction. NEVER repeat, re-emit, or re-execute the previous turn's operations.
-18. Conversational Sign-Offs, Closures & Farewells (Strict Zero Operations): When the user indicates they want to conclude, wrap up, or end the interaction (such as "Let's talk tomorrow", "That's it for today", "Goodnight", "Have to head out", "Signing off", "Talk to you later", "That's all for now"): The turn MUST be classified as "CASUAL_DIALOGUE" with operations: []. If the user mentions upcoming commitments or schedule as context for departing (such as "I have a meeting tomorrow so let's talk tomorrow, that's it for today"), this is conversational rationale, NOT a request to create a task or calendar event. NEVER spawn an action proposal for casual departure statements.
-19. Speech Transcription Vocative Awareness: The incoming user utterance is transcribed via voice speech-to-text (ASR) and may contain acoustic or phonetic variations of the assistant's name "Aven" (such as "vin", "Vyven", "Evan", "Ivan", "Ayven"). Understand that the user is addressing Aven without requiring exact orthographic matching, and interpret the semantic intent of the request directly.
-20. Name Pronunciation Teaching: When the user instructs Aven how to pronounce their name (e.g. "Aven, pronounce my name like Duksh", "My name is pronounced Duksh", "Call me Duksh"): Classify as "ACTION_REQUEST" with actionType: "update_user_profile", domain: "context", and payload: { "phoneticName": "<phonetic_spelling>" }.
-21. Calendar Time Blocking & RoutineAI (V3 Temporal Reality):
-- Recurring Class Schedules & Regular Commitments:
-  When the user states recurring commitments, lectures, university/school classes, gym routines, or regular blocks (e.g. "I have my university classes on Monday from 1:40PM to 4:10PM", "On Tuesdays I have class from 11:10am to 12:50pm and then from 3:20pm to 4:10pm", "I generally go to gym on Monday around 11:30am to 1:30pm", "Add my university classes every Monday"):
-  Classify as "ACTION_REQUEST". Emit "create_temporal_series" operations for each distinct time slot (e.g., two slots on Tuesday produce two separate operations in the operations array).
-  Payload format:
-  {
-    "title": "University classes" (or "Gym", or course name),
-    "kind": "HARD_EVENT" (for university/school classes, fixed appointments) | "ROUTINE_BLOCK" (for gym, daily habits),
-    "baseStartTime": "HH:MM" (24-hour time, e.g. "13:40", "11:10", "15:20", "11:30"),
-    "baseDurationMinutes": <duration in minutes: 1:40PM to 4:10PM is 150 min; 11:10AM to 12:50PM is 100 min; 3:20PM to 4:10PM is 50 min; 11:30AM to 1:30PM is 120 min>,
-    "locationCategory": "ACADEMIC" (for university/school) | "GYM" (for gym/fitness) | "HOME" | "WORK_SITE",
-    "recurrence": {
-      "frequency": "WEEKLY",
-      "interval": 1,
-      "daysOfWeek": [<array of day numbers: 0=Sun, 1=Mon, 2=Tue, 3=Wed, 4=Thu, 5=Fri, 6=Sat>],
-      "effectiveStartDate": "YYYY-MM-DD"
-    }
-  }
-  CRITICAL: Do NOT ask redundant permission questions like "Should I block those slots on your calendar?" when the user states their timings; schedule them directly into their calendar routines.
+CRITICAL INVARIANTS:
+1. MEDIA & SPOTIFY PLAYBACK:
+   ANY request asking to play, pause, resume, or skip music, songs, artists, playlists, sounds, or white noise MUST ALWAYS be classified as "ACTION_REQUEST" with actionType "external_capability_action" and capabilityURN "wellness.media.playback_control". NEVER classify as "CASUAL_DIALOGUE" or return 0 operations.
+   - Playing: { "capabilityURN": "wellness.media.playback_control", "providerId": "spotify", "parameters": { "command": "play", "query": "<query>", "targetType": "track"|"artist"|"playlist"|"auto" } }
+     - Specific song ("play cold water by justin bieber", "play brown rang by honey singh", "play blinding lights") -> targetType: "track", query: song or song with artist
+     - Artist alone ("play taylor swift", "play the weeknd", "play weeknd") -> targetType: "artist", query: artist name
+     - Playlist, ambient sound, white noise, mood ("play my workout playlist", "play white noise", "play playlist with the name calm", "play calm music") -> targetType: "playlist", query: playlist/sound name ("workout", "white noise", "calm")
+   - Pausing ("pause", "pause it", "okay pause it", "can you pause the song now", "stop playback") -> parameters: { "command": "pause" }
+   - Resuming ("resume", "unpause", "continue music") -> parameters: { "command": "resume" }
+   - Skipping ("skip", "next song", "next track") -> parameters: { "command": "next" }
 
-- Transition & Commute Buffers:
-  When the user mentions travel, transit, or commute times (e.g. "after my uni it takes me 40-45 mins to get back home all 5 days of the week", "commute is 45 mins"):
-  Classify as "ACTION_REQUEST" with actionType: "create_temporal_series" with payload:
-  {
-    "title": "Commute home",
-    "kind": "TRANSITION_BUFFER",
-    "baseStartTime": "16:15",
-    "baseDurationMinutes": 45,
-    "locationCategory": "TRANSIT",
-    "recurrence": {
-      "frequency": "WEEKLY",
-      "interval": 1,
-      "daysOfWeek": [1, 2, 3, 4, 5],
-      "effectiveStartDate": "YYYY-MM-DD"
-    }
-  }
+2. PRODUCTIVITY & TASKS:
+   - Tasks / to-dos ("Finish deck tomorrow", "Review PR") -> actionType: "create_task", payload: { "title": "Finish deck", "dueDate": "tomorrow" }
+   - "Finished deck" / "done with deck" -> actionType: "complete_task", targetReference: { "kind": "DESCRIPTIVE", "semanticDescriptor": "deck" }
+   - "Set priority to high" -> adjust_task_priority, payload: { "priority": "high" }
 
-- Conversational Context Recall & Coreference Resolution:
-  When the user refers back to a commitment mentioned earlier in the conversation (e.g. "Yk the monday university class that I told you about that happens like every Monday so add that in my calendar", "schedule that for me"):
-  CRITICALLY: CAREFULLY INSPECT THE RECENT CONVERSATION HISTORY PROVIDED IN THIS PROMPT. Find where the user previously stated the class times or commitment details (such as Monday from 1:40PM to 4:10PM).
-  Extract those times directly from the earlier turn and emit the "create_temporal_series" operation!
-  NEVER ask the user "What time does your Monday university class start and end?" if they already provided that time earlier in the conversation history.
+3. HABITS VS TASKS:
+   - Ongoing habits, daily routines -> actionType: "propose_goal", payload: { "title": "...", "cadence": "daily" }
 
-- Follow-up Confirmation for Slot Blocking:
-  If the assistant previously asked "Should I block those slots on your calendar?" or similar, and the user replies with affirmative consent ("yes", "sure", "do it", "go ahead"):
-  Classify as "ACTION_REQUEST" or "CONFIRMATION" and immediately schedule the referenced slots discussed in the previous user message!
+4. CALENDAR & ROUTINE TIME-BLOCKING:
+   - Checking calendar / schedule ("what do I have left today", "what's on my schedule today", "tell me what I have left", "check my meetings", "fetch the latest updates from my google calendar") -> capabilityURN: "productivity.calendar.read_events", providerId: "google_calendar", parameters: {}
+   - Calendar meetings / events / appointments ("schedule a meeting with Alex tomorrow at 3", "add team sync to calendar") -> capabilityURN: "productivity.calendar.create_event", providerId: "google_calendar", parameters: { "title": "Meeting with Alex", "startTime": "...", "endTime": "..." }
+   - Recurring classes/routines ("university Monday 1:40pm to 4:10pm") -> actionType: "create_temporal_series", payload: { "title": "University classes", "kind": "HARD_EVENT"|"ROUTINE_BLOCK", "baseStartTime": "13:40", "baseDurationMinutes": 150, "locationCategory": "ACADEMIC"|"GYM", "recurrence": { "frequency": "WEEKLY", "interval": 1, "daysOfWeek": [1], "effectiveStartDate": "YYYY-MM-DD" } }
+   - Commute/transit buffers -> create_temporal_series with kind: "TRANSITION_BUFFER"
+   - Attended/logged session ("went to uni from 11:10 to 12:50") -> log_execution_interval
+   - Skipped session ("skipped class today", "cancelled gym") -> cancel_occurrence with status: "SKIPPED"
 
-- One-Off Calendar Events:
-  When the user books a single specific appointment or focus session for a specific date:
-  Classify as "ACTION_REQUEST" with actionType: "schedule_occurrence" and payload with dateOnly, startTime, durationMinutes, kind.
+5. CONVERSATIONAL CLARIFICATION, COREFERENCE & FOLLOW-UPS:
+   - Affirmative confirmation ("yes", "yea", "sure", "do it", "allow", "go ahead", "okay", "yes confirm") -> ALWAYS classify as "CONFIRMATION" when any pending operation exists.
+   - Negative / cancellation ("no", "cancel", "deny", "stop", "don't do that") -> ALWAYS classify as "CANCEL_OR_DISMISS".
+   - Anaphoric follow-up queries: When the user asks to see, list, or inspect items discussed in recent history ("and what are they", "list them", "show them", "what are their names", "show me those folders"):
+     Resolve the target from recent conversation history. For example, if the previous turn discussed folders or files on a drive or directory (e.g. "D drive", "D:\\"), produce an "ACTION_REQUEST" with "productivity.storage.list_files" for that same directory or drive path.
+   - Never classify anaphoric queries asking for details of items from the previous turn as CASUAL_DIALOGUE.
+   - Recall prior details from recent conversation history; never re-ask what the user already stated.
 
-Domain Action Types:
-- productivity: "create_task", "complete_task", "update_task", "delete_task", "reschedule_task", "adjust_task_priority", "create_goal", "propose_goal", "confirm_goal", "delete_goal", "schedule_occurrence", "reschedule_occurrence", "cancel_occurrence", "create_temporal_series", "log_execution_interval"
-- health: "log_meal", "log_workout", "modify_workout", "update_weight", "propose_diet_mode", "confirm_diet_mode"
-- wellness: "log_activity", "record_mental_estimate", "apply_recovery_constraint"
-- context: "set_context_mode", "clear_context_mode"
+6. STRICT ZERO OPERATIONS:
+   - Gratitude / compliments ("thank you", "you're a lifesaver") -> CASUAL_DIALOGUE, operations: []
+   - Conversational sign-offs ("let's talk tomorrow, signing off") -> CASUAL_DIALOGUE, operations: []
+   - General greetings / trivia ("hello", "what is the capital of France") -> CASUAL_DIALOGUE, operations: []
 
+8. LOCAL FILESYSTEM & STORAGE:
+   ANY request asking to inspect, list, find, or search files or folders on the user's desktop, downloads, project directories, local drives (C:, D:), or local computer, or read/write local files MUST be classified as "ACTION_REQUEST" with actionType "external_capability_action" and providerId "filesystem_desktop". NEVER invent "local_os" or unregistered provider IDs.
+   - Listing / searching files ("go to my desktop and see if i have any .py file", "find python files on my desktop", "list files in downloads"):
+     { "capabilityURN": "productivity.storage.list_files", "providerId": "filesystem_desktop", "parameters": { "path": "Desktop", "extension": ".py" }, "requiresConfirmation": false }
+   - Drives and folders ("check my D drive and lmk how many folders are there", "what folders are in D:"):
+     { "capabilityURN": "productivity.storage.list_files", "providerId": "filesystem_desktop", "parameters": { "path": "D:\\", "type": "folder" }, "requiresConfirmation": false }
+   - Reading files ("read my notes.txt file"):
+     { "capabilityURN": "productivity.storage.read_file", "providerId": "filesystem_desktop", "parameters": { "path": "notes.txt" }, "requiresConfirmation": false }
+   - Writing / creating files ("create a python file with code of palindrome on my desktop", "save code to Desktop/palindrome.py"):
+     Always generate complete, high-quality code or text content in the "content" parameter.
+     { "capabilityURN": "productivity.storage.write_file", "providerId": "filesystem_desktop", "parameters": { "path": "Desktop/palindrome.py", "content": "..." }, "requiresConfirmation": true, "confirmationMode": "EXPLICIT_CONFIRMATION" }
 
-OUTPUT SCHEMA (Return ONLY valid JSON):
+9. BROWSER & SYSTEM ACTIONS:
+   ANY request asking to open a browser, navigate to a website or domain, or launch a URL ("open my browser and go to amazon.com", "open youtube.com", "go to github.com in my browser") MUST be classified as "ACTION_REQUEST" with actionType "external_capability_action", providerId "filesystem_desktop", and capabilityURN "context.system.open_url".
+   - Opening URL / Website:
+     { "capabilityURN": "context.system.open_url", "providerId": "filesystem_desktop", "parameters": { "url": "https://amazon.com" }, "requiresConfirmation": false }
+
+10. GOOGLE WORKSPACE (DRIVE, GMAIL, CALENDAR, CONTACTS, TASKS, FIT & NOTES):
+   - Google Drive list / search ("can you check my google drive ?", "search my google drive for slides", "list files in drive"):
+     { "capabilityURN": "productivity.storage.list_files", "providerId": "google_drive", "parameters": { "path": "Google Drive", "pattern": "" }, "requiresConfirmation": false }
+   - Google Drive file filtering by type or extension ("can you check if there's any pdf file on my google drive ?", "find pdfs on drive", "find spreadsheets on drive"):
+     { "capabilityURN": "productivity.storage.list_files", "providerId": "google_drive", "parameters": { "path": "Google Drive", "extension": "pdf", "type": "pdf" }, "requiresConfirmation": false }
+   - Google Drive read file ("read this file on my google drive and let me know what's written in there", "can you read resume.pdf on drive"):
+     { "capabilityURN": "productivity.storage.read_file", "providerId": "google_drive", "parameters": { "path": "<exact file name or path>" }, "requiresConfirmation": false }
+   - Google Drive summarize file ("can you summarize this file?", "okay summarize it", "summarize Specialized_resume_founder_office_daksh_kaushal.pdf"):
+     Resolve file name from recent history if unspecified: { "capabilityURN": "productivity.storage.read_file", "providerId": "google_drive", "parameters": { "path": "<exact file name from recent context>", "intent": "summarize" }, "requiresConfirmation": false }
+   - Google Notes / Docs ("can you find my latest notes on google notes", "check notes in google"):
+     Always use google_drive storage for Google documents and notes: { "capabilityURN": "productivity.storage.list_files", "providerId": "google_drive", "parameters": { "path": "Google Drive", "pattern": "notes" }, "requiresConfirmation": false }. NEVER emit "google_notes" or "google_keep".
+   - Google Contacts ("can you access google contacts", "list down my contacts from google contact", "search my contacts for Alex"):
+     Listing address book: { "capabilityURN": "productivity.contacts.search_contacts", "providerId": "google_contacts", "parameters": { "query": "" }, "requiresConfirmation": false }
+     Searching a person: { "capabilityURN": "productivity.contacts.search_contacts", "providerId": "google_contacts", "parameters": { "query": "Alex" }, "requiresConfirmation": false }
+   - Gmail search / recent inbox ("check my last 10 email", "check my last 10 mails", "what was my last mail on my gmail", "check my email", "search my inbox for flight"):
+     For general inbox checks ("last 10 emails", "my emails"): set query: "" and maxResults: 10.
+     For singular last email ("what was my last mail"): set query: "" and maxResults: 1.
+     For keyword search ("emails from Sarah", "flight"): set query: "from:Sarah" or "flight".
+     { "capabilityURN": "productivity.email.search_messages", "providerId": "gmail", "parameters": { "query": "...", "maxResults": 10 }, "requiresConfirmation": false }
+   - Gmail open / read message ("open the last mail that came from HDFC bank and tell me what's written inside it", "open the first one out of this", "open the first one", "read the second email"):
+     When user asks to open/read/inspect the body of an email:
+     { "capabilityURN": "productivity.email.read_message", "providerId": "gmail", "parameters": { "query": "from:HDFC", "sender": "HDFC", "index": 0 }, "requiresConfirmation": false }
+     When opening by ordinal from recent turn ("open the first one", "read the first email"):
+     { "capabilityURN": "productivity.email.read_message", "providerId": "gmail", "parameters": { "index": 0 }, "requiresConfirmation": false }
+   - Gmail summarize email ("can you summarize this email for me?", "summarize this mail", "give me a summary of the Wellfound email"):
+     When user asks to summarize an email:
+     { "capabilityURN": "productivity.email.read_message", "providerId": "gmail", "parameters": { "intent": "summarize", "summarize": true }, "requiresConfirmation": false }
+     If referring to an email from recent dialogue, resolve query or sender from context.
+   - Gmail draft email ("can you draft me a mail to hire a co founder", "draft an email to pitch our product", "write a draft for a partnership"):
+     Creating a draft in Gmail is completely non-destructive (the user can edit or delete it anytime). NEVER map drafting to send_message! Compose a complete, professional subject and bodyText:
+     { "capabilityURN": "productivity.email.create_draft", "providerId": "gmail", "parameters": { "subject": "...", "bodyText": "..." }, "requiresConfirmation": false }
+   - Gmail send ("send an email to alex@example.com", "mail it to alex@example.com", "now mail this", "mail it to overforgegaming@gmail.com"):
+     When the user instructs sending an email (or says "mail it to ...", "now mail this"):
+     - If referring to a draft or email composed in previous turns, extract the subject and bodyText from the conversation context, apply any requested revisions (e.g. sender name "Daksh"), and emit:
+     { "capabilityURN": "productivity.email.send_message", "providerId": "gmail", "parameters": { "to": ["alex@example.com"], "subject": "...", "bodyText": "..." }, "requiresConfirmation": true, "confirmationMode": "EXPLICIT_CONFIRMATION" }
+     - NEVER re-output the email draft in plain text instead of emitting the send operation! The Human-in-the-Loop gate will handle confirmation automatically.
+   - Google Tasks ("sync my google tasks", "what are my google tasks"):
+     { "capabilityURN": "productivity.task.sync_tasks", "providerId": "google_tasks", "requiresConfirmation": false }
+   - Google Fit telemetry:
+     - Multi-day / Weekly step count ("can you check my steps taken from google fit for last one week", "steps from google fit for last week", "my activity for past 7 days"):
+       { "capabilityURN": "health.biometrics.read_daily_summary", "providerId": "google_fit", "parameters": { "days": 7, "range": "last_7_days" }, "requiresConfirmation": false }
+     - Single day ("check my google fit", "can you check my today's steps i took from my google fit", "how many steps did i walk today"):
+       { "capabilityURN": "health.biometrics.read_daily_summary", "providerId": "google_fit", "parameters": { "date": "today", "days": 1 }, "requiresConfirmation": false }
+     - Sleep ("check my sleep in google fit"):
+       { "capabilityURN": "health.biometrics.read_sleep", "providerId": "google_fit", "parameters": { "date": "today" }, "requiresConfirmation": false }
+   - Google Fit record workout ("log a 30 min run in google fit"):
+     { "capabilityURN": "health.activity.record_workout", "providerId": "google_fit", "parameters": { "workoutType": "Running", "durationMinutes": 30 }, "requiresConfirmation": true, "confirmationMode": "EXPLICIT_CONFIRMATION" }
+
+11. GITHUB, NOTION & OBSIDIAN VAULT:
+   - GitHub Repositories ("can you access my github", "check my github", "can you check all my repositories", "list down my last 10 github repositories", "list my repositories", "show my repos"):
+     { "capabilityURN": "productivity.git.list_repos", "providerId": "github", "parameters": { "per_page": 10 }, "requiresConfirmation": false }
+   - GitHub PRs & code ("check my github PRs", "list open pull requests"):
+     { "capabilityURN": "productivity.git.list_prs", "providerId": "github", "parameters": {}, "requiresConfirmation": false }
+   - GitHub create issue ("create an issue on github for bug"):
+     { "capabilityURN": "productivity.git.create_issue", "providerId": "github", "parameters": { "owner": "...", "repo": "...", "title": "..." }, "requiresConfirmation": true, "confirmationMode": "EXPLICIT_CONFIRMATION" }
+   - Notion ("check my notion", "search my notion notes"):
+     { "capabilityURN": "productivity.storage.list_files", "providerId": "notion", "parameters": { "pattern": "..." }, "requiresConfirmation": false }
+   - Notion create page ("create a notion page for project"):
+     { "capabilityURN": "productivity.storage.write_file", "providerId": "notion", "parameters": { "path": "Project Notes", "content": "..." }, "requiresConfirmation": true, "confirmationMode": "EXPLICIT_CONFIRMATION" }
+   - Obsidian Vault ("check my obsidian vault", "search my obsidian notes for AI", "list notes in my obsidian vault"):
+     { "capabilityURN": "productivity.storage.list_files", "providerId": "obsidian_vault", "parameters": { "pattern": "" }, "requiresConfirmation": false }
+   - Obsidian write note ("create a note in obsidian about neural nets"):
+     { "capabilityURN": "productivity.storage.write_file", "providerId": "obsidian_vault", "parameters": { "path": "neural nets.md", "content": "..." }, "requiresConfirmation": true, "confirmationMode": "EXPLICIT_CONFIRMATION" }
+
+12. ZERO-CONFIG SERVICES (WEATHER, TRAVEL, FLIGHTS, HOTELS, SHOPPING):
+   - Live Weather ("what's the weather like today", "how is the weather in Tokyo", "is it going to rain in London"):
+     { "capabilityURN": "context.environment.read_weather", "providerId": "open_meteo", "parameters": { "location": "Tokyo" }, "requiresConfirmation": false }
+     If user does NOT specify a city ("what's the weather today?", "is it going to rain today?"), set location to "" or omit it — the kernel auto-detects the user's location.
+   - 7-Day Forecast ("give me the 7 day forecast for Paris", "weather forecast for New York", "AQI and weather for next 7 days in Kapurthala"):
+     { "capabilityURN": "context.environment.get_forecast", "providerId": "open_meteo", "parameters": { "location": "Paris", "days": 7 }, "requiresConfirmation": false }
+   - Travel Itinerary ("plan a 3-day trip to Rome", "i'm planning to visit delhi for 2 days can you plan a small trip for me", "itinerary for Goa"):
+     { "capabilityURN": "travel.itinerary.generate", "providerId": "openstreetmap_travel", "parameters": { "destination": "Delhi", "durationDays": 2 }, "requiresConfirmation": false }
+   - Travel Attractions & Places ("places to visit in Kyoto", "attractions in Barcelona"):
+     { "capabilityURN": "travel.places.search", "providerId": "openstreetmap_travel", "parameters": { "location": "Kyoto" }, "requiresConfirmation": false }
+   - Flight Tickets ("can you check for the best flight from delhi to patna tomorrow", "find flights from New York to London", "search flights from Delhi to Mumbai"):
+     ALWAYS map ANY flight query, ticket search, or airline schedule request to:
+     { "capabilityURN": "travel.flights.search", "providerId": "flight_tracker", "parameters": { "origin": "Delhi", "destination": "Patna", "departureDate": "tomorrow" }, "requiresConfirmation": false }
+   - Hotel Booking ("can you check for hotels in delhi near the new delhi railway station for three days tomorrow onwards", "search hotels in Paris", "find places to stay in Tokyo"):
+     ALWAYS map ANY hotel, stay, or accommodation query to:
+     { "capabilityURN": "travel.hotels.search", "providerId": "hotel_finder", "parameters": { "location": "Delhi near New Delhi Railway Station", "checkInDate": "tomorrow" }, "requiresConfirmation": false }
+   - Automated Shopping & Price Comparison ("can you find best price for a PS5 gaming controller", "find best prices for Sony headphones", "compare prices for Macbook Air"):
+     { "capabilityURN": "shopping.products.search", "providerId": "shopping_agent", "parameters": { "query": "PS5 gaming controller" }, "requiresConfirmation": false }
+   - Shopping Cart / Buy Assist ("add it to my shopping cart on my amazon id", "buy it for me", "order the first one for me"):
+     { "capabilityURN": "shopping.cart.add", "providerId": "shopping_agent", "parameters": { "productUrl": "https://www.amazon.in/s?k=PS5+controller" }, "requiresConfirmation": false }
+   - Shopping Cart & Browser Purchase Assist ("add it to my shopping cart on my amazon id", "buy it for me", "order the first one for me", "buy the PS5 controller on Amazon"):
+     ALWAYS map ANY autonomous purchasing, cart adding, or buying intent to:
+     { "capabilityURN": "shopping.browser.search_and_cart", "providerId": "aven_browser_agent", "parameters": { "productName": "PS5 gaming controller", "store": "amazon", "action": "add_to_cart" }, "requiresConfirmation": false }
+   - Mobility & Rides ("book a cab to airport", "check uber to railway station", "find rides to Chandigarh", "how much is an uber or ola to Delhi"):
+     ALWAYS map ANY ride, cab, taxi, or mobility query to:
+     { "capabilityURN": "mobility.rides.estimate", "providerId": "uber_mobility", "parameters": { "pickup": "", "dropoff": "Chandigarh Airport" }, "requiresConfirmation": false }
+   - Food Delivery ("order butter chicken from zomato", "find good restaurants nearby", "order food from swiggy", "check pizza places"):
+     ALWAYS map ANY restaurant search or food delivery order to:
+     { "capabilityURN": "commerce.food.search_restaurants", "providerId": "zomato_eats", "parameters": { "query": "butter chicken", "location": "" }, "requiresConfirmation": false }
+   - Quick Commerce (10-minute groceries, essentials) ("order milk and bread from zepto", "get eggs from blinkit", "instamart groceries", "order snacks in 10 mins"):
+     ALWAYS map ANY 10-minute grocery or essentials request to:
+     { "capabilityURN": "commerce.quick.search_catalog", "providerId": "zepto_commerce", "parameters": { "query": "milk and bread" }, "requiresConfirmation": false }
+
+     CRITICAL PROVIDER & ACTION CONSTRAINTS:
+     - ONLY use registered providers: open_meteo, openstreetmap_travel, flight_tracker, hotel_finder, shopping_agent, uber_mobility, ola_mobility, rapido_mobility, zomato_eats, zepto_commerce, swiggy_suite, aven_browser_agent, google_calendar, gmail, google_tasks, google_drive, google_contacts, google_fit, spotify, github, notion, obsidian_vault, filesystem_desktop, brave_search.
+     - NEVER invent arbitrary non-existent provider IDs!
+     - NEVER emit unsupported "shopping.products.purchase"! For purchasing items, route through "shopping.browser.search_and_cart" or "shopping.cart.add".
+
+13. HUMAN-IN-THE-LOOP (HITL) POLICY:
+   - READ and DRAFT operations (checking files, reading drive, inbox, contacts, calendar events, tasks, fit telemetry, pull requests, github repositories, notes, saving email drafts) DO NOT require confirmation: set "requiresConfirmation": false.
+   - Irreversible WRITE operations (writing/creating local/external storage files, sending emails [send_message], scheduling calendar events, creating github issues, logging workouts, creating tasks, deleting items) MUST require confirmation: set "requiresConfirmation": true, "confirmationMode": "EXPLICIT_CONFIRMATION".
+
+OUTPUT SCHEMA (Return ONLY valid JSON with minimal tokens):
 {
   "primaryClassification": "ACTION_REQUEST" | "INFORMATION_QUERY" | "STATE_OBSERVATION" | "CASUAL_DIALOGUE" | "CLARIFICATION_RESPONSE" | "CONFIRMATION" | "CANCEL_OR_DISMISS",
   "ambiguityStatus": "UNAMBIGUOUS" | "OPERATION_AMBIGUOUS" | "ENTITY_AMBIGUOUS" | "TEMPORAL_AMBIGUOUS" | "CONFLICTING_INTENTS",
   "conversationalSummary": "Brief gist of what the user communicated",
-  "clarification": {
-    "required": false,
-    "questionToUser": "string or null"
-  },
   "operations": [
     {
       "operationId": "op_01",
-      "domain": "productivity" | "health" | "wellness" | "context",
-      "actionType": "create_task",
-      "riskClass": "LOW_REVERSIBLE" | "MEDIUM_COMPENSABLE" | "HIGH_IRREVERSIBLE" | "READ_ONLY",
-      "targetReference": {
-        "kind": "EXPLICIT_IDENTIFIER" | "CONTEXTUAL_ANAPHORIC" | "DESCRIPTIVE",
-        "rawExpression": "pitch deck",
-        "semanticDescriptor": "pitch deck",
-        "entityType": "task",
-        "contextualRelation": "ACTIVE_FOCUS" | "PENDING_OPERATION" | "GENERAL_SEARCH",
-        "resolutionStrategy": "EXACT_TITLE" | "CONTEXTUAL_RECENT" | "AMBIGUOUS_CANDIDATES" | "UNRESOLVED"
-      },
-      "temporal": {
-        "rawExpression": "tomorrow afternoon",
-        "type": "POINT_IN_TIME" | "DATE_ONLY" | "RELATIVE_OFFSET" | "TIME_OF_DAY_RANGE" | "RECURRING"
-      },
+      "actionType": "external_capability_action",
+      "requiresConfirmation": true,
+      "confirmationMode": "EXPLICIT_CONFIRMATION",
       "payload": {
-        "title": "Finish pitch deck",
-        "dueDate": "tomorrow",
-        "dueTime": "14:00"
-      },
-      "dependencies": []
+        "capabilityURN": "wellness.media.playback_control",
+        "providerId": "spotify",
+        "parameters": { "command": "play", "query": "...", "targetType": "..." }
+      }
     }
-  ],
-  "affectiveEvidence": {
-    "energy": { "value": 1, "confidence": 0.9 },
-    "stress": { "value": 7, "confidence": 0.8 },
-    "mood": { "value": 4, "confidence": 0.7 },
-    "reportedFatigue": true,
-    "somaticSymptoms": ["exhaustion"],
-    "rawVerbatim": "completely exhausted"
-  }
+  ]
 }`;
 
 // Ensure environment variables from apps/web/.env are loaded if not already in environment
@@ -260,8 +319,12 @@ export class SemanticIntentInterpreter {
 
     let parsedTurn: any = null;
 
-    // Call Groq LLM for authoritative semantic interpretation
-    if (!parsedTurn && process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== "mock_key_for_dev") {
+    // Call LLM for authoritative semantic interpretation
+    if (
+      !parsedTurn &&
+      ((process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== "mock_key_for_dev") ||
+       (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "mock_key_for_dev"))
+    ) {
       try {
         const contextSummary = [
           `Current Active Time: ${new Date(refTime).toISOString()} (Timezone: ${timezone})`,
@@ -284,7 +347,7 @@ export class SemanticIntentInterpreter {
         ];
 
         if (ctx.recentHistory && ctx.recentHistory.length > 0) {
-          for (const hist of ctx.recentHistory.slice(-16)) {
+          for (const hist of ctx.recentHistory.slice(-6)) {
             messages.push({ role: hist.role, content: hist.content });
           }
         }
@@ -293,9 +356,9 @@ export class SemanticIntentInterpreter {
 
         const rawResponse = await groqChat({
           messages,
-          model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+          model: process.env.GROQ_MODEL || "qwen/qwen3.8-27b",
           temperature: 0.1,
-          max_tokens: 4096,
+          max_tokens: 900,
         });
 
         const cleaned = cleanLLMResponse(rawResponse);
@@ -304,8 +367,8 @@ export class SemanticIntentInterpreter {
         if (jsonStart !== -1) {
           const sliceCandidate = jsonEnd > jsonStart ? cleaned.substring(jsonStart, jsonEnd + 1) : cleaned.substring(jsonStart);
           const sanitized = sliceCandidate
-            .replace(/,\s*([}\]])/g, "$1")
-            .replace(/\/\/.*$/gm, "");
+            .replace(/^\s*\/\/.*$/gm, "")
+            .replace(/,\s*([}\]])/g, "$1");
           try {
             parsedTurn = JSON.parse(sanitized);
           } catch (parseErr) {
@@ -314,7 +377,7 @@ export class SemanticIntentInterpreter {
           }
         }
       } catch (llmErr) {
-        console.warn("[SEMANTIC_INTERPRETER] Groq LLM call failed, falling back to heuristic parsing:", llmErr);
+        console.warn("[SEMANTIC_INTERPRETER] LLM call failed, falling back to heuristic parsing:", llmErr);
       }
     }
 
@@ -324,10 +387,18 @@ export class SemanticIntentInterpreter {
     }
 
     // Check if there is an active PendingOperationContext that should be continued
-    const hasActivePending = Boolean(ctx.pendingOperation && (ctx.pendingOperation as any).state === "AWAITING_CLARIFICATION");
+    const hasActivePending = Boolean(
+      ctx.pendingOperation &&
+      ((ctx.pendingOperation as any).state === "AWAITING_CLARIFICATION" ||
+       (ctx.pendingOperation as any).state === "AWAITING_CONFIRMATION")
+    );
 
     if (hasActivePending) {
-      const isAffirmative = parsedTurn?.primaryClassification === "CONFIRMATION";
+      const isAffirmative =
+        parsedTurn?.primaryClassification === "CONFIRMATION" ||
+        /^(?:yes|yep|yeah|sure|confirm|proceed|ok|okay|allow|do it|send it|go ahead)[\s.!]*$/i.test(trimmedInput) ||
+        trimmedInput.toLowerCase().startsWith("yes,") ||
+        trimmedInput.toLowerCase().startsWith("yes ");
       const isClarificationClassification =
         isAffirmative || parsedTurn?.primaryClassification === "CLARIFICATION_RESPONSE";
 
@@ -340,18 +411,22 @@ export class SemanticIntentInterpreter {
 
         const missingKind = typeof pending.missingRequirement === "object" ? pending.missingRequirement.kind : pending.missingRequirement;
 
-        // Case 1: Pending Confirmation (e.g. proposed goal confirmation, slot blocking, or duplicate confirmation)
+        // Case 1: Pending Confirmation (e.g. proposed goal confirmation, slot blocking, duplicate confirmation, or sensitive external action confirmation)
         if (
           isAffirmative &&
-          (missingKind === "CONFIRMATION" ||
+          (pending.state === "AWAITING_CONFIRMATION" ||
+            missingKind === "CONFIRMATION" ||
             missingKind === "DUPLICATE_CONFIRMATION" ||
             continuedActionType === "confirm_goal" ||
             continuedActionType === "propose_goal" ||
             continuedActionType === "create_temporal_series" ||
             continuedActionType === "schedule_occurrence" ||
+            continuedActionType === "external_capability_action" ||
             String(pending.clarificationQuestion || "").toLowerCase().includes("block") ||
             String(pending.clarificationQuestion || "").toLowerCase().includes("calendar") ||
-            String(pending.clarificationQuestion || "").toLowerCase().includes("schedule"))
+            String(pending.clarificationQuestion || "").toLowerCase().includes("schedule") ||
+            String(pending.clarificationQuestion || "").toLowerCase().includes("permission") ||
+            String(pending.clarificationQuestion || "").toLowerCase().includes("proceed"))
         ) {
           if (continuedActionType === "propose_goal") {
             continuedActionType = "confirm_goal";
@@ -367,7 +442,7 @@ export class SemanticIntentInterpreter {
           targetRef = {
             referenceId: generateId("ref"),
             rawExpression: trimmedInput,
-            entityType: (pending.missingRequirement?.targetEntityType as any) || "goal",
+            entityType: (pending.missingRequirement?.targetEntityType as any) || "storage",
             kind: "CONTEXTUAL_ANAPHORIC",
             contextualRelation: "PENDING_OPERATION",
             resolutionStrategy: "CONTEXTUAL_RECENT",
@@ -375,6 +450,28 @@ export class SemanticIntentInterpreter {
           };
           parsedTurn.clarification = undefined;
           parsedTurn.ambiguityStatus = "UNAMBIGUOUS";
+          const capURN = continuedPayload.capabilityURN || (continuedPayload as any)?.parameters?.capabilityURN || (pending as any).capabilityURN;
+          const providerId = continuedPayload.providerId || (continuedPayload as any)?.parameters?.providerId || (pending as any).providerHint;
+          parsedTurn.clarification = undefined;
+          parsedTurn.ambiguityStatus = "UNAMBIGUOUS";
+          parsedTurn.primaryClassification = "CONFIRMATION";
+          parsedTurn.conversationalSummary = "Confirmed.";
+          parsedTurn.operations = [
+            {
+              operationId: pending.operationId || generateId("op"),
+              domain: continuedDomain,
+              actionType: continuedActionType,
+              riskClass: "LOW_REVERSIBLE",
+              payload: continuedPayload,
+              requiresConfirmation: false,
+              confirmationGranted: true,
+              targetReference: targetRef,
+              executionEligibility: "READY",
+              dependencies: [],
+              capabilityURN: capURN,
+              providerHint: providerId,
+            },
+          ];
         } else if (missingKind === "TARGET_ENTITY_RESOLUTION" || missingKind === "UNKNOWN") {
           // Case 2: Target Entity Resolution
           const rawTargetExpr = trimmedInput
@@ -451,41 +548,29 @@ export class SemanticIntentInterpreter {
           parsedTurn.ambiguityStatus = "UNAMBIGUOUS";
         }
 
-        parsedTurn.primaryClassification = isAffirmative ? "CONFIRMATION" : "CLARIFICATION_RESPONSE";
-        parsedTurn.conversationalSummary = isAffirmative ? "Confirmed." : "Proceeding with your request.";
-        parsedTurn.operations = [
-          {
-            operationId: `op_cont_${Date.now()}`,
-            domain: continuedDomain,
-            actionType: continuedActionType,
-            riskClass: "MEDIUM_COMPENSABLE",
-            targetReference: targetRef,
-            payload: continuedPayload,
-            dependencies: [],
-            executionEligibility: targetRef?.resolvedEntityId || missingKind === "PARAMETER_VALUE" ? "READY" : "REQUIRES_CLARIFICATION",
-          },
-        ];
+        if (!isAffirmative) {
+          parsedTurn.primaryClassification = "CLARIFICATION_RESPONSE";
+          parsedTurn.conversationalSummary = "Proceeding with your request.";
+          parsedTurn.operations = [
+            {
+              operationId: `op_cont_${Date.now()}`,
+              domain: continuedDomain,
+              actionType: continuedActionType,
+              riskClass: "MEDIUM_COMPENSABLE",
+              targetReference: targetRef,
+              payload: continuedPayload,
+              dependencies: [],
+              executionEligibility: targetRef?.resolvedEntityId || missingKind === "PARAMETER_VALUE" ? "READY" : "REQUIRES_CLARIFICATION",
+            },
+          ];
+        }
       }
     }
 
     // Normalize affective evidence
     let affectiveEvidence = parsedTurn.affectiveEvidence;
-    if (affectiveEvidence) {
-      if (affectiveEvidence.reportedFatigue === undefined) {
-        affectiveEvidence.reportedFatigue = /exhausted|fatigue|tired|burned\s*out|drained/i.test(trimmedInput);
-      }
-      if (!affectiveEvidence.rawVerbatim) {
-        affectiveEvidence.rawVerbatim = trimmedInput;
-      }
-    } else if (/exhausted|fatigue|tired|burned\s*out|drained/i.test(trimmedInput)) {
-      affectiveEvidence = {
-        energy: { value: 1, confidence: 0.9 },
-        stress: { value: 8, confidence: 0.8 },
-        mood: { value: 3, confidence: 0.7 },
-        reportedFatigue: true,
-        somaticSymptoms: ["exhaustion"],
-        rawVerbatim: trimmedInput,
-      };
+    if (affectiveEvidence && !affectiveEvidence.rawVerbatim) {
+      affectiveEvidence.rawVerbatim = trimmedInput;
     }
 
     // Post-processing & Enrichment
@@ -498,63 +583,23 @@ export class SemanticIntentInterpreter {
       let actionType: DomainActionType = rawOp.actionType || "create_task";
       let payload = rawOp.payload || {};
 
-      // Invariant: "Schedule [Task] for [Date]" without explicit "reschedule" or "move" is always a new create_task
-      if (
-        (actionType === "reschedule_task" || actionType === "update_task") &&
-        /^(?:schedule|add|create)\b/i.test(trimmedInput) &&
-        !/\b(?:reschedule|move)\b/i.test(trimmedInput)
-      ) {
-        actionType = "create_task";
-        rawOp.actionType = "create_task";
-        delete payload.taskId;
+      if (rawOp.capabilityURN) {
+        actionType = "external_capability_action";
+        if (!payload.capabilityURN) payload.capabilityURN = rawOp.capabilityURN;
+        if (!payload.providerId) payload.providerId = rawOp.providerId || rawOp.providerHint;
+        if (!payload.parameters && rawOp.parameters) payload.parameters = rawOp.parameters;
       }
 
-      // Invariant: Habit requests must ALWAYS map to propose_goal, never create_task
-      if (actionType === "create_task" && (/\b(?:habit|routine|daily habit)\b/i.test(trimmedInput))) {
-        actionType = "propose_goal";
-        rawOp.actionType = "propose_goal";
-        rawOp.domain = "productivity";
-        payload.cadence = payload.cadence || "daily";
-        payload.type = payload.type || "maintenance";
-      }
-
-      // Ensure propose_goal / create_goal has valid title
+      // Ensure propose_goal / create_goal has valid title and cadence
       if (actionType === "propose_goal" || actionType === "create_goal") {
         if (!payload.title) {
-          payload.title = payload.name || payload.habit || payload.goalTitle || payload.goal || payload.description || rawOp.targetReference?.semanticDescriptor || rawOp.targetReference?.rawExpression;
-        }
-        if (!payload.title) {
-          let extractedTitle = trimmedInput
-            .replace(/^(?:hey\s+aven,?\s*)?(?:i\s+want\s+to\s+start\s+|i\s+want\s+to\s+|can\s+we\s+set\s+that\s+up\s+as\s+a\s+(?:daily\s+)?habit\??|set\s+up\s+a\s+(?:daily\s+)?habit(?:\s+to)?|create\s+a\s+goal\s+to\s+|set\s+a\s+goal\s+to\s+)/gi, "")
-            .replace(/\b(?:can\s+we\s+set\s+that\s+up\s+as\s+a\s+(?:daily\s+)?habit\??|as\s+a\s+daily\s+habit\??)\b/gi, "")
-            .trim()
-            .replace(/^[,\s\.]+|[,\s\.\?]+$/g, "");
-          if (extractedTitle) {
-            payload.title = extractedTitle;
-          }
-        }
-        if (!payload.title && /reading\s+\d+\s+pages/i.test(trimmedInput)) {
-          payload.title = "Read 15 pages of non-fiction";
+          payload.title = payload.name || payload.habit || payload.goalTitle || payload.goal || payload.description || rawOp.targetReference?.semanticDescriptor || rawOp.targetReference?.rawExpression || "Goal";
         }
         if (!payload.cadence) {
           payload.cadence = "daily";
         }
       }
 
-      if (actionType === "create_task" && (!payload.dueDate || payload.dueDate === "today")) {
-        const dateMatch = trimmedInput.match(/\b(\d{4}-\d{2}-\d{2})\b/);
-        if (dateMatch) {
-          payload.dueDate = dateMatch[1];
-        }
-      }
-
-      // Invariant: If priority was mentioned in the user utterance or payload, ensure payload.priority is set
-      const prioMatch = trimmedInput.match(/\bpriority\s+(?:to|in|as)?\s*(high|low|medium|urgent)\b/i) ||
-        trimmedInput.match(/\b(high|low|medium|urgent)\s+priority\b/i) ||
-        trimmedInput.match(/\b(?:set|change|make|adjust)\s+(?:the\s+)?priority\s+(?:to\s+|in\s+)?(high|low|medium|urgent)\b/i);
-      if (prioMatch && !payload.priority) {
-        payload.priority = (prioMatch[1] || prioMatch[2] || "medium").toLowerCase();
-      }
       if (payload.newPriority && !payload.priority) {
         payload.priority = String(payload.newPriority).toLowerCase();
       }
@@ -680,6 +725,53 @@ export class SemanticIntentInterpreter {
         }
       }
 
+      // 3c. Deterministic Normalization for log_execution_interval
+      if (actionType === "log_execution_interval") {
+        if (!payload.dateOnly || payload.dateOnly === "today") {
+          payload.dateOnly = resolvedTemporal?.resolvedDate || getActiveDate(timezone, 4, new Date(refTime));
+        } else if (payload.dateOnly === "yesterday") {
+          const d = new Date(refTime);
+          d.setUTCDate(d.getUTCDate() - 1);
+          payload.dateOnly = d.toISOString().split("T")[0];
+        }
+
+        const dateStr = payload.dateOnly;
+        let startMs = payload.startedAtMs;
+        let endMs = payload.endedAtMs;
+
+        if (typeof startMs !== "number" || typeof endMs !== "number") {
+          const stStr = payload.startTime || payload.time || "09:00";
+          const [sh, sm] = stStr.split(":").map(Number);
+          const startMin = (sh || 0) * 60 + (sm || 0);
+
+          let durMin = payload.durationMinutes;
+          if (!durMin && payload.endTime) {
+            const [eh, em] = payload.endTime.split(":").map(Number);
+            const endMinute = (eh || 0) * 60 + (em || 0);
+            durMin = Math.max(1, endMinute - startMin);
+          }
+          if (!durMin) durMin = 60;
+
+          const startIso = `${dateStr}T${String(sh || 0).padStart(2, "0")}:${String(sm || 0).padStart(2, "0")}:00Z`;
+          startMs = new Date(startIso).getTime();
+          endMs = startMs + durMin * 60 * 1000;
+
+          payload.startedAtMs = startMs;
+          payload.endedAtMs = endMs;
+          payload.durationMinutes = durMin;
+        }
+      }
+
+      // 3d. Deterministic Normalization for cancel_occurrence
+      if (actionType === "cancel_occurrence") {
+        if (!payload.dateOnly || payload.dateOnly === "today") {
+          payload.dateOnly = resolvedTemporal?.resolvedDate || getActiveDate(timezone, 4, new Date(refTime));
+        }
+        if (!payload.status) {
+          const msgLower = (trimmedInput || "").toLowerCase();
+          payload.status = msgLower.includes("skip") ? "SKIPPED" : "CANCELLED";
+        }
+      }
 
       // 4. Resolve entity references for actions requiring target entities
       let targetRef = rawOp.targetReference;
@@ -761,16 +853,34 @@ export class SemanticIntentInterpreter {
         }
       }
 
+      let opDomain = rawOp.domain;
+      if (!opDomain) {
+        const cap = rawOp.capabilityURN || payload.capabilityURN;
+        if (cap && typeof cap === "string") {
+          if (cap.startsWith("health.")) {
+            opDomain = "health";
+          } else if (cap.startsWith("wellness.")) {
+            opDomain = "wellness";
+          } else {
+            opDomain = "productivity";
+          }
+        } else {
+          opDomain = "productivity";
+        }
+      }
+
       const op: SemanticOperation = {
         operationId: opId,
-        domain: rawOp.domain || "productivity",
+        domain: opDomain,
         actionType,
-        riskClass: (rawOp.riskClass as OperationRiskClass) || "LOW_REVERSIBLE",
+        riskClass: (rawOp.riskClass as OperationRiskClass) || (rawOp.requiresConfirmation ? "HIGH_IRREVERSIBLE" : "LOW_REVERSIBLE"),
         targetReference: targetRef,
         temporal: resolvedTemporal,
         payload,
         dependencies: Array.isArray(rawOp.dependencies) ? rawOp.dependencies : [],
         executionEligibility: "READY",
+        capabilityURN: rawOp.capabilityURN || payload.capabilityURN,
+        providerHint: rawOp.providerId || rawOp.providerHint || payload.providerId,
       };
 
       const eligibility = isOperationExecutable(op);

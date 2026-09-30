@@ -6,7 +6,7 @@ import {
 } from 'react-native';
 import { X, Check, Plus, Minus, Layers, Coffee, Sun, Moon, Apple } from 'lucide-react-native';
 import { useRouter } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import { useToast } from '../../../components/ui/Toast';
 import { fetchWithAuth } from '../../../utils/api';
 
@@ -67,7 +67,7 @@ export default function CreateTemplateScreen() {
   const [pickerAmount, setPickerAmount] = useState('100');
   const [pickerQty, setPickerQty] = useState('1');
 
-  useFocusEffect(
+  useSafeFocusEffect(
     useCallback(() => {
       const load = async () => {
         setLoadingLibrary(true);

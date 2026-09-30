@@ -7,3 +7,6 @@ export * from "./supervisor/FastPathExecutor";
 export * from "./kernel/ActionAdapters";
 export * from "./kernel/DefaultActionAdapters";
 export * from "./kernel/KernelCapabilityService";
+export * from "./kernel/ExternalCapabilityAdapter";
+export * from "./external/providers/ProviderRegistry";
+export * from "./external/presentation/CapabilityPresentationRegistry";

@@ -4,14 +4,22 @@ import { Bell, Search, Command } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
 
-export function TopNavigation() {
+interface TopNavigationProps {
+  isSidebarCollapsed?: boolean;
+  onToggleSidebar?: () => void;
+}
+
+export function TopNavigation({
+  isSidebarCollapsed,
+  onToggleSidebar,
+}: TopNavigationProps = {}) {
   const { data: session } = useSession();
 
   return (
     <header className="flex h-16 shrink-0 items-center justify-between px-6 bg-[#161618] border-b border-[#2A2B2F]">
       
       {/* Search / Command Palette Trigger */}
-      <div className="flex flex-1 items-center gap-4">
+      <div className="flex flex-1 items-center">
         <button className="flex w-full max-w-md items-center gap-3 rounded-xl bg-[#1F2023] border border-[#2A2B2F] px-4 py-2.5 text-sm text-gray-400 transition-all duration-200 hover:bg-[#2A2B2F] group">
           <Search size={16} className="text-[#9ca3af] group-hover:text-gray-300 transition-colors" />
           <span>Search or type a command...</span>

@@ -3,7 +3,7 @@ import React, { useState, useCallback } from 'react';
 import { View, Text, ScrollView, TouchableOpacity, ActivityIndicator, SafeAreaView, Modal, TextInput } from 'react-native';
 import { ArrowLeft, Trash2, Coffee, Sun, Moon, Apple, Activity, Dna, Zap } from 'lucide-react-native';
 import { useRouter, useLocalSearchParams } from 'expo-router';
-import { useFocusEffect } from '@react-navigation/native';
+import { useSafeFocusEffect } from '../../../utils/useSafeFocusEffect';
 import { useToast } from '../../../components/ui/Toast';
 import { fetchWithAuth } from '../../../utils/api';
 import { BookOpen, Layers, X, Plus, Minus, Check } from 'lucide-react-native';
@@ -89,7 +89,7 @@ export default function DailyLogScreen() {
     }
   };
 
-  useFocusEffect(useCallback(() => { loadLog(); }, [targetDate]));
+  useSafeFocusEffect(useCallback(() => { loadLog(); }, [targetDate]));
 
   const deleteMeal = async (mealIndex: number) => {
     if (!log) return;

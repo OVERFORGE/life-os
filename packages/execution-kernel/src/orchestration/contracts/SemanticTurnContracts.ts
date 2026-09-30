@@ -114,7 +114,7 @@ export interface IPendingOperationContext {
 }
 
 export interface IContextEntityRef {
-  entityType: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "incident" | "context_mode" | "weight";
+  entityType: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "incident" | "context_mode" | "weight" | "file" | "email" | "contact";
   entityId: string;
   displayName: string;
   domain: "productivity" | "health" | "wellness" | "context";
@@ -206,6 +206,8 @@ export interface SemanticOperation<TPayload = any> {
   payload: TPayload;          // Strongly-typed per DomainActionType
   dependencies: string[];     // IDs of prior operations that must succeed first
   executionEligibility: "READY" | "BLOCKED_BY_DEPENDENCY" | "REQUIRES_CLARIFICATION";
+  capabilityURN?: string;
+  providerHint?: string;
 }
 
 export interface SomaticMetric {
