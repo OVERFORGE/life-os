@@ -194,7 +194,14 @@ export function MobileMarkdown({ content }: MobileMarkdownProps) {
                 {/* Header Row */}
                 <View style={styles.tableHeaderRow}>
                   {headers.map((h, hIdx) => (
-                    <View key={hIdx} style={[styles.tableHeaderCell, hIdx === headers.length - 1 && { borderRightWidth: 0 }]}>
+                    <View
+                      key={hIdx}
+                      style={[
+                        styles.tableHeaderCell,
+                        hIdx === 0 && { minWidth: 170, alignItems: 'flex-start' },
+                        hIdx === headers.length - 1 && { borderRightWidth: 0 },
+                      ]}
+                    >
                       <Text style={styles.tableHeaderText}>{h}</Text>
                     </View>
                   ))}
@@ -211,7 +218,14 @@ export function MobileMarkdown({ content }: MobileMarkdownProps) {
                     ]}
                   >
                     {r.map((cell, cIdx) => (
-                      <View key={cIdx} style={[styles.tableDataCell, cIdx === r.length - 1 && { borderRightWidth: 0 }]}>
+                      <View
+                        key={cIdx}
+                        style={[
+                          styles.tableDataCell,
+                          cIdx === 0 && { minWidth: 170, alignItems: 'flex-start' },
+                          cIdx === r.length - 1 && { borderRightWidth: 0 },
+                        ]}
+                      >
                         {renderInlineFormatted(cell, styles.tableCellText)}
                       </View>
                     ))}

@@ -167,6 +167,69 @@ const PROVIDER_METADATA_EXTRAS: Record<
     ],
     defaultAccount: "LifeOS Search Engine",
   },
+  uber_mobility: {
+    iconName: "Car",
+    humanPermissions: [
+      "Compare UberGo, Premier, and Auto fares",
+      "Dispatch 1-tap booking to native Uber mobile app",
+      "Zero credentials stored",
+    ],
+    defaultAccount: "Uber Mobile Dispatch",
+  },
+  ola_mobility: {
+    iconName: "Car",
+    humanPermissions: [
+      "Compare Ola Mini and Auto fares",
+      "1-tap booking intent to native Ola app",
+      "Zero credentials stored",
+    ],
+    defaultAccount: "Ola Cabs Dispatch",
+  },
+  rapido_mobility: {
+    iconName: "Car",
+    humanPermissions: [
+      "Compare Rapido Bike Taxi & Auto fares",
+      "1-tap booking to native Rapido app",
+      "Zero credentials stored",
+    ],
+    defaultAccount: "Rapido Express Dispatch",
+  },
+  zomato_eats: {
+    iconName: "Utensils",
+    humanPermissions: [
+      "Search local restaurant menus & ratings",
+      "Assemble food carts",
+      "1-tap checkout on native Zomato app",
+    ],
+    defaultAccount: "Zomato Dining Bridge",
+  },
+  zepto_commerce: {
+    iconName: "Zap",
+    humanPermissions: [
+      "10-minute dark store grocery inventory",
+      "Assemble quick delivery carts",
+      "1-tap checkout on native Zepto app",
+    ],
+    defaultAccount: "Zepto Quick Commerce",
+  },
+  swiggy_suite: {
+    iconName: "ShoppingBag",
+    humanPermissions: [
+      "Search Swiggy Food & Instamart groceries",
+      "Build carts and review delivery times",
+      "1-tap checkout on native Swiggy app",
+    ],
+    defaultAccount: "Swiggy App Bridge",
+  },
+  shopping_agent: {
+    iconName: "ShoppingCart",
+    humanPermissions: [
+      "Compare prices on Amazon India & Flipkart",
+      "Automate cart addition and address selection",
+      "Halts at Checkout Payment Gate for your UPI/Card PIN",
+    ],
+    defaultAccount: "Online Shopping & Cart Assistant",
+  },
 };
 
 function parsePreferences(prefs: any): Record<string, string> {

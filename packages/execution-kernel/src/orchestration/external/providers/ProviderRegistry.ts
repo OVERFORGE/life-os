@@ -500,20 +500,22 @@ export class ProviderRegistry {
       lifecycleState: "ACTIVE",
     });
 
-    // 22. Automated Shopping Agent (100% Free, Zero-Config)
+    // 22. Online Shopping & Cart Assistant (Amazon, Flipkart, Retail)
     this.register({
       providerId: "shopping_agent",
-      displayName: "Automated Shopping Agent",
+      displayName: "Online Shopping & Cart Assistant",
       category: "productivity",
-      description: "Automated product search, real-time price comparison, and safe HITL cart addition across top retailers.",
+      description: "Automated product search, real-time price comparison, and safe browser cart checkout gate across Amazon & Flipkart.",
       advertisedCapabilities: [
         "shopping.products.search",
         "shopping.cart.add",
+        "shopping.browser.search_and_cart",
+        "shopping.browser.checkout_gate",
       ],
       transportType: "STREAMABLE_HTTP",
       authType: "NONE",
       requiredScopes: [],
-      defaultTimeoutMs: 8000,
+      defaultTimeoutMs: 12000,
       circuitBreakerThreshold: 3,
       lifecycleState: "ACTIVE",
     });
@@ -605,6 +607,7 @@ export class ProviderRegistry {
         "commerce.quick.create_cart",
         "commerce.quick.get_eta",
         "commerce.quick.checkout",
+        "commerce.quick.view_cart",
       ],
       transportType: "STREAMABLE_HTTP",
       authType: "NONE",
@@ -625,6 +628,7 @@ export class ProviderRegistry {
         "commerce.food.create_cart",
         "commerce.quick.search_catalog",
         "commerce.quick.create_cart",
+        "commerce.quick.view_cart",
       ],
       transportType: "STREAMABLE_HTTP",
       authType: "NONE",

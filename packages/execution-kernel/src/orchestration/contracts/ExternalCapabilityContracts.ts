@@ -74,6 +74,7 @@ export type CapabilityURN =
   | "commerce.quick.create_cart"
   | "commerce.quick.get_eta"
   | "commerce.quick.checkout"
+  | "commerce.quick.view_cart"
   // Autonomous Browser Shopping Domain
   | "shopping.browser.search_and_cart"
   | "shopping.browser.checkout_gate";
@@ -353,6 +354,10 @@ export interface CapabilityParameterMap {
   "commerce.quick.checkout": {
     cartId: string;
     deliverySlot?: string;
+  };
+  "commerce.quick.view_cart": {
+    cartId?: string;
+    platform?: "zepto" | "blinkit" | "instamart";
   };
   "shopping.browser.search_and_cart": {
     productName: string;
@@ -761,6 +766,15 @@ export interface CapabilityResultMap {
     totalAmount: string;
     deliverySlot: string;
     paymentUrl: string;
+  };
+  "commerce.quick.view_cart": {
+    cartId: string;
+    items: Array<{ name: string; quantity: number; price: string }>;
+    totalAmount: string;
+    etaMinutes: number;
+    platform: string;
+    checkoutUrl: string;
+    deepLinkUrl: string;
   };
   "shopping.browser.search_and_cart": {
     success: boolean;

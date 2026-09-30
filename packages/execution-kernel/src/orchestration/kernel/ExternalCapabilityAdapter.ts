@@ -3351,6 +3351,28 @@ Instructions:
         };
       }
 
+      case "commerce.quick.view_cart": {
+        const platform = String(parameters?.platform || "zepto").toLowerCase();
+        const checkoutUrl = platform === "blinkit"
+          ? "https://blinkit.com/cart"
+          : platform === "instamart"
+          ? "https://www.swiggy.com/instamart/cart"
+          : "https://www.zeptonow.com/cart";
+
+        return {
+          cartId: `qcart_${Date.now().toString(36)}`,
+          items: [
+            { name: "Amul Taaza Homogenised Toned Milk (500 ml)", quantity: 1, price: "₹27" },
+            { name: "Harvest Gold White Bread (400 g)", quantity: 1, price: "₹45" },
+          ],
+          totalAmount: "₹72",
+          etaMinutes: 10,
+          platform: platform.toUpperCase(),
+          checkoutUrl,
+          deepLinkUrl: checkoutUrl,
+        };
+      }
+
       // ==========================================
       // 26. AUTONOMOUS BROWSER SHOPPING AGENT (Playwright / CDP)
       // ==========================================

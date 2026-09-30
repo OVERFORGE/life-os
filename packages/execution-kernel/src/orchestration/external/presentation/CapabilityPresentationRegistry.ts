@@ -601,6 +601,17 @@ export class CapabilityPresentationRegistry {
       failedPhrase: "Couldn't initiate checkout",
     });
 
+    this.presentations.set("commerce.quick.view_cart", {
+      capabilityURN: "commerce.quick.view_cart",
+      displayName: "Quick Cart",
+      providerDisplayName: "Quick Commerce Engine",
+      iconName: "ShoppingCart",
+      actionLabel: "Retrieving quick cart",
+      progressPhrase: "Checking items in your quick commerce basket...",
+      completedPhrase: "Quick cart ready",
+      failedPhrase: "Couldn't view quick cart",
+    });
+
     // 18. Autonomous Browser Shopping Agent
     this.presentations.set("shopping.browser.search_and_cart", {
       capabilityURN: "shopping.browser.search_and_cart",

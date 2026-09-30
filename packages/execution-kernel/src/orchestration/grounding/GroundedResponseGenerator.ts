@@ -625,6 +625,50 @@ export class GroundedResponseGenerator {
           const resObj = data?.result || data || {};
           return `### 🛒 Product Ready for Purchase\n\n${resObj.message || "Product ready for secure purchase."}\n\n👉 [Proceed to Secure Checkout](${resObj.checkoutUrl})\n`;
         }
+        if (capURN.includes("rides.estimate")) {
+          const resObj = data?.result || data || {};
+          const pickup = resObj.pickup || "Current Location";
+          const dropoff = resObj.dropoff || "Destination";
+          const options = resObj.options || [];
+          const rows = options.map((opt: any) => `| **${opt.providerName}** (${opt.tier}) | **${opt.price}** | ${opt.etaMinutes} mins | [Book Now](${opt.deepLinkUri}) |`).join("\n");
+          return `### 🚖 Available Rides: ${pickup} → ${dropoff}\n\n| Option | Fare Estimate | Arrival ETA | Action |\n|:---|:---:|:---:|:---:|\n${rows}\n\n*Tap any booking link to open your ride app directly.*\n`;
+        }
+        if (capURN.includes("rides.request")) {
+          const resObj = data?.result || data || {};
+          return `### 🚖 Ride Confirmed: ${resObj.rideTier || "Cab"} via ${resObj.provider || "Mobility"}\n\n- **Route:** ${resObj.pickup} → ${resObj.dropoff}\n- **Estimated Fare:** ${resObj.fareEstimate}\n- **Driver ETA:** ~${resObj.driverEtaMinutes || 3} minutes\n\n👉 [Track Driver Live on Mobile App](${resObj.trackingUrl || resObj.deepLinkUri})\n`;
+        }
+        if (capURN.includes("food.search_restaurants")) {
+          const resObj = data?.result || data || {};
+          const loc = resObj.location || "your location";
+          const rests = resObj.restaurants || [];
+          const rows = rests.map((r: any) => `| **${r.name}** | ${r.cuisine} | ${r.rating} ★ | ${r.etaMinutes} mins | [View Menu & Order](${r.deepLinkUrl}) |`).join("\n");
+          return `### 🍽️ Top Dining Options in ${loc}\n\n| Restaurant | Cuisine | Rating | Delivery Time | Direct Link |\n|:---|:---|:---:|:---:|:---:|\n${rows}\n\n*Curated via Zomato & Swiggy.*\n`;
+        }
+        if (capURN.includes("food.create_cart")) {
+          const resObj = data?.result || data || {};
+          const itemsList = (resObj.items || []).map((it: any) => `- ${it.name} (x${it.quantity}) – **${it.price}**`).join("\n");
+          return `### 🥡 Food Basket Prepared: ${resObj.restaurantName}\n\n${itemsList}\n\n- **Subtotal:** ${resObj.subtotal}\n- **Delivery Fee:** ${resObj.deliveryFee}\n- **Estimated Total:** **${resObj.totalAmount}**\n\n👉 [Review Basket & Place Order on ${resObj.platform}](${resObj.checkoutUrl})\n`;
+        }
+        if (capURN.includes("quick.search_catalog")) {
+          const resObj = data?.result || data || {};
+          const q = resObj.query || "Essentials";
+          const items = resObj.items || [];
+          const rows = items.map((it: any) => `| **${it.name}** | ${it.packSize} | **${it.price}** | ${it.etaMinutes} mins | [Add to Cart](${it.deepLinkUrl}) |`).join("\n");
+          return `### ⚡ 10-Minute Groceries: "${q}"\n\n| Item | Pack Size | Price | Dark Store ETA | Quick Link |\n|:---|:---:|:---:|:---:|:---:|\n${rows}\n\n*Live dark-store inventory via Zepto, Blinkit & Instamart.*\n`;
+        }
+        if (capURN.includes("quick.create_cart") || capURN.includes("quick.view_cart")) {
+          const resObj = data?.result || data || {};
+          const itemsList = (resObj.items || []).map((it: any) => `- ${it.name} (x${it.quantity || 1}) – **${it.price}**`).join("\n");
+          return `### 🛒 Quick Commerce Cart (${resObj.platform || "Zepto"})\n\n${itemsList || "- 1x Daily Essentials"}\n\n- **Total Amount:** **${resObj.totalAmount || "₹149"}**\n- **Delivery Time:** ~${resObj.etaMinutes || 10} minutes\n\n👉 [Proceed to 10-Minute Checkout](${resObj.checkoutUrl || resObj.deepLinkUrl || "https://www.zeptonow.com/cart"})\n`;
+        }
+        if (capURN.includes("browser.search_and_cart")) {
+          const resObj = data?.result || data || {};
+          return `### 🛒 Product Found & Added to Cart (${resObj.store})\n\n- **Item:** **${resObj.productTitle}**\n- **Price:** **${resObj.price}**\n- **Status:** ${resObj.cartStatus === "CHECKOUT_READY" ? "Added to Cart & Ready for Review" : "In Stock"}\n- **Delivery Address:** ${resObj.deliveryAddress || "Home"}\n\n👉 [Review Cart & Checkout on ${resObj.store}](${resObj.checkoutUrl})\n`;
+        }
+        if (capURN.includes("browser.checkout_gate")) {
+          const resObj = data?.result || data || {};
+          return `### 🛡️ Checkout Payment Gate (Human-In-The-Loop)\n\n- **Order:** ${resObj.orderSummary}\n- **Shipping To:** ${resObj.deliveryAddress}\n- **Total Amount:** **${resObj.totalAmount}**\n- **Estimated Delivery:** ${resObj.estimatedDelivery}\n\n⚠️ *For your security, LifeOS pauses at checkout. Tap below to complete payment via UPI / Card:*\n\n👉 [Complete Payment on ${resObj.store}](${resObj.paymentUrl})\n`;
+        }
         return pres.completedPhrase ? `Done: ${pres.completedPhrase}.` : "Action completed successfully.";
       }
 

@@ -197,10 +197,14 @@ CRITICAL INVARIANTS:
    - Quick Commerce (10-minute groceries, essentials) ("order milk and bread from zepto", "get eggs from blinkit", "instamart groceries", "order snacks in 10 mins"):
      ALWAYS map ANY 10-minute grocery or essentials request to:
      { "capabilityURN": "commerce.quick.search_catalog", "providerId": "zepto_commerce", "parameters": { "query": "milk and bread" }, "requiresConfirmation": false }
+   - Quick Commerce Cart Inspection ("show me my items in quick commerce", "view my cart", "what is in my cart"):
+     ALWAYS map viewing or checking quick commerce items to:
+     { "capabilityURN": "commerce.quick.view_cart", "providerId": "zepto_commerce", "parameters": { "platform": "zepto" }, "requiresConfirmation": false }
 
      CRITICAL PROVIDER & ACTION CONSTRAINTS:
      - ONLY use registered providers: open_meteo, openstreetmap_travel, flight_tracker, hotel_finder, shopping_agent, uber_mobility, ola_mobility, rapido_mobility, zomato_eats, zepto_commerce, swiggy_suite, aven_browser_agent, google_calendar, gmail, google_tasks, google_drive, google_contacts, google_fit, spotify, github, notion, obsidian_vault, filesystem_desktop, brave_search.
      - NEVER invent arbitrary non-existent provider IDs!
+     - ANY request to open Amazon, Flipkart, or search for retail products online ("can you go to amazon.com and add a purse", "open browser and find black pants on amazon") MUST map to "shopping.browser.search_and_cart" or "shopping.products.search" with "shopping_agent" or "aven_browser_agent". NEVER map shopping or e-commerce intents to "context.system.open_url" or "filesystem_desktop"!
      - NEVER emit unsupported "shopping.products.purchase"! For purchasing items, route through "shopping.browser.search_and_cart" or "shopping.cart.add".
 
 13. HUMAN-IN-THE-LOOP (HITL) POLICY:
