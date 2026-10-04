@@ -72,6 +72,7 @@ export default function RootLayout() {
           <Stack.Screen name="login" options={{ headerShown: false }} />
           <Stack.Screen name="(dashboard)" options={{ headerShown: false }} />
           <Stack.Screen name="chat-modal" options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false }} />
+          <Stack.Screen name="aven-transient" options={{ presentation: 'transparentModal', animation: 'fade', headerShown: false, contentStyle: { backgroundColor: 'transparent' } }} />
         </Stack>
         <StatusBar style="light" />
       </ToastProvider>

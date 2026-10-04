@@ -151,20 +151,26 @@ export async function handleHeadlessNotificationAction(event: any): Promise<void
 }
 
 /**
- * Enqueues failed action into durable offline queue and updates notification
+ * Enqueues failed action into single canonical durable offline queue and updates notification
  * with truthful provisional state (never fakes authoritative completion).
  */
 async function handleOfflineFallback(envelope: any, actionType: string): Promise<void> {
   try {
-    const queueKey = '@lifeos_offline_action_queue';
-    const existing = await AsyncStorage.getItem(queueKey);
-    const queue: any[] = existing ? JSON.parse(existing) : [];
-    queue.push({
-      envelope,
-      queuedAtMs: Date.now(),
-      status: 'PENDING_OFFLINE',
-    });
-    await AsyncStorage.setItem(queueKey, JSON.stringify(queue));
+    const { WidgetSyncBridge } = await import('./WidgetSyncBridge');
+    const bridged = await WidgetSyncBridge.getInstance().enqueueCanonicalOfflineAction(envelope);
+
+    if (!bridged) {
+      // Fallback for non-Android / headless simulator environments
+      const queueKey = '@lifeos_offline_action_queue';
+      const existing = await AsyncStorage.getItem(queueKey);
+      const queue: any[] = existing ? JSON.parse(existing) : [];
+      queue.push({
+        envelope,
+        queuedAtMs: Date.now(),
+        status: 'PENDING_OFFLINE',
+      });
+      await AsyncStorage.setItem(queueKey, JSON.stringify(queue));
+    }
     console.log('[HeadlessActionReceiver] Action queued offline:', actionType, envelope.idempotencyKey);
 
     // Update active notification to reflect truthful provisional state
@@ -191,8 +197,16 @@ async function handleOfflineFallback(envelope: any, actionType: string): Promise
  * Replays queued offline actions upon network reconnection.
  */
 export async function flushOfflineActionQueue(): Promise<number> {
-  const queueKey = '@lifeos_offline_action_queue';
   try {
+    const { WidgetSyncBridge } = await import('./WidgetSyncBridge');
+    if (Platform.OS === 'android') {
+      await WidgetSyncBridge.getInstance().scheduleQueueReplay();
+      const count = await WidgetSyncBridge.getInstance().getCanonicalOfflineQueueCount();
+      console.log(`[HeadlessActionReceiver] Triggered WorkManager replay for canonical queue (${count} pending)`);
+      return count;
+    }
+
+    const queueKey = '@lifeos_offline_action_queue';
     const existing = await AsyncStorage.getItem(queueKey);
     if (!existing) return 0;
     const queue: any[] = JSON.parse(existing);

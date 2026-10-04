@@ -4,6 +4,7 @@ import { Power, Settings as SettingsIcon, Save, RefreshCw, ChevronRight, User as
 import { useRouter } from 'expo-router';
 import { fetchWithAuth } from '../../utils/api';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import { WidgetSyncBridge } from '../../services/WidgetSyncBridge';
 
 const C = {
   bg: '#161618', card: '#1F2023', border: '#2A2B2F',
@@ -105,6 +106,7 @@ export default function SettingsScreen() {
         style: 'destructive',
         onPress: async () => {
           await AsyncStorage.removeItem('user_token');
+          await WidgetSyncBridge.getInstance().clearSessionVault();
           try {
             const { NativeModules } = require('react-native');
             if (NativeModules.RNGoogleSignin) {

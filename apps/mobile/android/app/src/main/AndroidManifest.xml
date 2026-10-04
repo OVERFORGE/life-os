@@ -65,6 +65,15 @@
         android:resource="@xml/glance_widget_info" />
     </receiver>
 
+    <!-- Canonical Headless Widget Action Ingress Receiver -->
+    <receiver
+      android:name=".WidgetActionReceiver"
+      android:exported="false">
+      <intent-filter>
+        <action android:name="com.overforge.lifeos.ACTION_HEADLESS_DISPATCH" />
+      </intent-filter>
+    </receiver>
+
     <!-- Aven Quick Settings Tile (1-Tap Voice/Chat Access) -->
     <service
       android:name=".AvenQuickTileService"

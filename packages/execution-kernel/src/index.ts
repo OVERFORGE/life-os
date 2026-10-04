@@ -395,8 +395,9 @@ export * from "./temporal/adapters/TemporalActionAdapters";
 // Security & Vault Infrastructure
 export * from "./shared/CredentialVault";
 
-// Ambient Interaction Layer (V2.1.1)
+// Ambient Interaction Layer (V2.1.1 & V2.2.2)
 export * from "./experience/surface/contracts/InteractionSurfaceContracts";
+export * from "./experience/surface/contracts/WidgetPresentationDTO";
 export * from "./experience/surface/InteractionSurfaceService";
 export * from "./experience/surface/offline/SurfaceOfflineQueue";
 export * from "./experience/surface/voice/contracts/WakeWordContracts";

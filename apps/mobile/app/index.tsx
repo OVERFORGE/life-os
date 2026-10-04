@@ -4,6 +4,7 @@ import { View, Text, Image } from 'react-native';
 import { useRouter } from 'expo-router';
 import Animated, { FadeIn, FadeOut } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
+import * as Linking from 'expo-linking';
 
 export default function SplashScreen() {
   const router = useRouter();
@@ -12,18 +13,27 @@ export default function SplashScreen() {
     async function checkAuth() {
       try {
         const token = await AsyncStorage.getItem('user_token');
-        if (token) {
-          router.replace('/(dashboard)');
+        if (!token) {
+          router.replace('/login');
           return;
         }
+
+        const initialUrl = await Linking.getInitialURL();
+        if (initialUrl && initialUrl.includes('aven-transient')) {
+          router.replace('/aven-transient?mode=voice');
+          return;
+        }
+        if (initialUrl && initialUrl.includes('chat-modal')) {
+          router.replace('/chat-modal');
+          return;
+        }
+
+        router.replace('/(dashboard)');
+        return;
       } catch (e) {
-        console.error("Error reading token", e);
-      }
-      
-      // Fallback if no token
-      setTimeout(() => {
+        console.error("Error reading token or deep link", e);
         router.replace('/login');
-      }, 2000);
+      }
     }
     
     // Give the splash screen at least 1s before redirecting if we have a token

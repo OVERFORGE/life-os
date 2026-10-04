@@ -1,19 +1,51 @@
 /**
- * LifeOS Mobile Widget Sync Bridge (Phase 5)
+ * LifeOS Mobile Widget Sync Bridge (Phase 2 & Phase 5)
+ * Version 2.2.2-PRODUCTION-HARDENED
  * 
- * Bridges the canonical IInteractionSurfaceProjection into the native
- * Android Glance Widget and Quick Settings surfaces.
+ * Bridges canonical server projections into native Android Glance Widget
+ * via typed IWidgetPresentationDTO, and synchronizes session credentials
+ * to the hardware-backed Android Keystore vault.
  */
 
-import AsyncStorage from '@react-native-async-storage/async-storage';
 import { Platform, NativeModules } from 'react-native';
 
-export interface WidgetSyncData {
-  title: string;
-  subtitle: string;
-  mode: string;
-  meta: string;
-  updatedAtMs: number;
+export type WidgetDisplayState = 'CLEAR' | 'UPCOMING' | 'ACTIVE' | 'PROPOSAL';
+export type WidgetVisualIntent = 'CALM' | 'UPCOMING' | 'ACTIVE' | 'PROPOSAL';
+
+export interface IWidgetPresentationDTO {
+  schemaVersion: 1;
+  projectionVersion: number;
+  generatedAtMs: number;
+  displayState: WidgetDisplayState;
+  visualIntent: WidgetVisualIntent;
+  headerLabel: string;
+  badgeText: string;
+  primaryTitle: string;
+  secondaryText: string;
+  temporalContext: {
+    nextCommitmentStartMs?: number;
+    nextCommitmentTitle?: string;
+    minutesUntilStart?: number;
+  } | null;
+  activeContext: {
+    entityId: string;
+    startedAtMs: number;
+    plannedDurationMinutes: number;
+    elapsedSeconds: number;
+    idempotencySeed: string;
+  } | null;
+  upcomingContext: {
+    entityId: string;
+    startsAtMs: number;
+    categoryLabel: string;
+    idempotencySeed: string;
+  } | null;
+  allowedActions: {
+    canStart: boolean;
+    canComplete: boolean;
+    canPause: boolean;
+    canExtend: boolean;
+  };
 }
 
 export class WidgetSyncBridge {
@@ -29,80 +61,223 @@ export class WidgetSyncBridge {
   }
 
   /**
-   * Translates canonical surface projection into widget presentation model.
+   * Synchronizes an authoritative server projection to the native Android widget.
+   * If the input is already a typed IWidgetPresentationDTO, it forwards it directly.
+   * If it is a raw IInteractionSurfaceProjection, it translates it deterministically.
    */
-  public extractWidgetData(projection: any): WidgetSyncData {
-    const active = projection?.activeExecution;
-    const upcoming = projection?.upcomingCommitment;
+  public async syncProjectionToWidget(projectionOrDto: any): Promise<void> {
+    if (!projectionOrDto) return;
 
-    if (active && active.status === 'ACTIVE') {
-      return {
-        title: active.title,
-        subtitle: "Just tell me when you're done.",
-        mode: 'ACTIVE',
-        meta: `Active • ${active.plannedDurationMinutes}m planned`,
-        updatedAtMs: Date.now(),
-      };
+    let dto: IWidgetPresentationDTO;
+
+    if (projectionOrDto.schemaVersion === 1 && projectionOrDto.displayState) {
+      dto = projectionOrDto as IWidgetPresentationDTO;
+    } else {
+      dto = this.mapProjectionToDTO(projectionOrDto);
     }
 
-    if (active && active.status === 'PROPOSAL_PENDING') {
-      return {
-        title: active.title,
-        subtitle: 'Ready to start?',
-        mode: 'PROPOSAL',
-        meta: `Due now • ${active.plannedDurationMinutes}m`,
-        updatedAtMs: Date.now(),
-      };
+    try {
+      if (Platform.OS === 'android' && NativeModules.LifeOsWidgetBridge?.updateWidgetPresentation) {
+        await NativeModules.LifeOsWidgetBridge.updateWidgetPresentation(JSON.stringify(dto));
+        console.log('[WidgetSyncBridge] Widget state synchronized to Android native preferences:', dto.displayState, dto.primaryTitle);
+      }
+    } catch (e) {
+      console.warn('[WidgetSyncBridge] Failed to sync widget presentation:', e);
     }
-
-    if (upcoming) {
-      const mins = upcoming.minutesUntilStart;
-      return {
-        title: upcoming.title,
-        subtitle: mins <= 0 ? 'Starts now' : `Starts in ${mins}m`,
-        mode: mins <= 30 ? 'GLANCE' : 'SILENT',
-        meta: upcoming.category,
-        updatedAtMs: Date.now(),
-      };
-    }
-
-    // Silence Invariant: Calm empty state
-    return {
-      title: 'All commitments clear',
-      subtitle: 'Silence is a successful state',
-      mode: 'SILENT',
-      meta: 'Up to date',
-      updatedAtMs: Date.now(),
-    };
   }
 
   /**
-   * Persists widget data to native Android SharedPreferences and broadcasts update.
+   * Synchronizes user authentication credentials to the Android Keystore vault.
    */
-  public async syncProjectionToWidget(projection: any): Promise<void> {
-    const data = this.extractWidgetData(projection);
-
+  public async syncSessionTokenToVault(token: string, userId: string, expiresAtMs: number): Promise<boolean> {
     try {
-      // 1. Android Native Bridge
-      if (Platform.OS === 'android' && NativeModules.LifeOsWidgetBridge) {
-        await NativeModules.LifeOsWidgetBridge.updateWidgetState(
-          data.title,
-          data.subtitle,
-          data.mode,
-          0
-        );
+      if (Platform.OS === 'android' && NativeModules.LifeOsWidgetBridge?.storeSecureSession) {
+        return await NativeModules.LifeOsWidgetBridge.storeSecureSession(token, userId, expiresAtMs);
       }
-
-      // 2. React Native local storage backup
-      await AsyncStorage.setItem('widget_title', data.title);
-      await AsyncStorage.setItem('widget_subtitle', data.subtitle);
-      await AsyncStorage.setItem('widget_mode', data.mode);
-      await AsyncStorage.setItem('widget_meta', data.meta);
-      await AsyncStorage.setItem('widget_updated_at', String(data.updatedAtMs));
-
-      console.log('[WidgetSyncBridge] Widget state synchronized to Android native preferences:', data.mode, data.title);
+      return false;
     } catch (e) {
-      console.warn('[WidgetSyncBridge] Failed to sync widget state:', e);
+      console.warn('[WidgetSyncBridge] Failed to store secure session in vault:', e);
+      return false;
     }
+  }
+
+  /**
+   * Clears the Android Keystore vault on user logout.
+   */
+  public async clearSessionVault(): Promise<boolean> {
+    try {
+      if (Platform.OS === 'android' && NativeModules.LifeOsWidgetBridge?.clearSecureSession) {
+        return await NativeModules.LifeOsWidgetBridge.clearSecureSession();
+      }
+      return false;
+    } catch (e) {
+      console.warn('[WidgetSyncBridge] Failed to clear session vault:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Enqueues an action envelope into the single canonical offline store.
+   */
+  public async enqueueCanonicalOfflineAction(envelope: any): Promise<boolean> {
+    try {
+      if (Platform.OS === 'android' && NativeModules.LifeOsWidgetBridge?.enqueueCanonicalOfflineAction) {
+        return await NativeModules.LifeOsWidgetBridge.enqueueCanonicalOfflineAction(JSON.stringify(envelope));
+      }
+      return false;
+    } catch (e) {
+      console.warn('[WidgetSyncBridge] Failed to enqueue canonical offline action:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Triggers immediate WorkManager queue replay when network connectivity returns.
+   */
+  public async scheduleQueueReplay(): Promise<boolean> {
+    try {
+      if (Platform.OS === 'android' && NativeModules.LifeOsWidgetBridge?.scheduleQueueReplay) {
+        return await NativeModules.LifeOsWidgetBridge.scheduleQueueReplay();
+      }
+      return false;
+    } catch (e) {
+      console.warn('[WidgetSyncBridge] Failed to schedule queue replay:', e);
+      return false;
+    }
+  }
+
+  /**
+   * Returns the count of pending offline actions in the canonical queue.
+   */
+  public async getCanonicalOfflineQueueCount(): Promise<number> {
+    try {
+      if (Platform.OS === 'android' && NativeModules.LifeOsWidgetBridge?.getCanonicalOfflineQueueCount) {
+        return await NativeModules.LifeOsWidgetBridge.getCanonicalOfflineQueueCount();
+      }
+      return 0;
+    } catch (e) {
+      console.warn('[WidgetSyncBridge] Failed to get offline queue count:', e);
+      return 0;
+    }
+  }
+
+  /**
+   * Pure mapper matching kernel specification for hermetic mobile bundle execution.
+   */
+  private mapProjectionToDTO(p: any): IWidgetPresentationDTO {
+    // 1. ACTIVE EXECUTION
+    if (p.activeExecution && p.activeExecution.status === 'ACTIVE') {
+      return {
+        schemaVersion: 1,
+        projectionVersion: p.projectionVersion || 1,
+        generatedAtMs: p.generatedAtMs || Date.now(),
+        displayState: 'ACTIVE',
+        visualIntent: 'ACTIVE',
+        headerLabel: 'LIFEOS',
+        badgeText: '',
+        primaryTitle: p.activeExecution.title || 'Active Execution',
+        secondaryText: `Target: ${p.activeExecution.plannedDurationMinutes || 30}m • Tap when done`,
+        temporalContext: null,
+        activeContext: {
+          entityId: p.activeExecution.occurrenceId || p.activeExecution.taskId || 'active_entity',
+          startedAtMs: p.activeExecution.startedAtMs || p.generatedAtMs || Date.now(),
+          plannedDurationMinutes: p.activeExecution.plannedDurationMinutes || 30,
+          elapsedSeconds: p.activeExecution.elapsedSeconds || 0,
+          idempotencySeed: p.activeExecution.idempotencySeed || p.activeExecution.occurrenceId || 'seed_active',
+        },
+        upcomingContext: null,
+        allowedActions: {
+          canStart: false,
+          canComplete: p.activeExecution.canComplete ?? true,
+          canPause: p.activeExecution.canPause ?? true,
+          canExtend: p.activeExecution.canExtend ?? true,
+        },
+      };
+    }
+
+    // 2. PROPOSAL / INTERVENTION
+    if (p.interactionMode === 'ATTENTION' || p.activeExecution?.status === 'PROPOSAL_PENDING' || p.pendingIntervention) {
+      const title = p.pendingIntervention?.headline || p.activeExecution?.title || 'Proposed Execution';
+      return {
+        schemaVersion: 1,
+        projectionVersion: p.projectionVersion || 1,
+        generatedAtMs: p.generatedAtMs || Date.now(),
+        displayState: 'PROPOSAL',
+        visualIntent: 'PROPOSAL',
+        headerLabel: 'LIFEOS',
+        badgeText: 'PROPOSAL',
+        primaryTitle: title,
+        secondaryText: 'Ready to start?',
+        temporalContext: null,
+        activeContext: null,
+        upcomingContext: null,
+        allowedActions: {
+          canStart: true,
+          canComplete: false,
+          canPause: false,
+          canExtend: true,
+        },
+      };
+    }
+
+    // 3. UPCOMING COMMITMENT
+    if (p.interactionMode === 'GLANCE' && p.upcomingCommitment) {
+      const mins = p.upcomingCommitment.minutesUntilStart;
+      return {
+        schemaVersion: 1,
+        projectionVersion: p.projectionVersion || 1,
+        generatedAtMs: p.generatedAtMs || Date.now(),
+        displayState: 'UPCOMING',
+        visualIntent: 'UPCOMING',
+        headerLabel: 'LIFEOS',
+        badgeText: mins <= 0 ? 'STARTING NOW' : `IN ${mins}M`,
+        primaryTitle: p.upcomingCommitment.title,
+        secondaryText: `${p.upcomingCommitment.category || 'Focus'} • Scheduled focus block`,
+        temporalContext: {
+          nextCommitmentStartMs: p.upcomingCommitment.startsAtMs,
+          nextCommitmentTitle: p.upcomingCommitment.title,
+          minutesUntilStart: mins,
+        },
+        activeContext: null,
+        upcomingContext: {
+          entityId: p.upcomingCommitment.commitmentId,
+          startsAtMs: p.upcomingCommitment.startsAtMs,
+          categoryLabel: p.upcomingCommitment.category || 'Focus',
+          idempotencySeed: p.upcomingCommitment.commitmentId,
+        },
+        allowedActions: {
+          canStart: true,
+          canComplete: false,
+          canPause: false,
+          canExtend: true,
+        },
+      };
+    }
+
+    // 4. CLEAR (Restrained Ambient Experience)
+    return {
+      schemaVersion: 1,
+      projectionVersion: p.projectionVersion || 1,
+      generatedAtMs: p.generatedAtMs || Date.now(),
+      displayState: 'CLEAR',
+      visualIntent: 'CALM',
+      headerLabel: 'LIFEOS',
+      badgeText: 'CLEAR',
+      primaryTitle: "You're clear.",
+      secondaryText: p.upcomingCommitment ? '' : 'Nothing scheduled today',
+      temporalContext: p.upcomingCommitment ? {
+        nextCommitmentStartMs: p.upcomingCommitment.startsAtMs,
+        nextCommitmentTitle: p.upcomingCommitment.title,
+        minutesUntilStart: p.upcomingCommitment.minutesUntilStart,
+      } : null,
+      activeContext: null,
+      upcomingContext: null,
+      allowedActions: {
+        canStart: false,
+        canComplete: false,
+        canPause: false,
+        canExtend: false,
+      },
+    };
   }
 }

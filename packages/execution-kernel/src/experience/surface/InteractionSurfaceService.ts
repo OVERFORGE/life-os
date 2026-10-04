@@ -28,6 +28,10 @@ import {
   TemporalOccurrence,
   ExecutionChronicleEntry,
 } from "../../temporal/contracts/TemporalContracts";
+import {
+  IWidgetPresentationDTO,
+  mapProjectionToWidgetDTO,
+} from "./contracts/WidgetPresentationDTO";
 
 export interface SurfaceProjectionOptions {
   referenceTimeMs?: number;
@@ -167,6 +171,17 @@ export class InteractionSurfaceService {
     this.notifySubscribers(projection);
 
     return projection;
+  }
+
+  /**
+   * Derives the typed, presentation-ready IWidgetPresentationDTO for native widgets.
+   */
+  public async computeWidgetPresentationDTO(
+    userId: string,
+    options: SurfaceProjectionOptions = {}
+  ): Promise<IWidgetPresentationDTO> {
+    const projection = await this.computeSurfaceProjection(userId, options);
+    return mapProjectionToWidgetDTO(projection);
   }
 
   /**

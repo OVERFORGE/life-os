@@ -6,6 +6,7 @@ import Animated, { FadeInDown } from 'react-native-reanimated';
 import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Device from 'expo-device';
 import { API_URL } from '../utils/api';
+import { WidgetSyncBridge } from '../services/WidgetSyncBridge';
 
 export default function LoginScreen() {
   const router = useRouter();
@@ -44,6 +45,9 @@ export default function LoginScreen() {
         if (data.user?.name) {
           await AsyncStorage.setItem('user_name', data.user.name);
         }
+        const userId = data.user?.id || data.user?._id || data.userId || 'usr_current';
+        const expiresAtMs = Date.now() + 30 * 24 * 60 * 60 * 1000;
+        await WidgetSyncBridge.getInstance().syncSessionTokenToVault(data.token, userId, expiresAtMs);
         router.replace('/(dashboard)');
       } else {
         alert(data.error || "Invalid credentials.");
@@ -118,6 +122,9 @@ export default function LoginScreen() {
         if (data.user?.name) {
           await AsyncStorage.setItem('user_name', data.user.name);
         }
+        const userId = data.user?.id || data.user?._id || data.userId || 'usr_current';
+        const expiresAtMs = Date.now() + 30 * 24 * 60 * 60 * 1000;
+        await WidgetSyncBridge.getInstance().syncSessionTokenToVault(data.token, userId, expiresAtMs);
         router.replace('/(dashboard)');
       } else {
         setLoading(false);
@@ -161,6 +168,9 @@ export default function LoginScreen() {
         if (data.user?.name) {
           await AsyncStorage.setItem('user_name', data.user.name);
         }
+        const userId = data.user?.id || data.user?._id || data.userId || 'usr_current';
+        const expiresAtMs = Date.now() + 30 * 24 * 60 * 60 * 1000;
+        await WidgetSyncBridge.getInstance().syncSessionTokenToVault(data.token, userId, expiresAtMs);
         router.replace('/(dashboard)');
       } else {
         alert(data.error || "Login failed");

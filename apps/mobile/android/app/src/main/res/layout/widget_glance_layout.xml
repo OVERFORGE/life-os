@@ -7,19 +7,19 @@
     android:orientation="vertical"
     android:padding="14dp">
 
-    <!-- Header Row: LifeOS Brand & Status Dot -->
+    <!-- Header Row: Brand, Status Dot & Mode Badge -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <!-- Status Dot: ImageView (Valid in RemoteViews; View is not) -->
+        <!-- Status Dot: Valid RemoteViews ImageView -->
         <ImageView
             android:id="@+id/widget_status_dot"
             android:layout_width="8dp"
             android:layout_height="8dp"
-            android:src="@drawable/widget_dot_red"
+            android:src="@drawable/widget_dot_gray"
             android:contentDescription="Status indicator" />
 
         <TextView
@@ -31,81 +31,306 @@
             android:layout_weight="1"
             android:fontFamily="sans-serif-medium"
             android:text="LIFEOS"
-            android:textColor="#A0A0A5"
+            android:textColor="#88888E"
             android:textSize="11sp" />
 
         <TextView
             android:id="@+id/widget_mode_badge"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:background="@drawable/widget_badge_bg_muted"
             android:fontFamily="sans-serif-medium"
-            android:text="GLANCE"
-            android:textColor="#E8414A"
+            android:text="CLEAR"
+            android:textColor="#88888E"
             android:textSize="10sp" />
     </LinearLayout>
 
-    <!-- Main Title & Subtitle -->
-    <TextView
-        android:id="@+id/widget_title"
+    <!-- Content Section: Mutually Exclusive State Containers -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="6dp"
-        android:ellipsize="end"
-        android:fontFamily="sans-serif-bold"
-        android:maxLines="2"
-        android:text="All commitments clear"
-        android:textColor="#F6F3F1"
-        android:textSize="15sp" />
+        android:layout_marginTop="8dp">
 
-    <TextView
-        android:id="@+id/widget_subtitle"
-        android:layout_width="match_parent"
-        android:layout_height="wrap_content"
-        android:layout_marginTop="2dp"
-        android:ellipsize="end"
-        android:fontFamily="sans-serif"
-        android:maxLines="1"
-        android:text="Silence is a successful state"
-        android:textColor="#88888E"
-        android:textSize="12sp" />
+        <!-- 1. CLEAR STATE (Calm Ambient Experience) -->
+        <LinearLayout
+            android:id="@+id/container_state_clear"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="visible">
 
-    <!-- Spacer: FrameLayout (Valid in RemoteViews; View is not) -->
+            <TextView
+                android:id="@+id/widget_clear_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:fontFamily="sans-serif-bold"
+                android:text="You're clear."
+                android:textColor="#F6F3F1"
+                android:textSize="16sp" />
+
+            <TextView
+                android:id="@+id/widget_clear_next"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif"
+                android:maxLines="1"
+                android:text=""
+                android:textColor="#88888E"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- 2. UPCOMING STATE (Focus Countdown) -->
+        <LinearLayout
+            android:id="@+id/container_state_upcoming"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/widget_upcoming_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-bold"
+                android:maxLines="1"
+                android:textColor="#F6F3F1"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/widget_upcoming_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif"
+                android:maxLines="1"
+                android:textColor="#88888E"
+                android:textSize="12sp" />
+        </LinearLayout>
+
+        <!-- 3. ACTIVE STATE (Live Chronometer & Focus) -->
+        <LinearLayout
+            android:id="@+id/container_state_active"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/widget_active_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-bold"
+                android:maxLines="1"
+                android:textColor="#F6F3F1"
+                android:textSize="15sp" />
+
+            <LinearLayout
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal">
+
+                <Chronometer
+                    android:id="@+id/widget_chronometer"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:textColor="#E8414A"
+                    android:textSize="13sp" />
+
+                <TextView
+                    android:id="@+id/widget_chronometer_dot"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:text=" · "
+                    android:textColor="#66666D"
+                    android:textSize="12sp" />
+
+                <TextView
+                    android:id="@+id/widget_active_subtitle"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:ellipsize="end"
+                    android:fontFamily="sans-serif"
+                    android:maxLines="1"
+                    android:textColor="#88888E"
+                    android:textSize="12sp" />
+            </LinearLayout>
+        </LinearLayout>
+
+        <!-- 4. PROPOSAL STATE (Ready to Start) -->
+        <LinearLayout
+            android:id="@+id/container_state_proposal"
+            android:layout_width="match_parent"
+            android:layout_height="wrap_content"
+            android:orientation="vertical"
+            android:visibility="gone">
+
+            <TextView
+                android:id="@+id/widget_proposal_title"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:ellipsize="end"
+                android:fontFamily="sans-serif-bold"
+                android:maxLines="1"
+                android:textColor="#F6F3F1"
+                android:textSize="15sp" />
+
+            <TextView
+                android:id="@+id/widget_proposal_subtitle"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="3dp"
+                android:fontFamily="sans-serif"
+                android:text="Ready to start?"
+                android:textColor="#88888E"
+                android:textSize="12sp" />
+        </LinearLayout>
+    </FrameLayout>
+
+    <!-- Flexible Vertical Spacer -->
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
 
-    <!-- Bottom Action Row -->
+    <!-- Bottom Action Row: Controls & Aven Summon -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <TextView
-            android:id="@+id/widget_meta_text"
-            android:layout_width="0dp"
+        <!-- Dynamic Action Controls Container -->
+        <LinearLayout
+            android:id="@+id/container_action_controls"
+            android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:layout_weight="1"
-            android:fontFamily="sans-serif"
-            android:text="Tap to review"
-            android:textColor="#66666D"
-            android:textSize="10sp" />
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
+            android:visibility="gone">
 
+            <!-- Start Action Button (Amber-accented Obsidian for Upcoming/Proposal, NO CRIMSON) -->
+            <TextView
+                android:id="@+id/btn_action_start"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:gravity="center"
+                android:background="@drawable/widget_btn_obsidian_accent"
+                android:contentDescription="Start scheduled task"
+                android:fontFamily="sans-serif-medium"
+                android:paddingStart="14dp"
+                android:paddingLeft="14dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="14dp"
+                android:paddingRight="14dp"
+                android:paddingBottom="6dp"
+                android:text="▶ Start"
+                android:textColor="#F59E0B"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <!-- Done Action Button (Crimson Affirm strictly for Active execution) -->
+            <TextView
+                android:id="@+id/btn_action_done"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:gravity="center"
+                android:background="@drawable/widget_btn_crimson"
+                android:contentDescription="Complete active task"
+                android:fontFamily="sans-serif-medium"
+                android:paddingStart="14dp"
+                android:paddingLeft="14dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="14dp"
+                android:paddingRight="14dp"
+                android:paddingBottom="6dp"
+                android:text="✓ Done"
+                android:textColor="#FFFFFF"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <!-- Pause Action Button (Neutral) -->
+            <TextView
+                android:id="@+id/btn_action_pause"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:minWidth="44dp"
+                android:gravity="center"
+                android:layout_marginStart="6dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/widget_btn_neutral"
+                android:contentDescription="Pause active task"
+                android:fontFamily="sans-serif-medium"
+                android:paddingStart="10dp"
+                android:paddingLeft="10dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="10dp"
+                android:paddingRight="10dp"
+                android:paddingBottom="6dp"
+                android:text="⏸"
+                android:textColor="#F6F3F1"
+                android:textSize="12sp"
+                android:visibility="gone" />
+
+            <!-- Extend 15m Action Button (Neutral) -->
+            <TextView
+                android:id="@+id/btn_action_extend"
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:minHeight="48dp"
+                android:minWidth="44dp"
+                android:gravity="center"
+                android:layout_marginStart="6dp"
+                android:layout_marginLeft="6dp"
+                android:background="@drawable/widget_btn_neutral"
+                android:contentDescription="Extend task 15 minutes"
+                android:fontFamily="sans-serif-medium"
+                android:paddingStart="10dp"
+                android:paddingLeft="10dp"
+                android:paddingTop="6dp"
+                android:paddingEnd="10dp"
+                android:paddingRight="10dp"
+                android:paddingBottom="6dp"
+                android:text="+15m"
+                android:textColor="#F6F3F1"
+                android:textSize="12sp"
+                android:visibility="gone" />
+        </LinearLayout>
+
+        <!-- Horizontal Spacer pushing Aven summon button to right -->
+        <FrameLayout
+            android:layout_width="0dp"
+            android:layout_height="match_parent"
+            android:layout_weight="1" />
+
+        <!-- Aven Summon Button -->
         <TextView
             android:id="@+id/widget_aven_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
+            android:minHeight="48dp"
+            android:gravity="center"
             android:background="@drawable/widget_button_bg"
+            android:contentDescription="Summon Aven assistant"
             android:fontFamily="sans-serif-medium"
-            android:paddingStart="10dp"
-            android:paddingLeft="10dp"
-            android:paddingTop="4dp"
-            android:paddingEnd="10dp"
-            android:paddingRight="10dp"
-            android:paddingBottom="4dp"
-            android:text="AVEN"
+            android:paddingStart="14dp"
+            android:paddingLeft="14dp"
+            android:paddingTop="6dp"
+            android:paddingEnd="14dp"
+            android:paddingRight="14dp"
+            android:paddingBottom="6dp"
+            android:text="🎙 Aven"
             android:textColor="#F6F3F1"
-            android:textSize="11sp" />
+            android:textSize="12sp" />
     </LinearLayout>
 </LinearLayout>
