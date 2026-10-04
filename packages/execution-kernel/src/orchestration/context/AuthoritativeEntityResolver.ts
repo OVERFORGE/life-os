@@ -6,6 +6,8 @@ import {
   IContextEntityRef,
   SemanticReferenceKind,
 } from "../contracts/SemanticTurnContracts";
+import { RelationshipRepository } from "../../relationships/RelationshipRepository";
+
 
 export interface EntityResolutionRequest {
   userId: string;
@@ -13,7 +15,7 @@ export interface EntityResolutionRequest {
   semanticDescriptor?: string;
   kind?: SemanticReferenceKind;
   contextualRelation?: "ACTIVE_FOCUS" | "PENDING_OPERATION" | "RECENT_OPERATION" | "GENERAL_SEARCH";
-  entityType?: "task" | "goal" | "workout" | "meal" | "activity" | "weight" | "context_mode" | "schedule_block";
+  entityType?: "task" | "goal" | "workout" | "meal" | "activity" | "weight" | "context_mode" | "schedule_block" | "contact" | "relationship";
   statusFilter?: string; // e.g. "pending"
   activeFocus?: IContextEntityRef | null;
   recentEntities?: IContextEntityRef[];
@@ -103,6 +105,9 @@ export class AuthoritativeEntityResolver {
           recentEntities: req.recentEntities,
           pendingCandidates: req.pendingCandidates,
         });
+      case "contact":
+      case "relationship":
+        return this.resolveContact(req.userId, req.rawExpression);
       case "task":
       default:
         return this.resolveTask(
@@ -681,6 +686,55 @@ export class AuthoritativeEntityResolver {
       evidence: {
         status: "AMBIGUOUS",
         candidateIds,
+        candidateTitles,
+        method: "AMBIGUOUS_MULTI_CANDIDATE",
+        confidence: 0.5,
+        evidenceDetails: {},
+      },
+    };
+  }
+
+  async resolveContact(userId: string, rawExpression: string): Promise<EntityResolutionOutcome> {
+    const repository = RelationshipRepository.getInstance();
+    const candidates = await repository.findAmbiguousContacts(userId, rawExpression);
+
+    if (candidates.length === 0) {
+      return {
+        status: "NOT_FOUND",
+        entityType: "contact",
+        clarificationQuestion: `I couldn't find anyone matching "${rawExpression}" in your network directory. Who is your ${rawExpression}?`,
+      };
+    }
+
+    if (candidates.length === 1) {
+      const match = candidates[0];
+      return {
+        status: "RESOLVED",
+        entityId: match.entityId,
+        title: match.name,
+        entityType: "contact",
+        evidence: {
+          status: "RESOLVED",
+          selectedEntityId: match.entityId,
+          selectedDisplayName: match.name,
+          method: "AUTHORITATIVE_EXACT_MATCH",
+          confidence: match.importanceScore,
+          evidenceDetails: { matchedField: "name", domainMatch: true, role: match.role, aliases: match.aliases } as any,
+        },
+      };
+    }
+
+    // Material ambiguity: multiple contacts match (e.g. Alex Chen vs Alex Smith)
+    const candidateTitles = candidates.map((c) => `${c.name} (${c.role})`);
+    return {
+      status: "AMBIGUOUS",
+      entityType: "contact",
+      candidateIds: candidates.map((c) => c.entityId),
+      candidateTitles,
+      clarificationQuestion: `Did you mean ${candidateTitles.join(" or ")}?`,
+      evidence: {
+        status: "AMBIGUOUS",
+        candidateIds: candidates.map((c) => c.entityId),
         candidateTitles,
         method: "AMBIGUOUS_MULTI_CANDIDATE",
         confidence: 0.5,

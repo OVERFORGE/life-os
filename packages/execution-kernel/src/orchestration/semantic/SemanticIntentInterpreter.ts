@@ -26,6 +26,8 @@ export interface SemanticInterpreterContext {
   knownTasks?: Array<{ id: string; title: string }>;
   activeMode?: string;
   activeIncidents?: string[];
+  serializedLifeContext?: string;
+  lifeContextProjection?: any;
   recentHistory?: Array<{ role: "user" | "assistant"; content: string }>;
   activeFocus?: IContextEntityRef | null;
   recentEntities?: IContextEntityRef[];
@@ -345,6 +347,7 @@ export class SemanticIntentInterpreter {
             : null,
           ctx.knownTasks?.length ? `Known Active Tasks: ${JSON.stringify(ctx.knownTasks)}` : null,
           ctx.activeIncidents?.length ? `Active Incidents: ${JSON.stringify(ctx.activeIncidents)}` : null,
+          ctx.serializedLifeContext ? `LIFEOS WORLD CONTEXT:\n${ctx.serializedLifeContext}` : null,
         ]
           .filter(Boolean)
           .join("\n");

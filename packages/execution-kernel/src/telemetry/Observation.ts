@@ -5,15 +5,24 @@
  * Inherits all constitutional rules from Chapter 3 & Chapter 7 Section 13.
  */
 
-export type ObservationType =
-  | "HighPhysiologicalStress"
-  | "EnergyDeficit"
-  | "SleepDeprivation"
-  | "TaskExecutionVelocity"
-  | "CadenceDrift"
-  | "HabitDecay"
-  | "GoalTargetApproach"
-  | "PhaseTransition";
+import { ObservationType as ExtendedObservationType } from "./contracts/ObservationEventContracts";
+
+export type ObservationType = ExtendedObservationType;
+
+/**
+ * Generates a deterministic observation ID guaranteeing replay deduplication:
+ * obs-{type}-{sourceId}-{timestamp}
+ */
+export function generateDeterministicObservationId(
+  type: ObservationType,
+  sourceId: string,
+  timestamp: number
+): string {
+  // Sanitize sourceId to remove whitespace or special characters
+  const cleanSourceId = String(sourceId).replace(/[^a-zA-Z0-9_-]/g, "_");
+  return `obs-${type}-${cleanSourceId}-${timestamp}`;
+}
+
 
 export interface ObservationOwnership {
   sourceCollection: string;     // e.g. "dailylogs", "tasks", "goals", "habitlogs", "eras"

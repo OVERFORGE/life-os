@@ -153,7 +153,7 @@ export class WorldModelV2 {
       lifeState: kernelSnapshot.subsystems.lifeState,
       goalPressures: legacyGoalPressures,
       projectStates: ProjectStateEngine.getInstance().evaluateProjects(input.graphSnapshot),
-      relationshipContext: RelationshipContextEngine.getInstance().getRelationshipContext(),
+      relationshipContext: RelationshipContextEngine.getInstance().getRelationshipContextSync(),
       behavioralProfile: input.profile ?? null,
       learningSignals: input.learningSignals || [],
       executionGraphSummary: kernelSnapshot.executionGraphSummary,

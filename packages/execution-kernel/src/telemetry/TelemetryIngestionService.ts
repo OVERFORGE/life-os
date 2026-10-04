@@ -7,6 +7,8 @@ import { calculateTelemetryQuality, TelemetryQuality } from "./TelemetryQuality"
 import { ObservationMapper } from "./ObservationMapper";
 import { Observation } from "./Observation";
 
+import { ObservationPipeline } from "./pipeline/ObservationPipeline";
+
 export interface ReplayMetadata {
   replayId: string;
   isReplay: boolean;
@@ -40,31 +42,36 @@ export class TelemetryIngestionService {
   }
 
   /**
-   * Ingests, normalizes, and packages telemetry across all registered repositories concurrently.
+   * Ingests, normalizes, and packages telemetry across all registered repositories
+   * and the continuous passive observation pipeline concurrently.
    */
   async ingestTelemetry(userId: string, targetTimestamp?: number): Promise<TelemetryPayload> {
     const windowDays = getSubsystemWindowDays("LifeStateEngine"); // 14 Days
 
+    // Determine generation timestamp deterministically if targetTimestamp is supplied
+    const initialNow = targetTimestamp || Date.now();
+    const windowStartMs = initialNow - windowDays * 24 * 60 * 60 * 1000;
+
     // Concurrent batch read
-    const [raw14DayLogs, activeTasks, activeGoals, activeEra] = await Promise.all([
+    const [raw14DayLogs, activeTasks, activeGoals, activeEra, passiveObservations] = await Promise.all([
       DailyLogRepository.getInstance().findLogsForWindow(userId, windowDays),
       TaskRepository.getInstance().findAllActiveTasks(userId),
       GoalRepository.getInstance().findAllActiveGoals(userId),
       EraRepository.getInstance().findActiveEra(userId),
+      ObservationPipeline.getInstance().getObservationsForWindow(userId, windowStartMs, initialNow),
     ]);
 
     const logDates = raw14DayLogs
       .filter((l) => Boolean(l.date))
       .map((l) => new Date(l.date));
 
-    // Determine generation timestamp deterministically if targetTimestamp is supplied
-    const latestLogTime = logDates.length > 0 ? Math.max(...logDates.map((d) => d.getTime())) : 1785096398950;
-    const generationTimestamp = targetTimestamp || (latestLogTime > 0 ? latestLogTime : 1785096398950);
+    const latestLogTime = logDates.length > 0 ? Math.max(...logDates.map((d) => d.getTime())) : initialNow;
+    const generationTimestamp = targetTimestamp || (latestLogTime > 0 ? latestLogTime : initialNow);
 
     const telemetryQuality = calculateTelemetryQuality(logDates, windowDays, 0.90, generationTimestamp);
 
-    // Map observations deterministically
-    const observations = ObservationMapper.toObservations({
+    // Map manual observations deterministically
+    const manualObservations = ObservationMapper.toObservations({
       userId,
       generationTimestamp,
       dailyLogs: raw14DayLogs,
@@ -72,6 +79,16 @@ export class TelemetryIngestionService {
       goals: activeGoals,
       activeEra,
     });
+
+    // Merge passive and manual observations with deterministic deduplication
+    const obsMap = new Map<string, Observation>();
+    for (const pObs of passiveObservations) {
+      obsMap.set(pObs.id, pObs);
+    }
+    for (const mObs of manualObservations) {
+      obsMap.set(mObs.id, mObs);
+    }
+    const observations = Array.from(obsMap.values());
 
     return Object.freeze({
       schemaVersion: 1,

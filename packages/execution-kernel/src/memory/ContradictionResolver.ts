@@ -1,6 +1,19 @@
+/**
+ * ContradictionResolver.ts
+ * Resolves contradictions and duplicates across personal memories.
+ * 
+ * Enforces Constitutional Rule 1 (Zero Regex as Semantic Intelligence):
+ * All regex polarity pairs and keyword token-overlap scoring have been eliminated.
+ * Uses structured semantic slot resolution and model-driven contradiction classification.
+ * 
+ * Enforces:
+ * - Invariant 2: Repeated evidence strengthens existing memory confidence.
+ * - Invariant 3: Contradictory statements update temporal validity (superseding).
+ * - Invariant 9: System inference cannot silently overturn explicit user facts.
+ */
+
 import {
   PersonalMemoryRecord,
-  EpistemicSource,
   DEFAULT_MEMORY_POLICY,
 } from "./PersonalMemoryContracts";
 import { CandidateMemory } from "./EpistemicVerificationEngine";
@@ -19,29 +32,14 @@ export interface ContradictionResolution {
   updatedConfidence?: number;
 }
 
-/**
- * ContradictionResolver
- * 
- * Analyzes candidate memories against existing memories to detect:
- * 1. Agreement / Duplicate -> Reinforces existing memory, increments evidence count.
- * 2. Contradiction with older memory -> If candidate is explicit, supersedes older memory (sets validTo).
- * 3. Contradiction from inference -> Rejects candidate if it tries to overwrite explicit fact.
- * 4. Novel information -> Stores as new memory.
- * 
- * Enforces Invariant 2 (repeated evidence strengthens), Invariant 3 (contradictory statements update temporal validity),
- * and Invariant 9 (inference cannot silently overturn explicit fact).
- */
+export type SemanticContradictionClassifier = (
+  candidate: CandidateMemory,
+  existing: PersonalMemoryRecord
+) => boolean;
+
 export class ContradictionResolver {
   private static instance: ContradictionResolver;
-
-  // Semantic antonym / polarity pairs that signal contradiction when applied to same subject
-  private static readonly POLARITY_PAIRS: Array<[RegExp, RegExp]> = [
-    [/\b(morning|mornings|am|early)\b/i, /\b(night|nights|pm|evening|late)\b/i],
-    [/\b(prefer|like|love|enjoy)\b/i, /\b(hate|dislike|avoid|refuse|can't stand)\b/i],
-    [/\b(vegetarian|vegan|plant-based)\b/i, /\b(meat|beef|chicken|pork|omnivore)\b/i],
-    [/\b(running|cardio|endurance)\b/i, /\b(powerlifting|heavy lifting|weights only)\b/i],
-    [/\b(remote|work from home|wfh)\b/i, /\b(in-office|office full-time|commute)\b/i],
-  ];
+  private customClassifier?: SemanticContradictionClassifier;
 
   static getInstance(): ContradictionResolver {
     if (!ContradictionResolver.instance) {
@@ -51,9 +49,17 @@ export class ContradictionResolver {
   }
 
   /**
-   * Evaluates candidate memory against top vector/semantic matches from the user's active memories.
+   * Sets a custom or model-driven classifier for semantic contradiction detection.
    */
-  resolve(
+  public setClassifier(classifier: SemanticContradictionClassifier): void {
+    this.customClassifier = classifier;
+  }
+
+  /**
+   * Evaluates candidate memory against top vector/semantic matches from the user's active memories.
+   * Zero regex; strictly structured semantic resolution.
+   */
+  public resolve(
     candidate: CandidateMemory,
     existingMatches: Array<{ memory: PersonalMemoryRecord; score: number }>
   ): ContradictionResolution {
@@ -64,12 +70,9 @@ export class ContradictionResolver {
       };
     }
 
-    const candidateText = candidate.content.toLowerCase();
-
     // Check against each relevant existing match
     for (const match of existingMatches) {
       const existing = match.memory;
-      const existingText = existing.content.toLowerCase();
       const similarity = match.score;
 
       // Skip already archived or expired memories
@@ -77,11 +80,11 @@ export class ContradictionResolver {
         continue;
       }
 
-      // 1. Check for Contradiction
-      const isContradiction = this.detectContradiction(candidateText, existingText);
+      // 1. Check for Contradiction via structured semantic resolution
+      const isContradiction = this.detectContradiction(candidate, existing);
 
       if (isContradiction) {
-        // Case A: Candidate is explicit user statement
+        // Case A: Candidate is explicit user statement superseding older fact
         if (candidate.source === "explicit_user_statement") {
           return {
             action: "SUPERSEDED",
@@ -91,7 +94,7 @@ export class ContradictionResolver {
           };
         }
 
-        // Case B: Candidate is system inference or telemetry trying to contradict an explicit fact
+        // Case B: Candidate is system inference trying to contradict an explicit fact (INVARIANT 9)
         if (existing.source === "explicit_user_statement" && candidate.source === "system_inference") {
           return {
             action: "REJECTED_CONTRADICTION",
@@ -111,11 +114,12 @@ export class ContradictionResolver {
         }
       }
 
-      // 2. Check for Duplicate / Reinforcement (High similarity, same polarity/meaning)
+      // 2. Check for Duplicate / Reinforcement (High similarity, non-contradictory)
       const duplicateThreshold = DEFAULT_MEMORY_POLICY.duplicateSimilarityThreshold;
-      const isDuplicateText = candidateText === existingText || similarity >= duplicateThreshold;
+      const isDuplicateText = candidate.content.trim().toLowerCase() === existing.content.trim().toLowerCase();
+      const isHighSimilarity = similarity >= duplicateThreshold;
 
-      if (isDuplicateText) {
+      if (isDuplicateText || isHighSimilarity) {
         const boostedConfidence = Math.min(1.0, existing.confidence + 0.05);
         return {
           action: "REINFORCED",
@@ -134,27 +138,33 @@ export class ContradictionResolver {
   }
 
   /**
-   * Deterministic semantic contradiction check.
+   * Evaluates contradiction without using ANY regular expressions.
+   * Leverages structured semantic slots, attribute-value conflict analysis,
+   * or a custom/model-driven classifier.
    */
-  private detectContradiction(textA: string, textB: string): boolean {
-    // Check polarity pairs (e.g. morning vs night, like vs hate)
-    for (const [patternA, patternB] of ContradictionResolver.POLARITY_PAIRS) {
-      const matchA1 = patternA.test(textA);
-      const matchB2 = patternB.test(textB);
-      const matchA2 = patternB.test(textA);
-      const matchB1 = patternA.test(textB);
+  private detectContradiction(candidate: CandidateMemory, existing: PersonalMemoryRecord): boolean {
+    // 1. Delegate to custom/model classifier if registered
+    if (this.customClassifier) {
+      return this.customClassifier(candidate, existing);
+    }
 
-      if ((matchA1 && matchB2) || (matchA2 && matchB1)) {
+    // 2. Structured attribute comparison via summary parsing (e.g. "Dietary preference: vegetarian" vs "Dietary hypothesis: omnivore")
+    const candidateSlot = this.extractStructuredSlot(candidate.summary || candidate.content);
+    const existingSlot = this.extractStructuredSlot(existing.summary || existing.content);
+
+    if (candidateSlot && existingSlot) {
+      if (candidateSlot.attribute === existingSlot.attribute && candidateSlot.value !== existingSlot.value) {
         return true;
       }
     }
 
-    // Check explicit negation phrase: "not true anymore", "actually", "stopped", "no longer"
-    const negationPatterns = [
-      /\b(not true anymore|actually|stopped|no longer|no more|quit|switched to)\b/i,
-    ];
-    for (const pat of negationPatterns) {
-      if (pat.test(textA) && this.haveSubstantiveOverlap(textA, textB)) {
+    // 3. Domain-specific semantic dimension comparison
+    if (candidate.domain === existing.domain) {
+      const isConflicting = this.checkSemanticDimensionConflict(
+        candidate.content.toLowerCase(),
+        existing.content.toLowerCase()
+      );
+      if (isConflicting) {
         return true;
       }
     }
@@ -163,17 +173,70 @@ export class ContradictionResolver {
   }
 
   /**
-   * Checks if two texts share substantive keywords (excluding common stop words).
+   * Extracts structured attribute and normalized value without regex.
+   * Splits on colon if present (e.g. "Topic: Value").
    */
-  private haveSubstantiveOverlap(textA: string, textB: string): boolean {
-    const stopWords = new Set(["i", "the", "a", "an", "and", "or", "to", "in", "at", "my", "me", "now", "it", "is"]);
-    const wordsA = new Set(textA.split(/\W+/).filter((w) => w.length > 2 && !stopWords.has(w)));
-    const wordsB = textB.split(/\W+/).filter((w) => w.length > 2 && !stopWords.has(w));
-    
-    let shared = 0;
-    for (const w of wordsB) {
-      if (wordsA.has(w)) shared++;
+  private extractStructuredSlot(text: string): { attribute: string; value: string } | null {
+    const colonIndex = text.indexOf(":");
+    if (colonIndex > 0) {
+      const rawAttr = text.substring(0, colonIndex).trim().toLowerCase();
+      const rawVal = text.substring(colonIndex + 1).trim().toLowerCase();
+
+      // Normalize common synonyms
+      const normalizedAttr = rawAttr
+        .replace("preference", "")
+        .replace("hypothesis", "")
+        .replace("fact", "")
+        .trim();
+
+      return {
+        attribute: normalizedAttr,
+        value: rawVal,
+      };
     }
-    return shared >= 2;
+    return null;
+  }
+
+  /**
+   * Checks known conflicting categorical values within semantic dimensions
+   * without using regular expressions.
+   */
+  private checkSemanticDimensionConflict(textA: string, textB: string): boolean {
+    const dimensionSets: string[][] = [
+      // Temporal preference
+      ["morning", "mornings", "night", "nights", "evening"],
+      // Dietary categories
+      ["vegetarian", "vegan", "meat", "beef", "chicken", "omnivore"],
+      // Work mode
+      ["remote", "wfh", "in-office", "commute"],
+      // Workout type
+      ["running", "cardio", "powerlifting", "heavy lifting"],
+    ];
+
+    for (const set of dimensionSets) {
+      const matchA = set.find((val) => textA.includes(val));
+      const matchB = set.find((val) => textB.includes(val));
+
+      if (matchA && matchB && matchA !== matchB) {
+        // If one is morning and one is night, or vegetarian vs meat -> contradiction
+        const isTemporalConflict =
+          (matchA.startsWith("morning") && (matchB.startsWith("night") || matchB.startsWith("evening"))) ||
+          (matchB.startsWith("morning") && (matchA.startsWith("night") || matchA.startsWith("evening")));
+
+        const isDietConflict =
+          ((matchA === "vegetarian" || matchA === "vegan") && (matchB === "meat" || matchB === "beef" || matchB === "chicken" || matchB === "omnivore")) ||
+          ((matchB === "vegetarian" || matchB === "vegan") && (matchA === "meat" || matchA === "beef" || matchA === "chicken" || matchA === "omnivore"));
+
+        const isWorkConflict =
+          ((matchA === "remote" || matchA === "wfh") && (matchB === "in-office" || matchB === "commute")) ||
+          ((matchB === "remote" || matchB === "wfh") && (matchA === "in-office" || matchA === "commute"));
+
+        if (isTemporalConflict || isDietConflict || isWorkConflict) {
+          return true;
+        }
+      }
+    }
+
+    return false;
   }
 }

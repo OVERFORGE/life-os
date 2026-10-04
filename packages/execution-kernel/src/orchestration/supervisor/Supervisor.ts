@@ -21,6 +21,8 @@ import {
 import mongoose from "mongoose";
 import { AvenStreamEvent } from "../contracts/AvenStreamContracts";
 import { CapabilityPresentationRegistry } from "../external/presentation/CapabilityPresentationRegistry";
+import { WorldModelBridge } from "../../worldv2/WorldModelBridge";
+import { ILifeContextProjection } from "../../worldv2/contracts/LifeContextProjectionContracts";
 
 export interface SupervisorRequest {
   userId: string;
@@ -45,6 +47,7 @@ export interface SupervisorResponse {
   traceContext?: ProductionTraceContext;
   stmUpdates?: Record<string, any>;
   pendingOperation?: any;
+  lifeContext?: ILifeContextProjection;
 }
 
 /**
@@ -152,6 +155,10 @@ export class Supervisor {
       } catch (_) {}
     }
 
+    // Ingest authoritative LifeContextProjection from WorldModelBridge (Phase 1)
+    const bridge = WorldModelBridge.getInstance();
+    const lifeContext = await bridge.getProjection(req.userId);
+
     // 1. Authoritative Semantic Interpretation via Aven with Bounded Context Projection
     const interpreter = SemanticIntentInterpreter.getInstance();
     const semanticTurn = await interpreter.interpret(req.message, {
@@ -164,6 +171,8 @@ export class Supervisor {
       pendingOperation: pendingOp,
       activeMode: stm?.activeContextMode || "standard",
       activeIncidents: stm?.activeIncidents || [],
+      serializedLifeContext: lifeContext.systemPromptContextSummary,
+      lifeContextProjection: lifeContext,
     });
 
     // 2. Dynamic Routing Decision informed by SemanticTurn
