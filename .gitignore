@@ -63,5 +63,7 @@ Thumbs.db
 
 
 *.md
+!README.md
+!documentation/**
 /graph
 .obsidian

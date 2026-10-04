@@ -108,7 +108,7 @@ export class CreateTaskAdapter implements IKernelActionAdapter {
  */
 export class CompleteTaskAdapter implements IKernelActionAdapter {
   async validatePreconditions(proposal: ActionProposal, _userId: string): Promise<{ valid: boolean; reason?: string }> {
-    if (!proposal.payload?.taskId && !proposal.payload?.title) {
+    if (!proposal.payload?.taskId && !proposal.payload?.title && !proposal.targetEntityId) {
       return { valid: false, reason: "taskId or title is required to complete a task" };
     }
     return { valid: true };
@@ -116,18 +116,19 @@ export class CompleteTaskAdapter implements IKernelActionAdapter {
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
     assertDatabaseConnected("complete_task");
+    const taskId = proposal.payload?.taskId || proposal.targetEntityId || "task_mock_1";
     if (isDbConnected()) {
-      return await handleCompleteTask(proposal.payload, userId);
+      return await handleCompleteTask({ ...proposal.payload, taskId }, userId);
     }
     return {
       success: true,
-      taskId: proposal.payload.taskId || "task_mock_1",
+      taskId,
       status: "completed",
     };
   }
 
   async compensate(proposal: ActionProposal, previousResult: any, userId: string): Promise<CompensationResult> {
-    const taskId = previousResult?.taskId || proposal.payload?.taskId;
+    const taskId = previousResult?.taskId || proposal.payload?.taskId || proposal.targetEntityId;
     if (!taskId) {
       return { compensated: false, error: "No taskId available to revert completion" };
     }
@@ -143,6 +144,100 @@ export class CompleteTaskAdapter implements IKernelActionAdapter {
     return { compensated: true, reversalDetails: `Mock reverted task ${taskId} to pending` };
   }
 }
+
+/**
+ * Surface Action Ingress: Start Execution Adapter
+ */
+export class StartExecutionAdapter implements IKernelActionAdapter {
+  async validatePreconditions(proposal: ActionProposal, _userId: string): Promise<{ valid: boolean; reason?: string }> {
+    if (!proposal.payload?.occurrenceId && !proposal.payload?.taskId && !proposal.targetEntityId) {
+      return { valid: false, reason: "occurrenceId or taskId is required to start execution" };
+    }
+    return { valid: true };
+  }
+
+  async execute(proposal: ActionProposal, userId: string): Promise<any> {
+    assertDatabaseConnected("start_execution");
+    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    return {
+      success: true,
+      entityId,
+      status: "IN_PROGRESS",
+      startedAtMs: proposal.payload?.startedAtMs || Date.now(),
+    };
+  }
+
+  async compensate(proposal: ActionProposal, _previousResult: any, _userId: string): Promise<CompensationResult> {
+    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    return {
+      compensated: true,
+      reversalDetails: `Reverted execution block ${entityId} to SCHEDULED`,
+    };
+  }
+}
+
+/**
+ * Surface Action Ingress: Pause Execution Adapter
+ */
+export class PauseExecutionAdapter implements IKernelActionAdapter {
+  async validatePreconditions(proposal: ActionProposal, _userId: string): Promise<{ valid: boolean; reason?: string }> {
+    if (!proposal.payload?.occurrenceId && !proposal.payload?.taskId && !proposal.targetEntityId) {
+      return { valid: false, reason: "occurrenceId or taskId is required to pause execution" };
+    }
+    return { valid: true };
+  }
+
+  async execute(proposal: ActionProposal, _userId: string): Promise<any> {
+    assertDatabaseConnected("pause_execution");
+    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    return {
+      success: true,
+      entityId,
+      status: "PAUSED",
+      pausedAtMs: proposal.payload?.pausedAtMs || Date.now(),
+    };
+  }
+
+  async compensate(proposal: ActionProposal, _previousResult: any, _userId: string): Promise<CompensationResult> {
+    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    return {
+      compensated: true,
+      reversalDetails: `Resumed execution block ${entityId} from pause`,
+    };
+  }
+}
+
+/**
+ * Surface Action Ingress: Defer Execution Adapter
+ */
+export class DeferExecutionAdapter implements IKernelActionAdapter {
+  async validatePreconditions(proposal: ActionProposal, _userId: string): Promise<{ valid: boolean; reason?: string }> {
+    if (!proposal.payload?.occurrenceId && !proposal.payload?.taskId && !proposal.targetEntityId) {
+      return { valid: false, reason: "occurrenceId or taskId is required to defer execution" };
+    }
+    return { valid: true };
+  }
+
+  async execute(proposal: ActionProposal, _userId: string): Promise<any> {
+    assertDatabaseConnected("defer_execution");
+    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    return {
+      success: true,
+      entityId,
+      status: "DEFERRED",
+      deferMinutes: proposal.payload?.deferMinutes || 15,
+    };
+  }
+
+  async compensate(proposal: ActionProposal, _previousResult: any, _userId: string): Promise<CompensationResult> {
+    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    return {
+      compensated: true,
+      reversalDetails: `Reverted deferral of execution block ${entityId}`,
+    };
+  }
+}
+
 
 /**
  * Task Update Adapter
@@ -747,6 +842,9 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
   const completeAdapter = new CompleteTaskAdapter();
   const updateAdapter = new UpdateTaskAdapter();
   const deleteAdapter = new DeleteTaskAdapter();
+  const startExecAdapter = new StartExecutionAdapter();
+  const pauseExecAdapter = new PauseExecutionAdapter();
+  const deferExecAdapter = new DeferExecutionAdapter();
   const mealAdapter = new LogMealAdapter();
   const workoutAdapter = new LogWorkoutAdapter();
   const activityAdapter = new LogActivityAdapter();
@@ -777,6 +875,9 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
 
   if (!registry.has("create_task")) registry.register("create_task", taskAdapter);
   if (!registry.has("complete_task")) registry.register("complete_task", completeAdapter);
+  if (!registry.has("start_execution")) registry.register("start_execution", startExecAdapter);
+  if (!registry.has("pause_execution")) registry.register("pause_execution", pauseExecAdapter);
+  if (!registry.has("defer_execution")) registry.register("defer_execution", deferExecAdapter);
   if (!registry.has("update_task")) registry.register("update_task", updateAdapter);
   if (!registry.has("delete_task")) registry.register("delete_task", deleteAdapter);
   if (!registry.has("reschedule_task")) registry.register("reschedule_task", updateAdapter);

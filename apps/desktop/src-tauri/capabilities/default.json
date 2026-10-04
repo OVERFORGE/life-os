@@ -3,7 +3,8 @@
   "identifier": "default",
   "description": "Capability for the main window",
   "windows": [
-    "main"
+    "main",
+    "hud"
   ],
   "context": {
     "local": true
@@ -15,6 +16,7 @@
     "core:default",
     "opener:default",
     "opener:allow-open-url",
-    "deep-link:default"
+    "deep-link:default",
+    "global-shortcut:default"
   ]
 }

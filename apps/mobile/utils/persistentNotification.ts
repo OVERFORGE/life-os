@@ -241,6 +241,15 @@ export async function setupPersistentNotification() {
   if (Platform.OS !== 'android' || isExpoGo) return;
   
   try {
+    const { FEATURE_FLAGS } = await import('./featureFlags');
+    if (FEATURE_FLAGS.USE_AMBIENT_ACTIVE_NOTIFICATION) {
+      console.log('[Notification Migration] Using V2.1.1 ActiveExecutionNotificationManager');
+      await stopTaskRotation();
+      const { ActiveExecutionNotificationManager } = await import('../services/ActiveExecutionNotificationManager');
+      await ActiveExecutionNotificationManager.getInstance().start();
+      return;
+    }
+
     // Android 13+ absolutely requires requesting POST_NOTIFICATIONS at runtime
     const settings = await notifee.requestPermission();
     if (settings.authorizationStatus === 0) { // 0 = DENIED

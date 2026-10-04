@@ -395,3 +395,12 @@ export * from "./temporal/adapters/TemporalActionAdapters";
 // Security & Vault Infrastructure
 export * from "./shared/CredentialVault";
 
+// Ambient Interaction Layer (V2.1.1)
+export * from "./experience/surface/contracts/InteractionSurfaceContracts";
+export * from "./experience/surface/InteractionSurfaceService";
+export * from "./experience/surface/offline/SurfaceOfflineQueue";
+export * from "./experience/surface/voice/contracts/WakeWordContracts";
+export * from "./experience/surface/voice/WakeWordEngineFactory";
+export * from "./experience/surface/voice/LocalAcousticWakeWordEngine";
+export * from "./experience/surface/voice/AmbientVoiceBridge";
+

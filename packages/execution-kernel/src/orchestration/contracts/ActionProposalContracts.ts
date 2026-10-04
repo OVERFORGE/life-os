@@ -38,6 +38,13 @@ export type DomainActionType =
   | "cancel_occurrence"
   | "create_temporal_series"
   | "log_execution_interval"
+  // Ambient Interaction Layer (V2.1.1)
+  | "start_execution"
+  | "defer_execution"
+  | "pause_execution"
+  | "resume_execution"
+  | "cancel_execution"
+  | "compensate_last_action"
   // Sovereign External Capability Action
   | "external_capability_action";
 
@@ -55,7 +62,12 @@ export interface DomainActionCapability {
     | "PRIORITIZE"
     | "APPEND_CORRECT"
     | "CONFIRM"
-    | "RETRACT";
+    | "RETRACT"
+    | "START"
+    | "DEFER"
+    | "PAUSE"
+    | "RESUME"
+    | "COMPENSATE";
   requiresTargetEntity: boolean;
   targetEntityType?: "task" | "goal" | "meal" | "workout" | "activity" | "context_mode" | "weight";
   supportsContinuation: boolean;
@@ -357,6 +369,72 @@ export const DOMAIN_CAPABILITIES: Record<DomainActionType, DomainActionCapabilit
     duplicatePolicy: "ALLOW_ALWAYS",
     idempotencyScope: "TRANSACTION_KEY",
     verbalization: { entityNoun: "external action", actionVerbPast: "executed" },
+  },
+  // Ambient Interaction Layer (V2.1.1)
+  start_execution: {
+    actionType: "start_execution",
+    domain: "productivity",
+    operationKind: "START",
+    requiresTargetEntity: true,
+    targetEntityType: "task",
+    supportsContinuation: false,
+    duplicatePolicy: "IDEMPOTENT_IGNORE",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "execution", actionVerbPast: "started" },
+  },
+  defer_execution: {
+    actionType: "defer_execution",
+    domain: "productivity",
+    operationKind: "DEFER",
+    requiresTargetEntity: true,
+    targetEntityType: "task",
+    supportsContinuation: false,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "execution", actionVerbPast: "deferred" },
+  },
+  pause_execution: {
+    actionType: "pause_execution",
+    domain: "productivity",
+    operationKind: "PAUSE",
+    requiresTargetEntity: true,
+    targetEntityType: "task",
+    supportsContinuation: true,
+    duplicatePolicy: "IDEMPOTENT_IGNORE",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "execution", actionVerbPast: "paused" },
+  },
+  resume_execution: {
+    actionType: "resume_execution",
+    domain: "productivity",
+    operationKind: "RESUME",
+    requiresTargetEntity: true,
+    targetEntityType: "task",
+    supportsContinuation: true,
+    duplicatePolicy: "IDEMPOTENT_IGNORE",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "execution", actionVerbPast: "resumed" },
+  },
+  cancel_execution: {
+    actionType: "cancel_execution",
+    domain: "productivity",
+    operationKind: "CANCEL",
+    requiresTargetEntity: true,
+    targetEntityType: "task",
+    supportsContinuation: false,
+    duplicatePolicy: "IDEMPOTENT_IGNORE",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "execution", actionVerbPast: "cancelled" },
+  },
+  compensate_last_action: {
+    actionType: "compensate_last_action",
+    domain: "productivity",
+    operationKind: "COMPENSATE",
+    requiresTargetEntity: false,
+    supportsContinuation: false,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "action", actionVerbPast: "compensated" },
   },
 };
 

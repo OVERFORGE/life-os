@@ -33,6 +33,12 @@ export interface SupervisorRequest {
   knownTasks?: Array<{ id: string; title: string }>;
   onChunk?: (chunk: string) => void;
   onEvent?: (event: AvenStreamEvent) => void;
+  surfaceContext?: {
+    activeExecutionTitle?: string;
+    activeExecutionCategory?: string;
+    currentInteractionMode?: string;
+    sourceSurface?: string;
+  };
 }
 
 export interface SupervisorResponse {
@@ -102,6 +108,53 @@ export class Supervisor {
 
     let earlyFillerEmitted = false;
     let mainExecutionFinished = false;
+
+    // 0a. Deterministic High-Velocity Fast Path Execution (< 1000ms latency budget)
+    if (this.fastPath.canHandle(req.message)) {
+      const fastContext: FastPathContext = {
+        executionId,
+        knownTasks: req.knownTasks,
+      };
+
+      const fastResult = await this.fastPath.execute(req.message, req.userId, fastContext);
+
+      if (fastResult.handled) {
+        const durationMs = Date.now() - startTime;
+        const actionsExecuted = fastResult.kernelResults?.filter((r) => r.success).length || 0;
+        const actionIds = fastResult.kernelResults?.map((r) => r.actionId) || [];
+        const routingDecision: RoutingDecision = {
+          strategy: "FAST_PATH",
+          confidence: 1.0,
+          rationale: "Deterministic high-velocity intent matching Fast Path criteria",
+        };
+
+        const traceContext = ProductionTracer.getInstance().recordTrace({
+          requestId,
+          executionId,
+          userId: req.userId,
+          actionIds,
+          eventIds: [],
+          durationMs,
+          routingStrategy: "FAST_PATH",
+          terminationReason: "GOAL_SATISFIED",
+          timestamp: Date.now(),
+        });
+
+        mainExecutionFinished = true;
+        req.onChunk?.(fastResult.userResponse);
+        return {
+          executionId,
+          requestId,
+          routingDecision,
+          response: fastResult.userResponse,
+          durationMs,
+          actionsExecuted,
+          workspaceStatus: "COMPLETED",
+          terminationReason: "GOAL_SATISFIED",
+          traceContext,
+        };
+      }
+    }
 
     // Launch instant model-driven semantic filler concurrently (< 180ms) for real-time voice responsiveness
     const fillerPromise = req.onChunk
@@ -1253,6 +1306,10 @@ export class Supervisor {
           contextProjection += `- Recently Referenced Entities: ${recentList}\n`;
         }
         contextProjection += "When the user asks conversational questions referencing recent entities or proposals (such as 'what goal?', 'which one?', 'what did you propose?'), answer directly using this context without greeting afresh.\n";
+      }
+
+      if (req.surfaceContext?.activeExecutionTitle) {
+        contextProjection += `\n[SITUATIONAL AMBIENT CONTEXT]: The user is currently executing '${req.surfaceContext.activeExecutionTitle}' (Category: ${req.surfaceContext.activeExecutionCategory || "Focus"}). Active Surface: ${req.surfaceContext.sourceSurface || "ambient"}. You are speaking with them while they are in active execution. Keep responses focused, respectful of their flow, and concise.\n`;
       }
 
       const systemPrompt =

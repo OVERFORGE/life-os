@@ -59,6 +59,12 @@ export interface HandleInput {
   model?: string;
   mode?: string;
   streamFormat?: "events" | "raw";
+  surfaceContext?: {
+    activeExecutionTitle?: string;
+    activeExecutionCategory?: string;
+    currentInteractionMode?: string;
+    sourceSurface?: string;
+  };
 }
 
 /**

@@ -9,7 +9,16 @@
     "userInterfaceStyle": "automatic",
     "newArchEnabled": true,
     "ios": {
-      "supportsTablet": true
+      "supportsTablet": true,
+      "bundleIdentifier": "com.overforge.lifeos",
+      "infoPlist": {
+        "NSMicrophoneUsageDescription": "Allow Life OS to access your microphone for conversational AI interaction and hands-free Aven wake-word summons.",
+        "UIBackgroundModes": [
+          "audio",
+          "fetch",
+          "remote-notification"
+        ]
+      }
     },
     "android": {
       "package": "com.overforge.lifeos",

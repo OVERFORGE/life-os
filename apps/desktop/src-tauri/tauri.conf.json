@@ -22,6 +22,20 @@
         "theme": "Dark",
         "url": "splash.html",
         "label": "main"
+      },
+      {
+        "title": "Aven HUD",
+        "userAgent": "LifeOS-Desktop HUD",
+        "width": 640,
+        "height": 420,
+        "center": true,
+        "resizable": false,
+        "decorations": false,
+        "alwaysOnTop": true,
+        "transparent": true,
+        "visible": false,
+        "url": "splash.html",
+        "label": "hud"
       }
     ],
     "security": {

@@ -18,6 +18,7 @@ import { WorldModelV2 } from "../../worldv2/WorldModelV2";
 import { IncidentService } from "../../incidents/IncidentService";
 import { MemoryRepository } from "../../memory/MemoryRepository";
 import mongoose from "mongoose";
+export type { ActionProposal } from "../contracts/ActionProposalContracts";
 
 export interface StoredActionAudit {
   idempotencyKey: string;
@@ -43,6 +44,8 @@ export class KernelCapabilityService implements IKernelCapabilityService {
   
   // In-Memory idempotency cache (mirrors durable KernelActionAudit collection)
   private auditStore: Map<string, StoredActionAudit> = new Map();
+  // In-flight concurrency lock to deduplicate concurrent requests sharing the same idempotencyKey
+  private inFlightExecutions: Map<string, Promise<KernelExecutionResult>> = new Map();
 
   constructor(registry: ActionAdapterRegistry = ActionAdapterRegistry.getInstance()) {
     this.registry = registry;
@@ -64,6 +67,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
 
   clearAuditStore(): void {
     this.auditStore.clear();
+    this.inFlightExecutions.clear();
   }
 
   async validateActionProposals(
@@ -280,20 +284,63 @@ export class KernelCapabilityService implements IKernelCapabilityService {
   }
 
   async executeAction(userId: string, proposal: ActionProposal): Promise<KernelExecutionResult> {
-    const validation = await this.validateActionProposals(userId, [proposal]);
-    if (!validation.valid || validation.validDecisions.length === 0) {
+    const propId = proposal.id || (proposal as any).proposalId || `prop_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+    proposal.id = propId;
+    const idempotencyKey = proposal.idempotencyKey || `idemp_${propId}`;
+    proposal.idempotencyKey = idempotencyKey;
+
+    // 1. Fast-Path: Is there already a completed execution with this idempotency key?
+    const existingAudit = this.auditStore.get(idempotencyKey);
+    if (existingAudit && existingAudit.status === "SUCCEEDED") {
       return {
         actionId: proposal.id,
-        idempotencyKey: proposal.idempotencyKey,
+        idempotencyKey,
         actionType: proposal.actionType,
-        status: "FAILED",
-        success: false,
-        error: validation.rejectedProposals[0]?.reason || "Validation rejected",
-        timestamp: Date.now(),
+        status: "SUCCEEDED",
+        success: true,
+        idempotent: true,
+        data: existingAudit.result,
+        targetEntityId: proposal.targetEntityId,
+        timestamp: existingAudit.timestamp,
       };
     }
-    const results = await this.executeActionBatch(userId, validation.validDecisions);
-    return results[0];
+
+    // 2. Concurrency Lock: Is there an identical execution currently in-flight?
+    const inFlight = this.inFlightExecutions.get(idempotencyKey);
+    if (inFlight) {
+      const inFlightResult = await inFlight;
+      return {
+        ...inFlightResult,
+        idempotent: true,
+      };
+    }
+
+    // 3. Initiate Single Execution Promise
+    const executionPromise = (async (): Promise<KernelExecutionResult> => {
+      const validation = await this.validateActionProposals(userId, [proposal]);
+      if (!validation.valid || validation.validDecisions.length === 0) {
+        return {
+          actionId: proposal.id,
+          idempotencyKey: proposal.idempotencyKey,
+          actionType: proposal.actionType,
+          status: "FAILED",
+          success: false,
+          error: validation.rejectedProposals[0]?.reason || "Validation rejected",
+          timestamp: Date.now(),
+        };
+      }
+      const results = await this.executeActionBatch(userId, validation.validDecisions);
+      return results[0];
+    })();
+
+    this.inFlightExecutions.set(idempotencyKey, executionPromise);
+
+    try {
+      const result = await executionPromise;
+      return result;
+    } finally {
+      this.inFlightExecutions.delete(idempotencyKey);
+    }
   }
 
   private async runCompensatingSaga(

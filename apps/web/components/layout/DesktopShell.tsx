@@ -4,6 +4,7 @@ import { ReactNode, useEffect, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { TopNavigation } from "./TopNavigation";
 import { CommandPalette } from "../ui/CommandPalette";
+import { AmbientActiveExecutionBanner } from "@/components/surface/AmbientActiveExecutionBanner";
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
@@ -107,8 +108,9 @@ export function DesktopShell({ children }: { children: ReactNode }) {
         </main>
       </div>
       
-      {/* Global Modals */}
+      {/* Global Modals & Ambient Interaction Layer */}
       <CommandPalette />
+      <AmbientActiveExecutionBanner />
       
     </div>
   );
