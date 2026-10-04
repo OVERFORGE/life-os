@@ -1,13 +1,24 @@
 /**
- * LifeOS Transient Aven Surface (Phase 5 & Phase 6)
- * Version 2.2.2-PRODUCTION-HARDENED
+ * LifeOS Transient Aven Surface (V2.3)
+ * Sovereign Ambient Interaction Surface
  * 
- * Focused floating modal summoned from widget or launcher.
- * Product Invariant: "I summoned Aven", NOT "I opened LifeOS".
- * Reuses existing sovereign Aven pipeline (VoiceRecorder -> transcribeAudio -> /api/conversation).
+ * Distinct Voice and Text Modalities:
+ * - MODE 1: VOICE AVEN (Widget -> Mic)
+ *   - Voice-first, detached ambient surface.
+ *   - Visual language: Canonical Aven Orb with concentric glow rings, pulse, and soundwaves.
+ *   - Explicit state machine: IDLE -> LISTENING -> TRANSCRIBING -> THINKING -> SPEAKING -> LISTENING.
+ *   - Conversational multi-turn continuity: after speech completes, re-arms listening automatically.
+ *   - ZERO chat bubbles, ZERO text composer, ZERO send button.
+ * 
+ * - MODE 2: TEXT AVEN (Widget -> Message)
+ *   - Text-first, detached ambient surface.
+ *   - Instant user bubble display, streaming assistant markdown responses.
+ *   - STRICTLY TEXT ONLY: ZERO microphone activation, ZERO TTS audio playback.
+ * 
+ * - Deterministic isolated task dismissal returning cleanly to previous Android surface.
  */
 
-import React, { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
 import {
   View,
   Text,
@@ -15,13 +26,22 @@ import {
   TouchableOpacity,
   StyleSheet,
   ActivityIndicator,
-  Animated,
   BackHandler,
-  Platform,
-  KeyboardAvoidingView,
   ScrollView,
   Dimensions,
+  KeyboardAvoidingView,
+  Platform,
 } from 'react-native';
+import Reanimated, {
+  useSharedValue,
+  useAnimatedStyle,
+  withTiming,
+  withRepeat,
+  withSequence,
+  withSpring,
+  interpolate,
+  Easing,
+} from 'react-native-reanimated';
 import { useRouter, useLocalSearchParams } from 'expo-router';
 import { StatusBar } from 'expo-status-bar';
 import {
@@ -31,120 +51,217 @@ import {
   X,
   Sparkles,
   AlertTriangle,
-  RotateCcw,
   Volume2,
+  MessageSquare,
 } from 'lucide-react-native';
 import {
   requestRecordingPermissionsAsync,
   getRecordingPermissionsAsync,
 } from 'expo-audio';
+import AsyncStorage from '@react-native-async-storage/async-storage';
 import { VoiceRecorder, transcribeAudio } from '../utils/audioCapture';
 import { speakAndListen, stopSpeaking } from '../utils/ttsManager';
-import { fetchWithAuth } from '../utils/api';
+import { fetchWithAuth, API_URL } from '../utils/api';
 import { MobileMarkdown } from '../components/ui/MobileMarkdown';
+import { WidgetSyncBridge } from '../services/WidgetSyncBridge';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
-type AudioUiState =
+export type AmbientAvenMode = 'VOICE' | 'TEXT';
+
+export type VoiceState =
   | 'IDLE'
   | 'CHECKING_PERMISSION'
   | 'PERMISSION_DENIED'
   | 'AUDIO_BUSY'
-  | 'RECORDING'
+  | 'LISTENING'
   | 'TRANSCRIBING'
-  | 'STREAMING'
+  | 'THINKING'
   | 'SPEAKING'
   | 'ERROR';
 
-export default function AvenTransientModal() {
+export type TextState = 'IDLE' | 'THINKING' | 'ERROR';
+
+interface ChatMessage {
+  id: string;
+  role: 'user' | 'assistant';
+  content: string;
+  createdAt: number;
+}
+
+interface AvenTransientProps {
+  initialMode?: 'voice' | 'text';
+}
+
+export default function AvenTransientModal(props: AvenTransientProps) {
   const router = useRouter();
-  const params = useLocalSearchParams<{ mode?: string }>();
-  const initialMode = params.mode || 'voice';
+  const routeParams = useLocalSearchParams<{ mode?: string }>();
 
-  const [uiState, setUiState] = useState<AudioUiState>('IDLE');
-  const [errorMessage, setErrorMessage] = useState<string>('');
-  const [inputText, setInputText] = useState<string>('');
-  const [userQuery, setUserQuery] = useState<string>('');
-  const [assistantResponse, setAssistantResponse] = useState<string>('');
+  // Determine initial mode from props, route params, or bridge
+  const [mode, setMode] = useState<AmbientAvenMode>(() => {
+    const raw = (props?.initialMode || routeParams?.mode || 'voice').toLowerCase();
+    return raw === 'text' ? 'TEXT' : 'VOICE';
+  });
+
+  // Query native bridge on mount as safety fallback
+  useEffect(() => {
+    WidgetSyncBridge.getInstance()
+      .getAvenSessionMode()
+      .then((bridgeMode) => {
+        if (bridgeMode === 'text') {
+          setMode('TEXT');
+        } else if (bridgeMode === 'voice') {
+          setMode('VOICE');
+        }
+      })
+      .catch(() => {});
+  }, []);
+
+  // Shared Conversation ID for context continuity across turns
+  const conversationIdRef = useRef<string | null>(null);
+  const isActiveRef = useRef<boolean>(true);
+  const isCancelledRef = useRef<boolean>(false);
+
+  // ---------------------------------------------------------------------------
+  // VOICE MODE STATE & CONTROLS
+  // ---------------------------------------------------------------------------
+  const [voiceStatus, setVoiceStatus] = useState<VoiceState>('IDLE');
+  const [voiceErrorMessage, setVoiceErrorMessage] = useState<string>('');
+  const [userSpokenText, setUserSpokenText] = useState<string>('');
+  const [assistantSpokenText, setAssistantSpokenText] = useState<string>('');
   const [audioVolume, setAudioVolume] = useState<number>(0);
-
+  const [isMicMuted, setIsMicMuted] = useState<boolean>(false);
   const voiceRecorderRef = useRef<VoiceRecorder>(new VoiceRecorder());
-  const pulseAnim = useRef(new Animated.Value(1)).current;
-  const fadeAnim = useRef(new Animated.Value(0)).current;
-  const inputRef = useRef<TextInput>(null);
+
+  // ---------------------------------------------------------------------------
+  // TEXT MODE STATE & CONTROLS
+  // ---------------------------------------------------------------------------
+  const [textStatus, setTextStatus] = useState<TextState>('IDLE');
+  const [textErrorMessage, setTextErrorMessage] = useState<string>('');
+  const [textInput, setTextInput] = useState<string>('');
+  const [messages, setMessages] = useState<ChatMessage[]>([]);
   const scrollViewRef = useRef<ScrollView>(null);
 
-  // Animate modal appearance
-  useEffect(() => {
-    Animated.timing(fadeAnim, {
-      toValue: 1,
-      duration: 180,
-      useNativeDriver: true,
-    }).start();
+  // ---------------------------------------------------------------------------
+  // ANIMATIONS (Reanimated Canonical Aven Orb)
+  // ---------------------------------------------------------------------------
+  const orbPulse = useSharedValue(1);
+  const orbGlow = useSharedValue(0.2);
+  const breathe = useSharedValue(0);
+  const modalOpacity = useSharedValue(0);
+  const modalTranslateY = useSharedValue(20);
 
-    // Android back gesture dismissal
+  // Continuous breathing animation
+  useEffect(() => {
+    breathe.value = withRepeat(
+      withTiming(1, { duration: 3000, easing: Easing.inOut(Easing.ease) }),
+      -1,
+      true
+    );
+
+    modalOpacity.value = withTiming(1, { duration: 180 });
+    modalTranslateY.value = withTiming(0, { duration: 180 });
+
+    isActiveRef.current = true;
+    isCancelledRef.current = false;
+
+    // Hardware back gesture dismissal
     const backSub = BackHandler.addEventListener('hardwareBackPress', () => {
       dismissModal();
       return true;
     });
 
     return () => {
+      isActiveRef.current = false;
+      isCancelledRef.current = true;
       backSub.remove();
-      cleanupAudio();
+      cleanupAllAudio();
     };
   }, []);
 
-  // Pulsing animation for active recording / speaking
+  // Orb dynamic pulse based on voice status
   useEffect(() => {
-    if (uiState === 'RECORDING' || uiState === 'SPEAKING') {
-      const pulse = Animated.loop(
-        Animated.sequence([
-          Animated.timing(pulseAnim, {
-            toValue: 1.25,
-            duration: 700,
-            useNativeDriver: true,
-          }),
-          Animated.timing(pulseAnim, {
-            toValue: 1.0,
-            duration: 700,
-            useNativeDriver: true,
-          }),
-        ])
+    if (mode !== 'VOICE') return;
+
+    if (voiceStatus === 'SPEAKING') {
+      orbPulse.value = withRepeat(
+        withSequence(
+          withTiming(1.08, { duration: 400 }),
+          withTiming(1.0, { duration: 400 })
+        ),
+        -1,
+        true
       );
-      pulse.start();
-      return () => pulse.stop();
+      orbGlow.value = withTiming(1, { duration: 300 });
+    } else if (voiceStatus === 'LISTENING') {
+      orbPulse.value = withRepeat(
+        withSequence(
+          withTiming(1.05, { duration: 350 }),
+          withTiming(1.0, { duration: 350 })
+        ),
+        -1,
+        true
+      );
+      orbGlow.value = withTiming(0.7, { duration: 300 });
+    } else if (voiceStatus === 'THINKING' || voiceStatus === 'TRANSCRIBING') {
+      orbPulse.value = withRepeat(
+        withSequence(
+          withTiming(1.04, { duration: 600 }),
+          withTiming(0.96, { duration: 600 })
+        ),
+        -1,
+        true
+      );
+      orbGlow.value = withTiming(0.5, { duration: 300 });
     } else {
-      pulseAnim.setValue(1);
+      orbPulse.value = withSpring(1);
+      orbGlow.value = withTiming(0.2, { duration: 500 });
     }
-  }, [uiState]);
+  }, [voiceStatus, mode]);
 
-  // Auto-start recording if summoned in voice mode
-  useEffect(() => {
-    if (initialMode === 'voice') {
-      startConditionalRecording();
-    } else {
-      setUiState('IDLE');
-      setTimeout(() => inputRef.current?.focus(), 250);
-    }
-  }, [initialMode]);
+  const orbAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: orbPulse.value }],
+  }));
 
-  const cleanupAudio = () => {
+  const glowAnimStyle = useAnimatedStyle(() => {
+    const scale = interpolate(breathe.value, [0, 1], [1, 1.15]);
+    return {
+      transform: [{ scale: scale * orbPulse.value }],
+      opacity: interpolate(orbGlow.value, [0, 1], [0.15, 0.35]),
+    };
+  });
+
+  const ringAnimStyle = useAnimatedStyle(() => ({
+    transform: [{ scale: orbPulse.value * 1.1 }],
+    opacity: interpolate(orbGlow.value, [0, 1], [0.1, 0.3]),
+  }));
+
+  const modalContainerAnimStyle = useAnimatedStyle(() => ({
+    opacity: modalOpacity.value,
+    transform: [{ translateY: modalTranslateY.value }],
+  }));
+
+  // ---------------------------------------------------------------------------
+  // LIFECYCLE & DISMISSAL
+  // ---------------------------------------------------------------------------
+  const cleanupAllAudio = () => {
     try {
       voiceRecorderRef.current.cancelRecording();
+    } catch (_) {}
+    try {
       stopSpeaking();
     } catch (_) {}
   };
 
   const dismissModal = () => {
-    cleanupAudio();
-    Animated.timing(fadeAnim, {
-      toValue: 0,
-      duration: 120,
-      useNativeDriver: true,
-    }).start(async () => {
-      // First try to finish dedicated AvenActivity if running as AvenActivity
+    isCancelledRef.current = true;
+    cleanupAllAudio();
+
+    modalOpacity.value = withTiming(0, { duration: 120 });
+    modalTranslateY.value = withTiming(20, { duration: 120 });
+
+    setTimeout(async () => {
       try {
-        const { WidgetSyncBridge } = await import('../services/WidgetSyncBridge');
         const finished = await WidgetSyncBridge.getInstance().dismissAvenSurface();
         if (finished) return;
       } catch (_) {}
@@ -154,106 +271,105 @@ export default function AvenTransientModal() {
       } else {
         router.replace('/(dashboard)');
       }
-    });
+    }, 120);
   };
 
-  /**
-   * Conditional Microphone Auto-Start State Machine (Section 7.2)
-   */
-  const startConditionalRecording = async () => {
-    try {
-      setUiState('CHECKING_PERMISSION');
-      setErrorMessage('');
+  // ---------------------------------------------------------------------------
+  // MODE 1: VOICE PIPELINE & MULTI-TURN CONTINUITY
+  // ---------------------------------------------------------------------------
+  useEffect(() => {
+    if (mode === 'VOICE') {
+      startVoiceListening();
+    }
+  }, [mode]);
 
-      // Step 1: Check Microphone Permission
+  const startVoiceListening = async () => {
+    if (!isActiveRef.current || isCancelledRef.current || isMicMuted) return;
+
+    try {
+      setVoiceStatus('CHECKING_PERMISSION');
+      setVoiceErrorMessage('');
+
       const permissionStatus = await getRecordingPermissionsAsync();
       if (!permissionStatus.granted) {
         const req = await requestRecordingPermissionsAsync();
         if (!req.granted) {
-          setUiState('PERMISSION_DENIED');
+          setVoiceStatus('PERMISSION_DENIED');
+          setVoiceErrorMessage('Microphone permission required for Voice Aven.');
           return;
         }
       }
 
-      // Step 2: Initialize Recording with live volume callback
-      setUiState('RECORDING');
+      setVoiceStatus('LISTENING');
+
       const started = await voiceRecorderRef.current.startRecording(
         async (uri) => {
-          // Silence detected: proceed to transcription
-          if (!uri) {
-            setUiState('IDLE');
-            return;
-          }
-          await handleAudioCaptured(uri);
+          if (!isActiveRef.current || isCancelledRef.current) return;
+          await handleVoiceCaptured(uri);
         },
         {
           onVolume: (vol) => {
-            setAudioVolume(Math.min(1, Math.max(0, vol)));
+            if (isActiveRef.current && !isCancelledRef.current) {
+              setAudioVolume(Math.min(1, Math.max(0, vol)));
+            }
           },
         }
       );
 
       if (!started) {
-        setUiState('AUDIO_BUSY');
-        setErrorMessage('Microphone in use by another app.');
-        setTimeout(() => inputRef.current?.focus(), 200);
+        setVoiceStatus('AUDIO_BUSY');
+        setVoiceErrorMessage('Microphone busy or in use by another app.');
       }
     } catch (e: any) {
-      setUiState('ERROR');
-      setErrorMessage(e?.message || 'Failed to start microphone.');
+      setVoiceStatus('ERROR');
+      setVoiceErrorMessage(e?.message || 'Failed to start microphone.');
     }
   };
 
-  const handleAudioCaptured = async (uri: string) => {
-    setUiState('TRANSCRIBING');
+  const handleVoiceCaptured = async (uri: string) => {
+    setVoiceStatus('TRANSCRIBING');
     try {
       const { text, error } = await transcribeAudio(uri);
+      if (!isActiveRef.current || isCancelledRef.current) return;
+
       if (error || !text) {
-        setUiState('ERROR');
-        setErrorMessage(error || "Couldn't transcribe audio. Tap mic to retry or type below.");
+        setVoiceStatus('ERROR');
+        setVoiceErrorMessage(error || "Couldn't transcribe audio. Tap orb to retry.");
         return;
       }
 
       const cleaned = text.trim();
-      if (cleaned.length <= 2) {
-        setUiState('IDLE');
+      if (cleaned.length <= 2 || /^[.\s,!?]+$/.test(cleaned)) {
+        // Ignored acoustic jitter / breath, auto-rearm listening
+        startVoiceListening();
         return;
       }
 
-      setUserQuery(cleaned);
-      await dispatchConversationQuery(cleaned);
+      setUserSpokenText(cleaned);
+      await sendVoiceQueryToAven(cleaned);
     } catch (e: any) {
-      setUiState('ERROR');
-      setErrorMessage('Audio transcription error.');
+      setVoiceStatus('ERROR');
+      setVoiceErrorMessage('Audio transcription error.');
     }
   };
 
-  const handleTextSubmit = async () => {
-    if (!inputText.trim()) return;
-    const text = inputText.trim();
-    setInputText('');
-    setUserQuery(text);
-    cleanupAudio();
-    await dispatchConversationQuery(text);
-  };
-
-  /**
-   * Dispatches user query to sovereign Aven conversation pipeline.
-   */
-  const dispatchConversationQuery = async (query: string) => {
-    setUiState('STREAMING');
-    setAssistantResponse('');
-    setErrorMessage('');
+  const sendVoiceQueryToAven = async (query: string) => {
+    setVoiceStatus('THINKING');
+    setAssistantSpokenText('');
+    setVoiceErrorMessage('');
 
     try {
+      const token = await AsyncStorage.getItem('user_token');
       const res = await fetchWithAuth('/conversation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
-          Accept: 'text/event-stream, application/json',
+          Accept: 'application/json, text/event-stream',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
           message: query,
+          conversationId: conversationIdRef.current || undefined,
           model: 'llama-3.3-70b-versatile',
           mode: 'general',
           streamFormat: 'events',
@@ -263,8 +379,8 @@ export default function AvenTransientModal() {
 
       if (!res.ok) {
         if (res.status === 401 || res.status === 403) {
-          setUiState('ERROR');
-          setErrorMessage('Session expired. Tap sign in below.');
+          setVoiceStatus('ERROR');
+          setVoiceErrorMessage('Session expired. Open LifeOS to authenticate.');
           return;
         }
         throw new Error(`Server returned HTTP ${res.status}`);
@@ -280,9 +396,12 @@ export default function AvenTransientModal() {
           if (trimmed.startsWith('data: ')) {
             try {
               const ev = JSON.parse(trimmed.slice(6));
+              if (ev.conversationId && !conversationIdRef.current) {
+                conversationIdRef.current = ev.conversationId;
+              }
               if (ev.type === 'assistant_delta' && ev.text) {
                 extracted += ev.text;
-                setAssistantResponse(extracted);
+                setAssistantSpokenText(extracted);
               }
             } catch (_) {}
           }
@@ -290,225 +409,435 @@ export default function AvenTransientModal() {
       } else {
         try {
           const parsed = JSON.parse(resText);
+          if (parsed.conversationId && !conversationIdRef.current) {
+            conversationIdRef.current = parsed.conversationId;
+          }
           extracted = parsed.message?.content || parsed.response || resText;
         } catch (_) {
           extracted = resText;
         }
-        setAssistantResponse(extracted);
+        setAssistantSpokenText(extracted);
       }
 
-      const finalSpeech = extracted.trim();
-      if (finalSpeech.length > 0) {
-        setUiState('SPEAKING');
-        speakAndListen(finalSpeech, () => {
-          setUiState('IDLE');
+      // Filter out internal thinking tags for voice synthesis
+      const cleanVoiceOutput = extracted.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
+
+      if (cleanVoiceOutput.length > 0 && isActiveRef.current && !isCancelledRef.current) {
+        setVoiceStatus('SPEAKING');
+
+        // Play assistant voice via TTS
+        speakAndListen(cleanVoiceOutput, () => {
+          // CRITICAL MULTI-TURN CONTINUITY:
+          // When Aven finishes speaking, automatically re-arm listening for turn 2, 3, etc.
+          if (isActiveRef.current && !isCancelledRef.current && !isMicMuted) {
+            setVoiceStatus('IDLE');
+            setTimeout(() => {
+              if (isActiveRef.current && !isCancelledRef.current && !isMicMuted) {
+                startVoiceListening();
+              }
+            }, 300);
+          } else {
+            setVoiceStatus('IDLE');
+          }
         });
       } else {
-        setUiState('IDLE');
+        // Empty response fallback
+        setVoiceStatus('IDLE');
+        setTimeout(() => {
+          if (isActiveRef.current && !isCancelledRef.current) {
+            startVoiceListening();
+          }
+        }, 300);
       }
     } catch (e: any) {
-      setUiState('ERROR');
-      setErrorMessage('Connection lost. Tap retry below.');
+      setVoiceStatus('ERROR');
+      setVoiceErrorMessage('Connection lost. Tap orb to retry.');
     }
   };
+
+  const handleOrbPress = () => {
+    if (voiceStatus === 'LISTENING') {
+      // Tap orb while listening to trigger immediate audio capture
+      try {
+        voiceRecorderRef.current.stopRecording();
+      } catch (_) {}
+    } else if (voiceStatus === 'SPEAKING') {
+      // Tap orb while speaking to interrupt and return to listening
+      stopSpeaking();
+      setVoiceStatus('IDLE');
+      setTimeout(() => startVoiceListening(), 200);
+    } else if (voiceStatus === 'ERROR' || voiceStatus === 'IDLE') {
+      startVoiceListening();
+    }
+  };
+
+  const toggleMicMute = () => {
+    if (isMicMuted) {
+      setIsMicMuted(false);
+      startVoiceListening();
+    } else {
+      setIsMicMuted(true);
+      cleanupAllAudio();
+      setVoiceStatus('IDLE');
+    }
+  };
+
+  // ---------------------------------------------------------------------------
+  // MODE 2: TEXT PIPELINE (STRICTLY SILENT & TEXT ONLY)
+  // ---------------------------------------------------------------------------
+  const handleTextSubmit = async () => {
+    const query = textInput.trim();
+    if (!query) return;
+
+    setTextInput('');
+    setTextErrorMessage('');
+
+    // Rule 11 & 22: Immediately insert user message bubble
+    const userMsg: ChatMessage = {
+      id: `user-${Date.now()}`,
+      role: 'user',
+      content: query,
+      createdAt: Date.now(),
+    };
+
+    setMessages((prev) => [...prev, userMsg]);
+    setTextStatus('THINKING');
+
+    setTimeout(() => {
+      scrollViewRef.current?.scrollToEnd({ animated: true });
+    }, 50);
+
+    try {
+      const token = await AsyncStorage.getItem('user_token');
+      const res = await fetchWithAuth('/conversation', {
+        method: 'POST',
+        headers: {
+          'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
+          ...(token ? { Authorization: `Bearer ${token}` } : {}),
+        },
+        body: JSON.stringify({
+          message: query,
+          conversationId: conversationIdRef.current || undefined,
+          model: 'llama-3.3-70b-versatile',
+          mode: 'general',
+          streamFormat: 'events',
+          clientPlatform: 'mobile',
+        }),
+      });
+
+      if (!res.ok) {
+        throw new Error(`Server returned HTTP ${res.status}`);
+      }
+
+      const resText = await res.text();
+      let extracted = '';
+
+      if (resText.includes('data: ')) {
+        const lines = resText.split('\n');
+        for (const line of lines) {
+          const trimmed = line.trim();
+          if (trimmed.startsWith('data: ')) {
+            try {
+              const ev = JSON.parse(trimmed.slice(6));
+              if (ev.conversationId && !conversationIdRef.current) {
+                conversationIdRef.current = ev.conversationId;
+              }
+              if (ev.type === 'assistant_delta' && ev.text) {
+                extracted += ev.text;
+              }
+            } catch (_) {}
+          }
+        }
+      } else {
+        try {
+          const parsed = JSON.parse(resText);
+          if (parsed.conversationId && !conversationIdRef.current) {
+            conversationIdRef.current = parsed.conversationId;
+          }
+          extracted = parsed.message?.content || parsed.response || resText;
+        } catch (_) {
+          extracted = resText;
+        }
+      }
+
+      const finalResponse = extracted.trim() || 'Received.';
+
+      // Insert assistant message bubble
+      const assistantMsg: ChatMessage = {
+        id: `assistant-${Date.now()}`,
+        role: 'assistant',
+        content: finalResponse,
+        createdAt: Date.now(),
+      };
+
+      setMessages((prev) => [...prev, assistantMsg]);
+      setTextStatus('IDLE');
+
+      // STRICT TEXT INVARIANT: ZERO TTS! DO NOT CALL speakAndListen!
+      setTimeout(() => {
+        scrollViewRef.current?.scrollToEnd({ animated: true });
+      }, 50);
+    } catch (err: any) {
+      setTextStatus('ERROR');
+      setTextErrorMessage('Failed to send message. Please retry.');
+    }
+  };
+
+  // Soundwave bar multiplier heights
+  const barMultipliers = [0.4, 0.7, 1.0, 0.6, 0.3];
 
   return (
     <View style={styles.scrimContainer}>
       <StatusBar style="light" translucent backgroundColor="transparent" />
 
-      {/* Dismissal Backdrop */}
+      {/* Dismissal Backdrop Tap Area */}
       <TouchableOpacity
         style={styles.backdropTapArea}
         activeOpacity={1}
         onPress={dismissModal}
       />
 
-      <Animated.View
-        style={[
-          styles.modalCard,
-          {
-            opacity: fadeAnim,
-            transform: [
-              {
-                translateY: fadeAnim.interpolate({
-                  inputRange: [0, 1],
-                  outputRange: [40, 0],
-                }),
-              },
-            ],
-          },
-        ]}
-      >
-        <KeyboardAvoidingView
-          behavior={Platform.OS === 'ios' ? 'padding' : undefined}
-          style={styles.innerCard}
-        >
-          {/* Header Row */}
+      <KeyboardAvoidingView
+        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardAvoid}>
+        <Reanimated.View style={[styles.modalCard, modalContainerAnimStyle]}>
+          {/* Header Row: Title, Mode Indicator, Dismiss Button */}
           <View style={styles.headerRow}>
-            <View style={styles.headerLeft}>
-              <View style={styles.avenIconDot}>
-                <Sparkles size={13} color="#E8414A" />
-              </View>
+            <View style={styles.headerBrandGroup}>
+              {mode === 'VOICE' ? (
+                <Sparkles size={16} color="#E8414A" />
+              ) : (
+                <MessageSquare size={16} color="#E8414A" />
+              )}
               <Text style={styles.headerTitle}>Aven</Text>
-              <Text style={styles.headerSubtitle}>• Ambient Assistant</Text>
+              <Text style={styles.headerSubtitle}>
+                {mode === 'VOICE' ? '• Ambient Voice' : '• Ambient Text'}
+              </Text>
             </View>
 
             <TouchableOpacity
               onPress={dismissModal}
-              style={styles.closeButton}
               hitSlop={{ top: 12, bottom: 12, left: 12, right: 12 }}
-            >
+              style={styles.closeButton}>
               <X size={18} color="#88888E" />
             </TouchableOpacity>
           </View>
 
-          {/* Dynamic Content Body */}
-          <ScrollView
-            ref={scrollViewRef}
-            style={styles.contentScroll}
-            contentContainerStyle={styles.contentContainer}
-            showsVerticalScrollIndicator={false}
-          >
-            {/* User Speech / Query Preview */}
-            {userQuery.length > 0 && (
-              <View style={styles.userQueryBubble}>
-                <Text style={styles.userQueryText}>{userQuery}</Text>
-              </View>
-            )}
+          {/* =============================================================== */}
+          {/* MODE 1: VOICE SURFACE                                           */}
+          {/* =============================================================== */}
+          {mode === 'VOICE' && (
+            <View style={styles.voiceContainer}>
+              {/* Center Orb Stage with Concentric Glow Rings */}
+              <View style={styles.orbStage}>
+                <Reanimated.View style={[glowAnimStyle, styles.glowRing3]} />
+                <Reanimated.View style={[glowAnimStyle, styles.glowRing2]} />
+                <Reanimated.View style={[glowAnimStyle, styles.glowRing1]} />
+                <Reanimated.View style={[ringAnimStyle, styles.accentRingOuter]} />
+                <Reanimated.View style={[ringAnimStyle, styles.accentRingInner]} />
 
-            {/* Assistant Streaming Response */}
-            {assistantResponse.length > 0 && (
-              <View style={styles.assistantResponseContainer}>
-                <MobileMarkdown content={assistantResponse} />
-              </View>
-            )}
+                {/* Core Interactive Orb */}
+                <TouchableOpacity onPress={handleOrbPress} activeOpacity={0.85}>
+                  <Reanimated.View style={[orbAnimStyle, styles.coreOrb]}>
+                    <View style={styles.orbTopHighlight} />
+                    <View style={styles.orbInnerRing} />
 
-            {/* Live Audio Visualizer / Listening State */}
-            {uiState === 'RECORDING' && (
-              <View style={styles.voiceCenterContainer}>
-                <Animated.View
-                  style={[
-                    styles.voiceWaveRing,
-                    {
-                      transform: [{ scale: pulseAnim }],
-                      opacity: 0.2 + audioVolume * 0.5,
-                    },
-                  ]}
-                />
-                <TouchableOpacity
-                  style={styles.voiceOrbButton}
-                  onPress={() => voiceRecorderRef.current.cancelRecording()}
-                  activeOpacity={0.8}
-                >
-                  <Mic size={28} color="#FFFFFF" />
+                    {voiceStatus === 'LISTENING' && <Mic size={34} color="#F6F3F1" />}
+                    {voiceStatus === 'TRANSCRIBING' && (
+                      <ActivityIndicator size="small" color="#F6F3F1" />
+                    )}
+                    {voiceStatus === 'THINKING' && (
+                      <Sparkles size={32} color="#E8414A" />
+                    )}
+                    {voiceStatus === 'SPEAKING' && <Volume2 size={34} color="#E8414A" />}
+                    {voiceStatus === 'ERROR' && (
+                      <AlertTriangle size={32} color="#E8414A" />
+                    )}
+                    {(voiceStatus === 'IDLE' || voiceStatus === 'CHECKING_PERMISSION') && (
+                      <Mic size={34} color="#88888E" />
+                    )}
+                  </Reanimated.View>
                 </TouchableOpacity>
-                <Text style={styles.listeningText}>Listening…</Text>
-                <Text style={styles.subListeningText}>Tap to pause</Text>
-              </View>
-            )}
 
-            {/* Transcribing / Thinking Spinner */}
-            {(uiState === 'TRANSCRIBING' || uiState === 'STREAMING') && assistantResponse.length === 0 && (
-              <View style={styles.loadingContainer}>
-                <ActivityIndicator size="small" color="#E8414A" />
-                <Text style={styles.loadingText}>
-                  {uiState === 'TRANSCRIBING' ? 'Transcribing speech…' : 'Thinking…'}
-                </Text>
-              </View>
-            )}
+                {/* Dynamic Soundwave Volume Bars */}
+                <View style={styles.soundwaveRow}>
+                  {barMultipliers.map((mult, idx) => {
+                    let barH = 4;
+                    let barC = 'rgba(232,65,74,0.2)';
 
-            {/* Permission Denied View (Section 7.3) */}
-            {uiState === 'PERMISSION_DENIED' && (
-              <View style={styles.alertBanner}>
-                <AlertTriangle size={20} color="#F59E0B" />
-                <Text style={styles.alertText}>Microphone access required for voice mode.</Text>
-                <View style={styles.alertActionsRow}>
-                  <TouchableOpacity
-                    style={styles.alertPrimaryButton}
-                    onPress={startConditionalRecording}
-                  >
-                    <Text style={styles.alertPrimaryButtonText}>Allow Microphone</Text>
-                  </TouchableOpacity>
-                  <TouchableOpacity
-                    style={styles.alertSecondaryButton}
-                    onPress={() => {
-                      setUiState('IDLE');
-                      inputRef.current?.focus();
-                    }}
-                  >
-                    <Text style={styles.alertSecondaryButtonText}>Type Instead</Text>
-                  </TouchableOpacity>
+                    if (voiceStatus === 'SPEAKING') {
+                      barH = 6 + Math.sin(Date.now() / 150 + idx) * 12 * mult;
+                      barC = '#E8414A';
+                    } else if (voiceStatus === 'LISTENING') {
+                      barH = 4 + audioVolume * 22 * mult;
+                      barC = audioVolume > 0.05 ? '#F6F3F1' : 'rgba(246,243,241,0.25)';
+                    } else if (voiceStatus === 'THINKING' || voiceStatus === 'TRANSCRIBING') {
+                      barH = 4 + Math.sin(Date.now() / 200 + idx) * 6;
+                      barC = '#E8414A';
+                    }
+
+                    return (
+                      <View
+                        key={idx}
+                        style={[
+                          styles.soundwaveBar,
+                          { height: Math.max(4, barH), backgroundColor: barC },
+                        ]}
+                      />
+                    );
+                  })}
                 </View>
               </View>
-            )}
 
-            {/* Hardware Busy / Error View */}
-            {(uiState === 'AUDIO_BUSY' || uiState === 'ERROR') && (
-              <View style={styles.alertBanner}>
-                <AlertTriangle size={20} color="#E8414A" />
-                <Text style={styles.alertText}>{errorMessage || 'An error occurred.'}</Text>
+              {/* Status Indicator Label */}
+              <View style={styles.voiceStatusContainer}>
+                {voiceStatus === 'LISTENING' && (
+                  <Text style={styles.statusLabelActive}>Listening…</Text>
+                )}
+                {voiceStatus === 'TRANSCRIBING' && (
+                  <Text style={styles.statusLabelMuted}>Transcribing speech…</Text>
+                )}
+                {voiceStatus === 'THINKING' && (
+                  <Text style={styles.statusLabelAccent}>Thinking…</Text>
+                )}
+                {voiceStatus === 'SPEAKING' && (
+                  <Text style={styles.statusLabelAccent}>Aven is speaking…</Text>
+                )}
+                {voiceStatus === 'IDLE' && (
+                  <Text style={styles.statusLabelMuted}>Tap orb to speak</Text>
+                )}
+                {voiceStatus === 'ERROR' && (
+                  <Text style={styles.statusLabelError}>
+                    {voiceErrorMessage || 'Voice session error'}
+                  </Text>
+                )}
+              </View>
+
+              {/* Live Transcript Feedback (Clean typographic presentation) */}
+              {userSpokenText.length > 0 && (
+                <View style={styles.transcriptCard}>
+                  <Text style={styles.transcriptText} numberOfLines={2}>
+                    "{userSpokenText}"
+                  </Text>
+                </View>
+              )}
+
+              {/* Minimalist Functional Control Row */}
+              <View style={styles.voiceControlsRow}>
                 <TouchableOpacity
-                  style={styles.retryButton}
-                  onPress={() => {
-                    if (userQuery) {
-                      dispatchConversationQuery(userQuery);
-                    } else {
-                      startConditionalRecording();
-                    }
-                  }}
-                >
-                  <RotateCcw size={14} color="#F6F3F1" />
-                  <Text style={styles.retryButtonText}>Retry</Text>
+                  onPress={toggleMicMute}
+                  style={[
+                    styles.voiceMuteButton,
+                    isMicMuted && styles.voiceMuteButtonActive,
+                  ]}>
+                  {isMicMuted ? (
+                    <MicOff size={16} color="#E8414A" />
+                  ) : (
+                    <Mic size={16} color="#88888E" />
+                  )}
+                  <Text
+                    style={[
+                      styles.voiceMuteLabel,
+                      isMicMuted && styles.voiceMuteLabelActive,
+                    ]}>
+                    {isMicMuted ? 'Muted' : 'Mic Active'}
+                  </Text>
                 </TouchableOpacity>
               </View>
-            )}
-          </ScrollView>
+            </View>
+          )}
 
-          {/* Bottom Bar: Unified Input & Voice Summon */}
-          <View style={styles.bottomBar}>
-            <TouchableOpacity
-              style={[
-                styles.micToggleBtn,
-                uiState === 'RECORDING' && styles.micToggleBtnActive,
-              ]}
-              onPress={() => {
-                if (uiState === 'RECORDING') {
-                  voiceRecorderRef.current.cancelRecording();
-                  setUiState('IDLE');
-                } else {
-                  startConditionalRecording();
-                }
-              }}
-            >
-              {uiState === 'RECORDING' ? (
-                <MicOff size={18} color="#FFFFFF" />
-              ) : (
-                <Mic size={18} color="#88888E" />
-              )}
-            </TouchableOpacity>
+          {/* =============================================================== */}
+          {/* MODE 2: TEXT SURFACE                                            */}
+          {/* =============================================================== */}
+          {mode === 'TEXT' && (
+            <View style={styles.textContainer}>
+              {/* Message History Feed */}
+              <ScrollView
+                ref={scrollViewRef}
+                style={styles.chatScroll}
+                contentContainerStyle={styles.chatContentContainer}
+                showsVerticalScrollIndicator={false}>
+                {messages.length === 0 ? (
+                  <View style={styles.emptyChatPlaceholder}>
+                    <Text style={styles.emptyChatPrompt}>
+                      How can LifeOS assist your execution?
+                    </Text>
+                  </View>
+                ) : (
+                  messages.map((item) => (
+                    <View
+                      key={item.id}
+                      style={[
+                        styles.bubbleWrapper,
+                        item.role === 'user'
+                          ? styles.bubbleUserWrapper
+                          : styles.bubbleAssistantWrapper,
+                      ]}>
+                      <View
+                        style={[
+                          styles.bubbleBase,
+                          item.role === 'user'
+                            ? styles.bubbleUser
+                            : styles.bubbleAssistant,
+                        ]}>
+                        {item.role === 'user' ? (
+                          <Text style={styles.bubbleUserText}>{item.content}</Text>
+                        ) : (
+                          <MobileMarkdown content={item.content} />
+                        )}
+                      </View>
+                    </View>
+                  ))
+                )}
 
-            <TextInput
-              ref={inputRef}
-              style={styles.textInput}
-              value={inputText}
-              onChangeText={setInputText}
-              placeholder="Ask Aven anything…"
-              placeholderTextColor="#66666D"
-              onSubmitEditing={handleTextSubmit}
-              returnKeyType="send"
-            />
+                {/* Thinking / Streaming Indicator */}
+                {textStatus === 'THINKING' && (
+                  <View style={styles.thinkingIndicatorRow}>
+                    <Sparkles size={13} color="#E8414A" />
+                    <Text style={styles.thinkingIndicatorText}>
+                      Aven is thinking…
+                    </Text>
+                  </View>
+                )}
 
-            {inputText.trim().length > 0 && (
-              <TouchableOpacity
-                style={styles.sendButton}
-                onPress={handleTextSubmit}
-              >
-                <Send size={16} color="#FFFFFF" />
-              </TouchableOpacity>
-            )}
-          </View>
-        </KeyboardAvoidingView>
-      </Animated.View>
+                {textStatus === 'ERROR' && (
+                  <View style={styles.errorBannerRow}>
+                    <AlertTriangle size={13} color="#E8414A" />
+                    <Text style={styles.errorBannerText}>{textErrorMessage}</Text>
+                  </View>
+                )}
+              </ScrollView>
+
+              {/* Bottom Text Composer Bar */}
+              <View style={styles.textComposerRow}>
+                <TextInput
+                  style={styles.textComposerInput}
+                  placeholder="Ask Aven anything…"
+                  placeholderTextColor="#88888E"
+                  value={textInput}
+                  onChangeText={setTextInput}
+                  onSubmitEditing={handleTextSubmit}
+                  returnKeyType="send"
+                  multiline={false}
+                  autoFocus
+                />
+                <TouchableOpacity
+                  onPress={handleTextSubmit}
+                  disabled={!textInput.trim() || textStatus === 'THINKING'}
+                  style={[
+                    styles.textSendButton,
+                    (!textInput.trim() || textStatus === 'THINKING') &&
+                      styles.textSendButtonDisabled,
+                  ]}>
+                  <Send size={15} color="#FFFFFF" />
+                </TouchableOpacity>
+              </View>
+            </View>
+          )}
+        </Reanimated.View>
+      </KeyboardAvoidingView>
     </View>
   );
 }
@@ -519,224 +848,349 @@ const styles = StyleSheet.create({
     backgroundColor: 'rgba(11, 11, 12, 0.72)',
     justifyContent: 'center',
     alignItems: 'center',
-    padding: 16,
   },
   backdropTapArea: {
-    ...StyleSheet.absoluteFillObject,
+    position: 'absolute',
+    top: 0,
+    bottom: 0,
+    left: 0,
+    right: 0,
+  },
+  keyboardAvoid: {
+    width: '100%',
+    alignItems: 'center',
+    justifyContent: 'center',
+    paddingHorizontal: 16,
   },
   modalCard: {
-    width: Math.min(SCREEN_WIDTH - 32, 420),
-    maxHeight: SCREEN_HEIGHT * 0.75,
+    width: '100%',
+    maxWidth: 420,
     backgroundColor: '#161618',
-    borderRadius: 20,
+    borderRadius: 22,
     borderWidth: 1,
     borderColor: '#2A2B2F',
     overflow: 'hidden',
-    shadowColor: '#000',
-    shadowOffset: { width: 0, height: 8 },
+    shadowColor: '#000000',
+    shadowOffset: { width: 0, height: 16 },
     shadowOpacity: 0.45,
-    shadowRadius: 16,
-    elevation: 12,
-  },
-  innerCard: {
-    padding: 16,
+    shadowRadius: 28,
+    elevation: 20,
   },
   headerRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'space-between',
-    paddingBottom: 12,
+    paddingHorizontal: 20,
+    paddingTop: 16,
+    paddingBottom: 14,
     borderBottomWidth: 1,
-    borderBottomColor: '#222327',
+    borderBottomColor: '#202124',
   },
-  headerLeft: {
+  headerBrandGroup: {
     flexDirection: 'row',
     alignItems: 'center',
-  },
-  avenIconDot: {
-    width: 24,
-    height: 24,
-    borderRadius: 6,
-    backgroundColor: 'rgba(232, 65, 74, 0.15)',
-    justifyContent: 'center',
-    alignItems: 'center',
-    marginRight: 8,
+    gap: 8,
   },
   headerTitle: {
-    color: '#F6F3F1',
     fontSize: 15,
-    fontWeight: '600',
-    fontFamily: Platform.OS === 'ios' ? 'System' : 'sans-serif-medium',
+    fontWeight: '700',
+    color: '#FFFDFC',
+    letterSpacing: 0.3,
   },
   headerSubtitle: {
-    color: '#88888E',
     fontSize: 12,
-    marginLeft: 4,
+    color: '#88888E',
+    fontWeight: '500',
   },
   closeButton: {
     padding: 4,
+    borderRadius: 12,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
-  contentScroll: {
-    flex: 1,
-  },
-  contentContainer: {
-    paddingVertical: 12,
-  },
-  userQueryBubble: {
-    alignSelf: 'flex-end',
-    backgroundColor: '#222327',
-    paddingHorizontal: 14,
-    paddingVertical: 8,
-    borderRadius: 14,
-    marginBottom: 12,
-    maxWidth: '85%',
-  },
-  userQueryText: {
-    color: '#F6F3F1',
-    fontSize: 14,
-  },
-  assistantResponseContainer: {
-    marginBottom: 12,
-  },
-  voiceCenterContainer: {
+
+  // ---------------------------------------------------------------------------
+  // VOICE SURFACE STYLES
+  // ---------------------------------------------------------------------------
+  voiceContainer: {
     alignItems: 'center',
-    justifyContent: 'center',
+    paddingHorizontal: 20,
     paddingVertical: 24,
   },
-  voiceWaveRing: {
-    position: 'absolute',
-    width: 90,
-    height: 90,
-    borderRadius: 45,
-    backgroundColor: '#E8414A',
-  },
-  voiceOrbButton: {
-    width: 60,
-    height: 60,
-    borderRadius: 30,
-    backgroundColor: '#E8414A',
-    justifyContent: 'center',
+  orbStage: {
+    width: 240,
+    height: 220,
     alignItems: 'center',
+    justifyContent: 'center',
+  },
+  glowRing3: {
+    position: 'absolute',
+    width: 230,
+    height: 230,
+    borderRadius: 115,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 65, 74, 0.04)',
+    backgroundColor: 'rgba(232, 65, 74, 0.03)',
+  },
+  glowRing2: {
+    position: 'absolute',
+    width: 200,
+    height: 200,
+    borderRadius: 100,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 65, 74, 0.06)',
+    backgroundColor: 'rgba(232, 65, 74, 0.04)',
+  },
+  glowRing1: {
+    position: 'absolute',
+    width: 175,
+    height: 175,
+    borderRadius: 87,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 65, 74, 0.08)',
+    backgroundColor: 'rgba(232, 65, 74, 0.05)',
+  },
+  accentRingOuter: {
+    position: 'absolute',
+    width: 155,
+    height: 155,
+    borderRadius: 78,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 65, 74, 0.15)',
+  },
+  accentRingInner: {
+    position: 'absolute',
+    width: 140,
+    height: 140,
+    borderRadius: 70,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 65, 74, 0.25)',
+  },
+  coreOrb: {
+    width: 120,
+    height: 120,
+    borderRadius: 60,
+    alignItems: 'center',
+    justifyContent: 'center',
+    backgroundColor: '#1A1C1F',
+    borderWidth: 2,
+    borderColor: 'rgba(232, 65, 74, 0.35)',
     shadowColor: '#E8414A',
-    shadowOffset: { width: 0, height: 4 },
-    shadowOpacity: 0.4,
-    shadowRadius: 8,
-    elevation: 8,
+    shadowOffset: { width: 0, height: 0 },
+    shadowOpacity: 0.3,
+    shadowRadius: 20,
+    elevation: 10,
   },
-  listeningText: {
-    color: '#F6F3F1',
-    fontSize: 16,
-    fontWeight: '600',
-    marginTop: 16,
+  orbTopHighlight: {
+    position: 'absolute',
+    top: 2,
+    left: 2,
+    right: 2,
+    height: 56,
+    borderTopLeftRadius: 58,
+    borderTopRightRadius: 58,
+    backgroundColor: 'rgba(255, 255, 255, 0.05)',
   },
-  subListeningText: {
-    color: '#88888E',
-    fontSize: 12,
-    marginTop: 4,
+  orbInnerRing: {
+    position: 'absolute',
+    top: 5,
+    left: 5,
+    right: 5,
+    bottom: 5,
+    borderRadius: 55,
+    borderWidth: 1,
+    borderColor: 'rgba(232, 65, 74, 0.12)',
   },
-  loadingContainer: {
+  soundwaveRow: {
     flexDirection: 'row',
     alignItems: 'center',
     justifyContent: 'center',
-    paddingVertical: 18,
+    gap: 4,
+    height: 24,
+    marginTop: 18,
   },
-  loadingText: {
-    color: '#88888E',
+  soundwaveBar: {
+    width: 3.5,
+    borderRadius: 2,
+  },
+  voiceStatusContainer: {
+    marginTop: 14,
+    alignItems: 'center',
+  },
+  statusLabelActive: {
+    fontSize: 14,
+    fontWeight: '600',
+    color: '#FFFDFC',
+    letterSpacing: 0.2,
+  },
+  statusLabelMuted: {
     fontSize: 13,
-    marginLeft: 8,
+    color: '#88888E',
   },
-  alertBanner: {
+  statusLabelAccent: {
+    fontSize: 13,
+    fontWeight: '600',
+    color: '#E8414A',
+  },
+  statusLabelError: {
+    fontSize: 12,
+    color: '#E8414A',
+    textAlign: 'center',
+  },
+  transcriptCard: {
+    marginTop: 14,
+    paddingHorizontal: 16,
+    paddingVertical: 8,
     backgroundColor: '#1F2023',
     borderRadius: 12,
-    padding: 14,
     borderWidth: 1,
     borderColor: '#2A2B2F',
-    alignItems: 'center',
-    marginVertical: 12,
+    maxWidth: '92%',
   },
-  alertText: {
-    color: '#F6F3F1',
+  transcriptText: {
     fontSize: 13,
+    color: 'rgba(236, 231, 227, 0.85)',
+    fontStyle: 'italic',
     textAlign: 'center',
-    marginTop: 8,
-    lineHeight: 18,
   },
-  alertActionsRow: {
-    flexDirection: 'row',
-    marginTop: 12,
-    gap: 8,
-  },
-  alertPrimaryButton: {
-    backgroundColor: '#F59E0B',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-  },
-  alertPrimaryButtonText: {
-    color: '#161618',
-    fontSize: 12,
-    fontWeight: '600',
-  },
-  alertSecondaryButton: {
-    backgroundColor: '#2A2B2F',
-    paddingHorizontal: 14,
-    paddingVertical: 7,
-    borderRadius: 8,
-  },
-  alertSecondaryButtonText: {
-    color: '#F6F3F1',
-    fontSize: 12,
-  },
-  retryButton: {
+  voiceControlsRow: {
+    marginTop: 20,
     flexDirection: 'row',
     alignItems: 'center',
-    backgroundColor: '#2A2B2F',
+    gap: 12,
+  },
+  voiceMuteButton: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 6,
     paddingHorizontal: 14,
     paddingVertical: 7,
-    borderRadius: 8,
-    marginTop: 10,
-    gap: 6,
+    borderRadius: 14,
+    backgroundColor: '#1F2023',
+    borderWidth: 1,
+    borderColor: '#2A2B2F',
   },
-  retryButtonText: {
-    color: '#F6F3F1',
+  voiceMuteButtonActive: {
+    borderColor: 'rgba(232, 65, 74, 0.4)',
+    backgroundColor: 'rgba(232, 65, 74, 0.1)',
+  },
+  voiceMuteLabel: {
     fontSize: 12,
+    color: '#88888E',
     fontWeight: '500',
   },
-  bottomBar: {
+  voiceMuteLabelActive: {
+    color: '#E8414A',
+  },
+
+  // ---------------------------------------------------------------------------
+  // TEXT SURFACE STYLES
+  // ---------------------------------------------------------------------------
+  textContainer: {
+    height: Math.min(460, SCREEN_HEIGHT * 0.6),
+    justifyContent: 'space-between',
+  },
+  chatScroll: {
+    flex: 1,
+    paddingHorizontal: 16,
+  },
+  chatContentContainer: {
+    paddingVertical: 14,
+    gap: 10,
+  },
+  emptyChatPlaceholder: {
+    paddingVertical: 40,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  emptyChatPrompt: {
+    fontSize: 13,
+    color: '#88888E',
+    textAlign: 'center',
+  },
+  bubbleWrapper: {
+    width: '100%',
+  },
+  bubbleUserWrapper: {
+    alignItems: 'flex-end',
+  },
+  bubbleAssistantWrapper: {
+    alignItems: 'flex-start',
+  },
+  bubbleBase: {
+    maxWidth: '85%',
+    paddingHorizontal: 14,
+    paddingVertical: 10,
+    borderRadius: 16,
+  },
+  bubbleUser: {
+    backgroundColor: '#2A2B2F',
+    borderBottomRightRadius: 4,
+  },
+  bubbleUserText: {
+    fontSize: 14,
+    color: '#FFFDFC',
+    lineHeight: 20,
+  },
+  bubbleAssistant: {
+    backgroundColor: '#1F2023',
+    borderWidth: 1,
+    borderColor: '#2A2B2F',
+    borderBottomLeftRadius: 4,
+  },
+  thinkingIndicatorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    paddingTop: 8,
-    borderTopWidth: 1,
-    borderTopColor: '#222327',
+    gap: 6,
+    paddingVertical: 4,
+    paddingHorizontal: 8,
   },
-  micToggleBtn: {
-    width: 36,
-    height: 36,
-    borderRadius: 18,
-    backgroundColor: '#1F2023',
-    justifyContent: 'center',
+  thinkingIndicatorText: {
+    fontSize: 12,
+    color: '#E8414A',
+    fontStyle: 'italic',
+  },
+  errorBannerRow: {
+    flexDirection: 'row',
     alignItems: 'center',
-    marginRight: 8,
+    gap: 6,
+    padding: 8,
+    borderRadius: 8,
+    backgroundColor: 'rgba(232, 65, 74, 0.1)',
   },
-  micToggleBtnActive: {
-    backgroundColor: '#E8414A',
+  errorBannerText: {
+    fontSize: 12,
+    color: '#E8414A',
   },
-  textInput: {
-    flex: 1,
-    height: 38,
-    backgroundColor: '#1F2023',
-    borderRadius: 19,
+  textComposerRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: 8,
     paddingHorizontal: 14,
-    color: '#F6F3F1',
+    paddingVertical: 12,
+    borderTopWidth: 1,
+    borderTopColor: '#202124',
+    backgroundColor: '#161618',
+  },
+  textComposerInput: {
+    flex: 1,
+    height: 40,
+    backgroundColor: '#1F2023',
+    borderRadius: 20,
+    borderWidth: 1,
+    borderColor: '#2A2B2F',
+    paddingHorizontal: 16,
+    color: '#FFFDFC',
     fontSize: 13,
   },
-  sendButton: {
-    width: 34,
-    height: 34,
-    borderRadius: 17,
+  textSendButton: {
+    width: 38,
+    height: 38,
+    borderRadius: 19,
     backgroundColor: '#E8414A',
-    justifyContent: 'center',
     alignItems: 'center',
-    marginLeft: 8,
+    justifyContent: 'center',
+  },
+  textSendButtonDisabled: {
+    opacity: 0.4,
   },
 });

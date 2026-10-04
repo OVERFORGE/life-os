@@ -177,6 +177,22 @@ export class WidgetSyncBridge {
   }
 
   /**
+   * Retrieves the summon mode ("voice" | "text") for the ambient session.
+   */
+  public async getAvenSessionMode(): Promise<'voice' | 'text'> {
+    try {
+      if (Platform.OS === 'android' && NativeModules.LifeOsWidgetBridge?.getAvenSessionMode) {
+        const mode = await NativeModules.LifeOsWidgetBridge.getAvenSessionMode();
+        return mode === 'text' ? 'text' : 'voice';
+      }
+      return 'voice';
+    } catch (e) {
+      console.warn('[WidgetSyncBridge] Failed to get Aven session mode:', e);
+      return 'voice';
+    }
+  }
+
+  /**
    * Pure mapper matching kernel specification for hermetic mobile bundle execution.
    */
   private mapProjectionToDTO(p: any): IWidgetPresentationDTO {

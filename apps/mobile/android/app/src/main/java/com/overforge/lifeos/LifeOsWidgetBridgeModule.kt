@@ -367,4 +367,18 @@ class LifeOsWidgetBridgeModule(reactContext: ReactApplicationContext) : ReactCon
             promise.reject("DISMISS_ERROR", e.localizedMessage, e)
         }
     }
+
+    /**
+     * Retrieves the summon mode ("voice" or "text") passed to AvenActivity.
+     */
+    @ReactMethod
+    fun getAvenSessionMode(promise: Promise) {
+        try {
+            val activity = reactApplicationContext.currentActivity
+            val mode = activity?.intent?.getStringExtra("mode") ?: "voice"
+            promise.resolve(mode)
+        } catch (e: Exception) {
+            promise.resolve("voice")
+        }
+    }
 }

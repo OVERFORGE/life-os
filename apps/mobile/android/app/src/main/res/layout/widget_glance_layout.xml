@@ -391,36 +391,51 @@
             android:layout_height="match_parent"
             android:layout_weight="1" />
 
-        <!-- Aven Summon Button (Vector Microphone Glyph + 'Aven', Zero Emoji) -->
+        <!-- Ambient Dual Ingress Actions: Voice (Mic) & Text (Message) (Zero Emoji, No Text Label) -->
         <LinearLayout
-            android:id="@+id/widget_aven_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:minHeight="44dp"
             android:gravity="center_vertical"
-            android:orientation="horizontal"
-            android:background="@drawable/widget_button_bg"
-            android:contentDescription="Summon Aven assistant"
-            android:paddingStart="12dp"
-            android:paddingEnd="14dp"
-            android:paddingTop="6dp"
-            android:paddingBottom="6dp">
+            android:orientation="horizontal">
 
-            <ImageView
-                android:layout_width="13dp"
-                android:layout_height="13dp"
-                android:src="@drawable/ic_aven_mic"
-                android:contentDescription="" />
+            <!-- Voice Action Button (Monochrome Vector Mic) -->
+            <LinearLayout
+                android:id="@+id/widget_aven_voice_button"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:minWidth="44dp"
+                android:minHeight="44dp"
+                android:gravity="center"
+                android:background="@drawable/widget_button_bg"
+                android:contentDescription="Summon Voice Aven">
 
-            <TextView
-                android:layout_width="wrap_content"
-                android:layout_height="wrap_content"
-                android:layout_marginStart="6dp"
-                android:layout_marginLeft="6dp"
-                android:fontFamily="sans-serif-medium"
-                android:text="Aven"
-                android:textColor="#F6F3F1"
-                android:textSize="12sp" />
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_aven_mic"
+                    android:contentDescription="" />
+            </LinearLayout>
+
+            <!-- Text Action Button (Monochrome Vector Message) -->
+            <LinearLayout
+                android:id="@+id/widget_aven_text_button"
+                android:layout_width="40dp"
+                android:layout_height="40dp"
+                android:layout_marginStart="8dp"
+                android:layout_marginLeft="8dp"
+                android:minWidth="44dp"
+                android:minHeight="44dp"
+                android:gravity="center"
+                android:background="@drawable/widget_button_bg"
+                android:contentDescription="Summon Text Aven">
+
+                <ImageView
+                    android:layout_width="16dp"
+                    android:layout_height="16dp"
+                    android:src="@drawable/ic_action_message"
+                    android:contentDescription="" />
+            </LinearLayout>
         </LinearLayout>
     </LinearLayout>
 </LinearLayout>
+

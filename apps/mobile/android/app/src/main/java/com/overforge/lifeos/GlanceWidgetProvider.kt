@@ -169,19 +169,34 @@ class GlanceWidgetProvider : AppWidgetProvider() {
                 )
                 views.setOnClickPendingIntent(R.id.widget_root, pendingLaunch)
 
-                // 5. Aven Summon Intent: Launches dedicated AvenActivity in isolated task
-                val avenIntent = Intent(context, AvenActivity::class.java).apply {
+                // 5. Aven Summon Intents: Launches dedicated AvenActivity in isolated task
+                // 5A. Voice Mode Intent (Monochrome Mic)
+                val voiceIntent = Intent(context, AvenActivity::class.java).apply {
                     action = "com.overforge.lifeos.ACTION_SUMMON_AVEN"
                     flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
                     putExtra("mode", "voice")
                 }
-                val pendingAven = PendingIntent.getActivity(
+                val pendingVoice = PendingIntent.getActivity(
                     context,
                     1,
-                    avenIntent,
+                    voiceIntent,
                     PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
                 )
-                views.setOnClickPendingIntent(R.id.widget_aven_button, pendingAven)
+                views.setOnClickPendingIntent(R.id.widget_aven_voice_button, pendingVoice)
+
+                // 5B. Text Mode Intent (Monochrome Message)
+                val textIntent = Intent(context, AvenActivity::class.java).apply {
+                    action = "com.overforge.lifeos.ACTION_SUMMON_AVEN"
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra("mode", "text")
+                }
+                val pendingText = PendingIntent.getActivity(
+                    context,
+                    2,
+                    textIntent,
+                    PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+                )
+                views.setOnClickPendingIntent(R.id.widget_aven_text_button, pendingText)
 
                 appWidgetManager.updateAppWidget(appWidgetId, views)
             } catch (t: Throwable) {
