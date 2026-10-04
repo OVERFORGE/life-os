@@ -350,4 +350,21 @@ class LifeOsWidgetBridgeModule(reactContext: ReactApplicationContext) : ReactCon
             promise.reject("WIDGET_LEGACY_ERROR", e.localizedMessage, e)
         }
     }
+
+    /**
+     * Dismisses the dedicated AvenActivity transparent surface smoothly.
+     */
+    @ReactMethod
+    fun dismissAvenSurface(promise: Promise) {
+        try {
+            val activity = reactApplicationContext.currentActivity
+            activity?.runOnUiThread {
+                activity.finish()
+                activity.overridePendingTransition(0, android.R.anim.fade_out)
+            }
+            promise.resolve(activity != null)
+        } catch (e: Exception) {
+            promise.reject("DISMISS_ERROR", e.localizedMessage, e)
+        }
+    }
 }

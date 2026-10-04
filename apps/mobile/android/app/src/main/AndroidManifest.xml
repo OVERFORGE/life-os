@@ -50,6 +50,21 @@
       android:exported="false"
       android:process=":crash"
       android:theme="@android:style/Theme.NoTitleBar" />
+    <activity
+      android:name=".AvenActivity"
+      android:theme="@style/Theme.LifeOs.TransparentAven"
+      android:taskAffinity="com.overforge.lifeos.aven"
+      android:launchMode="singleTask"
+      android:excludeFromRecents="true"
+      android:noHistory="true"
+      android:windowSoftInputMode="adjustResize"
+      android:exported="true"
+      android:configChanges="keyboard|keyboardHidden|orientation|screenSize|screenLayout|uiMode|smallestScreenSize">
+      <intent-filter>
+        <action android:name="com.overforge.lifeos.ACTION_SUMMON_AVEN" />
+        <category android:name="android.intent.category.DEFAULT" />
+      </intent-filter>
+    </activity>
     <uses-library android:name="org.apache.http.legacy" android:required="false"/>
 
     <!-- LifeOS Home Screen Glance Widget Provider (Class A Glance Surface) -->

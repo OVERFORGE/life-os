@@ -5,7 +5,7 @@
     android:layout_height="match_parent"
     android:background="@drawable/widget_background"
     android:orientation="vertical"
-    android:padding="14dp">
+    android:padding="15dp">
 
     <!-- Header Row: Brand, Status Dot & Mode Badge -->
     <LinearLayout
@@ -49,9 +49,9 @@
     <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
-        android:layout_marginTop="8dp">
+        android:layout_marginTop="10dp">
 
-        <!-- 1. CLEAR STATE (Calm Ambient Experience) -->
+        <!-- 1. CLEAR STATE (Calm Ambient Experience with Next Anchor) -->
         <LinearLayout
             android:id="@+id/container_state_clear"
             android:layout_width="match_parent"
@@ -63,22 +63,75 @@
                 android:id="@+id/widget_clear_title"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:fontFamily="sans-serif-bold"
+                android:fontFamily="sans-serif-medium"
                 android:text="You're clear."
                 android:textColor="#F6F3F1"
-                android:textSize="16sp" />
+                android:textSize="17sp" />
 
             <TextView
-                android:id="@+id/widget_clear_next"
+                android:id="@+id/widget_clear_subtitle"
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
-                android:ellipsize="end"
+                android:layout_marginTop="2dp"
                 android:fontFamily="sans-serif"
-                android:maxLines="1"
-                android:text=""
+                android:text="All commitments clear"
                 android:textColor="#88888E"
                 android:textSize="12sp" />
+
+            <!-- Next Commitment Card Anchor -->
+            <LinearLayout
+                android:id="@+id/widget_clear_next_card"
+                android:layout_width="match_parent"
+                android:layout_height="wrap_content"
+                android:layout_marginTop="10dp"
+                android:background="@drawable/widget_subcard_bg"
+                android:orientation="vertical"
+                android:paddingStart="12dp"
+                android:paddingEnd="12dp"
+                android:paddingTop="8dp"
+                android:paddingBottom="8dp"
+                android:visibility="visible">
+
+                <TextView
+                    android:id="@+id/widget_clear_next_label"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="NEXT"
+                    android:textColor="#66666D"
+                    android:textSize="10sp" />
+
+                <LinearLayout
+                    android:layout_width="match_parent"
+                    android:layout_height="wrap_content"
+                    android:layout_marginTop="3dp"
+                    android:gravity="center_vertical"
+                    android:orientation="horizontal">
+
+                    <TextView
+                        android:id="@+id/widget_clear_next_title"
+                        android:layout_width="0dp"
+                        android:layout_height="wrap_content"
+                        android:layout_weight="1"
+                        android:ellipsize="end"
+                        android:fontFamily="sans-serif-medium"
+                        android:maxLines="1"
+                        android:text="No upcoming commitments"
+                        android:textColor="#F6F3F1"
+                        android:textSize="13sp" />
+
+                    <TextView
+                        android:id="@+id/widget_clear_next_time"
+                        android:layout_width="wrap_content"
+                        android:layout_height="wrap_content"
+                        android:layout_marginStart="8dp"
+                        android:layout_marginLeft="8dp"
+                        android:fontFamily="sans-serif"
+                        android:text=""
+                        android:textColor="#88888E"
+                        android:textSize="12sp" />
+                </LinearLayout>
+            </LinearLayout>
         </LinearLayout>
 
         <!-- 2. UPCOMING STATE (Focus Countdown) -->
@@ -94,10 +147,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:fontFamily="sans-serif-bold"
+                android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
                 android:textColor="#F6F3F1"
-                android:textSize="15sp" />
+                android:textSize="16sp" />
 
             <TextView
                 android:id="@+id/widget_upcoming_subtitle"
@@ -124,15 +177,15 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:fontFamily="sans-serif-bold"
+                android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
                 android:textColor="#F6F3F1"
-                android:textSize="15sp" />
+                android:textSize="16sp" />
 
             <LinearLayout
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
-                android:layout_marginTop="3dp"
+                android:layout_marginTop="4dp"
                 android:gravity="center_vertical"
                 android:orientation="horizontal">
 
@@ -177,10 +230,10 @@
                 android:layout_width="match_parent"
                 android:layout_height="wrap_content"
                 android:ellipsize="end"
-                android:fontFamily="sans-serif-bold"
+                android:fontFamily="sans-serif-medium"
                 android:maxLines="1"
                 android:textColor="#F6F3F1"
-                android:textSize="15sp" />
+                android:textSize="16sp" />
 
             <TextView
                 android:id="@+id/widget_proposal_subtitle"
@@ -216,78 +269,105 @@
             android:orientation="horizontal"
             android:visibility="gone">
 
-            <!-- Start Action Button (Amber-accented Obsidian for Upcoming/Proposal, NO CRIMSON) -->
-            <TextView
+            <!-- Start Action Button (Amber Accent with Vector Icon, Zero Emoji) -->
+            <LinearLayout
                 android:id="@+id/btn_action_start"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:gravity="center"
+                android:minHeight="44dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
                 android:background="@drawable/widget_btn_obsidian_accent"
                 android:contentDescription="Start scheduled task"
-                android:fontFamily="sans-serif-medium"
-                android:paddingStart="14dp"
-                android:paddingLeft="14dp"
-                android:paddingTop="6dp"
+                android:paddingStart="12dp"
                 android:paddingEnd="14dp"
-                android:paddingRight="14dp"
+                android:paddingTop="6dp"
                 android:paddingBottom="6dp"
-                android:text="▶ Start"
-                android:textColor="#F59E0B"
-                android:textSize="12sp"
-                android:visibility="gone" />
+                android:visibility="gone">
 
-            <!-- Done Action Button (Crimson Affirm strictly for Active execution) -->
-            <TextView
+                <ImageView
+                    android:layout_width="11dp"
+                    android:layout_height="11dp"
+                    android:src="@drawable/ic_action_play"
+                    android:contentDescription="" />
+
+                <TextView
+                    android:id="@+id/txt_action_start"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginLeft="6dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="Start"
+                    android:textColor="#F59E0B"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Done Action Button (Crimson Affirm with Vector Checkmark, Zero Emoji) -->
+            <LinearLayout
                 android:id="@+id/btn_action_done"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minHeight="48dp"
-                android:gravity="center"
+                android:minHeight="44dp"
+                android:gravity="center_vertical"
+                android:orientation="horizontal"
                 android:background="@drawable/widget_btn_crimson"
                 android:contentDescription="Complete active task"
-                android:fontFamily="sans-serif-medium"
-                android:paddingStart="14dp"
-                android:paddingLeft="14dp"
-                android:paddingTop="6dp"
+                android:paddingStart="12dp"
                 android:paddingEnd="14dp"
-                android:paddingRight="14dp"
+                android:paddingTop="6dp"
                 android:paddingBottom="6dp"
-                android:text="✓ Done"
-                android:textColor="#FFFFFF"
-                android:textSize="12sp"
-                android:visibility="gone" />
+                android:visibility="gone">
 
-            <!-- Pause Action Button (Neutral) -->
-            <TextView
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_action_check"
+                    android:contentDescription="" />
+
+                <TextView
+                    android:id="@+id/txt_action_done"
+                    android:layout_width="wrap_content"
+                    android:layout_height="wrap_content"
+                    android:layout_marginStart="6dp"
+                    android:layout_marginLeft="6dp"
+                    android:fontFamily="sans-serif-medium"
+                    android:text="Done"
+                    android:textColor="#FFFFFF"
+                    android:textSize="12sp" />
+            </LinearLayout>
+
+            <!-- Pause Action Button (Neutral with Vector Pause, Zero Emoji) -->
+            <LinearLayout
                 android:id="@+id/btn_action_pause"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minHeight="48dp"
+                android:minHeight="44dp"
                 android:minWidth="44dp"
                 android:gravity="center"
                 android:layout_marginStart="6dp"
                 android:layout_marginLeft="6dp"
                 android:background="@drawable/widget_btn_neutral"
                 android:contentDescription="Pause active task"
-                android:fontFamily="sans-serif-medium"
                 android:paddingStart="10dp"
-                android:paddingLeft="10dp"
-                android:paddingTop="6dp"
                 android:paddingEnd="10dp"
-                android:paddingRight="10dp"
+                android:paddingTop="6dp"
                 android:paddingBottom="6dp"
-                android:text="⏸"
-                android:textColor="#F6F3F1"
-                android:textSize="12sp"
-                android:visibility="gone" />
+                android:visibility="gone">
 
-            <!-- Extend 15m Action Button (Neutral) -->
+                <ImageView
+                    android:layout_width="12dp"
+                    android:layout_height="12dp"
+                    android:src="@drawable/ic_action_pause"
+                    android:contentDescription="" />
+            </LinearLayout>
+
+            <!-- Extend 15m Action Button (Neutral, Clean Typography) -->
             <TextView
                 android:id="@+id/btn_action_extend"
                 android:layout_width="wrap_content"
                 android:layout_height="wrap_content"
-                android:minHeight="48dp"
+                android:minHeight="44dp"
                 android:minWidth="44dp"
                 android:gravity="center"
                 android:layout_marginStart="6dp"
@@ -296,10 +376,8 @@
                 android:contentDescription="Extend task 15 minutes"
                 android:fontFamily="sans-serif-medium"
                 android:paddingStart="10dp"
-                android:paddingLeft="10dp"
-                android:paddingTop="6dp"
                 android:paddingEnd="10dp"
-                android:paddingRight="10dp"
+                android:paddingTop="6dp"
                 android:paddingBottom="6dp"
                 android:text="+15m"
                 android:textColor="#F6F3F1"
@@ -313,24 +391,36 @@
             android:layout_height="match_parent"
             android:layout_weight="1" />
 
-        <!-- Aven Summon Button -->
-        <TextView
+        <!-- Aven Summon Button (Vector Microphone Glyph + 'Aven', Zero Emoji) -->
+        <LinearLayout
             android:id="@+id/widget_aven_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:minHeight="48dp"
-            android:gravity="center"
+            android:minHeight="44dp"
+            android:gravity="center_vertical"
+            android:orientation="horizontal"
             android:background="@drawable/widget_button_bg"
             android:contentDescription="Summon Aven assistant"
-            android:fontFamily="sans-serif-medium"
-            android:paddingStart="14dp"
-            android:paddingLeft="14dp"
-            android:paddingTop="6dp"
+            android:paddingStart="12dp"
             android:paddingEnd="14dp"
-            android:paddingRight="14dp"
-            android:paddingBottom="6dp"
-            android:text="🎙 Aven"
-            android:textColor="#F6F3F1"
-            android:textSize="12sp" />
+            android:paddingTop="6dp"
+            android:paddingBottom="6dp">
+
+            <ImageView
+                android:layout_width="13dp"
+                android:layout_height="13dp"
+                android:src="@drawable/ic_aven_mic"
+                android:contentDescription="" />
+
+            <TextView
+                android:layout_width="wrap_content"
+                android:layout_height="wrap_content"
+                android:layout_marginStart="6dp"
+                android:layout_marginLeft="6dp"
+                android:fontFamily="sans-serif-medium"
+                android:text="Aven"
+                android:textColor="#F6F3F1"
+                android:textSize="12sp" />
+        </LinearLayout>
     </LinearLayout>
 </LinearLayout>

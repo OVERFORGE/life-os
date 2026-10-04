@@ -114,11 +114,15 @@ class GlanceWidgetProvider : AppWidgetProvider() {
                         views.setTextViewText(R.id.widget_clear_title, primaryTitle)
                         if (nextStartMs > 0 && nextTitle.isNotEmpty()) {
                             val timeStr = DateFormat.getTimeFormat(context).format(Date(nextStartMs))
-                            views.setTextViewText(R.id.widget_clear_next, "Next: $nextTitle · $timeStr")
-                            views.setViewVisibility(R.id.widget_clear_next, View.VISIBLE)
+                            views.setTextViewText(R.id.widget_clear_subtitle, "Nothing scheduled right now")
+                            views.setTextViewText(R.id.widget_clear_next_title, nextTitle)
+                            views.setTextViewText(R.id.widget_clear_next_time, timeStr)
+                            views.setViewVisibility(R.id.widget_clear_next_card, View.VISIBLE)
                         } else {
-                            views.setTextViewText(R.id.widget_clear_next, "")
-                            views.setViewVisibility(R.id.widget_clear_next, View.GONE)
+                            views.setTextViewText(R.id.widget_clear_subtitle, "All commitments clear")
+                            views.setTextViewText(R.id.widget_clear_next_title, "No upcoming commitments")
+                            views.setTextViewText(R.id.widget_clear_next_time, "")
+                            views.setViewVisibility(R.id.widget_clear_next_card, View.VISIBLE)
                         }
                     }
                 }
@@ -127,7 +131,7 @@ class GlanceWidgetProvider : AppWidgetProvider() {
                 val hasAnyAction = canStart || canComplete || canPause || canExtend
                 views.setViewVisibility(R.id.container_action_controls, if (hasAnyAction) View.VISIBLE else View.GONE)
 
-                // [▶ Start] Button (Amber-accented Obsidian for Upcoming/Proposal, NEVER CRIMSON)
+                // [Start] Button (Amber-accented Obsidian with vector icon, NEVER CRIMSON)
                 views.setViewVisibility(R.id.btn_action_start, if (canStart) View.VISIBLE else View.GONE)
                 if (canStart) {
                     val startEntity = if (upcomingEntityId.isNotEmpty()) upcomingEntityId else activeEntityId
@@ -135,13 +139,13 @@ class GlanceWidgetProvider : AppWidgetProvider() {
                     bindActionBroadcast(context, views, R.id.btn_action_start, "start_execution", startEntity, startSeed)
                 }
 
-                // [✓ Done] Button (Crimson affirm for Active execution)
+                // [Done] Button (Crimson affirm with vector checkmark for Active execution)
                 views.setViewVisibility(R.id.btn_action_done, if (canComplete) View.VISIBLE else View.GONE)
                 if (canComplete) {
                     bindActionBroadcast(context, views, R.id.btn_action_done, "complete_task", activeEntityId, activeSeed)
                 }
 
-                // [⏸] Pause Button (Neutral)
+                // [Pause] Button (Neutral with vector pause)
                 views.setViewVisibility(R.id.btn_action_pause, if (canPause) View.VISIBLE else View.GONE)
                 if (canPause) {
                     bindActionBroadcast(context, views, R.id.btn_action_pause, "pause_execution", activeEntityId, activeSeed)
@@ -165,9 +169,11 @@ class GlanceWidgetProvider : AppWidgetProvider() {
                 )
                 views.setOnClickPendingIntent(R.id.widget_root, pendingLaunch)
 
-                // 5. Aven Summon Intent (Opens aven-transient with mode=voice)
-                val avenIntent = Intent(Intent.ACTION_VIEW, Uri.parse("mobile://aven-transient?mode=voice")).apply {
-                    flags = Intent.FLAG_ACTIVITY_NEW_TASK
+                // 5. Aven Summon Intent: Launches dedicated AvenActivity in isolated task
+                val avenIntent = Intent(context, AvenActivity::class.java).apply {
+                    action = "com.overforge.lifeos.ACTION_SUMMON_AVEN"
+                    flags = Intent.FLAG_ACTIVITY_NEW_TASK or Intent.FLAG_ACTIVITY_CLEAR_TOP
+                    putExtra("mode", "voice")
                 }
                 val pendingAven = PendingIntent.getActivity(
                     context,

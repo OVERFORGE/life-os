@@ -215,8 +215,8 @@ class WidgetActionReceiver : BroadcastReceiver() {
             // Update main title to show immediate pending progress
             views.setTextViewText(R.id.widget_active_title, pendingText)
             views.setTextViewText(R.id.widget_upcoming_title, pendingText)
-            views.setTextViewText(R.id.btn_action_done, pendingText)
-            views.setTextViewText(R.id.btn_action_start, pendingText)
+            views.setTextViewText(R.id.txt_action_done, pendingText)
+            views.setTextViewText(R.id.txt_action_start, pendingText)
 
             for (id in allIds) {
                 appWidgetManager.partiallyUpdateAppWidget(id, views)

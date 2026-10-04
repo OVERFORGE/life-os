@@ -162,6 +162,21 @@ export class WidgetSyncBridge {
   }
 
   /**
+   * Smoothly dismisses the dedicated AvenActivity transparent surface.
+   */
+  public async dismissAvenSurface(): Promise<boolean> {
+    try {
+      if (Platform.OS === 'android' && NativeModules.LifeOsWidgetBridge?.dismissAvenSurface) {
+        return await NativeModules.LifeOsWidgetBridge.dismissAvenSurface();
+      }
+      return false;
+    } catch (e) {
+      console.warn('[WidgetSyncBridge] Failed to dismiss Aven surface:', e);
+      return false;
+    }
+  }
+
+  /**
    * Pure mapper matching kernel specification for hermetic mobile bundle execution.
    */
   private mapProjectionToDTO(p: any): IWidgetPresentationDTO {

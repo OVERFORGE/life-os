@@ -141,7 +141,14 @@ export default function AvenTransientModal() {
       toValue: 0,
       duration: 120,
       useNativeDriver: true,
-    }).start(() => {
+    }).start(async () => {
+      // First try to finish dedicated AvenActivity if running as AvenActivity
+      try {
+        const { WidgetSyncBridge } = await import('../services/WidgetSyncBridge');
+        const finished = await WidgetSyncBridge.getInstance().dismissAvenSurface();
+        if (finished) return;
+      } catch (_) {}
+
       if (router.canGoBack()) {
         router.back();
       } else {
@@ -509,31 +516,29 @@ export default function AvenTransientModal() {
 const styles = StyleSheet.create({
   scrimContainer: {
     flex: 1,
-    backgroundColor: 'rgba(11, 11, 12, 0.82)',
-    justifyContent: 'flex-end',
+    backgroundColor: 'rgba(11, 11, 12, 0.72)',
+    justifyContent: 'center',
     alignItems: 'center',
+    padding: 16,
   },
   backdropTapArea: {
     ...StyleSheet.absoluteFillObject,
   },
   modalCard: {
-    width: Math.min(SCREEN_WIDTH - 24, 480),
+    width: Math.min(SCREEN_WIDTH - 32, 420),
     maxHeight: SCREEN_HEIGHT * 0.75,
-    minHeight: 280,
     backgroundColor: '#161618',
-    borderRadius: 22,
+    borderRadius: 20,
     borderWidth: 1,
     borderColor: '#2A2B2F',
-    marginBottom: Platform.OS === 'ios' ? 36 : 24,
     overflow: 'hidden',
     shadowColor: '#000',
-    shadowOffset: { width: 0, height: 10 },
-    shadowOpacity: 0.5,
-    shadowRadius: 20,
-    elevation: 16,
+    shadowOffset: { width: 0, height: 8 },
+    shadowOpacity: 0.45,
+    shadowRadius: 16,
+    elevation: 12,
   },
   innerCard: {
-    flex: 1,
     padding: 16,
   },
   headerRow: {
