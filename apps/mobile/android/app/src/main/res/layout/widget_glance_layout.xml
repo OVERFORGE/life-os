@@ -3,29 +3,31 @@
     android:id="@+id/widget_root"
     android:layout_width="match_parent"
     android:layout_height="match_parent"
-    android:background="#161618"
+    android:background="@drawable/widget_background"
     android:orientation="vertical"
     android:padding="14dp">
 
-    <!-- Header Row: LifeOS Pill & Status Indicator -->
+    <!-- Header Row: LifeOS Brand & Status Dot -->
     <LinearLayout
         android:layout_width="match_parent"
         android:layout_height="wrap_content"
         android:gravity="center_vertical"
         android:orientation="horizontal">
 
-        <!-- Status Dot (Red when active, muted when glance) -->
-        <View
+        <!-- Status Dot: ImageView (Valid in RemoteViews; View is not) -->
+        <ImageView
             android:id="@+id/widget_status_dot"
             android:layout_width="8dp"
             android:layout_height="8dp"
-            android:background="#E8414A" />
+            android:src="@drawable/widget_dot_red"
+            android:contentDescription="Status indicator" />
 
         <TextView
             android:id="@+id/widget_header_label"
             android:layout_width="0dp"
             android:layout_height="wrap_content"
             android:layout_marginStart="8dp"
+            android:layout_marginLeft="8dp"
             android:layout_weight="1"
             android:fontFamily="sans-serif-medium"
             android:text="LIFEOS"
@@ -42,7 +44,7 @@
             android:textSize="10sp" />
     </LinearLayout>
 
-    <!-- Main Title & Time -->
+    <!-- Main Title & Subtitle -->
     <TextView
         android:id="@+id/widget_title"
         android:layout_width="match_parent"
@@ -67,7 +69,8 @@
         android:textColor="#88888E"
         android:textSize="12sp" />
 
-    <View
+    <!-- Spacer: FrameLayout (Valid in RemoteViews; View is not) -->
+    <FrameLayout
         android:layout_width="match_parent"
         android:layout_height="0dp"
         android:layout_weight="1" />
@@ -93,11 +96,13 @@
             android:id="@+id/widget_aven_button"
             android:layout_width="wrap_content"
             android:layout_height="wrap_content"
-            android:background="#2A2B2F"
+            android:background="@drawable/widget_button_bg"
             android:fontFamily="sans-serif-medium"
             android:paddingStart="10dp"
+            android:paddingLeft="10dp"
             android:paddingTop="4dp"
             android:paddingEnd="10dp"
+            android:paddingRight="10dp"
             android:paddingBottom="4dp"
             android:text="AVEN"
             android:textColor="#F6F3F1"
