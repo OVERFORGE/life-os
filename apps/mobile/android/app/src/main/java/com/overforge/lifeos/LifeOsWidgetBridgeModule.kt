@@ -182,6 +182,11 @@ class LifeOsWidgetBridgeModule(reactContext: ReactApplicationContext) : ReactCon
                 .putLong(KEY_UPDATED_AT_MS, System.currentTimeMillis())
                 .commit()
 
+            // Schedule native exact alarm to trigger widget transition at exact commitment start second
+            if (nextStartMs > System.currentTimeMillis()) {
+                GlanceWidgetProvider.scheduleNextWakeup(context, nextStartMs)
+            }
+
             // Trigger broadcast to refresh all active widget instances
             val updateIntent = Intent(context, GlanceWidgetProvider::class.java).apply {
                 action = GlanceWidgetProvider.ACTION_WIDGET_UPDATE

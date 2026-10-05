@@ -112,5 +112,8 @@ test("2-minute relative reminder task accurately projects 'IN 2M' on widget then
   assert.equal(widgetAtDue.primaryTitle, "do my homework");
   assert.equal(widgetAtDue.secondaryText, "Ready to start?");
   assert.equal(widgetAtDue.allowedActions.canStart, true);
+  assert.equal(widgetAtDue.allowedActions.canExtend, true);
+  assert.equal(widgetAtDue.activeContext?.entityId, "task_occ_123");
+  assert.equal(widgetAtDue.activeContext?.idempotencySeed, "task_occ_123");
 });
 

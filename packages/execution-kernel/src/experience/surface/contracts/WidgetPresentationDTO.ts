@@ -101,6 +101,8 @@ export function mapProjectionToWidgetDTO(p: IInteractionSurfaceProjection): IWid
   // 2. PROPOSAL / INTERVENTION
   if (p.interactionMode === 'ATTENTION' || p.activeExecution?.status === 'PROPOSAL_PENDING' || p.pendingIntervention) {
     const title = p.pendingIntervention?.headline || p.activeExecution?.title || 'Proposed Execution';
+    const entityId = p.activeExecution?.occurrenceId || p.activeExecution?.taskId || p.pendingIntervention?.interventionId || 'proposed_entity';
+    const seed = p.activeExecution?.idempotencySeed || entityId;
     return {
       schemaVersion: 1,
       projectionVersion: p.projectionVersion,
@@ -112,7 +114,13 @@ export function mapProjectionToWidgetDTO(p: IInteractionSurfaceProjection): IWid
       primaryTitle: title,
       secondaryText: 'Ready to start?',
       temporalContext: null,
-      activeContext: null,
+      activeContext: {
+        entityId,
+        startedAtMs: p.activeExecution?.startedAtMs || p.generatedAtMs,
+        plannedDurationMinutes: p.activeExecution?.plannedDurationMinutes || 15,
+        elapsedSeconds: 0,
+        idempotencySeed: seed,
+      },
       upcomingContext: null,
       allowedActions: {
         canStart: true,

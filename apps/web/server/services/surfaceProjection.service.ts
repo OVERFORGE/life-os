@@ -48,6 +48,7 @@ export async function fetchAuthoritativeSurfaceProjection(
       $or: [
         { dueDate: todayDateOnly },
         { dueDate: "today" },
+        { reminders: { $elemMatch: { $gte: new Date(now - 24 * 60 * 60 * 1000) } } },
         { reminders: { $elemMatch: { $gte: new Date(now - 24 * 60 * 60 * 1000).toISOString() } } },
       ],
     }).lean(),
@@ -160,6 +161,17 @@ export async function fetchAuthoritativeSurfaceProjection(
       createdAt: doc.createdAt ? new Date(doc.createdAt).getTime() : now,
     })
   );
+
+  // Sort occurrences: closest start time, and prioritize tasks when starting at similar times
+  occurrences.sort((a, b) => {
+    const timeA = a.plannedInterval?.startIsoUtc ? new Date(a.plannedInterval.startIsoUtc).getTime() : 0;
+    const timeB = b.plannedInterval?.startIsoUtc ? new Date(b.plannedInterval.startIsoUtc).getTime() : 0;
+    if (Math.abs(timeA - timeB) > 60000) return timeA - timeB;
+    const isTaskA = a.linkedEntity?.entityType === "task" ? 1 : 0;
+    const isTaskB = b.linkedEntity?.entityType === "task" ? 1 : 0;
+    if (isTaskA !== isTaskB) return isTaskB - isTaskA;
+    return timeA - timeB;
+  });
 
   const surfaceService = InteractionSurfaceService.getInstance();
   return await surfaceService.computeSurfaceProjection(userId, {

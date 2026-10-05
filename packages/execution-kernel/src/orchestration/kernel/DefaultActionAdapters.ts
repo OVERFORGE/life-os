@@ -218,14 +218,71 @@ export class DeferExecutionAdapter implements IKernelActionAdapter {
     return { valid: true };
   }
 
-  async execute(proposal: ActionProposal, _userId: string): Promise<any> {
+  async execute(proposal: ActionProposal, userId: string): Promise<any> {
     assertDatabaseConnected("defer_execution");
-    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    const rawEntityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    const deferMinutes = proposal.payload?.deferMinutes || 15;
+    const taskId = String(rawEntityId).startsWith("task_occ_") ? String(rawEntityId).replace("task_occ_", "") : String(rawEntityId);
+
+    if (isDbConnected()) {
+      try {
+        const mongoose = require("mongoose");
+        const taskCollection = mongoose.connection.collection("tasks");
+        let taskQuery: any = { userId };
+        try {
+          taskQuery._id = new mongoose.Types.ObjectId(taskId);
+        } catch (_) {
+          taskQuery._id = taskId;
+        }
+
+        const task = await taskCollection.findOne(taskQuery);
+        if (task) {
+          const now = Date.now();
+          const newStartMs = now + deferMinutes * 60 * 1000;
+          const newStartDate = new Date(newStartMs);
+          const newDueTime = newStartDate.toLocaleTimeString("en-GB", { hour12: false, hour: "2-digit", minute: "2-digit" });
+          await taskCollection.updateOne(
+            { _id: task._id },
+            {
+              $set: {
+                dueTime: newDueTime,
+                reminders: [newStartDate],
+                updatedAt: new Date(),
+              }
+            }
+          );
+        }
+      } catch (_) {}
+
+      try {
+        const mongoose = require("mongoose");
+        const occCollection = mongoose.connection.collection("temporaloccurrences");
+        const occ = await occCollection.findOne({ occurrenceId: rawEntityId, userId });
+        if (occ) {
+          const currentStart = occ.plannedInterval?.startIsoUtc ? new Date(occ.plannedInterval.startIsoUtc).getTime() : Date.now();
+          const newStartMs = currentStart + deferMinutes * 60 * 1000;
+          const newEndMs = newStartMs + (occ.plannedInterval?.durationMinutes || 15) * 60 * 1000;
+          await occCollection.updateOne(
+            { _id: occ._id },
+            {
+              $set: {
+                "plannedInterval.startIsoUtc": new Date(newStartMs).toISOString(),
+                "plannedInterval.endIsoUtc": new Date(newEndMs).toISOString(),
+                "plannedInterval.startMinute": (occ.plannedInterval?.startMinute || 0) + deferMinutes,
+                "plannedInterval.endMinute": (occ.plannedInterval?.endMinute || 0) + deferMinutes,
+                updatedAt: new Date(),
+              }
+            }
+          );
+        }
+      } catch (_) {}
+    }
+
     return {
       success: true,
-      entityId,
+      entityId: rawEntityId,
       status: "DEFERRED",
-      deferMinutes: proposal.payload?.deferMinutes || 15,
+      deferMinutes,
     };
   }
 

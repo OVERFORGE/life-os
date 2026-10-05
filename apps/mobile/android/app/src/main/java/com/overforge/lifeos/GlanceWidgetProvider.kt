@@ -1,5 +1,6 @@
 package com.overforge.lifeos
 
+import android.app.AlarmManager
 import android.app.PendingIntent
 import android.appwidget.AppWidgetManager
 import android.appwidget.AppWidgetProvider
@@ -8,6 +9,7 @@ import android.content.Context
 import android.content.Intent
 import android.graphics.Color
 import android.net.Uri
+import android.os.Build
 import android.os.SystemClock
 import android.text.format.DateFormat
 import android.util.Log
@@ -51,31 +53,85 @@ class GlanceWidgetProvider : AppWidgetProvider() {
         const val ACTION_WIDGET_UPDATE = "com.overforge.lifeos.ACTION_WIDGET_UPDATE"
         const val PREFS_NAME = "lifeos_surface_prefs"
 
+        fun scheduleNextWakeup(context: Context, triggerAtMs: Long) {
+            if (triggerAtMs <= System.currentTimeMillis()) return
+            val alarmManager = context.getSystemService(Context.ALARM_SERVICE) as? AlarmManager ?: return
+            val intent = Intent(context, GlanceWidgetProvider::class.java).apply {
+                action = ACTION_WIDGET_UPDATE
+            }
+            val pendingIntent = PendingIntent.getBroadcast(
+                context,
+                9991,
+                intent,
+                PendingIntent.FLAG_UPDATE_CURRENT or PendingIntent.FLAG_IMMUTABLE
+            )
+            try {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.M) {
+                    alarmManager.setExactAndAllowWhileIdle(AlarmManager.RTC_WAKEUP, triggerAtMs, pendingIntent)
+                } else {
+                    alarmManager.setExact(AlarmManager.RTC_WAKEUP, triggerAtMs, pendingIntent)
+                }
+                Log.d(TAG, "Scheduled exact widget alarm for $triggerAtMs (in ${(triggerAtMs - System.currentTimeMillis()) / 1000}s)")
+            } catch (e: Throwable) {
+                Log.w(TAG, "Failed to schedule exact alarm: ${e.message}")
+            }
+        }
+
         fun updateWidget(context: Context, appWidgetManager: AppWidgetManager, appWidgetId: Int) {
             try {
                 val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
                 
-                val displayState = prefs.getString(LifeOsWidgetBridgeModule.KEY_DISPLAY_STATE, "CLEAR") ?: "CLEAR"
-                val visualIntent = prefs.getString(LifeOsWidgetBridgeModule.KEY_VISUAL_INTENT, "CALM") ?: "CALM"
-                val primaryTitle = prefs.getString(LifeOsWidgetBridgeModule.KEY_PRIMARY_TITLE, "You're clear.") ?: "You're clear."
-                val secondaryText = prefs.getString(LifeOsWidgetBridgeModule.KEY_SECONDARY_TEXT, "") ?: ""
-                val badgeText = prefs.getString(LifeOsWidgetBridgeModule.KEY_BADGE_TEXT, "CLEAR") ?: "CLEAR"
+                var displayState = prefs.getString(LifeOsWidgetBridgeModule.KEY_DISPLAY_STATE, "CLEAR") ?: "CLEAR"
+                var visualIntent = prefs.getString(LifeOsWidgetBridgeModule.KEY_VISUAL_INTENT, "CALM") ?: "CALM"
+                var primaryTitle = prefs.getString(LifeOsWidgetBridgeModule.KEY_PRIMARY_TITLE, "You're clear.") ?: "You're clear."
+                var secondaryText = prefs.getString(LifeOsWidgetBridgeModule.KEY_SECONDARY_TEXT, "") ?: ""
+                var badgeText = prefs.getString(LifeOsWidgetBridgeModule.KEY_BADGE_TEXT, "CLEAR") ?: "CLEAR"
 
                 val nextStartMs = prefs.getLong(LifeOsWidgetBridgeModule.KEY_NEXT_START_MS, 0L)
                 val nextTitle = prefs.getString(LifeOsWidgetBridgeModule.KEY_NEXT_TITLE, "") ?: ""
 
-                val activeEntityId = prefs.getString(LifeOsWidgetBridgeModule.KEY_ACTIVE_ENTITY_ID, "") ?: ""
+                var activeEntityId = prefs.getString(LifeOsWidgetBridgeModule.KEY_ACTIVE_ENTITY_ID, "") ?: ""
                 val activeStartedAtMs = prefs.getLong(LifeOsWidgetBridgeModule.KEY_ACTIVE_STARTED_AT_MS, 0L)
                 val activePlannedMins = prefs.getInt(LifeOsWidgetBridgeModule.KEY_ACTIVE_PLANNED_MINS, 30)
-                val activeSeed = prefs.getString(LifeOsWidgetBridgeModule.KEY_ACTIVE_IDEMPOTENCY_SEED, "") ?: ""
+                var activeSeed = prefs.getString(LifeOsWidgetBridgeModule.KEY_ACTIVE_IDEMPOTENCY_SEED, "") ?: ""
 
                 val upcomingEntityId = prefs.getString(LifeOsWidgetBridgeModule.KEY_UPCOMING_ENTITY_ID, "") ?: ""
                 val upcomingSeed = prefs.getString(LifeOsWidgetBridgeModule.KEY_UPCOMING_IDEMPOTENCY_SEED, "") ?: ""
 
-                val canStart = prefs.getBoolean(LifeOsWidgetBridgeModule.KEY_CAN_START, false)
+                var canStart = prefs.getBoolean(LifeOsWidgetBridgeModule.KEY_CAN_START, false)
                 val canComplete = prefs.getBoolean(LifeOsWidgetBridgeModule.KEY_CAN_COMPLETE, false)
                 val canPause = prefs.getBoolean(LifeOsWidgetBridgeModule.KEY_CAN_PAUSE, false)
-                val canExtend = prefs.getBoolean(LifeOsWidgetBridgeModule.KEY_CAN_EXTEND, false)
+                var canExtend = prefs.getBoolean(LifeOsWidgetBridgeModule.KEY_CAN_EXTEND, false)
+
+                val nowMs = System.currentTimeMillis()
+
+                // NATIVE AUTONOMOUS TEMPORAL TRANSITION:
+                // If a future commitment was scheduled and the clock has now reached or passed nextStartMs,
+                // autonomously promote UPCOMING or CLEAR states into PROPOSAL ("Ready to start?") right on the home screen!
+                if (nextStartMs > 0 && nowMs >= nextStartMs && (nowMs - nextStartMs) < 3600000L) {
+                    if (displayState == "UPCOMING" || (displayState == "CLEAR" && nextTitle.isNotEmpty())) {
+                        displayState = "PROPOSAL"
+                        visualIntent = "PROPOSAL"
+                        primaryTitle = if (nextTitle.isNotEmpty()) nextTitle else primaryTitle
+                        secondaryText = "Ready to start?"
+                        badgeText = "PROPOSAL"
+                        canStart = true
+                        canExtend = true
+                        if (activeEntityId.isEmpty() && upcomingEntityId.isNotEmpty()) {
+                            activeEntityId = upcomingEntityId
+                            activeSeed = upcomingSeed
+                        }
+                    }
+                } else if (nextStartMs > nowMs) {
+                    // Arm native alarm to trigger widget update at exact start second
+                    scheduleNextWakeup(context, nextStartMs)
+
+                    // Dynamic relative minute badge when in UPCOMING state
+                    if (displayState == "UPCOMING") {
+                        val minsRemaining = Math.max(1, Math.ceil((nextStartMs - nowMs) / 60000.0).toInt())
+                        badgeText = "IN ${minsRemaining}M"
+                    }
+                }
 
                 val views = RemoteViews(context.packageName, R.layout.widget_glance_layout)
 
@@ -134,8 +190,8 @@ class GlanceWidgetProvider : AppWidgetProvider() {
                 // [Start] Button (Amber-accented Obsidian with vector icon, NEVER CRIMSON)
                 views.setViewVisibility(R.id.btn_action_start, if (canStart) View.VISIBLE else View.GONE)
                 if (canStart) {
-                    val startEntity = if (upcomingEntityId.isNotEmpty()) upcomingEntityId else activeEntityId
-                    val startSeed = if (upcomingSeed.isNotEmpty()) upcomingSeed else activeSeed
+                    val startEntity = if (activeEntityId.isNotEmpty()) activeEntityId else upcomingEntityId
+                    val startSeed = if (activeSeed.isNotEmpty()) activeSeed else upcomingSeed
                     bindActionBroadcast(context, views, R.id.btn_action_start, "start_execution", startEntity, startSeed)
                 }
 
@@ -154,7 +210,9 @@ class GlanceWidgetProvider : AppWidgetProvider() {
                 // [+15m] Extend Button (Neutral)
                 views.setViewVisibility(R.id.btn_action_extend, if (canExtend) View.VISIBLE else View.GONE)
                 if (canExtend) {
-                    bindActionBroadcast(context, views, R.id.btn_action_extend, "defer_execution", activeEntityId, activeSeed)
+                    val extendEntity = if (activeEntityId.isNotEmpty()) activeEntityId else upcomingEntityId
+                    val extendSeed = if (activeSeed.isNotEmpty()) activeSeed else upcomingSeed
+                    bindActionBroadcast(context, views, R.id.btn_action_extend, "defer_execution", extendEntity, extendSeed)
                 }
 
                 // 4. Root Card Tap Intent (Opens MainActivity)

@@ -46,10 +46,15 @@ export async function POST(req: NextRequest) {
     const kernel = KernelCapabilityService.getInstance();
     const surfaceService = InteractionSurfaceService.getInstance();
 
+    const timezoneHint = req.headers.get("x-timezone") || undefined;
+    const { fetchAuthoritativeSurfaceProjection } = await import(
+      "@/server/services/surfaceProjection.service"
+    );
+
     // 1. Idempotency Ingress Gate (Check before executing)
     const existingAudit = kernel.getAuditRecord(envelope.idempotencyKey);
     if (existingAudit && existingAudit.status === "SUCCEEDED") {
-      const reprojection = await surfaceService.computeSurfaceProjection(userId);
+      const reprojection = await fetchAuthoritativeSurfaceProjection(userId, timezoneHint);
       const idempotentResult: IKernelExecutionResult = {
         outcome: "REJECTED_IDEMPOTENT_DUPLICATE",
         actionId: existingAudit.actionId,
@@ -67,7 +72,7 @@ export async function POST(req: NextRequest) {
         { idempotencyKey: undoToken, operationId: undoToken },
         userId
       );
-      const reprojection = await surfaceService.computeSurfaceProjection(userId);
+      const reprojection = await fetchAuthoritativeSurfaceProjection(userId, timezoneHint);
       const result: IKernelExecutionResult = {
         outcome: compensated ? "COMPENSATED" : "RECONCILIATION_REQUIRED",
         actionId: `act_comp_${Date.now()}`,
@@ -84,8 +89,8 @@ export async function POST(req: NextRequest) {
     // 4. Sovereign Kernel Dispatch
     const kernelResult = await kernel.executeAction(userId, proposal);
 
-    // 5. Compute fresh reprojection
-    const reprojection = await surfaceService.computeSurfaceProjection(userId);
+    // 5. Compute fresh authoritative reprojection
+    const reprojection = await fetchAuthoritativeSurfaceProjection(userId, timezoneHint);
 
     if (!kernelResult.success) {
       const failureOutcome: KernelExecutionOutcome =

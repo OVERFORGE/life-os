@@ -133,7 +133,12 @@ export class ActiveExecutionNotificationManager {
    */
   public async refreshState(): Promise<void> {
     try {
-      const res = await fetchWithAuth('/surface/state');
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'Asia/Kolkata';
+      const res = await fetchWithAuth('/surface/state', {
+        headers: {
+          'x-timezone': tz,
+        },
+      });
       if (res.ok) {
         const json = await res.json();
         if (json?.data) {

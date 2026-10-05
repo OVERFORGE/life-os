@@ -262,6 +262,8 @@ export default function AvenTransientModal(props: AvenTransientProps) {
     modalOpacity.value = withTiming(0, { duration: 120 });
     modalTranslateY.value = withTiming(20, { duration: 120 });
 
+    WidgetSyncBridge.getInstance().syncSurfaceStateWithBackend().catch(() => {});
+
     setTimeout(async () => {
       try {
         const finished = await WidgetSyncBridge.getInstance().dismissAvenSurface();
@@ -426,6 +428,7 @@ export default function AvenTransientModal(props: AvenTransientProps) {
 
       // Sync task reminders and surface/widget state immediately after turn completes
       scheduleAllTaskReminders().catch(() => {});
+      WidgetSyncBridge.getInstance().syncSurfaceStateWithBackend().catch(() => {});
       ActiveExecutionNotificationManager.getInstance().refreshState().catch(() => {});
 
       // Filter out internal thinking tags for voice synthesis
@@ -588,6 +591,7 @@ export default function AvenTransientModal(props: AvenTransientProps) {
 
       // Sync task reminders and surface/widget state immediately after turn completes
       scheduleAllTaskReminders().catch(() => {});
+      WidgetSyncBridge.getInstance().syncSurfaceStateWithBackend().catch(() => {});
       ActiveExecutionNotificationManager.getInstance().refreshState().catch(() => {});
 
       // STRICT TEXT INVARIANT: ZERO TTS! DO NOT CALL speakAndListen!

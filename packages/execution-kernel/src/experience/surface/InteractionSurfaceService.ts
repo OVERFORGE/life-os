@@ -255,16 +255,26 @@ export class InteractionSurfaceService {
     }
 
     // Check 3: Is there a scheduled occurrence due right now (or overdue by up to 60 minutes)?
-    const scheduledDue = occurrences.find((occ) => {
-      if (occ.status !== "SCHEDULED") return false;
-      const startMs = occ.plannedInterval.startIsoUtc
-        ? new Date(occ.plannedInterval.startIsoUtc).getTime()
-        : 0;
-      const diffMs = startMs - nowMs;
-      // Due if at or past start time (or within 30s clock drift), and overdue by up to 60 minutes.
-      // Future tasks (> 30s away) remain in upcomingCommitment (GLANCE mode) so notifications don't fire prematurely.
-      return diffMs <= 30 * 1000 && diffMs >= -60 * 60 * 1000;
-    });
+    // Prioritize specific tasks over broad calendar blocks, and sort by closest start time to nowMs.
+    const scheduledDue = occurrences
+      .filter((occ) => {
+        if (occ.status !== "SCHEDULED") return false;
+        const startMs = occ.plannedInterval.startIsoUtc
+          ? new Date(occ.plannedInterval.startIsoUtc).getTime()
+          : 0;
+        const diffMs = startMs - nowMs;
+        // Due if at or past start time (or within 30s clock drift), and overdue by up to 60 minutes.
+        // Future tasks (> 30s away) remain in upcomingCommitment (GLANCE mode) so notifications don't fire prematurely.
+        return diffMs <= 30 * 1000 && diffMs >= -60 * 60 * 1000;
+      })
+      .sort((a, b) => {
+        const isTaskA = a.linkedEntity?.entityType === "task" ? 1 : 0;
+        const isTaskB = b.linkedEntity?.entityType === "task" ? 1 : 0;
+        if (isTaskA !== isTaskB) return isTaskB - isTaskA;
+        const startA = a.plannedInterval.startIsoUtc ? new Date(a.plannedInterval.startIsoUtc).getTime() : 0;
+        const startB = b.plannedInterval.startIsoUtc ? new Date(b.plannedInterval.startIsoUtc).getTime() : 0;
+        return Math.abs(startA - nowMs) - Math.abs(startB - nowMs);
+      })[0];
 
     if (scheduledDue) {
       const plannedMinutes = scheduledDue.plannedInterval.durationMinutes || 30;
@@ -277,7 +287,7 @@ export class InteractionSurfaceService {
         plannedDurationMinutes: plannedMinutes,
         elapsedSeconds: 0,
         remainingSeconds: plannedMinutes * 60,
-        canExtend: false,
+        canExtend: true,
         canPause: false,
         canComplete: false,
         idempotencySeed: scheduledDue.occurrenceId,
@@ -305,6 +315,10 @@ export class InteractionSurfaceService {
       .sort((a, b) => {
         const timeA = new Date(a.plannedInterval.startIsoUtc).getTime();
         const timeB = new Date(b.plannedInterval.startIsoUtc).getTime();
+        if (Math.abs(timeA - timeB) > 60000) return timeA - timeB;
+        const isTaskA = a.linkedEntity?.entityType === "task" ? 1 : 0;
+        const isTaskB = b.linkedEntity?.entityType === "task" ? 1 : 0;
+        if (isTaskA !== isTaskB) return isTaskB - isTaskA;
         return timeA - timeB;
       });
 
