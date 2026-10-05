@@ -16,6 +16,7 @@ import AsyncStorage from '@react-native-async-storage/async-storage';
 import * as Clipboard from 'expo-clipboard';
 import { fetchWithAuth, API_URL } from '../../utils/api';
 import { scheduleAllTaskReminders } from '../../utils/notifications';
+import { ActiveExecutionNotificationManager } from '../../services/ActiveExecutionNotificationManager';
 import { useLocalSearchParams, useRouter } from 'expo-router';
 import { stopSpeaking } from '../../utils/ttsManager';
 import { MobileMarkdown } from '../../components/ui/MobileMarkdown';
@@ -406,10 +407,12 @@ export default function BrainScreen() {
 
     try {
       const token = await AsyncStorage.getItem('user_token');
+      const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const res = await fetchWithAuth('/conversation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          'x-timezone': localTz,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
@@ -417,6 +420,7 @@ export default function BrainScreen() {
           conversationId: activeConversationId || undefined,
           model: selectedModel,
           mode: mode || 'general',
+          timezone: localTz,
         }),
       });
 
@@ -445,6 +449,7 @@ export default function BrainScreen() {
         });
 
         scheduleAllTaskReminders().catch(console.error);
+        ActiveExecutionNotificationManager.getInstance().refreshState().catch(() => {});
       } else {
         setMessages((prev) => {
           const copy = [...prev];

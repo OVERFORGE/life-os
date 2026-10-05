@@ -100,14 +100,31 @@ export async function scheduleDailyReminder() {
 export async function scheduleTaskReminders(task: {
   _id: string;
   title: string;
+  dueDate?: string;
+  dueTime?: string | null;
   reminders?: string[];
 }) {
-  if (!task.reminders || task.reminders.length === 0) return;
+  const reminderList: string[] = [...(task.reminders || [])];
+
+  // If no explicit reminders, but task has dueDate and dueTime, derive reminder timestamp
+  if (reminderList.length === 0 && task.dueDate && task.dueTime) {
+    try {
+      const dueMatch = String(task.dueTime).match(/^(\d{1,2}):(\d{2})$/);
+      if (dueMatch) {
+        const localDate = new Date(`${task.dueDate}T${task.dueTime}:00`);
+        if (!isNaN(localDate.getTime())) {
+          reminderList.push(localDate.toISOString());
+        }
+      }
+    } catch (_) {}
+  }
+
+  if (reminderList.length === 0) return;
 
   const now = new Date();
 
-  for (let i = 0; i < task.reminders.length; i++) {
-    const reminderDate = new Date(task.reminders[i]);
+  for (let i = 0; i < reminderList.length; i++) {
+    const reminderDate = new Date(reminderList[i]);
     if (reminderDate <= now) continue; // skip past reminders
 
     const minutesUntil = Math.round((reminderDate.getTime() - now.getTime()) / 60000);
@@ -138,7 +155,12 @@ export async function scheduleTaskReminders(task: {
  */
 export async function scheduleAllTaskReminders() {
   try {
-    const res = await fetchWithAuth('/tasks/list');
+    const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
+    const res = await fetchWithAuth('/tasks/list', {
+      headers: {
+        'x-timezone': tz,
+      },
+    });
     if (!res.ok) return;
     const data = await res.json();
     const allTasks = [

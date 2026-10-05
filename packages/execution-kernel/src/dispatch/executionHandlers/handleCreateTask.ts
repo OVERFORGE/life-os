@@ -73,6 +73,15 @@ export async function handleCreateTask(payload: any, userId: string) {
     }
   }
 
+  // Case D: If dueTime is specified and reminders is still empty, automatically add due timestamp as reminder!
+  if (reminders.length === 0 && payload.dueTime) {
+    const match = String(payload.dueTime).match(/^(\d{1,2}):(\d{2})$/);
+    if (match) {
+      const base = parseLocalToUTC(dueDate, `${match[1].padStart(2, '0')}:${match[2]}`, timezone);
+      reminders.push(base.toISOString());
+    }
+  }
+
   const result = await createTask(
     userId,
     {

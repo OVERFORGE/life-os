@@ -54,13 +54,32 @@ export async function POST(req: Request) {
       } catch (_) {}
     }
 
-    const { message, model, mode = "general", streamFormat, surfaceContext } = await req.json();
+    const body = await req.json();
+    const { message, model, mode = "general", streamFormat, surfaceContext } = body;
 
     if (!message || typeof message !== "string" || message.trim().length === 0) {
       return apiError("Message string is required", "BAD_REQUEST", 400);
     }
 
     await connectDB();
+
+    let userTimezone = body.timezone || req.headers.get("x-timezone") || undefined;
+    if (userId) {
+      try {
+        const { User } = await import("@/server/db/models/User");
+        const user = await User.findById(userId).select("name settings").lean();
+        if (user) {
+          if (!userName && (user as any).name) {
+            userName = (user as any).name;
+          }
+          if (!userTimezone && (user as any).settings?.timezone) {
+            userTimezone = (user as any).settings.timezone;
+          } else if (userTimezone && !(user as any).settings?.timezone) {
+            await User.updateOne({ _id: userId }, { $set: { "settings.timezone": userTimezone } });
+          }
+        }
+      } catch (_) {}
+    }
 
     // Stream execution response directly from LifeOSApplication.conversation
     return await LifeOSApplication.conversation.executeUserRequest({
@@ -70,6 +89,8 @@ export async function POST(req: Request) {
       model,
       mode,
       surfaceContext,
+      timezone: userTimezone || "UTC",
+      referenceTimeMs: Date.now(),
       streamFormat: streamFormat || (req.headers.get("accept")?.includes("text/event-stream") ? "events" : "raw"),
     });
   } catch (err: any) {

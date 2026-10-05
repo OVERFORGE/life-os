@@ -272,11 +272,13 @@ export default function ChatModalScreen() {
     };
 
     try {
+      const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const res = await fetchWithAuth('/conversation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'text/event-stream, application/json',
+          'x-timezone': localTz,
         },
         body: JSON.stringify({
           message: text,
@@ -285,6 +287,7 @@ export default function ChatModalScreen() {
           mode: 'general',
           streamFormat: 'events',
           clientPlatform: 'mobile',
+          timezone: localTz,
         }),
       });
 

@@ -53,6 +53,8 @@ export class ConversationService {
       userName: input.userName,
       conversationId: input.conversationId,
       message: input.message,
+      timezone: input.timezone,
+      referenceTimeMs: input.referenceTimeMs,
     });
     this.persistTurnAsync(
       input,
@@ -113,6 +115,8 @@ export class ConversationService {
           userName: input.userName,
           conversationId: input.conversationId,
           message: input.message,
+          timezone: input.timezone,
+          referenceTimeMs: input.referenceTimeMs,
           onChunk: (chunk: string) => {
             if (!isEventsFormat && streamController && chunk) {
               try {

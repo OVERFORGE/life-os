@@ -52,13 +52,19 @@ export async function POST(req: NextRequest, props: RouteParams) {
     { $set: { lastMessageAt: new Date() } }
   );
 
+  let userTimezone = req.headers.get("x-timezone") || undefined;
   let userName = (session?.user as any)?.name;
-  if (!userName && userId) {
+  if (userId) {
     try {
       const { User } = await import("@/server/db/models/User");
-      const userDoc = await User.findById(userId).select("name").lean();
-      if (userDoc && (userDoc as any).name) {
-        userName = (userDoc as any).name;
+      const userDoc = await User.findById(userId).select("name settings").lean();
+      if (userDoc) {
+        if (!userName && (userDoc as any).name) {
+          userName = (userDoc as any).name;
+        }
+        if (!userTimezone && (userDoc as any).settings?.timezone) {
+          userTimezone = (userDoc as any).settings.timezone;
+        }
       }
     } catch (_) {}
   }
@@ -73,6 +79,8 @@ export async function POST(req: NextRequest, props: RouteParams) {
       message,
       model,
       mode,
+      timezone: userTimezone || "UTC",
+      referenceTimeMs: Date.now(),
       streamFormat: streamFormat || (req.headers.get("accept")?.includes("text/event-stream") ? "events" : "raw"),
     });
   } catch (err: any) {

@@ -64,6 +64,8 @@ import { speakAndListen, stopSpeaking } from '../utils/ttsManager';
 import { fetchWithAuth, API_URL } from '../utils/api';
 import { MobileMarkdown } from '../components/ui/MobileMarkdown';
 import { WidgetSyncBridge } from '../services/WidgetSyncBridge';
+import { scheduleAllTaskReminders } from '../utils/notifications';
+import { ActiveExecutionNotificationManager } from '../services/ActiveExecutionNotificationManager';
 
 const { width: SCREEN_WIDTH, height: SCREEN_HEIGHT } = Dimensions.get('window');
 
@@ -360,11 +362,13 @@ export default function AvenTransientModal(props: AvenTransientProps) {
 
     try {
       const token = await AsyncStorage.getItem('user_token');
+      const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const res = await fetchWithAuth('/conversation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json, text/event-stream',
+          'x-timezone': localTz,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
@@ -374,6 +378,7 @@ export default function AvenTransientModal(props: AvenTransientProps) {
           mode: 'general',
           streamFormat: 'events',
           clientPlatform: 'mobile',
+          timezone: localTz,
         }),
       });
 
@@ -418,6 +423,10 @@ export default function AvenTransientModal(props: AvenTransientProps) {
         }
         setAssistantSpokenText(extracted);
       }
+
+      // Sync task reminders and surface/widget state immediately after turn completes
+      scheduleAllTaskReminders().catch(() => {});
+      ActiveExecutionNotificationManager.getInstance().refreshState().catch(() => {});
 
       // Filter out internal thinking tags for voice synthesis
       const cleanVoiceOutput = extracted.replace(/<think>[\s\S]*?<\/think>\n?/g, '').trim();
@@ -509,11 +518,13 @@ export default function AvenTransientModal(props: AvenTransientProps) {
 
     try {
       const token = await AsyncStorage.getItem('user_token');
+      const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
       const res = await fetchWithAuth('/conversation', {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
           Accept: 'application/json, text/event-stream',
+          'x-timezone': localTz,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
         body: JSON.stringify({
@@ -523,6 +534,7 @@ export default function AvenTransientModal(props: AvenTransientProps) {
           mode: 'general',
           streamFormat: 'events',
           clientPlatform: 'mobile',
+          timezone: localTz,
         }),
       });
 
@@ -573,6 +585,10 @@ export default function AvenTransientModal(props: AvenTransientProps) {
 
       setMessages((prev) => [...prev, assistantMsg]);
       setTextStatus('IDLE');
+
+      // Sync task reminders and surface/widget state immediately after turn completes
+      scheduleAllTaskReminders().catch(() => {});
+      ActiveExecutionNotificationManager.getInstance().refreshState().catch(() => {});
 
       // STRICT TEXT INVARIANT: ZERO TTS! DO NOT CALL speakAndListen!
       setTimeout(() => {

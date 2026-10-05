@@ -59,6 +59,8 @@ export interface HandleInput {
   model?: string;
   mode?: string;
   streamFormat?: "events" | "raw";
+  timezone?: string;
+  referenceTimeMs?: number;
   surfaceContext?: {
     activeExecutionTitle?: string;
     activeExecutionCategory?: string;

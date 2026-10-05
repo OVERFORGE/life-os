@@ -523,12 +523,17 @@ export function useRealtimeVoice({
           ? `/api/conversations/${encodeURIComponent(convId)}/messages`
           : `/api/conversation`;
 
+        const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
         const response = await fetch(endpoint, {
           method: "POST",
-          headers: { "Content-Type": "application/json" },
+          headers: {
+            "Content-Type": "application/json",
+            "x-timezone": localTz,
+          },
           body: JSON.stringify({
             message: cleanTranscript,
             mode: "general",
+            timezone: localTz,
           }),
           signal: abortController.signal,
         });

@@ -30,6 +30,8 @@ export interface SupervisorRequest {
   message: string;
   conversationId?: string;
   requestId?: string;
+  timezone?: string;
+  referenceTimeMs?: number;
   knownTasks?: Array<{ id: string; title: string }>;
   onChunk?: (chunk: string) => void;
   onEvent?: (event: AvenStreamEvent) => void;
@@ -92,6 +94,10 @@ export class Supervisor {
     const router = new DynamicRouter(fastPath);
     const reactOrchestrator = ReActOrchestrator.createDefault(kernel);
     return new Supervisor(router, fastPath, reactOrchestrator, kernel);
+  }
+
+  async execute(req: SupervisorRequest): Promise<SupervisorResponse> {
+    return this.processRequest(req);
   }
 
   async processRequest(req: SupervisorRequest): Promise<SupervisorResponse> {
@@ -217,6 +223,8 @@ export class Supervisor {
     const semanticTurn = await interpreter.interpret(req.message, {
       userId: req.userId,
       conversationId,
+      timezone: req.timezone,
+      referenceTimeMs: req.referenceTimeMs,
       knownTasks: req.knownTasks,
       recentHistory: (loadedState?.recentMessages || []).slice(-16),
       activeFocus: stm?.activeFocus || null,
@@ -630,12 +638,8 @@ export class Supervisor {
           (capURN.includes("write_file") ||
            capURN.includes("delete") ||
            capURN.includes("email.send_message") ||
-           capURN.includes("calendar.create_event") ||
-           capURN.includes("calendar.update_event") ||
            capURN.includes("calendar.delete_event") ||
-           capURN.includes("task.create_external") ||
            capURN.includes("git.create_issue") ||
-           capURN.includes("activity.record_workout") ||
            op.actionType === "delete_task" ||
            op.actionType === "delete_goal" ||
            (isExplicitConf && !isReadOperation));

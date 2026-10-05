@@ -146,19 +146,47 @@ export function resolveTemporalExpression(
     }
   }
 
-  // 3. Relative offset extraction ("in 2 hours", "in 30 minutes")
-  const offsetMatch = lower.match(/in\s+(\d+)\s+(minute|hour|day)s?/);
+  // 3. Relative offset extraction ("in 2 hours", "in 30 minutes", "in 2 mins", "in 5 min")
+  const offsetMatch = lower.match(
+    /\bin\s+(\d+|one|two|three|four|five|ten|fifteen|twenty|thirty|forty|sixty)\s+(minute|min|m|hour|hr|h|day|d)s?\b/
+  );
   if (offsetMatch) {
-    const amount = parseInt(offsetMatch[1], 10);
+    const wordMap: Record<string, number> = {
+      one: 1, two: 2, three: 3, four: 4, five: 5,
+      ten: 10, fifteen: 15, twenty: 20, thirty: 30, forty: 40, sixty: 60,
+    };
+    const amount = wordMap[offsetMatch[1]] ?? parseInt(offsetMatch[1], 10);
     const unit = offsetMatch[2];
     const offsetMs =
-      unit === "minute" ? amount * 60 * 1000 : unit === "hour" ? amount * 3600 * 1000 : amount * 86400 * 1000;
+      unit.startsWith("m") ? amount * 60 * 1000 : unit.startsWith("h") ? amount * 3600 * 1000 : amount * 86400 * 1000;
     const futureDate = new Date(refDate.getTime() + offsetMs);
     const iso = futureDate.toISOString();
+
+    let localDate = "";
+    let localTime = "";
+    try {
+      localDate = new Intl.DateTimeFormat("en-CA", {
+        timeZone: timezone,
+        year: "numeric",
+        month: "2-digit",
+        day: "2-digit",
+      }).format(futureDate);
+      localTime = new Intl.DateTimeFormat("en-GB", {
+        timeZone: timezone,
+        hour: "2-digit",
+        minute: "2-digit",
+        hour12: false,
+        hourCycle: "h23",
+      }).format(futureDate);
+    } catch (_) {
+      localDate = iso.split("T")[0];
+      localTime = iso.split("T")[1].substring(0, 5);
+    }
+
     return {
       rawExpression: raw,
-      dateOnly: iso.split("T")[0],
-      timeOnly: iso.split("T")[1].substring(0, 5),
+      dateOnly: localDate,
+      timeOnly: localTime,
       isoTimestamp: iso,
       timezone,
     };

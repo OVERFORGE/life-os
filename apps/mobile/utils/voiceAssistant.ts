@@ -26,9 +26,19 @@ export async function handleSpontaneousSpeech(text: string) {
         
         // Send to backend headlessly
         try {
+          const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || 'UTC';
           const res = await fetchWithAuth('/conversation', {
             method: 'POST',
-            body: JSON.stringify({ message: cleaned, model: 'llama-3.3-70b-versatile', mode: 'general' }),
+            headers: {
+              'Content-Type': 'application/json',
+              'x-timezone': localTz,
+            },
+            body: JSON.stringify({
+              message: cleaned,
+              model: 'llama-3.3-70b-versatile',
+              mode: 'general',
+              timezone: localTz,
+            }),
           });
           if (res.ok) {
             const data = await res.json();

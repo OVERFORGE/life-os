@@ -14,7 +14,11 @@ export async function GET(req: Request) {
   const { searchParams } = new URL(req.url);
 
   const user = await User.findById(userId).select("settings").lean();
-  const timezone = (user as any)?.settings?.timezone;
+  const timezone =
+    req.headers.get("x-timezone") ||
+    searchParams.get("timezone") ||
+    (user as any)?.settings?.timezone ||
+    "UTC";
   const today = getActiveDate(timezone);
 
   const filter = searchParams.get("filter") || "all"; // today | upcoming | overdue | all

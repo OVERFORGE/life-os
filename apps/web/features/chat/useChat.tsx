@@ -111,18 +111,21 @@ export function useChat(options?: UseChatOptions) {
       abortControllerRef.current = abortController;
 
       try {
+        const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
         const endpoint = `/api/conversations/${encodeURIComponent(activeId)}/messages`;
         const res = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
+            "x-timezone": localTz,
           },
           body: JSON.stringify({
             message: trimmed,
             model: selectedModel,
             mode: "general",
             streamFormat: "events",
+            timezone: localTz,
           }),
           signal: abortController.signal,
         });

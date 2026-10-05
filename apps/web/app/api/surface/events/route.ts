@@ -35,7 +35,13 @@ export async function GET(req: NextRequest) {
       async start(controller) {
         // 1. Immediately send initial projection state
         try {
-          const initialProjection = await surfaceService.computeSurfaceProjection(userId);
+          const { fetchAuthoritativeSurfaceProjection } = await import(
+            "@/server/services/surfaceProjection.service"
+          );
+          const initialProjection = await fetchAuthoritativeSurfaceProjection(
+            userId,
+            req.headers.get("x-timezone") || undefined
+          );
           const initialEvent = `data: ${JSON.stringify({
             type: "PROJECTION_SYNC",
             projection: initialProjection,

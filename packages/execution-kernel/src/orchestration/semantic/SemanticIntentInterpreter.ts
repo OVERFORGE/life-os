@@ -57,10 +57,12 @@ CRITICAL INVARIANTS:
    - Resuming ("resume", "unpause", "continue music") -> parameters: { "command": "resume" }
    - Skipping ("skip", "next song", "next track") -> parameters: { "command": "next" }
 
-2. PRODUCTIVITY & TASKS:
+2. PRODUCTIVITY, TASKS & REMINDERS:
+   - Reminders / timed tasks ("remind me in 2 mins to test LifeOS systems", "remind me at 5pm to call Mom", "set reminder in 10 minutes") -> actionType: "create_task", payload: { "title": "test LifeOS systems", "dueDate": "YYYY-MM-DD", "dueTime": "HH:MM" }. Personal reminders and tasks NEVER require confirmation.
    - Tasks / to-dos ("Finish deck tomorrow", "Review PR") -> actionType: "create_task", payload: { "title": "Finish deck", "dueDate": "tomorrow" }
    - "Finished deck" / "done with deck" -> actionType: "complete_task", targetReference: { "kind": "DESCRIPTIVE", "semanticDescriptor": "deck" }
    - "Set priority to high" -> adjust_task_priority, payload: { "priority": "high" }
+   - CRITICAL TIMEZONE RULE: All relative times ("in 2 mins", "in 1 hour", "at 5pm", "tonight", "tomorrow") MUST be computed relative to the Current User Local Time. The output dueTime must be in local 24h format (HH:MM).
 
 3. HABITS VS TASKS:
    - Ongoing habits, daily routines -> actionType: "propose_goal", payload: { "title": "...", "cadence": "daily" }
@@ -335,8 +337,37 @@ export class SemanticIntentInterpreter {
        (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "mock_key_for_dev"))
     ) {
       try {
+        const refDate = new Date(refTime);
+        let localDateStr = "";
+        let localTimeStr = "";
+        let weekdayStr = "";
+        try {
+          localDateStr = new Intl.DateTimeFormat("en-CA", {
+            timeZone: timezone,
+            year: "numeric",
+            month: "2-digit",
+            day: "2-digit",
+          }).format(refDate);
+          localTimeStr = new Intl.DateTimeFormat("en-GB", {
+            timeZone: timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            second: "2-digit",
+            hour12: false,
+            hourCycle: "h23",
+          }).format(refDate);
+          weekdayStr = new Intl.DateTimeFormat("en-US", {
+            timeZone: timezone,
+            weekday: "long",
+          }).format(refDate);
+        } catch (_) {
+          localDateStr = refDate.toISOString().slice(0, 10);
+          localTimeStr = refDate.toISOString().slice(11, 16);
+          weekdayStr = "Today";
+        }
+
         const contextSummary = [
-          `Current Active Time: ${new Date(refTime).toISOString()} (Timezone: ${timezone})`,
+          `Current User Local Time: ${localDateStr} ${localTimeStr} (${weekdayStr}, Timezone: ${timezone}) [UTC ISO: ${refDate.toISOString()}]`,
           ctx.activeMode ? `Active Context Mode: ${ctx.activeMode}` : null,
           ctx.activeFocus ? `Active Focus Entity: [${ctx.activeFocus.entityType}] "${ctx.activeFocus.displayName}" (id: ${ctx.activeFocus.entityId})` : null,
           ctx.pendingOperation && (ctx.pendingOperation as any).state === "AWAITING_CLARIFICATION"
@@ -688,6 +719,9 @@ export class SemanticIntentInterpreter {
         if (actionType === "create_task" || actionType === "reschedule_task") {
           payload.dueDate = temp.dateOnly;
           if (temp.timeOnly) payload.dueTime = temp.timeOnly;
+          if (temp.isoTimestamp && (!payload.reminders || payload.reminders.length === 0)) {
+            payload.reminders = [temp.isoTimestamp];
+          }
         } else if (actionType === "record_mental_estimate") {
           payload.date = temp.dateOnly;
         } else if (actionType === "schedule_occurrence") {
