@@ -412,6 +412,7 @@ export default function BrainScreen() {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',
+          Accept: 'application/json, text/event-stream',
           'x-timezone': localTz,
           ...(token ? { Authorization: `Bearer ${token}` } : {}),
         },
@@ -420,19 +421,80 @@ export default function BrainScreen() {
           conversationId: activeConversationId || undefined,
           model: selectedModel,
           mode: mode || 'general',
+          streamFormat: 'events',
+          clientPlatform: 'mobile',
           timezone: localTz,
         }),
       });
 
       if (res.ok) {
-        const data = await res.json();
-        const reply = data.message?.content || data.response || 'Action completed.';
-        const toolActs = data.toolActivities || [];
-        const confirm = data.confirmation || null;
-        const missing = data.missingConnection || null;
+        const resText = await res.text();
+        let reply = '';
+        const toolActs: any[] = [];
+        let confirm: any = null;
+        let missing: any = null;
+        let convId: string | undefined = undefined;
 
-        if (data.conversationId && !activeConversationId) {
-          setActiveConversationId(data.conversationId);
+        if (resText.includes('data: ')) {
+          const lines = resText.split('\n');
+          for (const line of lines) {
+            const trimmed = line.trim();
+            if (trimmed.startsWith('data: ')) {
+              try {
+                const ev = JSON.parse(trimmed.slice(6));
+                if (ev.conversationId) {
+                  convId = ev.conversationId;
+                }
+                if (ev.type === 'assistant_delta' && ev.text) {
+                  reply += ev.text;
+                } else if (ev.type === 'tool_activity') {
+                  const act = ev as any;
+                  const idx = toolActs.findIndex(
+                    (a) => a.capabilityURN === act.capabilityURN && a.providerId === act.providerId
+                  );
+                  const record = {
+                    id: `${act.providerId}_${act.capabilityURN}`,
+                    providerId: act.providerId,
+                    providerDisplayName: act.providerDisplayName,
+                    capabilityURN: act.capabilityURN,
+                    iconName: act.iconName,
+                    humanMessage: act.humanMessage,
+                    state: act.state,
+                    error: act.error,
+                    details: act.details,
+                  };
+                  if (idx !== -1) {
+                    toolActs[idx] = record;
+                  } else {
+                    toolActs.push(record);
+                  }
+                } else if (ev.type === 'missing_connection') {
+                  missing = ev;
+                } else if (ev.type === 'confirmation' || ev.type === 'confirmation_required') {
+                  confirm = ev;
+                }
+              } catch (_) {}
+            }
+          }
+        } else {
+          try {
+            const data = JSON.parse(resText);
+            reply = data.message?.content || data.response || resText;
+            if (data.conversationId) convId = data.conversationId;
+            if (data.toolActivities) toolActs.push(...data.toolActivities);
+            if (data.confirmation) confirm = data.confirmation;
+            if (data.missingConnection) missing = data.missingConnection;
+          } catch (_) {
+            reply = resText;
+          }
+        }
+
+        if (!reply.trim()) {
+          reply = 'Action completed.';
+        }
+
+        if (convId && !activeConversationId) {
+          setActiveConversationId(convId);
           loadConversations();
         }
 
@@ -448,8 +510,13 @@ export default function BrainScreen() {
           return copy;
         });
 
+        // Immediately sync task reminders, persistent execution notification, and home widget
         scheduleAllTaskReminders().catch(console.error);
         ActiveExecutionNotificationManager.getInstance().refreshState().catch(() => {});
+        try {
+          const { WidgetSyncBridge } = require('../../services/WidgetSyncBridge');
+          WidgetSyncBridge.getInstance().syncSurfaceStateWithBackend().catch(() => {});
+        } catch (_) {}
       } else {
         setMessages((prev) => {
           const copy = [...prev];
@@ -460,10 +527,16 @@ export default function BrainScreen() {
           return copy;
         });
       }
-    } catch (e) {
+    } catch (e: any) {
+      console.error('[brain.tsx] Error in sendMessage:', e);
       setMessages((prev) => [
         ...prev,
-        { role: 'assistant', content: 'Network error. Make sure the server is reachable.' },
+        {
+          role: 'assistant',
+          content: e?.message?.includes('Network')
+            ? 'Network error. Make sure the server is reachable.'
+            : (e?.message || 'Failed to process your request. Please try again.'),
+        },
       ]);
     } finally {
       setLoading(false);

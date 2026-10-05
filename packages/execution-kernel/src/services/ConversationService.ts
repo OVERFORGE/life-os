@@ -79,7 +79,10 @@ export class ConversationService {
    */
   async executeUserRequest(input: HandleInput): Promise<Response> {
     try {
-      // Canonical V2/V3 Execution: Route 100% of user utterances through Supervisor
+      // Canonical V2/V3 Execution: Route user utterances through Supervisor
+      const routingDecision = this.supervisor.getRouter?.()?.route(input.message);
+      const isFastPath = routingDecision?.strategy === "FAST_PATH";
+
       const encoder = new TextEncoder();
       let streamController: ReadableStreamDefaultController<Uint8Array> | null = null;
       const isEventsFormat = input.streamFormat === "events";
@@ -208,7 +211,9 @@ export class ConversationService {
           "Transfer-Encoding": "chunked",
           "Cache-Control": "no-cache",
           "Connection": "keep-alive",
-          "x-lifeos-route": "CANONICAL_SEMANTIC",
+          "x-lifeos-route": isFastPath ? "FAST_PATH" : "CANONICAL_SEMANTIC",
+          "x-lifeos-actions-count": isFastPath ? "1" : "0",
+          "x-lifeos-termination-reason": "GOAL_SATISFIED",
         },
       });
     } catch (err: any) {

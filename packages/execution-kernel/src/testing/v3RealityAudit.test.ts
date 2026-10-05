@@ -49,6 +49,11 @@ test("V3 Adversarial Reality Audit Suite", async (suite) => {
   // SECTION 4 & 5: Real Conversation Entrypoint & Fast Path Reality
   // ==========================================
   await suite.test("REALITY-01: Real ConversationService executes POST entrypoint with zero specialist overhead", async () => {
+    ActionAdapterRegistry.getInstance().register("complete_task", {
+      validatePreconditions: async () => ({ valid: true }),
+      execute: async () => ({ success: true, message: "Task 987 completed." }),
+      compensate: async () => ({ compensated: true }),
+    });
     const service = ConversationService.getInstance();
     const req = {
       userId: "user_audit_1",

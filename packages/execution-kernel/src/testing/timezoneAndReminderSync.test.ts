@@ -44,3 +44,73 @@ test("Timezone-aware relative offset across midnight boundary", () => {
   assert.equal(resolved.timeOnly, "00:05");
   assert.equal(resolved.isoTimestamp, "2026-10-05T18:35:00.000Z");
 });
+
+test("2-minute relative reminder task accurately projects 'IN 2M' on widget then transitions to PROPOSAL when due", async () => {
+  const { InteractionSurfaceService } = await import("../experience/surface/InteractionSurfaceService");
+  const { mapProjectionToWidgetDTO } = await import("../experience/surface/contracts/WidgetPresentationDTO");
+
+  const service = InteractionSurfaceService.getInstance();
+  const timezone = "Asia/Kolkata";
+  const t0 = new Date("2026-10-05T08:44:00.000Z").getTime(); // 2:14 PM IST
+  const targetUtc = new Date(t0 + 2 * 60 * 1000).toISOString(); // 2:16 PM IST = 08:46:00Z
+
+  const occurrences: any[] = [
+    {
+      occurrenceId: "task_occ_123",
+      userId: "usr_test",
+      title: "do my homework",
+      kind: "WORK_SESSION",
+      dateOnly: "2026-10-05",
+      plannedInterval: {
+        dateOnly: "2026-10-05",
+        startMinute: 14 * 60 + 16,
+        endMinute: 14 * 60 + 31,
+        durationMinutes: 15,
+        startIsoUtc: targetUtc,
+        endIsoUtc: new Date(t0 + 17 * 60 * 1000).toISOString(),
+        timezone,
+        isMidnightCrossing: false,
+      },
+      locationContext: {
+        category: "CUSTOM",
+        label: "LifeOS Task",
+        requiresPhysicalTransit: false,
+      },
+      rigidity: "ELASTIC",
+      status: "SCHEDULED",
+      linkedEntity: { entityType: "task", entityId: "task_123" },
+      version: 1,
+      overrideType: "NONE",
+      createdAt: t0,
+      updatedAt: t0,
+    },
+  ];
+
+  // At 2:14 PM (2 minutes before due time):
+  const pAtCreation = await service.computeSurfaceProjection("usr_test", {
+    referenceTimeMs: t0,
+    occurrences,
+    chronicles: [],
+  });
+
+  const widgetAtCreation = mapProjectionToWidgetDTO(pAtCreation);
+  assert.equal(widgetAtCreation.displayState, "UPCOMING");
+  assert.equal(widgetAtCreation.badgeText, "IN 2M");
+  assert.equal(widgetAtCreation.primaryTitle, "do my homework");
+
+  // At 2:16 PM (at due time):
+  const tDue = t0 + 2 * 60 * 1000;
+  const pAtDue = await service.computeSurfaceProjection("usr_test", {
+    referenceTimeMs: tDue,
+    occurrences,
+    chronicles: [],
+  });
+
+  const widgetAtDue = mapProjectionToWidgetDTO(pAtDue);
+  assert.equal(widgetAtDue.displayState, "PROPOSAL");
+  assert.equal(widgetAtDue.badgeText, "PROPOSAL");
+  assert.equal(widgetAtDue.primaryTitle, "do my homework");
+  assert.equal(widgetAtDue.secondaryText, "Ready to start?");
+  assert.equal(widgetAtDue.allowedActions.canStart, true);
+});
+

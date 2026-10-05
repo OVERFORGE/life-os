@@ -2,6 +2,42 @@ import * as Notifications from 'expo-notifications';
 import * as Device from 'expo-device';
 import { Platform } from 'react-native';
 
+let notifee: any = null;
+let TriggerType: any = null;
+let AndroidImportance: any = null;
+let AndroidVisibility: any = null;
+let AlarmType: any = null;
+
+try {
+  const notifeeModule = require('@notifee/react-native');
+  notifee = notifeeModule.default;
+  TriggerType = notifeeModule.TriggerType;
+  AndroidImportance = notifeeModule.AndroidImportance;
+  AndroidVisibility = notifeeModule.AndroidVisibility;
+  AlarmType = notifeeModule.AlarmType;
+} catch (_) {}
+
+export const REMINDER_CHANNEL_ID = 'lifeos_reminder_channel';
+
+export async function ensureReminderChannel() {
+  if (!notifee || Platform.OS !== 'android') return;
+  try {
+    await notifee.createChannel({
+      id: REMINDER_CHANNEL_ID,
+      name: 'LifeOS Task Reminders',
+      importance: AndroidImportance ? AndroidImportance.HIGH : 4,
+      visibility: AndroidVisibility ? AndroidVisibility.PUBLIC : 1,
+      vibration: true,
+      vibrationPattern: [0, 300, 200, 300],
+      sound: 'default',
+      lights: true,
+      lightColor: '#00F0FF',
+    });
+  } catch (e) {
+    console.warn('[notifications] Failed to create reminder channel:', e);
+  }
+}
+
 Notifications.setNotificationHandler({
   handleNotification: async () => ({
     shouldShowAlert: true,
@@ -20,6 +56,7 @@ export async function registerForPushNotificationsAsync() {
       vibrationPattern: [0, 250, 250, 250],
       lightColor: '#E8414A',
     });
+    await ensureReminderChannel();
   }
 
   if (Device.isDevice) {
@@ -28,6 +65,11 @@ export async function registerForPushNotificationsAsync() {
     if (existingStatus !== 'granted') {
       const { status } = await Notifications.requestPermissionsAsync();
       finalStatus = status;
+    }
+    if (notifee) {
+      try {
+        await notifee.requestPermission();
+      } catch (_) {}
     }
     if (finalStatus !== 'granted') {
       console.log('Failed to get notification permissions');
@@ -93,8 +135,8 @@ export async function scheduleDailyReminder() {
 }
 
 /**
- * Schedules local push notifications for a single task's reminder timestamps.
- * Cancels any previously scheduled notifications for this task first.
+ * Schedules high-priority exact push notifications for a single task's reminder timestamps.
+ * Uses Notifee exact alarm triggers on Android to guarantee delivery even during Doze/Idle.
  * Only schedules reminders that are in the future.
  */
 export async function scheduleTaskReminders(task: {
@@ -123,6 +165,15 @@ export async function scheduleTaskReminders(task: {
 
   const now = new Date();
 
+  // Cancel any existing Notifee triggers for this task
+  if (notifee && Platform.OS === 'android') {
+    try {
+      for (let i = 0; i < 10; i++) {
+        await notifee.cancelNotification(`task-${task._id}-reminder-${i}`);
+      }
+    } catch (_) {}
+  }
+
   for (let i = 0; i < reminderList.length; i++) {
     const reminderDate = new Date(reminderList[i]);
     if (reminderDate <= now) continue; // skip past reminders
@@ -130,27 +181,70 @@ export async function scheduleTaskReminders(task: {
     const minutesUntil = Math.round((reminderDate.getTime() - now.getTime()) / 60000);
     const timeLabel = reminderDate.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
 
-    await Notifications.scheduleNotificationAsync({
-      identifier: `task-${task._id}-reminder-${i}`,
-      content: {
-        title: `⏰ Reminder: ${task.title}`,
-        body: minutesUntil <= 5
-          ? `This task is due now!`
-          : `Due at ${timeLabel} — don't forget!`,
-        data: { route: '/(dashboard)/tools/tasks', taskId: task._id },
-        sound: true,
-      },
-      trigger: {
-        type: Notifications.SchedulableTriggerInputTypes.DATE,
-        date: reminderDate,
-      },
-    });
+    // 1. Primary Android Delivery: Notifee Exact Alarm Trigger
+    if (notifee && Platform.OS === 'android') {
+      try {
+        await ensureReminderChannel();
+        await notifee.createTriggerNotification(
+          {
+            id: `task-${task._id}-reminder-${i}`,
+            title: `⏰ Reminder: ${task.title}`,
+            body: minutesUntil <= 2
+              ? `Due right now — time to start!`
+              : `Due at ${timeLabel} — get ready!`,
+            android: {
+              channelId: REMINDER_CHANNEL_ID,
+              importance: AndroidImportance ? AndroidImportance.HIGH : 4,
+              priority: 'high',
+              smallIcon: 'notification_icon',
+              color: '#00F0FF',
+              pressAction: {
+                id: 'default',
+                launchActivity: 'default',
+              },
+              sound: 'default',
+              vibrationPattern: [0, 300, 200, 300],
+              lightColor: '#00F0FF',
+            },
+            data: { route: '/(dashboard)/tools/tasks', taskId: task._id },
+          },
+          {
+            type: TriggerType ? TriggerType.TIMESTAMP : 0,
+            timestamp: reminderDate.getTime(),
+            alarmManager: {
+              type: AlarmType ? AlarmType.SET_EXACT_AND_ALLOW_WHILE_IDLE : 3,
+            },
+          }
+        );
+      } catch (err) {
+        console.warn('[notifications] Notifee trigger scheduling failed:', err);
+      }
+    }
+
+    // 2. Secondary / Fallback Delivery: Expo Notifications
+    try {
+      await Notifications.scheduleNotificationAsync({
+        identifier: `task-${task._id}-reminder-${i}`,
+        content: {
+          title: `⏰ Reminder: ${task.title}`,
+          body: minutesUntil <= 2
+            ? `Due right now — time to start!`
+            : `Due at ${timeLabel} — don't forget!`,
+          data: { route: '/(dashboard)/tools/tasks', taskId: task._id },
+          sound: true,
+        },
+        trigger: {
+          type: Notifications.SchedulableTriggerInputTypes.DATE,
+          date: reminderDate,
+        },
+      });
+    } catch (_) {}
   }
 }
 
 /**
  * Fetches all pending tasks from the backend and re-schedules
- * all future task reminders as local Expo notifications.
+ * all future task reminders as local high-priority exact triggers.
  * Call this on app boot and after any task is created/updated.
  */
 export async function scheduleAllTaskReminders() {
@@ -169,24 +263,38 @@ export async function scheduleAllTaskReminders() {
       ...(data.overdue || []),
     ];
 
-    // Cancel existing task reminder notifications
-    const scheduled = await Notifications.getAllScheduledNotificationsAsync();
-    for (const n of scheduled) {
-      if (n.identifier.startsWith('task-')) {
-        await Notifications.cancelScheduledNotificationAsync(n.identifier);
+    // Cancel existing Notifee task triggers
+    if (notifee && Platform.OS === 'android') {
+      try {
+        const triggerIds = await notifee.getTriggerNotificationIds();
+        for (const id of triggerIds) {
+          if (id.startsWith('task-')) {
+            await notifee.cancelNotification(id);
+          }
+        }
+      } catch (err) {
+        console.warn('[notifications] Error clearing Notifee triggers:', err);
       }
     }
 
-    // Re-schedule for each task
+    // Cancel existing Expo task notifications
+    try {
+      const scheduled = await Notifications.getAllScheduledNotificationsAsync();
+      for (const n of scheduled) {
+        if (n.identifier.startsWith('task-')) {
+          await Notifications.cancelScheduledNotificationAsync(n.identifier);
+        }
+      }
+    } catch (_) {}
+
+    // Re-schedule for each pending task
     for (const task of allTasks) {
       if (task.status !== 'pending') continue;
       await scheduleTaskReminders(task);
     }
-    
-    // (Removed persistent notification scheduling here)
-
   } catch (e) {
     console.error('Failed to schedule task reminders', e);
   }
 }
+
 

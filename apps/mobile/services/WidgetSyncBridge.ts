@@ -252,7 +252,7 @@ export class WidgetSyncBridge {
     }
 
     // 3. UPCOMING COMMITMENT
-    if (p.interactionMode === 'GLANCE' && p.upcomingCommitment) {
+    if ((p.interactionMode === 'GLANCE' || (!p.activeExecution && !p.pendingIntervention)) && p.upcomingCommitment) {
       const mins = p.upcomingCommitment.minutesUntilStart;
       return {
         schemaVersion: 1,

@@ -47,10 +47,19 @@ export async function handleCreateTask(payload: any, userId: string) {
   const now = new Date();
   const dueDate = resolveDateForReminders(payload.dueDate, timezone);
 
-  // Case A: relative offset (e.g. "in one hour" → reminderOffsetMinutes: 60)
+  // Case A: relative offset (e.g. "in one hour" → reminderOffsetMinutes: 60, "in 2 mins" → 2)
   if (payload.reminderOffsetMinutes && !isNaN(Number(payload.reminderOffsetMinutes))) {
     const ms = Number(payload.reminderOffsetMinutes) * 60 * 1000;
-    reminders.push(new Date(now.getTime() + ms).toISOString());
+    const targetDate = new Date(now.getTime() + ms);
+    reminders.push(targetDate.toISOString());
+    if (!payload.dueTime) {
+      payload.dueTime = targetDate.toLocaleTimeString("en-GB", {
+        timeZone: timezone || "UTC",
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
   }
 
   // Case B: explicit HH:MM times on the dueDate (e.g. reminderTimes: ["13:00", "15:30"])
@@ -82,6 +91,24 @@ export async function handleCreateTask(payload: any, userId: string) {
     }
   }
 
+  // Deduplicate and filter out stale reminders if future reminders are present
+  const uniqueReminders = Array.from(new Set(reminders));
+  const futureReminders = uniqueReminders.filter((r) => new Date(r).getTime() > now.getTime() - 60000);
+  const finalReminders = futureReminders.length > 0 ? futureReminders : uniqueReminders;
+
+  // If dueTime was not set, but we have valid reminders, derive local dueTime from the first reminder
+  if (!payload.dueTime && finalReminders.length > 0) {
+    const firstRem = new Date(finalReminders[0]);
+    if (!isNaN(firstRem.getTime())) {
+      payload.dueTime = firstRem.toLocaleTimeString("en-GB", {
+        timeZone: timezone || "UTC",
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
+  }
+
   const result = await createTask(
     userId,
     {
@@ -92,7 +119,7 @@ export async function handleCreateTask(payload: any, userId: string) {
       priority: payload.priority || "medium",
       recurring: payload.recurring || null,
       goalId,
-      reminders,
+      reminders: finalReminders,
       metadata: {
         energyCost: payload.energyCost,
         estimatedDuration: payload.estimatedDuration,
@@ -101,7 +128,7 @@ export async function handleCreateTask(payload: any, userId: string) {
     timezone
   );
 
-  const reminderCount = reminders.length;
+  const reminderCount = finalReminders.length;
   return {
     type: "create_task",
     success: result.success,

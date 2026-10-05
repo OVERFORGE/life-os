@@ -123,8 +123,8 @@ export function mapProjectionToWidgetDTO(p: IInteractionSurfaceProjection): IWid
     };
   }
 
-  // 3. UPCOMING COMMITMENT (Only when Server places mode in GLANCE)
-  if (p.interactionMode === 'GLANCE' && p.upcomingCommitment) {
+  // 3. UPCOMING COMMITMENT (When Server places mode in GLANCE or commitment is upcoming)
+  if ((p.interactionMode === 'GLANCE' || (!p.activeExecution && !p.pendingIntervention)) && p.upcomingCommitment) {
     const mins = p.upcomingCommitment.minutesUntilStart;
     return {
       schemaVersion: 1,

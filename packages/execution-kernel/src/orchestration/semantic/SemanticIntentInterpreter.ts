@@ -691,45 +691,84 @@ export class SemanticIntentInterpreter {
 
       // 3. Resolve temporal references
       let resolvedTemporal: any = undefined;
-      const rawTimeExpr = rawOp.temporal?.rawExpression || payload.dueDate || payload.date || payload.dateOnly;
-      if (rawOp.temporal?.structuredMeaning) {
-        const { resolveStructuredTemporal } = await import("./temporalResolver");
-        const temp = resolveStructuredTemporal(rawOp.temporal.structuredMeaning, timezone, refTime);
+      if (payload.reminderOffsetMinutes && !isNaN(Number(payload.reminderOffsetMinutes))) {
+        const offsetMs = Number(payload.reminderOffsetMinutes) * 60 * 1000;
+        const targetDate = new Date(refTime + offsetMs);
+        const iso = targetDate.toISOString();
+        const localDate = getActiveDate(timezone, 4, targetDate);
+        let localTime = "";
+        try {
+          localTime = new Intl.DateTimeFormat("en-GB", {
+            timeZone: timezone,
+            hour: "2-digit",
+            minute: "2-digit",
+            hour12: false,
+          }).format(targetDate);
+        } catch (_) {
+          localTime = iso.split("T")[1].substring(0, 5);
+        }
+        payload.dueDate = localDate;
+        payload.dueTime = localTime;
+        payload.reminders = [iso];
         resolvedTemporal = {
-          rawExpression: rawOp.temporal.rawExpression || `${temp.dateOnly} ${temp.timeOnly || ""}`,
-          type: rawOp.temporal.type || "POINT_IN_TIME",
-          parsedAnchor: temp.dateOnly,
-          resolvedDate: temp.dateOnly,
-          resolvedTime: temp.timeOnly,
-          timezone,
-          isAmbiguous: false,
-          structuredMeaning: rawOp.temporal.structuredMeaning,
-        };
-      } else if (rawTimeExpr) {
-        const temp = resolveTemporalExpression(rawTimeExpr, timezone, refTime);
-        resolvedTemporal = {
-          rawExpression: rawTimeExpr,
+          rawExpression: `${payload.reminderOffsetMinutes}m offset`,
           type: "POINT_IN_TIME",
-          parsedAnchor: temp.dateOnly,
-          resolvedDate: temp.dateOnly,
-          resolvedTime: temp.timeOnly,
+          parsedAnchor: localDate,
+          resolvedDate: localDate,
+          resolvedTime: localTime,
           timezone,
           isAmbiguous: false,
         };
-        if (actionType === "create_task" || actionType === "reschedule_task") {
-          payload.dueDate = temp.dateOnly;
-          if (temp.timeOnly) payload.dueTime = temp.timeOnly;
-          if (temp.isoTimestamp && (!payload.reminders || payload.reminders.length === 0)) {
-            payload.reminders = [temp.isoTimestamp];
+      } else {
+        const rawTimeExpr = rawOp.temporal?.rawExpression || payload.dueDate || payload.date || payload.dateOnly;
+        if (rawOp.temporal?.structuredMeaning) {
+          const { resolveStructuredTemporal } = await import("./temporalResolver");
+          const temp = resolveStructuredTemporal(rawOp.temporal.structuredMeaning, timezone, refTime);
+          resolvedTemporal = {
+            rawExpression: rawOp.temporal.rawExpression || `${temp.dateOnly} ${temp.timeOnly || ""}`,
+            type: rawOp.temporal.type || "POINT_IN_TIME",
+            parsedAnchor: temp.dateOnly,
+            resolvedDate: temp.dateOnly,
+            resolvedTime: temp.timeOnly,
+            timezone,
+            isAmbiguous: false,
+            structuredMeaning: rawOp.temporal.structuredMeaning,
+          };
+          if (actionType === "create_task" || actionType === "reschedule_task") {
+            payload.dueDate = temp.dateOnly;
+            if (temp.timeOnly) payload.dueTime = temp.timeOnly;
+            if (temp.timeOnly && temp.isoTimestamp && (!payload.reminders || payload.reminders.length === 0)) {
+              payload.reminders = [temp.isoTimestamp];
+            }
           }
-        } else if (actionType === "record_mental_estimate") {
-          payload.date = temp.dateOnly;
-        } else if (actionType === "schedule_occurrence") {
-          if (!payload.dateOnly || payload.dateOnly === "today" || payload.dateOnly === "tomorrow") {
-            payload.dateOnly = temp.dateOnly;
-          }
-          if (!payload.startTime && temp.timeOnly) {
-            payload.startTime = temp.timeOnly;
+        } else if (rawTimeExpr) {
+          const temp = resolveTemporalExpression(rawTimeExpr, timezone, refTime);
+          resolvedTemporal = {
+            rawExpression: rawTimeExpr,
+            type: "POINT_IN_TIME",
+            parsedAnchor: temp.dateOnly,
+            resolvedDate: temp.dateOnly,
+            resolvedTime: temp.timeOnly,
+            timezone,
+            isAmbiguous: false,
+          };
+          if (actionType === "create_task" || actionType === "reschedule_task") {
+            payload.dueDate = temp.dateOnly;
+            if (temp.timeOnly) payload.dueTime = temp.timeOnly;
+            // CRITICAL: Only assign payload.reminders if temp.timeOnly was explicitly resolved!
+            // When temp.timeOnly is undefined, temp.isoTimestamp defaults to 12:00 PM noon, which must NOT be assigned as a reminder!
+            if (temp.timeOnly && temp.isoTimestamp && (!payload.reminders || payload.reminders.length === 0)) {
+              payload.reminders = [temp.isoTimestamp];
+            }
+          } else if (actionType === "record_mental_estimate") {
+            payload.date = temp.dateOnly;
+          } else if (actionType === "schedule_occurrence") {
+            if (!payload.dateOnly || payload.dateOnly === "today" || payload.dateOnly === "tomorrow") {
+              payload.dateOnly = temp.dateOnly;
+            }
+            if (!payload.startTime && temp.timeOnly) {
+              payload.startTime = temp.timeOnly;
+            }
           }
         }
       }

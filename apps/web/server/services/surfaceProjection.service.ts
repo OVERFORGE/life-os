@@ -45,7 +45,11 @@ export async function fetchAuthoritativeSurfaceProjection(
     TaskModel.find({
       userId,
       status: "pending",
-      dueDate: todayDateOnly,
+      $or: [
+        { dueDate: todayDateOnly },
+        { dueDate: "today" },
+        { reminders: { $elemMatch: { $gte: new Date(now - 24 * 60 * 60 * 1000).toISOString() } } },
+      ],
     }).lean(),
   ]);
 
@@ -69,16 +73,38 @@ export async function fetchAuthoritativeSurfaceProjection(
     })
   );
 
-  // Synthesize TemporalOccurrences for today's pending tasks that have a dueTime
+  // Synthesize TemporalOccurrences for today's pending tasks that have a dueTime OR reminders
   for (const task of pendingTasks as any[]) {
-    if (task.dueTime) {
+    let dueTime = task.dueTime;
+    let dueDate = task.dueDate || todayDateOnly;
+    if (dueDate === "today") dueDate = todayDateOnly;
+    let startUtc: Date | null = null;
+
+    if (dueTime) {
       try {
-        const startUtc = parseLocalToUTC(
-          task.dueDate || todayDateOnly,
-          task.dueTime,
-          userTimezone
-        );
-        const [sh, sm] = String(task.dueTime).split(":").map(Number);
+        startUtc = parseLocalToUTC(dueDate, dueTime, userTimezone);
+      } catch (_) {}
+    }
+
+    if (!startUtc && task.reminders && task.reminders.length > 0) {
+      for (const r of task.reminders) {
+        const rDate = new Date(r);
+        if (!isNaN(rDate.getTime())) {
+          startUtc = rDate;
+          dueTime = rDate.toLocaleTimeString("en-GB", {
+            timeZone: userTimezone,
+            hour12: false,
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          break;
+        }
+      }
+    }
+
+    if (startUtc && dueTime) {
+      try {
+        const [sh, sm] = String(dueTime).split(":").map(Number);
         const startMinute = (sh || 0) * 60 + (sm || 0);
         const durationMinutes = task.metadata?.estimatedDuration || 15;
         const endMinute = Math.min(1439, startMinute + durationMinutes);
@@ -88,9 +114,9 @@ export async function fetchAuthoritativeSurfaceProjection(
           userId: String(task.userId),
           title: task.title,
           kind: "WORK_SESSION",
-          dateOnly: task.dueDate || todayDateOnly,
+          dateOnly: dueDate,
           plannedInterval: {
-            dateOnly: task.dueDate || todayDateOnly,
+            dateOnly: dueDate,
             startMinute,
             endMinute,
             durationMinutes,

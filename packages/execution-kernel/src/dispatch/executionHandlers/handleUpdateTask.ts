@@ -48,7 +48,16 @@ export async function handleUpdateTask(payload: any, userId: string) {
 
   if (reminderOffsetMinutes && !isNaN(Number(reminderOffsetMinutes))) {
     const ms = Number(reminderOffsetMinutes) * 60 * 1000;
-    resolvedReminders.push(new Date(now.getTime() + ms).toISOString());
+    const targetDate = new Date(now.getTime() + ms);
+    resolvedReminders.push(targetDate.toISOString());
+    if (!updates.dueTime) {
+      updates.dueTime = targetDate.toLocaleTimeString("en-GB", {
+        timeZone: timezone || "UTC",
+        hour12: false,
+        hour: "2-digit",
+        minute: "2-digit",
+      });
+    }
   }
 
   if (Array.isArray(reminderTimes) && reminderTimes.length > 0) {
