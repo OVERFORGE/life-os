@@ -13,7 +13,7 @@ test("Phase 7: Web Sticky Bar: State mapping for PROPOSAL_PENDING", async () => 
 
   const userId = "usr_web_test";
   const now = new Date("2026-10-04T16:00:00.000Z").getTime();
-  const startTime = new Date("2026-10-04T16:05:00.000Z").toISOString();
+  const startTime = new Date(now).toISOString(); // Due right now
   const endTime = new Date("2026-10-04T16:45:00.000Z").toISOString();
 
   const occ: TemporalOccurrence = {

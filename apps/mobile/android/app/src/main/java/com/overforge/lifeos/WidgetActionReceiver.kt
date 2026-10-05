@@ -81,6 +81,16 @@ class WidgetActionReceiver : BroadcastReceiver() {
         renderProvisionalState(context, actionType)
 
         val pendingResult = goAsync()
+        val isFinished = java.util.concurrent.atomic.AtomicBoolean(false)
+        fun finishSafely() {
+            if (isFinished.compareAndSet(false, true)) {
+                try {
+                    pendingResult.finish()
+                } catch (t: Throwable) {
+                    Log.e(TAG, "Error finishing pendingResult", t)
+                }
+            }
+        }
 
         // 2. Schedule 5000ms Watchdog Timer to prevent UI freeze
         val mainHandler = Handler(Looper.getMainLooper())
@@ -96,19 +106,33 @@ class WidgetActionReceiver : BroadcastReceiver() {
 
         executor.execute {
             try {
-                // 3. Credential Check via Hardware-Backed LifeOsSecureVault
+                // 3. Credential Check via Hardware-Backed LifeOsSecureVault with SharedPreferences Fallback
+                var userId: String? = null
+                var token: String? = null
+
                 val session = LifeOsSecureVault.getActiveSession(context)
-                if (session == null || session.isExpired) {
-                    Log.w(TAG, "No valid authenticated session in Keystore vault. Transitioning to AUTH_EXPIRED.")
+                if (session != null && !session.isExpired) {
+                    userId = session.userId
+                    token = session.token
+                } else {
+                    // Check fallback preferences if Keystore vault has not been seeded yet
+                    val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+                    val fallbackToken = prefs.getString("auth_token", null)
+                    val fallbackUserId = prefs.getString("auth_user_id", "usr_current") ?: "usr_current"
+                    val fallbackExpires = prefs.getLong("auth_expires_at_ms", 0L)
+                    if (!fallbackToken.isNullOrEmpty() && (fallbackExpires == 0L || fallbackExpires > System.currentTimeMillis())) {
+                        userId = fallbackUserId
+                        token = fallbackToken
+                    }
+                }
+
+                if (userId.isNullOrEmpty() || token.isNullOrEmpty()) {
+                    Log.w(TAG, "No valid authenticated session in vault or preferences. Transitioning to AUTH_EXPIRED.")
                     mainHandler.removeCallbacks(watchdogRunnable)
                     isCompleted = true
                     renderTruthfulState(context, "Session Expired • Tap to sign in", "#E8414A")
-                    pendingResult.finish()
                     return@execute
                 }
-
-                val userId = session.userId
-                val token = session.token
 
                 // 4. Compute Byte-for-Byte Canonical Idempotency Key
                 val idempotencyKey = computeCanonicalIdempotencyKey(userId, actionType, entityId, seed)
@@ -137,7 +161,6 @@ class WidgetActionReceiver : BroadcastReceiver() {
                     mainHandler.removeCallbacks(watchdogRunnable)
                     isCompleted = true
                     renderTruthfulState(context, "Offline • Queued", "#88888E")
-                    pendingResult.finish()
                     return@execute
                 }
 
@@ -163,11 +186,11 @@ class WidgetActionReceiver : BroadcastReceiver() {
                             }
                             "REJECTED_STALE" -> {
                                 Log.w(TAG, "Action rejected as stale by kernel.")
-                                renderTruthfulState(context, "Task already modified", "#F59E0B")
+                                renderTruthfulState(context, "Task already modified", "#88888E")
                             }
                             "CONFIRMATION_REQUIRED" -> {
                                 Log.w(TAG, "Action requires confirmation.")
-                                renderTruthfulState(context, "Confirmation needed in Aven", "#F59E0B")
+                                renderTruthfulState(context, "Confirmation needed in Aven", "#88888E")
                             }
                             else -> {
                                 Log.w(TAG, "Unknown kernel outcome: $outcome")
@@ -192,7 +215,7 @@ class WidgetActionReceiver : BroadcastReceiver() {
                 isCompleted = true
                 renderTruthfulState(context, "Offline • Queued", "#88888E")
             } finally {
-                pendingResult.finish()
+                finishSafely()
             }
         }
     }
@@ -237,6 +260,10 @@ class WidgetActionReceiver : BroadcastReceiver() {
             views.setTextViewText(R.id.widget_active_title, statusMessage)
             views.setTextViewText(R.id.widget_upcoming_title, statusMessage)
             views.setTextViewText(R.id.widget_proposal_title, statusMessage)
+
+            // Reset action buttons back from provisional pending state
+            views.setTextViewText(R.id.txt_action_start, "Start")
+            views.setTextViewText(R.id.txt_action_done, "Done")
 
             for (id in allIds) {
                 appWidgetManager.partiallyUpdateAppWidget(id, views)

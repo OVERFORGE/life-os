@@ -12,7 +12,7 @@ test("Phase 4: Mobile Active Notification: State mapping for PROPOSAL_PENDING ('
 
   const userId = "usr_mobile_test";
   const now = new Date("2026-10-04T12:00:00.000Z").getTime();
-  const startTime = new Date("2026-10-04T12:05:00.000Z").toISOString();
+  const startTime = new Date(now).toISOString(); // Due right now
   const endTime = new Date("2026-10-04T12:50:00.000Z").toISOString();
 
   const mockOcc: TemporalOccurrence = {

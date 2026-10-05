@@ -210,12 +210,18 @@ class LifeOsWidgetBridgeModule(reactContext: ReactApplicationContext) : ReactCon
                 expiresAtMs.toLong(),
                 deviceBindingId
             )
-            if (success) {
-                promise.resolve(true)
-            } else {
-                promise.reject("KEYSTORE_ERROR", "Failed to store session in Android Keystore vault")
-            }
+
+            // Also persist SharedPreferences fallback so widget action receiver is guaranteed to function
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit()
+                .putString("auth_token", token)
+                .putString("auth_user_id", userId)
+                .putLong("auth_expires_at_ms", expiresAtMs.toLong())
+                .commit()
+
+            promise.resolve(true)
         } catch (e: Exception) {
+            Log.e(TAG, "Error storing session in bridge", e)
             promise.reject("KEYSTORE_ERROR", e.localizedMessage, e)
         }
     }
@@ -228,6 +234,14 @@ class LifeOsWidgetBridgeModule(reactContext: ReactApplicationContext) : ReactCon
         try {
             val context = reactApplicationContext
             val success = LifeOsSecureVault.clearSession(context)
+
+            val prefs = context.getSharedPreferences(PREFS_NAME, Context.MODE_PRIVATE)
+            prefs.edit()
+                .remove("auth_token")
+                .remove("auth_user_id")
+                .remove("auth_expires_at_ms")
+                .commit()
+
             promise.resolve(success)
         } catch (e: Exception) {
             promise.reject("KEYSTORE_CLEAR_ERROR", e.localizedMessage, e)

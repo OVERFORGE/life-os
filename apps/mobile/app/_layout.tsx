@@ -39,6 +39,20 @@ export default function RootLayout() {
     // Clean up the old persistent notification if it exists
     Notifications.dismissNotificationAsync('lifeos-persistent-notif').catch(() => {});
 
+    // Ensure active credentials are seeded to native Keystore vault & widget prefs on boot
+    AsyncStorage.getItem('user_token').then(async (token) => {
+      if (token) {
+        try {
+          const userId = (await AsyncStorage.getItem('user_id')) || 'usr_current';
+          const expiresAtMs = Date.now() + 30 * 24 * 60 * 60 * 1000;
+          const { WidgetSyncBridge } = await import('../services/WidgetSyncBridge');
+          await WidgetSyncBridge.getInstance().syncSessionTokenToVault(token, userId, expiresAtMs);
+        } catch (e) {
+          console.warn('Failed to seed widget credentials on boot:', e);
+        }
+      }
+    }).catch(() => {});
+
     // Polling for real-time remote logout
     const interval = setInterval(async () => {
       try {

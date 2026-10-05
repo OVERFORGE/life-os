@@ -299,7 +299,7 @@
                     android:layout_marginLeft="6dp"
                     android:fontFamily="sans-serif-medium"
                     android:text="Start"
-                    android:textColor="#F59E0B"
+                    android:textColor="#FFFDFC"
                     android:textSize="12sp" />
             </LinearLayout>
 

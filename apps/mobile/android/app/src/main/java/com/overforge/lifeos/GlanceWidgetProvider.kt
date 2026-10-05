@@ -216,9 +216,16 @@ class GlanceWidgetProvider : AppWidgetProvider() {
                     // In active mode, Chronometer inside card handles time, badge is hidden or shows ACTIVE
                     views.setViewVisibility(R.id.widget_mode_badge, View.GONE)
                 }
-                "UPCOMING", "PROPOSAL" -> {
-                    views.setImageViewResource(R.id.widget_status_dot, R.drawable.widget_dot_amber)
-                    views.setTextColor(R.id.widget_mode_badge, Color.parseColor("#F59E0B"))
+                "PROPOSAL" -> {
+                    views.setImageViewResource(R.id.widget_status_dot, R.drawable.widget_dot_crimson)
+                    views.setTextColor(R.id.widget_mode_badge, Color.parseColor("#E8414A"))
+                    views.setInt(R.id.widget_mode_badge, "setBackgroundResource", R.drawable.widget_badge_bg_muted)
+                    views.setTextViewText(R.id.widget_mode_badge, badgeText)
+                    views.setViewVisibility(R.id.widget_mode_badge, View.VISIBLE)
+                }
+                "UPCOMING" -> {
+                    views.setImageViewResource(R.id.widget_status_dot, R.drawable.widget_dot_gray)
+                    views.setTextColor(R.id.widget_mode_badge, Color.parseColor("#88888E"))
                     views.setInt(R.id.widget_mode_badge, "setBackgroundResource", R.drawable.widget_badge_bg_muted)
                     views.setTextViewText(R.id.widget_mode_badge, badgeText)
                     views.setViewVisibility(R.id.widget_mode_badge, View.VISIBLE)

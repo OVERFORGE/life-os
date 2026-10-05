@@ -106,7 +106,7 @@ test("Phase 1: Occurrence due right now triggers PROPOSAL_PENDING and ATTENTION 
 
   const userId = "usr_proposal_test";
   const now = new Date("2026-10-04T14:00:00.000Z").getTime();
-  const startTime = new Date("2026-10-04T14:02:00.000Z").toISOString(); // 2 mins from now
+  const startTime = new Date("2026-10-04T14:00:00.000Z").toISOString(); // Due right now
   const endTime = new Date("2026-10-04T15:00:00.000Z").toISOString();
 
   const mockOccurrence: TemporalOccurrence = {
@@ -144,6 +144,53 @@ test("Phase 1: Occurrence due right now triggers PROPOSAL_PENDING and ATTENTION 
   assert.equal(projection.activeExecution?.status, "PROPOSAL_PENDING");
   assert.equal(projection.activeExecution?.title, "Kernel Pipeline Hardening");
   assert.equal(projection.activeExecution?.canComplete, false);
+});
+
+test("Phase 1: Occurrence scheduled 2 minutes in the future remains UPCOMING in GLANCE mode (no premature notification)", async () => {
+  const service = InteractionSurfaceService.getInstance();
+  service.reset();
+
+  const userId = "usr_upcoming_2m_test";
+  const now = new Date("2026-10-04T14:00:00.000Z").getTime();
+  const startTime = new Date("2026-10-04T14:02:00.000Z").toISOString(); // 2 mins from now
+  const endTime = new Date("2026-10-04T14:30:00.000Z").toISOString();
+
+  const mockOccurrence: TemporalOccurrence = {
+    occurrenceId: "occ_reminder_2m",
+    userId,
+    title: "check LifeOS systems",
+    kind: "WORK_SESSION",
+    dateOnly: "2026-10-04",
+    plannedInterval: {
+      dateOnly: "2026-10-04",
+      startMinute: 840,
+      endMinute: 870,
+      durationMinutes: 30,
+      startIsoUtc: startTime,
+      endIsoUtc: endTime,
+      timezone: "UTC",
+      isMidnightCrossing: false,
+    },
+    locationContext: { category: "HOME" },
+    rigidity: "ELASTIC",
+    status: "SCHEDULED",
+    version: 1,
+    overrideType: "NONE",
+    createdAt: now,
+    updatedAt: now,
+  };
+
+  const projection = await service.computeSurfaceProjection(userId, {
+    referenceTimeMs: now,
+    occurrences: [mockOccurrence],
+  });
+
+  // Must be GLANCE, not ATTENTION!
+  assert.equal(projection.interactionMode, "GLANCE");
+  assert.equal(projection.activeExecution, null);
+  assert.ok(projection.upcomingCommitment);
+  assert.equal(projection.upcomingCommitment?.title, "check LifeOS systems");
+  assert.equal(projection.upcomingCommitment?.minutesUntilStart, 2);
 });
 
 test("Phase 1: In-progress occurrence triggers ACTIVE_EXECUTION mode with live chronometer", async () => {

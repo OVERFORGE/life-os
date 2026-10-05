@@ -254,15 +254,16 @@ export class InteractionSurfaceService {
       };
     }
 
-    // Check 3: Is there a scheduled occurrence due right now or within 15 minutes?
+    // Check 3: Is there a scheduled occurrence due right now (or overdue by up to 60 minutes)?
     const scheduledDue = occurrences.find((occ) => {
       if (occ.status !== "SCHEDULED") return false;
       const startMs = occ.plannedInterval.startIsoUtc
         ? new Date(occ.plannedInterval.startIsoUtc).getTime()
         : 0;
       const diffMs = startMs - nowMs;
-      // Due if within next 15 minutes, or already overdue by up to 60 minutes
-      return diffMs <= 15 * 60 * 1000 && diffMs >= -60 * 60 * 1000;
+      // Due if at or past start time (or within 30s clock drift), and overdue by up to 60 minutes.
+      // Future tasks (> 30s away) remain in upcomingCommitment (GLANCE mode) so notifications don't fire prematurely.
+      return diffMs <= 30 * 1000 && diffMs >= -60 * 60 * 1000;
     });
 
     if (scheduledDue) {
