@@ -179,6 +179,7 @@ class LifeOsWidgetBridgeModule(reactContext: ReactApplicationContext) : ReactCon
                 .putBoolean(KEY_CAN_COMPLETE, canComplete)
                 .putBoolean(KEY_CAN_PAUSE, canPause)
                 .putBoolean(KEY_CAN_EXTEND, canExtend)
+                .putString("api_base_url", "https://life-os-gamma-ten.vercel.app/api")
                 .putLong(KEY_UPDATED_AT_MS, System.currentTimeMillis())
                 .commit()
 
@@ -222,6 +223,7 @@ class LifeOsWidgetBridgeModule(reactContext: ReactApplicationContext) : ReactCon
                 .putString("auth_token", token)
                 .putString("auth_user_id", userId)
                 .putLong("auth_expires_at_ms", expiresAtMs.toLong())
+                .putString("api_base_url", "https://life-os-gamma-ten.vercel.app/api")
                 .commit()
 
             promise.resolve(true)

@@ -116,8 +116,37 @@ export class CompleteTaskAdapter implements IKernelActionAdapter {
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
     assertDatabaseConnected("complete_task");
-    const taskId = proposal.payload?.taskId || proposal.targetEntityId || "task_mock_1";
+    const rawId = proposal.payload?.taskId || proposal.targetEntityId || "task_mock_1";
+    const taskId = String(rawId).startsWith("task_occ_")
+      ? String(rawId).replace("task_occ_", "")
+      : String(rawId).startsWith("occ_")
+      ? String(rawId).replace("occ_", "")
+      : String(rawId);
+
     if (isDbConnected()) {
+      try {
+        const chronicleCollection = mongoose.connection.collection("executionchronicles");
+        const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+        await chronicleCollection.updateMany(
+          { userId: { $in: [userId, userObjId] }, endedAtMs: 0 },
+          { $set: { endedAtMs: Date.now() } }
+        );
+
+        const occCollection = mongoose.connection.collection("temporaloccurrences");
+        await occCollection.updateMany(
+          {
+            userId: { $in: [userId, userObjId] },
+            $or: [
+              { occurrenceId: rawId },
+              { occurrenceId: `task_occ_${taskId}` },
+              { "linkedEntity.entityId": taskId },
+            ],
+          },
+          { $set: { status: "COMPLETED", updatedAt: new Date() } }
+        );
+      } catch (err) {
+        console.warn("[CompleteTaskAdapter] Non-fatal chronicle/occurrence update error:", err);
+      }
       return await handleCompleteTask({ ...proposal.payload, taskId }, userId);
     }
     return {
@@ -128,7 +157,13 @@ export class CompleteTaskAdapter implements IKernelActionAdapter {
   }
 
   async compensate(proposal: ActionProposal, previousResult: any, userId: string): Promise<CompensationResult> {
-    const taskId = previousResult?.taskId || proposal.payload?.taskId || proposal.targetEntityId;
+    const rawId = previousResult?.taskId || proposal.payload?.taskId || proposal.targetEntityId;
+    const taskId = String(rawId).startsWith("task_occ_")
+      ? String(rawId).replace("task_occ_", "")
+      : String(rawId).startsWith("occ_")
+      ? String(rawId).replace("occ_", "")
+      : String(rawId);
+
     if (!taskId) {
       return { compensated: false, error: "No taskId available to revert completion" };
     }
@@ -158,20 +193,129 @@ export class StartExecutionAdapter implements IKernelActionAdapter {
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
     assertDatabaseConnected("start_execution");
-    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    const rawEntityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    const taskId = String(rawEntityId).startsWith("task_occ_")
+      ? String(rawEntityId).replace("task_occ_", "")
+      : String(rawEntityId).startsWith("occ_")
+      ? String(rawEntityId).replace("occ_", "")
+      : String(rawEntityId);
+
+    const startedAtMs = proposal.payload?.startedAtMs || Date.now();
+    let plannedDurationMinutes = proposal.payload?.plannedDurationMinutes || 30;
+    let taskTitle = proposal.payload?.title || "Focus Execution";
+
+    if (isDbConnected()) {
+      try {
+        const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+        const taskCollection = mongoose.connection.collection("tasks");
+        let taskQuery: any = { userId: { $in: [userId, userObjId] } };
+        if (mongoose.isValidObjectId(taskId)) {
+          taskQuery._id = new mongoose.Types.ObjectId(taskId);
+        } else {
+          taskQuery._id = taskId;
+        }
+
+        const task = await taskCollection.findOne(taskQuery);
+        if (task) {
+          taskTitle = task.title || taskTitle;
+          if (task.metadata?.estimatedDuration) {
+            plannedDurationMinutes = task.metadata.estimatedDuration;
+          }
+        }
+
+        // 1. Update temporal occurrences to IN_PROGRESS
+        const occCollection = mongoose.connection.collection("temporaloccurrences");
+        await occCollection.updateMany(
+          {
+            userId: { $in: [userId, userObjId] },
+            $or: [
+              { occurrenceId: rawEntityId },
+              { occurrenceId: `task_occ_${taskId}` },
+              { "linkedEntity.entityId": taskId },
+            ],
+          },
+          {
+            $set: {
+              status: "IN_PROGRESS",
+              updatedAt: new Date(),
+            },
+          }
+        );
+
+        // 2. Close any lingering open chronicles
+        const chronicleCollection = mongoose.connection.collection("executionchronicles");
+        await chronicleCollection.updateMany(
+          { userId: { $in: [userId, userObjId] }, endedAtMs: 0 },
+          { $set: { endedAtMs: Date.now() } }
+        );
+
+        // 3. Insert active open chronicle (endedAtMs: 0)
+        const chronicleId = `chron_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
+        await chronicleCollection.insertOne({
+          chronicleId,
+          userId: String(userId),
+          occurrenceId: String(rawEntityId),
+          entityType: "task",
+          entityId: taskId,
+          title: taskTitle,
+          startedAtMs,
+          endedAtMs: 0,
+          durationMinutes: plannedDurationMinutes,
+          interruptionsCount: 0,
+          completedWorkUnits: [],
+          source: proposal.payload?.source || "mobile_touch",
+          createdAt: new Date(),
+        });
+      } catch (dbErr) {
+        console.error("[StartExecutionAdapter] Non-fatal error persisting execution state:", dbErr);
+      }
+    }
+
     return {
       success: true,
-      entityId,
+      entityId: taskId,
       status: "IN_PROGRESS",
-      startedAtMs: proposal.payload?.startedAtMs || Date.now(),
+      startedAtMs,
+      plannedDurationMinutes,
+      title: taskTitle,
     };
   }
 
-  async compensate(proposal: ActionProposal, _previousResult: any, _userId: string): Promise<CompensationResult> {
-    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+  async compensate(proposal: ActionProposal, _previousResult: any, userId: string): Promise<CompensationResult> {
+    const rawEntityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    const taskId = String(rawEntityId).startsWith("task_occ_")
+      ? String(rawEntityId).replace("task_occ_", "")
+      : String(rawEntityId).startsWith("occ_")
+      ? String(rawEntityId).replace("occ_", "")
+      : String(rawEntityId);
+
+    if (isDbConnected()) {
+      try {
+        const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+        const chronicleCollection = mongoose.connection.collection("executionchronicles");
+        await chronicleCollection.updateMany(
+          { userId: { $in: [userId, userObjId] }, endedAtMs: 0 },
+          { $set: { endedAtMs: Date.now() } }
+        );
+
+        const occCollection = mongoose.connection.collection("temporaloccurrences");
+        await occCollection.updateMany(
+          {
+            userId: { $in: [userId, userObjId] },
+            $or: [
+              { occurrenceId: rawEntityId },
+              { occurrenceId: `task_occ_${taskId}` },
+              { "linkedEntity.entityId": taskId },
+            ],
+          },
+          { $set: { status: "SCHEDULED", updatedAt: new Date() } }
+        );
+      } catch (_) {}
+    }
+
     return {
       compensated: true,
-      reversalDetails: `Reverted execution block ${entityId} to SCHEDULED`,
+      reversalDetails: `Reverted execution block ${rawEntityId} to SCHEDULED`,
     };
   }
 }
@@ -187,22 +331,54 @@ export class PauseExecutionAdapter implements IKernelActionAdapter {
     return { valid: true };
   }
 
-  async execute(proposal: ActionProposal, _userId: string): Promise<any> {
+  async execute(proposal: ActionProposal, userId: string): Promise<any> {
     assertDatabaseConnected("pause_execution");
-    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    const rawEntityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    const taskId = String(rawEntityId).startsWith("task_occ_")
+      ? String(rawEntityId).replace("task_occ_", "")
+      : String(rawEntityId).startsWith("occ_")
+      ? String(rawEntityId).replace("occ_", "")
+      : String(rawEntityId);
+
+    const pausedAtMs = proposal.payload?.pausedAtMs || Date.now();
+
+    if (isDbConnected()) {
+      try {
+        const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+        const chronicleCollection = mongoose.connection.collection("executionchronicles");
+        await chronicleCollection.updateMany(
+          { userId: { $in: [userId, userObjId] }, endedAtMs: 0 },
+          { $set: { endedAtMs: pausedAtMs } }
+        );
+
+        const occCollection = mongoose.connection.collection("temporaloccurrences");
+        await occCollection.updateMany(
+          {
+            userId: { $in: [userId, userObjId] },
+            $or: [
+              { occurrenceId: rawEntityId },
+              { occurrenceId: `task_occ_${taskId}` },
+              { "linkedEntity.entityId": taskId },
+            ],
+          },
+          { $set: { status: "SCHEDULED", updatedAt: new Date() } }
+        );
+      } catch (_) {}
+    }
+
     return {
       success: true,
-      entityId,
+      entityId: taskId,
       status: "PAUSED",
-      pausedAtMs: proposal.payload?.pausedAtMs || Date.now(),
+      pausedAtMs,
     };
   }
 
   async compensate(proposal: ActionProposal, _previousResult: any, _userId: string): Promise<CompensationResult> {
-    const entityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
+    const rawEntityId = proposal.payload?.occurrenceId || proposal.payload?.taskId || proposal.targetEntityId;
     return {
       compensated: true,
-      reversalDetails: `Resumed execution block ${entityId} from pause`,
+      reversalDetails: `Resumed execution block ${rawEntityId} from pause`,
     };
   }
 }

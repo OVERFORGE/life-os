@@ -61,13 +61,20 @@ export async function handleHeadlessNotificationAction(event: any): Promise<void
   if (!actionId) return;
 
   const data = notification?.data || {};
-  const entityId = data.entityId;
+  const entityId = data.entityId || data.taskId;
   const seed = data.idempotencySeed || entityId || `seed_${Date.now()}`;
   const observedVersion = Number(data.observedProjectionVersion || 1);
 
   if (!entityId && actionId !== ACTION_DONE) {
     console.warn('[HeadlessActionReceiver] Missing entityId in notification data');
     return;
+  }
+
+  // Dismiss the notification that was acted upon (e.g. reminder trigger)
+  if (notification?.id && notifee) {
+    try {
+      await notifee.cancelNotification(notification.id);
+    } catch (_) {}
   }
 
   const token = await AsyncStorage.getItem('user_token');
@@ -140,6 +147,12 @@ export async function handleHeadlessNotificationAction(event: any): Promise<void
       } else if (actionType === 'complete_task') {
         await manager.cancelNotification();
       }
+
+      // Also trigger widget sync to guarantee instant widget freshness
+      try {
+        const { WidgetSyncBridge } = await import('./WidgetSyncBridge');
+        await WidgetSyncBridge.getInstance().syncSurfaceStateWithBackend();
+      } catch (_) {}
     } else {
       console.warn('[HeadlessActionReceiver] Ingress returned non-ok:', res.status);
       await handleOfflineFallback(envelope, actionType);

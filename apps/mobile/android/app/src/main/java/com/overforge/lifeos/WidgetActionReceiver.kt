@@ -46,7 +46,7 @@ class WidgetActionReceiver : BroadcastReceiver() {
         const val PREFS_NAME = GlanceWidgetProvider.PREFS_NAME
         const val KEY_CANONICAL_QUEUE = "canonical_pending_actions"
         const val KEY_CANONICAL_QUEUE_SHADOW = "canonical_pending_actions_shadow"
-        const val DEFAULT_API_URL = "http://10.0.2.2:3000/api"
+        const val DEFAULT_API_URL = "https://life-os-gamma-ten.vercel.app/api"
 
         private val executor = Executors.newSingleThreadExecutor()
 
@@ -165,7 +165,10 @@ class WidgetActionReceiver : BroadcastReceiver() {
                 }
 
                 // 6. Dispatch HTTP POST to /api/kernel/dispatch
-                val baseUrl = prefs.getString("api_base_url", DEFAULT_API_URL) ?: DEFAULT_API_URL
+                var baseUrl = prefs.getString("api_base_url", DEFAULT_API_URL) ?: DEFAULT_API_URL
+                if (baseUrl.contains("10.0.2.2") || baseUrl.contains("localhost")) {
+                    baseUrl = DEFAULT_API_URL
+                }
                 val dispatchUrl = if (baseUrl.endsWith("/api")) "$baseUrl/kernel/dispatch" else "$baseUrl/api/kernel/dispatch"
 
                 val result = executeDispatch(dispatchUrl, token, envelope)
@@ -284,31 +287,43 @@ class WidgetActionReceiver : BroadcastReceiver() {
                 val upcoming = rep.optJSONObject("upcomingCommitment")
 
                 if (active != null && active.optString("status") == "ACTIVE") {
+                    val durationMins = active.optInt("plannedDurationMinutes", 30)
                     editor.putString(LifeOsWidgetBridgeModule.KEY_DISPLAY_STATE, "ACTIVE")
                     editor.putString(LifeOsWidgetBridgeModule.KEY_VISUAL_INTENT, "ACTIVE")
                     editor.putString(LifeOsWidgetBridgeModule.KEY_PRIMARY_TITLE, active.optString("title", "Active Task"))
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_SECONDARY_TEXT, "Target: ${durationMins}m • Tap when done")
                     editor.putLong(LifeOsWidgetBridgeModule.KEY_ACTIVE_STARTED_AT_MS, active.optLong("startedAtMs", System.currentTimeMillis()))
-                    editor.putInt(LifeOsWidgetBridgeModule.KEY_ACTIVE_PLANNED_MINS, active.optInt("plannedDurationMinutes", 30))
+                    editor.putInt(LifeOsWidgetBridgeModule.KEY_ACTIVE_PLANNED_MINS, durationMins)
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_ACTIVE_ENTITY_ID, active.optString("occurrenceId", active.optString("taskId", "")))
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_ACTIVE_IDEMPOTENCY_SEED, active.optString("idempotencySeed", ""))
                     editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_COMPLETE, true)
+                    editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_PAUSE, true)
+                    editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_EXTEND, true)
                     editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_START, false)
+                } else if (active != null && active.optString("status") == "PROPOSAL_PENDING") {
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_DISPLAY_STATE, "PROPOSAL")
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_VISUAL_INTENT, "PROPOSAL")
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_PRIMARY_TITLE, active.optString("title", "Ready to start?"))
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_SECONDARY_TEXT, "Ready to start?")
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_BADGE_TEXT, "PROPOSAL")
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_ACTIVE_ENTITY_ID, active.optString("occurrenceId", active.optString("taskId", "")))
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_ACTIVE_IDEMPOTENCY_SEED, active.optString("idempotencySeed", ""))
+                    editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_START, true)
+                    editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_EXTEND, true)
+                    editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_COMPLETE, false)
+                    editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_PAUSE, false)
                 } else if (upcoming != null) {
                     editor.putString(LifeOsWidgetBridgeModule.KEY_DISPLAY_STATE, "UPCOMING")
                     editor.putString(LifeOsWidgetBridgeModule.KEY_VISUAL_INTENT, "UPCOMING")
                     editor.putString(LifeOsWidgetBridgeModule.KEY_PRIMARY_TITLE, upcoming.optString("title", "Upcoming Task"))
                     editor.putLong(LifeOsWidgetBridgeModule.KEY_NEXT_START_MS, upcoming.optLong("startsAtMs", 0L))
+                    editor.putString(LifeOsWidgetBridgeModule.KEY_UPCOMING_ENTITY_ID, upcoming.optString("commitmentId", ""))
                     editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_START, true)
-                    editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_COMPLETE, false)
-                } else {
-                    // CLEAR state
-                    editor.putString(LifeOsWidgetBridgeModule.KEY_DISPLAY_STATE, "CLEAR")
-                    editor.putString(LifeOsWidgetBridgeModule.KEY_VISUAL_INTENT, "CALM")
-                    editor.putString(LifeOsWidgetBridgeModule.KEY_PRIMARY_TITLE, "You're clear.")
-                    editor.putString(LifeOsWidgetBridgeModule.KEY_SECONDARY_TEXT, "")
-                    editor.putString(LifeOsWidgetBridgeModule.KEY_BADGE_TEXT, "CLEAR")
-                    editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_START, false)
                     editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_COMPLETE, false)
                     editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_PAUSE, false)
                     editor.putBoolean(LifeOsWidgetBridgeModule.KEY_CAN_EXTEND, false)
+                } else {
+                    applySafeClear(editor)
                 }
             } catch (t: Throwable) {
                 Log.e(TAG, "Failed to parse reprojection payload. Applying safe CLEAR.", t)
@@ -401,6 +416,7 @@ class WidgetActionReceiver : BroadcastReceiver() {
             conn.doInput = true
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("x-timezone", "Asia/Kolkata")
 
             val os = OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8)
             os.write(payload.toString())
@@ -423,7 +439,8 @@ class WidgetActionReceiver : BroadcastReceiver() {
             Log.d(TAG, "Dispatch HTTP $httpCode response: $responseBody")
 
             if (isSuccess && responseBody.isNotEmpty()) {
-                val json = JSONObject(responseBody)
+                val rootJson = JSONObject(responseBody)
+                val json = if (rootJson.has("data")) rootJson.getJSONObject("data") else rootJson
                 val outcome = json.optString("outcome", "EXECUTE_COMMITTED")
                 val reprojection = json.optJSONObject("reprojection")?.toString()
                 val errorMsg = json.optString("errorMessage", "")

@@ -111,7 +111,10 @@ class LifeOsQueueReplayWorker(
         }
 
         val remainingItems = JSONArray()
-        val baseUrl = prefs.getString("api_base_url", WidgetActionReceiver.DEFAULT_API_URL) ?: WidgetActionReceiver.DEFAULT_API_URL
+        var baseUrl = prefs.getString("api_base_url", WidgetActionReceiver.DEFAULT_API_URL) ?: WidgetActionReceiver.DEFAULT_API_URL
+        if (baseUrl.contains("10.0.2.2") || baseUrl.contains("localhost")) {
+            baseUrl = WidgetActionReceiver.DEFAULT_API_URL
+        }
         val dispatchUrl = if (baseUrl.endsWith("/api")) "$baseUrl/kernel/dispatch" else "$baseUrl/api/kernel/dispatch"
 
         var hasNetworkFailure = false
@@ -229,6 +232,7 @@ class LifeOsQueueReplayWorker(
             conn.doInput = true
             conn.setRequestProperty("Content-Type", "application/json; charset=UTF-8")
             conn.setRequestProperty("Authorization", "Bearer $token")
+            conn.setRequestProperty("x-timezone", "Asia/Kolkata")
 
             val os = OutputStreamWriter(conn.outputStream, StandardCharsets.UTF_8)
             os.write(payload.toString())
@@ -252,7 +256,8 @@ class LifeOsQueueReplayWorker(
             var reprojection: String? = null
 
             if (isSuccess && responseBody.isNotEmpty()) {
-                val json = JSONObject(responseBody)
+                val rootJson = JSONObject(responseBody)
+                val json = if (rootJson.has("data")) rootJson.getJSONObject("data") else rootJson
                 outcome = json.optString("outcome", "EXECUTE_COMMITTED")
                 reprojection = json.optJSONObject("reprojection")?.toString()
             }

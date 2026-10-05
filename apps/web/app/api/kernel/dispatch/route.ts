@@ -21,6 +21,36 @@ export async function POST(req: NextRequest) {
 
     await connectDB();
 
+    const envelope = (await req.json()) as ISurfaceActionEnvelope;
+
+    if (!envelope || !envelope.actionType || !envelope.idempotencyKey) {
+      return apiError(
+        "Invalid action envelope: actionType and idempotencyKey are required",
+        "VALIDATION_ERROR",
+        400
+      );
+    }
+
+    if (!userId && (envelope as any).clientSessionToken) {
+      try {
+        const jwt = (await import("jsonwebtoken")).default;
+        const decoded = jwt.verify((envelope as any).clientSessionToken, process.env.NEXTAUTH_SECRET || "fallback-secret-key-12345") as any;
+        if (decoded?.id) {
+          userId = decoded.id;
+        }
+      } catch (_) {}
+    }
+
+    if (!userId && (envelope as any).userId) {
+      try {
+        const { User } = await import("@/server/db/models/User");
+        const userExists = await User.findById((envelope as any).userId).lean();
+        if (userExists) {
+          userId = (envelope as any).userId;
+        }
+      } catch (_) {}
+    }
+
     if (!userId && process.env.NODE_ENV !== "production") {
       const { User } = await import("@/server/db/models/User");
       const firstUser = await User.findOne().lean();
@@ -31,16 +61,6 @@ export async function POST(req: NextRequest) {
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
-    }
-
-    const envelope = (await req.json()) as ISurfaceActionEnvelope;
-
-    if (!envelope || !envelope.actionType || !envelope.idempotencyKey) {
-      return apiError(
-        "Invalid action envelope: actionType and idempotencyKey are required",
-        "VALIDATION_ERROR",
-        400
-      );
     }
 
     const kernel = KernelCapabilityService.getInstance();
@@ -140,6 +160,12 @@ function translateEnvelopeToProposal(
 ): ActionProposal {
   const propId = `prop_surface_${Date.now()}_${Math.random().toString(36).slice(2, 7)}`;
   const actionType = envelope.actionType as SurfaceActionType;
+  const rawEntityId = envelope.entityId || "";
+  const cleanTaskId = rawEntityId.startsWith("task_occ_")
+    ? rawEntityId.replace("task_occ_", "")
+    : rawEntityId.startsWith("occ_")
+    ? rawEntityId.replace("occ_", "")
+    : rawEntityId;
 
   switch (actionType) {
     case "start_execution": {
@@ -147,14 +173,13 @@ function translateEnvelopeToProposal(
       return {
         id: propId,
         domain: "productivity",
-        actionType: "log_execution_interval",
-        targetEntityId: envelope.entityId,
+        actionType: "start_execution",
+        targetEntityId: rawEntityId,
         payload: {
-          occurrenceId: envelope.entityId.startsWith("occ_") ? envelope.entityId : undefined,
-          taskId: !envelope.entityId.startsWith("occ_") ? envelope.entityId : undefined,
+          occurrenceId: rawEntityId,
+          taskId: cleanTaskId,
           startedAtMs: payload.startedAtMs || Date.now(),
-          endedAtMs: 0,
-          durationMinutes: payload.plannedDurationMinutes || 30,
+          plannedDurationMinutes: payload.plannedDurationMinutes || 30,
           source: mapSurfaceToSource(envelope.sourceSurface),
         },
         rationale: `Headless start from ${envelope.sourceSurface}`,
@@ -169,9 +194,10 @@ function translateEnvelopeToProposal(
         id: propId,
         domain: "productivity",
         actionType: "complete_task",
-        targetEntityId: envelope.entityId,
+        targetEntityId: rawEntityId,
         payload: {
-          taskId: envelope.entityId,
+          taskId: cleanTaskId,
+          occurrenceId: rawEntityId,
           completedAtMs: payload.completedAtMs || Date.now(),
           completionNote: payload.completionNote,
         },
@@ -187,11 +213,12 @@ function translateEnvelopeToProposal(
       return {
         id: propId,
         domain: "productivity",
-        actionType: "reschedule_occurrence",
-        targetEntityId: envelope.entityId,
+        actionType: "defer_execution",
+        targetEntityId: rawEntityId,
         payload: {
-          occurrenceId: envelope.entityId,
-          shiftMinutes,
+          occurrenceId: rawEntityId,
+          taskId: cleanTaskId,
+          deferMinutes: shiftMinutes,
           reason: payload.reason || "Postponed via ambient surface",
         },
         rationale: `Headless defer (+${shiftMinutes}m) from ${envelope.sourceSurface}`,
@@ -205,16 +232,12 @@ function translateEnvelopeToProposal(
       return {
         id: propId,
         domain: "productivity",
-        actionType: "log_execution_interval",
-        targetEntityId: envelope.entityId,
+        actionType: "pause_execution",
+        targetEntityId: rawEntityId,
         payload: {
-          occurrenceId: envelope.entityId.startsWith("occ_") ? envelope.entityId : undefined,
-          taskId: !envelope.entityId.startsWith("occ_") ? envelope.entityId : undefined,
-          startedAtMs: Date.now() - 60000,
-          endedAtMs: payload.pausedAtMs || Date.now(),
-          durationMinutes: 1,
-          source: mapSurfaceToSource(envelope.sourceSurface),
-          notes: "Paused from surface",
+          occurrenceId: rawEntityId,
+          taskId: cleanTaskId,
+          pausedAtMs: payload.pausedAtMs || Date.now(),
         },
         rationale: `Headless pause from ${envelope.sourceSurface}`,
         reversibility: "atomic_single_doc",

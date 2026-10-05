@@ -115,7 +115,7 @@ export async function scheduleDailyReminder() {
 
         await Notifications.scheduleNotificationAsync({
           content: {
-            title: "Time for a Weigh-in ⚖️",
+            title: "Time for a Weigh-in",
             body: "Consistent tracking helps LifeOS adapt your maintenance calories. Log your weight now!",
             data: { route: '/(dashboard)/health' },
             sound: true,
@@ -188,10 +188,10 @@ export async function scheduleTaskReminders(task: {
         await notifee.createTriggerNotification(
           {
             id: `task-${task._id}-reminder-${i}`,
-            title: `⏰ Reminder: ${task.title}`,
+            title: task.title,
             body: minutesUntil <= 2
-              ? `Due right now — time to start!`
-              : `Due at ${timeLabel} — get ready!`,
+              ? `Scheduled focus time — ready to start?`
+              : `Due at ${timeLabel} — scheduled focus block`,
             android: {
               channelId: REMINDER_CHANNEL_ID,
               importance: AndroidImportance ? AndroidImportance.HIGH : 4,
@@ -202,11 +202,31 @@ export async function scheduleTaskReminders(task: {
                 id: 'default',
                 launchActivity: 'default',
               },
+              actions: [
+                {
+                  title: 'Start',
+                  pressAction: {
+                    id: 'ACTION_START',
+                  },
+                },
+                {
+                  title: '+15m',
+                  pressAction: {
+                    id: 'ACTION_EXTEND',
+                  },
+                },
+              ],
               sound: 'default',
               vibrationPattern: [0, 300, 200, 300],
               lightColor: '#00F0FF',
             },
-            data: { route: '/(dashboard)/tools/tasks', taskId: task._id },
+            data: {
+              route: '/(dashboard)/tools/tasks',
+              taskId: task._id,
+              entityId: task._id,
+              idempotencySeed: task._id,
+              plannedDurationMinutes: String((task as any).metadata?.estimatedDuration || 15),
+            },
           },
           {
             type: TriggerType ? TriggerType.TIMESTAMP : 0,
@@ -226,11 +246,16 @@ export async function scheduleTaskReminders(task: {
       await Notifications.scheduleNotificationAsync({
         identifier: `task-${task._id}-reminder-${i}`,
         content: {
-          title: `⏰ Reminder: ${task.title}`,
+          title: task.title,
           body: minutesUntil <= 2
-            ? `Due right now — time to start!`
-            : `Due at ${timeLabel} — don't forget!`,
-          data: { route: '/(dashboard)/tools/tasks', taskId: task._id },
+            ? `Scheduled focus time — ready to start?`
+            : `Due at ${timeLabel} — scheduled focus block`,
+          data: {
+            route: '/(dashboard)/tools/tasks',
+            taskId: task._id,
+            entityId: task._id,
+            idempotencySeed: task._id,
+          },
           sound: true,
         },
         trigger: {
