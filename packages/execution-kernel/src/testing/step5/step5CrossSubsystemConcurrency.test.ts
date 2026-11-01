@@ -586,7 +586,7 @@ describe("Step 5: Full-System Integration Testing — Phase 3: Cross-Subsystem C
     // Daemon B attempts tickUser while Daemon A holds lease
     const resB = await daemonB.tickUser(
       { userId: "user_contested", timezone: "UTC" },
-      { categoryA: async () => {} }
+      { categoryA: async () => { } }
     );
 
     assert.equal(resB.executed, false, "Daemon B must not execute while lease is held");
@@ -598,7 +598,7 @@ describe("Step 5: Full-System Integration Testing — Phase 3: Cross-Subsystem C
     // Daemon B now retries and successfully acquires
     const resB2 = await daemonB.tickUser(
       { userId: "user_contested", timezone: "UTC" },
-      { categoryA: async () => {} }
+      { categoryA: async () => { } }
     );
     assert.equal(resB2.executed, true, "Daemon B must succeed after Daemon A releases lease");
   });

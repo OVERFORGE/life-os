@@ -517,10 +517,10 @@ describe("Step 5 Phase 6: Application Route & Surface Coverage", () => {
     const userId = "u_sse_route_test";
 
     // 1. Quota Enforcement (Max 3 streams per user)
-    const ctrl1: any = { enqueue: () => {}, close: () => {} };
-    const ctrl2: any = { enqueue: () => {}, close: () => {} };
-    const ctrl3: any = { enqueue: () => {}, close: () => {} };
-    const ctrl4: any = { enqueue: () => {}, close: () => {} };
+    const ctrl1: any = { enqueue: () => { }, close: () => { } };
+    const ctrl2: any = { enqueue: () => { }, close: () => { } };
+    const ctrl3: any = { enqueue: () => { }, close: () => { } };
+    const ctrl4: any = { enqueue: () => { }, close: () => { } };
 
     const r1 = connManager.registerConnection(userId, "127.0.0.1", ctrl1);
     const r2 = connManager.registerConnection(userId, "127.0.0.1", ctrl2);
@@ -538,7 +538,7 @@ describe("Step 5 Phase 6: Application Route & Surface Coverage", () => {
     const enqueuedFrames: Uint8Array[] = [];
     const listenCtrl: any = {
       enqueue: (chunk: Uint8Array) => enqueuedFrames.push(chunk),
-      close: () => {},
+      close: () => { },
     };
 
     const targetUser = "u_sse_target";
