@@ -318,7 +318,7 @@ test("PHASE 8: Proactive Intelligence & Policy Engine Suite", async (suite) => {
       }],
       activeInterventions: [],
       quietHoursActive: false,
-    };
+    } as any;
 
     // Daytime timestamp (14:00 UTC)
     const testNow = new Date("2026-10-04T14:00:00Z").getTime();

@@ -89,6 +89,11 @@ const DailyLogSchema = new Schema(
       of: mongoose.Schema.Types.Mixed,
       default: {},
     },
+
+    // Optimistic Concurrency & Outbox Fencing
+    version: { type: Number, default: 0 },
+    mutationEpoch: { type: Number, default: 0 },
+    recentMutationReceipts: { type: [Object], default: [] },
   },
   { timestamps: true }
 );

@@ -81,6 +81,11 @@ const TaskSchema = new mongoose.Schema(
         done: { type: Boolean, default: false },
       }
     ],
+
+    // Optimistic Concurrency & Outbox Fencing
+    version: { type: Number, default: 0 },
+    mutationEpoch: { type: Number, default: 0 },
+    recentMutationReceipts: { type: [Object], default: [] },
   },
   { timestamps: true }
 );
@@ -88,6 +93,19 @@ const TaskSchema = new mongoose.Schema(
 // Fast date-range queries
 TaskSchema.index({ userId: 1, dueDate: 1 });
 TaskSchema.index({ userId: 1, status: 1, dueDate: 1 });
+
+// Unique recurrence successor constraint (Issue B)
+// Enforces database-level uniqueness across (userId, recurringParentId, dueDate).
+// Excludes one-off tasks (where recurringParentId is null) via partialFilterExpression.
+TaskSchema.index(
+  { userId: 1, recurringParentId: 1, dueDate: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      recurringParentId: { $type: "objectId" },
+    },
+  }
+);
 
 export const Task =
   mongoose.models.Task || mongoose.model("Task", TaskSchema);

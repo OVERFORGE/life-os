@@ -1,0 +1,47 @@
+```mermaid
+flowchart TB
+  subgraph CURRENT["CURRENT SYSTEM REALITY (As Discovered)"]
+    direction TB
+    C_UI["Siloed Frontend Views\n(Dashboard, Tasks, Gym, Nutrition)"]
+    C_API["Next.js Route Handlers\n(Direct CRUD to Mongo Collections)"]
+    
+    C_BRIDGE["WorldModelBridge (ENG-002)\n[STATIC HARDCODED FALLBACK]"]:::current_flaw
+    C_PLAN["DynamicWorkflowPlanner (ENG-011)\n[STATIC BENCHMARK TEMPLATES]"]:::current_flaw
+    C_MEM["BehaviorPatternLibrary\n[VOLATILE IN-MEMORY MAPS]"]:::current_flaw
+    C_DAEMON["Proactive Daemon & Morning Briefing\n[ZERO CRON TRIGGERS / DORMANT]"]:::current_flaw
+
+    C_KERNEL["Sovereign Execution Kernel\n(Stages 1-4 Complete & Tested)\n- 12-state DAG Lifecycle\n- Concurrency <= 3 & Path Locking\n- Class 1-4 Verification & Sagas"]:::current_strong
+
+    C_UI --> C_API
+    C_API --> C_KERNEL
+    C_KERNEL -.-> C_BRIDGE
+    C_KERNEL -.-> C_PLAN
+    C_KERNEL -.-> C_MEM
+  end
+
+  subgraph INTENDED["INTENDED ARCHITECTURAL TARGET"]
+    direction TB
+    I_UI["Unified Reactive Surfaces\n(Web, Mobile, Desktop synchronized via SSE/WS)"]
+    I_BUS["Central Causal Event Bus\n(Pub/Sub for all 10 Life Domains)"]
+    
+    I_WM["Continuous World Model (ENG-001)\n(Real-time Biometrics + Pressure + Calendar)"]:::target_strong
+    I_PLAN["Autonomous Dynamic Planner (ENG-011)\n(LLM-driven DAG synthesis + Deterministic Validation)"]:::target_strong
+    I_MEM["Durable 3-Tier Memory Engine\n(Episodic Traces + Mongo Deep Profiles + Vector Index)"]:::target_strong
+    I_DAEMON["Autonomous Proactive Daemon\n(Scheduled Wakeups + Biometric Triggers + Morning Briefing)"]:::target_strong
+
+    I_KERNEL["Sovereign Execution Kernel\n(Stages 1-4 Execution Engine)\n- Fenced Mutations & Rollbacks\n- Verifiable Multi-step State Transitions"]:::target_strong
+
+    I_UI <--> I_BUS
+    I_BUS <--> I_WM
+    I_BUS <--> I_DAEMON
+    I_DAEMON --> I_PLAN
+    I_PLAN --> I_KERNEL
+    I_KERNEL --> I_MEM
+    I_MEM --> I_BUS
+  end
+
+  classDef current_flaw stroke:#ef4444,stroke-width:2px,fill:#fee2e2,color:#991b1b;
+  classDef current_strong stroke:#10b981,stroke-width:2px,fill:#d1fae5,color:#065f46;
+  classDef target_strong stroke:#3b82f6,stroke-width:2px,fill:#dbeafe,color:#1e40af;
+```
+

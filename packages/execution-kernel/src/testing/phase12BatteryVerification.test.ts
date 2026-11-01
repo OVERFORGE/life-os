@@ -77,7 +77,7 @@ test('Phase 12: Active session network efficiency: local chronometer does not tr
     },
     upcomingCommitment: null,
     pendingIntervention: null,
-    conversationContext: { activeThreadId: 'thread_1', lastInteractionMs: Date.now() },
+    conversationContext: { activeThreadId: 'thread_1', lastInteractionMs: Date.now() } as any,
   };
 
   assert.equal(activeProjection.activeExecution?.status, 'ACTIVE');

@@ -1,0 +1,86 @@
+```mermaid
+flowchart TD
+  subgraph SOURCES["1. Telemetry & Signal Sources"]
+    SRC_WHOOP["Whoop API / Webhooks\n(Sleep, HRV, Strain, Recovery)"]
+    SRC_APPLE["Apple Health / HealthKit\n(Steps, Active Energy, Workouts)"]
+    SRC_GCAL["Google Calendar / Outlook\n(Busy blocks, meeting density)"]
+    SRC_LOGS["Manual Web / Mobile Logs\n(Daily Journal, Nutrition, Gym Sets)"]
+    SRC_CHAT["Conversational Inputs\n(Chat turns, sentiment, fatigue self-reports)"]
+    SRC_FUTURE["Proposed Future Streams\n(Screen time, ambient audio, continuous glucose)"]:::proposed
+  end
+
+  subgraph INGESTION["2. Ingestion & Transport Endpoints"]
+    EP_SIG["POST /api/signals/ingest\n(Telemetry webhook receiver)"]
+    EP_DAILY["POST /api/daily-log\n(Subjective reflections, mood, energy)"]
+    EP_GYM["POST /api/gym\n(Workout exercises, sets, RPE)"]
+    EP_NUTR["POST /api/nutrition\n(Macros, hydration, meal timestamps)"]
+    EP_CHAT["POST /api/conversation\n(Turn transcripts & user prompts)"]
+  end
+
+  subgraph NORMALIZATION["3. Normalization & Pipeline Processing"]
+    NORM_SIG["SignalProcessor\n(Validation, deduplication, timestamp align)"]
+    NORM_BIO["BiometricNormalizer\n(Z-score standardization against baseline)"]
+    NORM_CONF["Confidence & Provenance Assigner\n(Source attribution: manual vs hardware API)"]
+  end
+
+  subgraph PERSISTENCE["4. Persistence Models (MongoDB)"]
+    DB_SIG[("TelemetrySignalModel\n(Raw signal timeseries)")]
+    DB_HEALTH[("HealthMetricModel\n(Aggregated daily biometrics)")]
+    DB_DAILY[("DailyLogModel\n(Subjective journal & check-ins)")]
+    DB_WORKOUT[("WorkoutSessionModel\n(Resistance/aerobic logs)")]
+    DB_FOOD[("NutritionLogModel\n(Calorie & nutrient logs)")]
+  end
+
+  subgraph ENGINES["5. Analytics & State Engines (Kernel/Server)"]
+    ENG_BIO["BiometricEngine (ENG-003)\n(Physiological strain & HRV analysis)"]
+    ENG_REC["RecoveryScorer (ENG-004)\n(Sleep debt & circadian state)"]
+    ENG_ENRG["EnergyPredictor (ENG-005)\n(Diurnal energy curve estimation)"]
+    ENG_WM["WorldModelV2 (ENG-001)\n(Mathematical multidimensional state)"]
+  end
+
+  subgraph RUNTIME_GATE["6. The Runtime Bridge Gap"]
+    GAP_BRIDGE{"WorldModelBridge\n(ENG-002 / Supervisor.ts)\nLIVE DB QUERY MISSING"}:::gap
+    FALLBACK["Hardcoded Constant Projection:\nCognitive: NORMAL (58% fatigue, 53% readiness)\nPhysical: OPTIMAL (7h 0m sleep)\nSchedule: 3 mtgs, Focus: 2 blocks"]:::gap
+    SUPERVISOR["Kernel Supervisor / Aven Runtime\n(Blind to actual biometric changes)"]
+  end
+
+  %% Flow Connections
+  SRC_WHOOP --> EP_SIG
+  SRC_APPLE --> EP_SIG
+  SRC_GCAL --> EP_SIG
+  SRC_LOGS --> EP_DAILY
+  SRC_LOGS --> EP_GYM
+  SRC_LOGS --> EP_NUTR
+  SRC_CHAT --> EP_CHAT
+  SRC_FUTURE -.->|Planned Ingestion| EP_SIG
+
+  EP_SIG --> NORM_SIG
+  EP_DAILY --> NORM_SIG
+  EP_GYM --> NORM_SIG
+  EP_NUTR --> NORM_SIG
+
+  NORM_SIG --> NORM_BIO
+  NORM_BIO --> NORM_CONF
+
+  NORM_CONF --> DB_SIG
+  NORM_CONF --> DB_HEALTH
+  NORM_CONF --> DB_DAILY
+  NORM_CONF --> DB_WORKOUT
+  NORM_CONF --> DB_FOOD
+
+  DB_SIG --> ENG_BIO
+  DB_HEALTH --> ENG_REC
+  DB_DAILY --> ENG_ENRG
+  ENG_BIO --> ENG_WM
+  ENG_REC --> ENG_WM
+  ENG_ENRG --> ENG_WM
+
+  %% The Gap
+  ENG_WM -.->|Decoupled from Live Dispatch| GAP_BRIDGE
+  GAP_BRIDGE -->|Returns Static Hardcoded State| FALLBACK
+  FALLBACK --> SUPERVISOR
+
+  classDef proposed stroke:#f59e0b,stroke-dasharray: 5 5,color:#b45309;
+  classDef gap stroke:#ef4444,stroke-width:3px,fill:#fee2e2,color:#991b1b;
+```
+

@@ -380,6 +380,10 @@ export * from "./context/ContextModeService";
 // Persona & Identity Layer (Aven)
 export * from "./persona";
 
+// Explicit disambiguation for shared export names
+export type { VerificationAssessment } from "./memory/EpistemicVerificationEngine";
+export type { VerificationAssessment as WorkflowVerificationAssessment } from "./orchestration";
+
 // Semantic Orchestration & Domain Intelligence
 export * from "./orchestration";
 export * from "./nutrition/nutritionEstimator";
@@ -404,4 +408,11 @@ export * from "./experience/surface/voice/contracts/WakeWordContracts";
 export * from "./experience/surface/voice/WakeWordEngineFactory";
 export * from "./experience/surface/voice/LocalAcousticWakeWordEngine";
 export * from "./experience/surface/voice/AmbientVoiceBridge";
+
+// Milestone B — Phase B2: Unified Causal Integration
+export * from "./events";
+
+// Milestone B — Phase B4: Autonomous Execution & Compensation Gateway
+export * from "./autonomy/AutonomousActionReverser";
+export * from "./autonomy/contracts/AutonomyContracts";
 

@@ -68,7 +68,7 @@ const ProactiveActionLogSchema = new Schema<IProactiveActionLogDoc>(
       type: Number,
       required: true,
       min: 0.0,
-      max: 2.0,
+      max: 1.0,
     },
     notificationDispatched: {
       type: Boolean,

@@ -3,6 +3,12 @@ import { ExecutionEventLedger, MaterializedProjection } from "./ExecutionEventLe
 import { WorkspaceStateMachine, WorkspaceStatus, TerminationReason } from "./WorkspaceStateMachine";
 import { AgentTask } from "../contracts/AgentContracts";
 import { ActionProposal, KernelActionDecision, KernelExecutionResult } from "../contracts/ActionProposalContracts";
+import {
+  IWorkflowExecutionRecord,
+  WORKSPACE_STORAGE_BUDGETS,
+  CheckpointLedgerConsistencyError,
+  WorkspaceSizeLimitExceededError,
+} from "../contracts/WorkflowExecutionContracts";
 
 export interface WorkspaceContext {
   executionId: string;
@@ -14,12 +20,8 @@ export interface WorkspaceContext {
   constraints?: string[];
 }
 
-export class StaleWorkspaceMutationError extends Error {
-  constructor(expectedVersion: number, currentVersion: number) {
-    super(`[STALE_WORKSPACE_MUTATION]: Expected version ${expectedVersion}, but workspace is at ${currentVersion}`);
-    this.name = "StaleWorkspaceMutationError";
-  }
-}
+import { StaleWorkspaceMutationError } from "../contracts/WorkflowExecutionContracts";
+export { StaleWorkspaceMutationError };
 
 /**
  * ExecutionWorkspace (Dual-Plane Architecture)
@@ -48,6 +50,24 @@ export class ExecutionWorkspace {
   public terminationReason?: TerminationReason;
   public readonly createdAt: number = Date.now();
   public updatedAt: number = Date.now();
+
+  // Multi-Step Workflow Scratchpad (Transient in-memory store for intermediate step outputs)
+  public readonly scratchpad: Map<string, any> = new Map();
+
+  setScratchpad(stepId: string, record: any): void {
+    this.scratchpad.set(stepId, record);
+    this.ledger.append("StepOutputRecorded", "Supervisor", {
+      stepId,
+      actionType: record.actionType,
+      capabilityURN: record.capabilityURN,
+      timestamp: record.timestamp || Date.now(),
+    });
+  }
+
+  getScratchpad(stepId: string): any {
+    return this.scratchpad.get(stepId);
+  }
+
   getState(): { status: WorkspaceStatus; iteration: number; stateVersion: number; terminationReason?: TerminationReason } {
     return {
       status: this.status,
@@ -117,6 +137,10 @@ export class ExecutionWorkspace {
       ? "CANCELLED_BY_USER"
       : "TERMINATED_FAILED";
 
+    if (this.status === "INITIALIZED" && targetStatus !== "TERMINATED_FAILED" && targetStatus !== "CANCELLED_BY_USER") {
+      this.status = "SYNTHESIZING";
+    }
+
     this.transitionTo(targetStatus);
     this.terminationReason = reason;
     this.ledger.append(
@@ -156,6 +180,74 @@ export class ExecutionWorkspace {
     }
 
     ws.stateVersion = events.length;
+    return ws;
+  }
+
+  /**
+   * Reconstructs an ExecutionWorkspace from an authoritative persistence record.
+   * Enforces 2 MB size limits and strict ledger validation.
+   */
+  static reconstructFromRecord(
+    record: IWorkflowExecutionRecord,
+    events?: any[]
+  ): ExecutionWorkspace {
+    const serialized = JSON.stringify(record);
+    const bytes = Buffer.byteLength(serialized, "utf8");
+    if (bytes > WORKSPACE_STORAGE_BUDGETS.maxDocumentBytes) {
+      throw new WorkspaceSizeLimitExceededError(
+        `Workspace document size ${bytes}B exceeds maximum allowed budget ${WORKSPACE_STORAGE_BUDGETS.maxDocumentBytes}B`
+      );
+    }
+
+    const ws = new ExecutionWorkspace({
+      executionId: record.executionId,
+      userId: record.userId,
+      conversationId: record.conversationId,
+      userRequest: record.userRequest,
+      goal: record.goal,
+    });
+
+    ws.status = record.status;
+    ws.iteration = record.iteration;
+    ws.stateVersion = record.stateVersion;
+    ws.terminationReason = record.terminationReason;
+
+    if (record.scratchpad) {
+      for (const [key, val] of Object.entries(record.scratchpad)) {
+        ws.scratchpad.set(key, val);
+      }
+    }
+
+    if (events && events.length > 0) {
+      for (let i = 0; i < events.length; i++) {
+        if (events[i].seq !== i + 1) {
+          throw new CheckpointLedgerConsistencyError(
+            `Sequence gap detected in event ledger: expected seq ${i + 1}, found ${events[i].seq}.`
+          );
+        }
+        if (!events[i].checkpointId || events[i].checkpointId.trim() === "") {
+          throw new CheckpointLedgerConsistencyError(
+            `Persisted event ${events[i].eventId} has missing checkpointId.`
+          );
+        }
+      }
+
+      if (events[events.length - 1].seq !== record.lastPersistedSeq) {
+        throw new CheckpointLedgerConsistencyError(
+          `Terminal event sequence (${events[events.length - 1].seq}) does not match workspace lastPersistedSeq (${record.lastPersistedSeq}).`
+        );
+      }
+
+      if (
+        record.lastCommittedCheckpointId &&
+        events[events.length - 1].checkpointId !== record.lastCommittedCheckpointId
+      ) {
+        throw new CheckpointLedgerConsistencyError(
+          `Terminal event checkpointId does not match workspace lastCommittedCheckpointId.`
+        );
+      }
+    }
+
     return ws;
   }
 }

@@ -135,7 +135,9 @@ export class ScheduleSolver {
     existingOccurrences: TemporalOccurrence[],
     locationContext?: StructuredLocationContext,
     idealStartMinute?: number,
-    timezone: string = "UTC"
+    timezone: string = "UTC",
+    cadenceProfile?: DayCadenceProfile,
+    activityType?: "workout" | "work_session" | "routine" | "general"
   ): SolverSlotCandidate {
     const norm = normalizeTemporalInterval({
       dateOnly,
@@ -230,13 +232,27 @@ export class ScheduleSolver {
         const penalty = Math.min(40, Math.floor(delta / 6));
         score -= penalty;
       }
+
+      // Empirical Focus Window Alignment (Loop 6):
+      // Boost suitability for deep work placed within learned focus windows
+      if (cadenceProfile?.preferredFocusWindows && cadenceProfile.preferredFocusWindows.length > 0) {
+        const isInsideFocus = cadenceProfile.preferredFocusWindows.some((w) => {
+          const overlapStart = Math.max(startMinute, w.startMinute);
+          const overlapEnd = Math.min(startMinute + durationMinutes, w.endMinute);
+          return overlapEnd > overlapStart;
+        });
+
+        if (isInsideFocus && activityType === "work_session") {
+          score = Math.min(100, score + 15);
+        }
+      }
     }
 
     const explanation = hasCollision
       ? `Collides with ${collidingIds.length} existing occurrence(s): [${collidingIds.join(", ")}]`
       : !transitionBufferSatisfied
-      ? `Insufficient transition buffer (${transitionBufferRequired} min required)`
-      : `Feasible slot (${score}/100 suitability)`;
+        ? `Insufficient transition buffer (${transitionBufferRequired} min required)`
+        : `Feasible slot (${score}/100 suitability)`;
 
     return {
       dateOnly,
@@ -295,7 +311,9 @@ export class ScheduleSolver {
       req.existingOccurrences,
       req.locationContext,
       idealStart,
-      tz
+      tz,
+      req.cadenceProfile,
+      req.activityType
     );
 
     if (!primaryCandidate.collisionDetected && primaryCandidate.transitionBufferSatisfied) {
@@ -335,7 +353,9 @@ export class ScheduleSolver {
           req.existingOccurrences,
           req.locationContext,
           idealStart,
-          tz
+          tz,
+          req.cadenceProfile,
+          req.activityType
         );
         if (!cFwd.collisionDetected && cFwd.transitionBufferSatisfied) {
           candidates.push(cFwd);
@@ -352,7 +372,9 @@ export class ScheduleSolver {
           req.existingOccurrences,
           req.locationContext,
           idealStart,
-          tz
+          tz,
+          req.cadenceProfile,
+          req.activityType
         );
         if (!cBack.collisionDetected && cBack.transitionBufferSatisfied) {
           candidates.push(cBack);

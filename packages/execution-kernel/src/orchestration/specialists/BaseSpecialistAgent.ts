@@ -112,7 +112,7 @@ export abstract class BaseSpecialistAgent implements ISpecialistAgent {
         payload: h.payload || h,
       }));
 
-      const rawProposals: ActionProposal[] = (parsed.proposals || []).map((p: any) => ({
+      const rawProposals: ActionProposal[] = (parsed.proposals || []).map((p: any, idx: number) => ({
         id: generateId("act"),
         domain: this.domain,
         actionType: p.actionType,
@@ -120,7 +120,7 @@ export abstract class BaseSpecialistAgent implements ISpecialistAgent {
         payload: p.payload || {},
         rationale: p.rationale || `${this.domain} recommendation`,
         reversibility: p.reversibility || "reversible_with_compensation",
-        idempotencyKey: p.idempotencyKey || `${this.domain}_${task.executionId}_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`,
+        idempotencyKey: p.idempotencyKey || `${this.domain}_${task.executionId}_${idx}_${p.actionType || "act"}`,
       }));
 
       // If LLM returned no proposals but a structured semantic operation belongs to this domain

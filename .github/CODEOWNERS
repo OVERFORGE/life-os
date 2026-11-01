@@ -1,0 +1,9 @@
+# Semantic Architecture & Governance Ownership
+# Required 2-architect sign-off on any modifications to core architectural boundaries
+
+scripts/verify-semantic-architecture.ts @exe-architects
+.architectural-exceptions.json @exe-architects
+packages/execution-kernel/src/orchestration/supervisor/ @exe-architects
+packages/execution-kernel/src/orchestration/capabilities/ @exe-architects
+.github/workflows/ci.yml @exe-architects
+

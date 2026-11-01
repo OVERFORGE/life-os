@@ -27,31 +27,45 @@ export interface IContextDegradationState {
   lastValidSnapshotTimestamp?: number;
 }
 
+export type CognitiveEvaluationStatus = "EVALUATED" | "INSUFFICIENT_EVIDENCE" | "STALE";
+
 export interface ICognitiveProjection {
-  state: "DEEP_FOCUS" | "NORMAL" | "DEPLETED" | "OVERLOADED" | "FRAGMENTED";
-  confidence: number;
+  state: "DEEP_FOCUS" | "NORMAL" | "DEPLETED" | "OVERLOADED" | "FRAGMENTED" | "UNKNOWN";
+  confidence: number | null;
   provenance: EvidenceProvenanceType;
   freshnessTimestamp: number;
   primaryDrivers: string[];
-  estimatedFatigue: number; // [0.0 - 1.0]
-  estimatedReadiness: number; // [0.0 - 1.0]
+  estimatedFatigue: number | null; // [0.0 - 1.0]
+  estimatedReadiness: number | null; // [0.0 - 1.0]
+  evidenceEvaluationStatus?: CognitiveEvaluationStatus;
 }
 
 export interface IPhysicalProjection {
-  readinessScore: number; // [0.0 - 1.0]
-  sleepDurationMinutes: number;
-  sleepQualityScore: number; // [0.0 - 1.0]
+  readinessScore: number | null; // [0.0 - 1.0]
+  sleepDurationMinutes: number | null;
+  sleepQualityScore: number | null; // [0.0 - 1.0]
   recoveryStatus: "OPTIMAL" | "ADEQUATE" | "IMPAIRED" | "UNKNOWN";
   freshnessTimestamp: number;
 }
 
 export interface IOperationalScheduleProjection {
+  hardCommitmentCount: number;
   todayMeetingCount: number;
+  meetingCount: number;
   todayMeetingDurationMinutes: number;
+  uniqueOccupiedBlockCount: number;
+  totalOccupiedDurationMinutes: number;
+  remainingFreeIntervalsCount: number;
   freeFocusBlocksRemaining: number;
   nextCommitmentTime?: string; // ISO 8601 or HH:MM
+  nextCommitmentTitle?: string;
+  inProgressCommitmentTitle?: string;
   isScheduleTight: boolean;
+  scheduleDensity: number; // [0.0 - 1.0]
+  calendarState: "FREE" | "LIGHT" | "MODERATE" | "PACKED" | "UNKNOWN";
+  activeDaySpanMinutes?: number;
   freshnessTimestamp: number;
+  dataQualityStatus?: "AUTHORITATIVE" | "PARTIAL" | "FALLBACK_EMPTY" | "DEGRADED";
 }
 
 export interface IGoalPressureProjection {
@@ -71,6 +85,14 @@ export interface IActiveInterventionProjection {
   status: "ACTIVE" | "PENDING_VERIFICATION";
 }
 
+export interface IBehavioralProfileProjection {
+  taskCompletionRate: number | null;
+  procrastinationTendency: number | null;
+  deepWorkConsistency: number;
+  confidenceTier: "LOW" | "MODERATE" | "HIGH";
+  decayHalfLifeDays: number;
+}
+
 export interface ILifeContextProjection {
   userId: string;
   projectionTimestamp: number;
@@ -81,6 +103,7 @@ export interface ILifeContextProjection {
   operationalSchedule: IOperationalScheduleProjection;
   goalPressures: IGoalPressureProjection[];
   activeInterventions: IActiveInterventionProjection[];
+  behavioralProfile?: IBehavioralProfileProjection;
   activeContextMode?: string;
   quietHoursActive: boolean;
   systemPromptContextSummary?: string;

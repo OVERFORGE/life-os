@@ -85,6 +85,14 @@ export interface EntityReference {
 export type PendingOperationState =
   | "CREATED"
   | "AWAITING_CLARIFICATION"
+  | "AWAITING_CONFIRMATION"
+  | "CLAIMED"
+  | "DISPATCHED_IN_FLIGHT"
+  | "CLAIM_EXPIRED_UNEXECUTED"
+  | "INVALIDATED"
+  | "COMPLETED_SUCCESS"
+  | "COMPLETED_FAILED"
+  | "AMBIGUOUS_EXTERNAL_MUTATION"
   | "CONTINUED"
   | "CANCELLED"
   | "EXPIRED"
@@ -97,8 +105,8 @@ export interface IPendingOperationContext {
   domain: "productivity" | "health" | "wellness" | "context";
   partialPayload: Record<string, any>;
   missingRequirement: {
-    kind: "TARGET_ENTITY_RESOLUTION" | "TEMPORAL_SPECIFICATION" | "PARAMETER_VALUE" | "DUPLICATE_CONFIRMATION";
-    targetEntityType?: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "weight" | "context_mode";
+    kind: "TARGET_ENTITY_RESOLUTION" | "TEMPORAL_SPECIFICATION" | "PARAMETER_VALUE" | "DUPLICATE_CONFIRMATION" | "CONFIRMATION" | "HITL_CONFIRMATION";
+    targetEntityType?: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "weight" | "context_mode" | "storage";
     parameterName?: string;
   };
   clarificationQuestion: string;
@@ -111,10 +119,25 @@ export interface IPendingOperationContext {
   state: PendingOperationState;
   createdAt: Date | string;
   expiresAt: Date | string;
+
+  // V2.3.1 Security & Concurrency Extensions:
+  userId?: string;
+  executionId?: string;
+  capabilityURN?: string;
+  providerHint?: string;
+  resolvedPayload?: Record<string, any>;
+  approvalSignature?: string;
+  keyVersion?: string;
+  dispatchGeneration?: number;
+  claimFencingToken?: string;
+  claimedAt?: Date | string;
+  leaseExpiresAt?: Date | string;
+  dispatchedAt?: Date | string;
+  completedAt?: Date | string;
 }
 
 export interface IContextEntityRef {
-  entityType: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "incident" | "context_mode" | "weight" | "file" | "email" | "contact";
+  entityType: "task" | "goal" | "meal" | "workout" | "schedule_block" | "activity" | "incident" | "context_mode" | "weight" | "file" | "email" | "contact" | "email_draft";
   entityId: string;
   displayName: string;
   domain: "productivity" | "health" | "wellness" | "context";

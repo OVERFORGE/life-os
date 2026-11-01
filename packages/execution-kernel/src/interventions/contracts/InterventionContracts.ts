@@ -43,6 +43,7 @@ export interface IInterventionRecord {
   expectedOutcome: {
     targetMetric: InterventionTargetMetric;
     expectedDelta: number;
+    successThresholdRatio?: number;
   };
   executedAt: number;
   windows: {
@@ -69,6 +70,11 @@ export interface CreateInterventionInput {
   expectedOutcome: {
     targetMetric: InterventionTargetMetric;
     expectedDelta: number;
+    successThresholdRatio?: number;
+  };
+  customWindows?: {
+    tShortOffsetMs?: number;
+    tLongOffsetMs?: number;
   };
   executedAt?: number;
 }

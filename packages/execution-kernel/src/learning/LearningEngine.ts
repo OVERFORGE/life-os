@@ -60,7 +60,8 @@ export class LearningEngine {
 
   processObservations(
     inputs: Observation[] | ExecutionOutcome[],
-    generationTimestamp?: number
+    generationTimestamp?: number,
+    userId?: string
   ): LearningEngineOutput {
     console.log(`🧠 [LEARNING_ENGINE] Processing ${inputs.length} input(s) for behavioral learning...`);
 
@@ -70,17 +71,24 @@ export class LearningEngine {
     // Check if inputs are Observation[] or ExecutionOutcome[]
     const observations = inputs.filter((i): i is Observation => "schemaVersion" in i);
     const outcomes     = inputs.filter((i): i is ExecutionOutcome => "outcomeId" in i);
+    const effectiveUserId = userId || (observations[0] as any)?.userId;
 
     if (observations.length > 0) {
       const taskVelocityObs = observations.filter((o) => o.type === "TaskExecutionVelocity");
       if (taskVelocityObs.length > 0) {
         const avgVelocity = taskVelocityObs.reduce((sum, o) => sum + o.normalizedValue, 0) / taskVelocityObs.length;
-        profileEngine.updateProfile({
+        const updates = {
           taskCompletionRate:    Number(avgVelocity.toFixed(2)),
           // D-11: Removed fabricated +0.10 offset — executionConsistency is set to avgVelocity
           // until a dedicated ScheduleAdherence observation type is available.
           executionConsistency:  Number(avgVelocity.toFixed(2)),
-        });
+        };
+
+        if (effectiveUserId) {
+          profileEngine.updateUserProfile(effectiveUserId, updates);
+        } else {
+          profileEngine.updateProfile(updates);
+        }
       }
     }
 
@@ -131,7 +139,9 @@ export class LearningEngine {
     }
 
     const allPatterns  = patternLibrary.getAllPatterns();
-    const activeProfile = profileEngine.getProfile();
+    const activeProfile = effectiveUserId
+      ? profileEngine.getUserProfile(effectiveUserId)
+      : profileEngine.getProfile();
 
     return Object.freeze({
       activeProfile,

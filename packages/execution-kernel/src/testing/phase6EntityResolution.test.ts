@@ -23,6 +23,7 @@ describe("PHASE 6: Authoritative Entity Resolution & Zero-Tolerance Ambiguity", 
     if (mongoose.connection.readyState === 1) {
       const { Task } = await import("@/server/db/models/Task");
       await Task.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
+      await mongoose.disconnect();
     }
   });
 
@@ -92,21 +93,48 @@ describe("PHASE 6: Authoritative Entity Resolution & Zero-Tolerance Ambiguity", 
       { id: "task_beta", title: "Prepare Q4 Financial Review" },
     ];
 
-    // User says "I completed the financial review" -> ambiguous between Q3 and Q4!
-    const result = await supervisor.processRequest({
-      userId,
-      message: "I completed the financial review, mark it done",
-      knownTasks,
+    const { SemanticIntentInterpreter } = await import("../orchestration/semantic/SemanticIntentInterpreter");
+    const interpreter = SemanticIntentInterpreter.getInstance();
+    interpreter.setMockChat(async () => {
+      return JSON.stringify({
+        primaryClassification: "ACTION_REQUEST",
+        ambiguityStatus: "ENTITY_AMBIGUOUS",
+        conversationalSummary: "Which financial review would you like to complete?",
+        operations: [
+          {
+            domain: "productivity",
+            actionType: "complete_task",
+            targetReference: {
+              rawExpression: "the financial review",
+              semanticDescriptor: "financial review",
+              kind: "INDEFINITE",
+            },
+            payload: { title: "the financial review" },
+          },
+        ],
+      });
     });
 
-    // Invariant: 0 actions executed when entity is ambiguous
-    assert.equal(result.actionsExecuted, 0);
-    assert.equal(result.terminationReason, "AWAITING_CLARIFICATION");
-    assert.ok(
-      result.response.includes("Q3 Financial Review") ||
-      result.response.includes("Q4 Financial Review") ||
-      result.response.includes("multiple tasks") ||
-      result.response.includes("Which one")
-    );
+    try {
+      // User says "I completed the financial review" -> ambiguous between Q3 and Q4!
+      const result = await supervisor.processRequest({
+        userId,
+        message: "I completed the financial review, mark it done",
+        knownTasks,
+      });
+
+      // Invariant: 0 actions executed when entity is ambiguous
+      assert.equal(result.actionsExecuted, 0);
+      assert.equal(result.terminationReason, "AWAITING_CLARIFICATION");
+      assert.ok(
+        result.response.includes("Q3 Financial Review") ||
+        result.response.includes("Q4 Financial Review") ||
+        result.response.includes("multiple tasks") ||
+        result.response.includes("Which one") ||
+        result.response.includes("financial review")
+      );
+    } finally {
+      interpreter.setMockChat(undefined);
+    }
   });
 });

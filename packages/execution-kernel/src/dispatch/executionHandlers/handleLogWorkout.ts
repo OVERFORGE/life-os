@@ -1,7 +1,7 @@
-import { WorkoutSession } from "@/server/db/models/WorkoutSession";
-import { DailyLog } from "@/server/db/models/DailyLog";
+import mongoose from "mongoose";
 import { User } from "@/server/db/models/User";
 import { getActiveDate } from "../../automation/timeUtils";
+import { gymEngine, GymEngineOptions } from "@/features/gym/engine/gymEngine";
 
 // Parse duration from free text like "1 hour", "45 minutes", "90 min"
 function parseDurationSeconds(description: string): number {
@@ -18,40 +18,56 @@ function parseDurationSeconds(description: string): number {
     return totalSeconds > 0 ? totalSeconds : 3600;
 }
 
-export async function handleLogWorkout(payload: { description: string }, userId: string) {
-    const user = await User.findById(userId).select("settings").lean();
-    const today = getActiveDate(user?.settings?.timezone);
+export async function handleLogWorkout(
+    payload: { description: string },
+    userId: string,
+    options?: GymEngineOptions
+) {
+    let timezone: string | undefined;
+    try {
+        if (mongoose.Types.ObjectId.isValid(userId)) {
+            const user = await User.findById(userId).select("settings").lean();
+            timezone = (user as any)?.settings?.timezone;
+        }
+    } catch {
+        // Fallback for mock environments
+    }
+    const today = getActiveDate(timezone);
 
     const desc = payload.description || "gym session";
     const durationSeconds = parseDurationSeconds(desc);
     const durationMinutes = Math.round(durationSeconds / 60);
 
-    // Build a lightweight session record — no exercises needed for voice-logged sessions
-    await WorkoutSession.create({
+    // Canonical workout session creation via gymEngine
+    const result = await gymEngine.logSession(
         userId,
-        durationSeconds,
-        splitDayName: "Voice Logged",
-        exercises: [],
-        date: new Date(`${today}T12:00:00Z`),
-    });
-
-    // Cross-sync: mark gym = true in DailyLog
-    await DailyLog.findOneAndUpdate(
-        { userId, date: today },
         {
-            $set: { "physical.gym": true },
-            $setOnInsert: { signals: {}, sleep: {}, mental: {}, work: {} }
+            durationSeconds,
+            splitDayName: "Voice Logged",
+            workoutType: "gym",
+            date: new Date(`${today}T12:00:00Z`),
+            dateOnly: today,
+            timezone,
         },
-        { upsert: true }
+        options
     );
+
+    if (!result.success) {
+        return {
+            type: "log_workout",
+            success: false,
+            error: "Failed to log workout session through canonical gym engine",
+        };
+    }
 
     return {
         type: "log_workout",
         success: true,
         data: {
+            sessionId: result.session?._id,
             date: today,
             durationMinutes,
-            message: `Workout session logged (${durationMinutes} min). Gym marked for today.`
+            message: `Workout session logged (${durationMinutes} min). Recalculation dispatched for ${today}.`
         }
     };
 }

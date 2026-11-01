@@ -1,0 +1,132 @@
+graph TD
+    %% =========================================================================
+    %% Diagram 2: Complete Engine Dependency Graph
+    %% Uses stable Component IDs (ENG-xxx, SVC-xxx, AGT-xxx, REG-xxx, PIPE-xxx)
+    %% Solid line: ACTIVE_VERIFIED | Dashed line: ACTIVE_PARTIALLY_VERIFIED | Red line: DISCONNECTED
+    %% =========================================================================
+
+    subgraph SUPERVISOR_LAYER ["Cognitive Supervisor & Routing Engines"]
+        SVC_001["ConversationService (SVC-001)"]
+        AGT_001["Supervisor (AGT-001)"]
+        ENG_001["FastPathExecutor (ENG-001)"]
+        ENG_002["SemanticIntentInterpreter (ENG-002)"]
+        ENG_003["DynamicRouter (ENG-003)"]
+        ENG_004["ParallelSpecialistExecutor (ENG-004)"]
+        ENG_005["SynthesisEngine (ENG-005)"]
+    end
+
+    subgraph SPECIALIST_LAYER ["Domain Reasoning Specialists"]
+        AGT_002["ProductivityAgent (AGT-002)"]
+        AGT_003["HealthAgent (AGT-003)"]
+        AGT_004["WellnessAgent (AGT-004)"]
+    end
+
+    subgraph STAGE4_ORCHESTRATION ["Stage 4 Dynamic Workflow DAG Engines"]
+        ENG_006["DynamicWorkflowPlanner (ENG-006)"]
+        ENG_007["PlanValidator (ENG-007)"]
+        ENG_008["WorkflowExecutionGraph (ENG-008)"]
+        ENG_009["ConflictGovernanceEngine (ENG-009)"]
+        ENG_010["IterativeActionDispatcher (ENG-010)"]
+    end
+
+    subgraph KERNEL_LAYER ["Sovereign Execution Kernel & Verification"]
+        SVC_008["KernelCapabilityService (SVC-008)"]
+        REG_001["ActionAdapterRegistry (REG-001)"]
+        REG_002["CapabilityRegistry (REG-002)"]
+        ENG_011["Idempotency Gate (ENG-011)"]
+        ENG_012["ObjectiveVerificationEngine (ENG-012)"]
+        ENG_013["CompensationSagaCoordinator (ENG-013)"]
+        ENG_014["CrashRecoveryEngine (ENG-014)"]
+    end
+
+    subgraph WORLD_BRAIN_LAYER ["Analytical World Model Subsystem (WorldModelV2)"]
+        ENG_015["WorldModelV2 (ENG-015)"]
+        ENG_016["WorldModelBridge (ENG-016)"]
+        ENG_017["LifeStateEngine (ENG-017)"]
+        ENG_018["GoalIntelligenceEngine (ENG-018)"]
+        ENG_019["CognitiveStateEngine (ENG-019)"]
+        ENG_020["ScheduleSolver (ENG-020)"]
+        ENG_021["ExecutionGraph [Task DAG] (ENG-021)"]
+        ENG_022["AdaptiveRepairEngine (ENG-022)"]
+        ENG_023["CadenceLearningEngine (ENG-023)"]
+        ENG_024["BehaviorEvolution (ENG-024)"]
+        ENG_025["PreferenceAuthorityManager (ENG-025)"]
+    end
+
+    subgraph TELEMETRY_AND_MEMORY ["Continuous Telemetry & Memory Pipelines"]
+        SVC_009["TelemetryIngestionService (SVC-009)"]
+        PIPE_001["ObservationPipeline (PIPE-001)"]
+        PIPE_002["MemoryFormationPipeline (PIPE-002)"]
+        QUEUE_001["DurableMemoryJobQueue (QUEUE-001)"]
+        REP_001["MemoryRepository (REP-001)"]
+    end
+
+    subgraph PROACTIVE_LAYER ["Proactive & Ambient Engines"]
+        ENG_026["ProactivePolicyDaemon (ENG-026)"]
+        ENG_027["MorningBriefingEngine (ENG-027)"]
+    end
+
+    %% Dependency Connections
+    SVC_001 -->|invokes| AGT_001
+    AGT_001 -->|checks| ENG_001
+    AGT_001 -->|interprets via| ENG_002
+    ENG_002 -->|feeds| ENG_003
+    ENG_003 -->|routes to| ENG_001
+    ENG_003 -->|routes to| ENG_004
+    ENG_003 -->|routes to| ENG_010
+
+    ENG_004 -->|parallel analyze| AGT_002
+    ENG_004 -->|parallel analyze| AGT_003
+    ENG_004 -->|parallel analyze| AGT_004
+    AGT_002 -->|submits proposals| ENG_005
+    AGT_003 -->|submits proposals| ENG_005
+    AGT_004 -->|submits proposals| ENG_005
+    ENG_005 -->|validated batch| SVC_008
+
+    ENG_001 -->|direct action| SVC_008
+
+    %% Stage 4 Dependencies
+    ENG_010 -->|plans with| ENG_006
+    ENG_006 -->|validates via| ENG_007
+    ENG_007 -->|checks catalog| REG_002
+    ENG_007 -->|builds| ENG_008
+    ENG_008 -->|governs concurrency| ENG_009
+    ENG_009 -->|dispatches steps| SVC_008
+    ENG_010 -->|verifies steps| ENG_012
+    ENG_010 -->|recovers via| ENG_014
+    SVC_008 -->|compensates via| ENG_013
+    SVC_008 -->|deduplicates via| ENG_011
+    SVC_008 -->|routes to| REG_001
+
+    %% World Model Dependencies
+    ENG_015 -->|orchestrates| ENG_017
+    ENG_015 -->|orchestrates| ENG_018
+    ENG_018 -->|requires graph| ENG_021
+    ENG_021 -->|repairs via| ENG_022
+    ENG_017 -->|evaluates| ENG_019
+
+    %% Telemetry & Memory Dependencies
+    SVC_009 -->|ingests through| PIPE_001
+    SVC_001 -->|async enqueues| QUEUE_001
+    QUEUE_001 -->|processes via| PIPE_002
+    PIPE_002 -->|persists to| REP_001
+
+    %% Critical Broken / Partially Integrated Edges
+    ENG_016 -.->|ACTIVE_PARTIALLY_VERIFIED: Passes static defaults| AGT_001
+    ENG_015 -.->|CONNECTED_BUT_UNUSED: Not queried during conversation| ENG_016
+    PIPE_001 -.-x|DISCONNECTED: Observations not fed to WorldModelBridge| ENG_016
+    ENG_024 -.-x|DISCONNECTED: In-memory Map; not persisted to Mongo| ENG_015
+    ENG_025 -.-x|DISCONNECTED: 5-tier prefs not checked at kernel gate| SVC_008
+    ENG_020 -.-x|DISCONNECTED: ScheduleSolver not wired to calendar mutations| AGT_001
+    ENG_026 -.-x|DISCONNECTED: Proactive daemon has zero cron triggers| AGT_001
+    ENG_027 -.-x|DISCONNECTED: Morning briefing has zero wake triggers| SVC_001
+
+    %% Styling
+    classDef active stroke:#2e7d32,stroke-width:2px,fill:#e8f5e9;
+    classDef partial stroke:#f57f17,stroke-width:2px,stroke-dasharray: 5 5,fill:#fffde7;
+    classDef broken stroke:#c62828,stroke-width:2px,stroke-dasharray: 2 2,fill:#ffebee;
+
+    class SVC_001,AGT_001,ENG_001,ENG_002,ENG_003,ENG_004,ENG_005,AGT_002,AGT_003,AGT_004,ENG_007,ENG_008,ENG_009,ENG_010,SVC_008,REG_001,REG_002,ENG_011,ENG_012,ENG_013,ENG_014,QUEUE_001,PIPE_002,REP_001 active;
+    class ENG_006,ENG_015,ENG_016,ENG_017,ENG_018,ENG_019,ENG_021,ENG_022,SVC_009,PIPE_001 partial;
+    class ENG_020,ENG_023,ENG_024,ENG_025,ENG_026,ENG_027 broken;
+

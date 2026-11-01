@@ -10,7 +10,7 @@
  */
 
 import { IKernelActionAdapter, CompensationResult } from "./ActionAdapters";
-import { ActionProposal } from "../contracts/ActionProposalContracts";
+import { ActionProposal, ResultProvenance, ResultFreshnessMetadata } from "../contracts/ActionProposalContracts";
 import {
   CapabilityURN,
   CapabilityResultMap,
@@ -20,6 +20,9 @@ import {
 import { ProviderRegistry } from "../external/providers/ProviderRegistry";
 import { CapabilityPresentationRegistry } from "../external/presentation/CapabilityPresentationRegistry";
 import { CredentialVault } from "../../shared/CredentialVault";
+import mongoose from "mongoose";
+import { StaleWorkerFencedError } from "../contracts/WorkflowExecutionContracts";
+import { ExecutionPersistenceService } from "../workspace/ExecutionPersistenceService";
 
 export interface ExternalExecutionRecord {
   idempotencyKey: string;
@@ -33,6 +36,8 @@ export interface ExternalExecutionRecord {
   status: "SUCCEEDED" | "FAILED" | "UNKNOWN_EXTERNAL_STATE";
   durationMs: number;
   timestamp: number;
+  provenance?: ResultProvenance;
+  freshness?: ResultFreshnessMetadata;
 }
 
 export interface ExternalCapabilityAdapterOptions {
@@ -135,6 +140,31 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
   private replayMode: boolean = false;
   private googleRefreshPromises: Map<string, Promise<string | null>> = new Map();
   private activeQuickCarts: Map<string, any[]> = new Map();
+
+  private static orphanReceipts = new Map<string, any>();
+
+  public static recordOrphanResponse(
+    idempotencyKey: string,
+    executionId?: string,
+    generation?: number,
+    result?: any
+  ): void {
+    ExternalCapabilityAdapter.orphanReceipts.set(idempotencyKey, {
+      idempotencyKey,
+      executionId,
+      generation,
+      result,
+      quarantinedAt: new Date(),
+    });
+  }
+
+  public static getOrphanReceipt(idempotencyKey: string): any {
+    return ExternalCapabilityAdapter.orphanReceipts.get(idempotencyKey);
+  }
+
+  public static clearOrphanReceipts(): void {
+    ExternalCapabilityAdapter.orphanReceipts.clear();
+  }
 
   constructor(options?: ExternalCapabilityAdapterOptions) {
     this.options = options;
@@ -303,6 +333,14 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
     execOptions?: {
       mode?: "LIVE" | "REPLAY";
       replaySnapshot?: any;
+      executionId?: string;
+      stepId?: string;
+      workerId?: string;
+      leaseOwnerToken?: string;
+      generation?: number;
+      leaseExpiresAt?: Date;
+      leaseCheckFailed?: boolean;
+      pauseBeforeSocket?: () => Promise<void>;
     }
   ): Promise<any> {
     const payload = proposal.payload;
@@ -322,10 +360,83 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
       }
       return {
         success: historical.status === "SUCCEEDED",
+        actionType: "external_capability_action",
+        capabilityURN: historical.capabilityURN,
+        providerId: historical.providerId,
+        provenance: "REPLAY_MATCH" as ResultProvenance,
+        freshness: {
+          recordedAt: historical.timestamp,
+          verifiedAt: historical.timestamp,
+          isStale: false,
+        },
+        timestamp: historical.timestamp,
         data: historical.result,
         result: historical.result,
         ...(typeof historical.result === "object" ? historical.result : {}),
       };
+    }
+
+    // Pre-dispatch lease validation (TC-28)
+    if (execOptions?.leaseExpiresAt) {
+      const remainingMs = execOptions.leaseExpiresAt.getTime() - Date.now();
+      if (remainingMs < 2000) {
+        throw new StaleWorkerFencedError(
+          "Pre-dispatch lease validation failed: fewer than 2,000ms remaining on worker lease."
+        );
+      }
+    }
+
+    if (execOptions?.leaseCheckFailed) {
+      throw new StaleWorkerFencedError("Worker lease check failed prior to dispatch intent write.");
+    }
+
+    // Persist pre-dispatch intent (DISPATCH_INTENT_RECORDED)
+    const testStore = ExecutionPersistenceService.getInstance().getTestStore();
+    if (mongoose.connection && mongoose.connection.readyState === 1) {
+      const { ActionAuditRecordModel } = await import("../../../../../apps/web/server/db/models/ActionAuditRecordModel");
+      await ActionAuditRecordModel.findOneAndUpdate(
+        { idempotencyKey },
+        {
+          $set: {
+            idempotencyKey,
+            actionId: proposal.id,
+            userId,
+            executionId: execOptions?.executionId,
+            stepId: execOptions?.stepId,
+            workerId: execOptions?.workerId,
+            leaseOwnerToken: execOptions?.leaseOwnerToken,
+            generation: execOptions?.generation ?? 0,
+            domain: proposal.domain,
+            actionType: proposal.actionType,
+            status: "DISPATCH_INTENT_RECORDED",
+            payload: proposal.payload,
+            dispatchedAt: new Date(),
+            timestamp: Date.now(),
+          },
+        },
+        { upsert: true, new: true }
+      );
+    } else if (testStore?.actionAudits) {
+      testStore.actionAudits.set(idempotencyKey, {
+        idempotencyKey,
+        actionId: proposal.id,
+        userId,
+        executionId: execOptions?.executionId,
+        stepId: execOptions?.stepId,
+        workerId: execOptions?.workerId,
+        leaseOwnerToken: execOptions?.leaseOwnerToken,
+        generation: execOptions?.generation ?? 0,
+        domain: proposal.domain,
+        actionType: proposal.actionType,
+        status: "DISPATCH_INTENT_RECORDED",
+        payload: proposal.payload,
+        dispatchedAt: new Date(),
+        timestamp: Date.now(),
+      });
+    }
+
+    if (execOptions?.pauseBeforeSocket) {
+      await execOptions.pauseBeforeSocket();
     }
 
     // 2. LIVE EXECUTION DISPATCH
@@ -366,6 +477,20 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
 
       const durationMs = Date.now() - startTime;
 
+      const unwrappedData = result?.data !== undefined ? result.data : result;
+      const isPreview =
+        payload.providerId.includes("mobility") ||
+        payload.providerId.includes("commerce") ||
+        payload.capabilityURN.includes("rides.estimate") ||
+        payload.capabilityURN.includes("food.search") ||
+        payload.capabilityURN.includes("quick.search");
+      const provenance: ResultProvenance = isPreview ? "FIXTURE_PREVIEW" : "LIVE_VERIFIED";
+      const freshness: ResultFreshnessMetadata = {
+        recordedAt: startTime,
+        verifiedAt: Date.now(),
+        isStale: false,
+      };
+
       // Record in execution ledger
       const record: ExternalExecutionRecord = {
         idempotencyKey,
@@ -379,21 +504,88 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
         status: "SUCCEEDED",
         durationMs,
         timestamp: Date.now(),
+        provenance,
+        freshness,
       };
       this.executionLedger.set(idempotencyKey, record);
 
-      const unwrappedData = result?.data !== undefined ? result.data : result;
+      // Fenced transition to SUCCEEDED
+      if (mongoose.connection && mongoose.connection.readyState === 1) {
+        const { ActionAuditRecordModel } = await import("../../../../../apps/web/server/db/models/ActionAuditRecordModel");
+        const query: any = {
+          idempotencyKey,
+          status: "DISPATCH_INTENT_RECORDED",
+        };
+        if (execOptions?.leaseOwnerToken) {
+          query.leaseOwnerToken = execOptions.leaseOwnerToken;
+          query.generation = execOptions.generation;
+        }
+
+        const updated = await ActionAuditRecordModel.findOneAndUpdate(
+          query,
+          {
+            $set: {
+              status: "SUCCEEDED",
+              result: unwrappedData,
+              completedAt: new Date(),
+            },
+          },
+          { new: true }
+        );
+
+        if (!updated && execOptions?.leaseOwnerToken) {
+          ExternalCapabilityAdapter.recordOrphanResponse(
+            idempotencyKey,
+            execOptions.executionId,
+            execOptions.generation,
+            unwrappedData
+          );
+          throw new StaleWorkerFencedError();
+        }
+      } else if (testStore?.actionAudits) {
+        const existingAudit = testStore.actionAudits.get(idempotencyKey);
+        if (existingAudit) {
+          if (
+            execOptions?.leaseOwnerToken &&
+            (existingAudit.leaseOwnerToken !== execOptions.leaseOwnerToken ||
+              existingAudit.generation !== execOptions.generation)
+          ) {
+            ExternalCapabilityAdapter.recordOrphanResponse(
+              idempotencyKey,
+              execOptions.executionId,
+              execOptions.generation,
+              unwrappedData
+            );
+            throw new StaleWorkerFencedError();
+          }
+          existingAudit.status = "SUCCEEDED";
+          existingAudit.result = unwrappedData;
+          existingAudit.completedAt = new Date();
+        }
+      }
+
       return {
         success: result?.success !== undefined ? result.success : true,
+        actionType: "external_capability_action",
         capabilityURN: payload.capabilityURN,
         providerId: payload.providerId,
+        provenance,
+        freshness,
         data: unwrappedData,
         result: unwrappedData,
         ...(typeof unwrappedData === "object" ? unwrappedData : {}),
       };
     } catch (err: any) {
+      if (err instanceof StaleWorkerFencedError) {
+        throw err;
+      }
       const durationMs = Date.now() - startTime;
-      const isTimeout = err.name === "TimeoutError" || err.message?.toLowerCase().includes("timed out") || err.message?.toLowerCase().includes("timeout");
+      const isTimeout =
+        err.name === "TimeoutError" ||
+        err.name === "AbortError" ||
+        err.message?.toLowerCase().includes("timed out") ||
+        err.message?.toLowerCase().includes("timeout") ||
+        err.message?.includes("UNKNOWN_EXTERNAL_STATE");
 
       const failureStatus = isTimeout ? "UNKNOWN_EXTERNAL_STATE" : "FAILED";
 
@@ -412,14 +604,41 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
       };
       this.executionLedger.set(idempotencyKey, record);
 
+      // Update audit record on failure / timeout
+      if (mongoose.connection && mongoose.connection.readyState === 1) {
+        try {
+          const { ActionAuditRecordModel } = await import("../../../../../apps/web/server/db/models/ActionAuditRecordModel");
+          await ActionAuditRecordModel.updateOne(
+            { idempotencyKey },
+            {
+              $set: {
+                status: isTimeout ? "OUTCOME_UNKNOWN" : "FAILED_CONFIRMED",
+                error: err.message,
+                completedAt: new Date(),
+              },
+            }
+          );
+        } catch (_) {}
+      } else if (testStore?.actionAudits) {
+        const existingAudit = testStore.actionAudits.get(idempotencyKey);
+        if (existingAudit) {
+          existingAudit.status = isTimeout ? "OUTCOME_UNKNOWN" : "FAILED_CONFIRMED";
+          existingAudit.error = err.message;
+          existingAudit.completedAt = new Date();
+        }
+      }
+
       if (isTimeout) {
+        const timeoutMsg = err.message && err.message.includes("Do not retry blindly")
+          ? err.message
+          : `[UNKNOWN_EXTERNAL_STATE]: Request to '${payload.providerId}' timed out. Automatic compensation halted. Do not retry blindly.`;
         return {
           success: false,
           capabilityURN: payload.capabilityURN,
           providerId: payload.providerId,
           status: "UNKNOWN_EXTERNAL_STATE",
           error: {
-            message: `[UNKNOWN_EXTERNAL_STATE]: Request to '${payload.providerId}' timed out. Automatic compensation halted.`,
+            message: timeoutMsg,
           },
         };
       }
@@ -495,6 +714,20 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
     providerId?: string
   ): Promise<{ conn: any; accessToken: string | null; preferences: Record<string, any> }> {
     if (!userId || !providerId) return { conn: null, accessToken: null, preferences: {} };
+
+    if (this.options?.tokenResolver && userId && providerId) {
+      try {
+        const resolved = await this.options.tokenResolver(userId, providerId as ProviderId);
+        if (resolved?.accessToken) {
+          return {
+            conn: { status: "ACTIVE", providerId, userId },
+            accessToken: resolved.accessToken,
+            preferences: { token: resolved.accessToken },
+          };
+        }
+      } catch (_) {}
+    }
+
     try {
       let UserProviderConnectionModel: any = null;
       try {
@@ -591,7 +824,11 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
 
             if (!rawToken && GOOGLE_PROVIDERS.includes(providerId)) {
               let otherGoogleConn: any = null;
-              if (UserProviderConnectionModel) {
+              const isDbReady =
+                UserProviderConnectionModel?.db?.readyState === 1 ||
+                UserProviderConnectionModel?.base?.connection?.readyState === 1 ||
+                require("mongoose").connection?.readyState === 1;
+              if (UserProviderConnectionModel && isDbReady) {
                 otherGoogleConn = await UserProviderConnectionModel.findOne({
                   $or: [
                     { userId: { $in: [userId, userId.toString()] }, providerId: { $in: GOOGLE_PROVIDERS }, status: "ACTIVE" },
@@ -680,6 +917,11 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
             require("mongoose").models?.UserProviderConnection;
         }
 
+        const isDbReady =
+          UserProviderConnectionModel?.db?.readyState === 1 ||
+          UserProviderConnectionModel?.base?.connection?.readyState === 1 ||
+          require("mongoose").connection?.readyState === 1;
+
         const rawPrefs =
           targetConn?.preferences instanceof Map
             ? Object.fromEntries(targetConn.preferences)
@@ -711,7 +953,7 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
             ],
           };
 
-          if (UserProviderConnectionModel) {
+          if (UserProviderConnectionModel && isDbReady) {
             anyGoogleWithRefresh = await UserProviderConnectionModel.findOne(query).lean();
           }
           if (!anyGoogleWithRefresh) {
@@ -796,7 +1038,7 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
           },
         };
 
-        if (UserProviderConnectionModel && userId) {
+        if (UserProviderConnectionModel && isDbReady && userId) {
           await UserProviderConnectionModel.updateMany(updateFilter, updateDoc);
         } else {
           const mongooseConn = require("mongoose").connection;
@@ -1026,6 +1268,179 @@ export class ExternalCapabilityAdapter implements IKernelActionAdapter<ExternalC
             bodyText,
             createdAt: Date.now(),
             url: `https://mail.google.com/mail/u/0/#drafts/${draftMessageId}`,
+          };
+        });
+      }
+
+      case "productivity.email.update_draft": {
+        return await this.executeGoogleApiWithRetry(userId, "gmail", async (token) => {
+          const draftId = String(parameters?.draftId || "").trim();
+          if (!draftId) {
+            throw new Error("MISSING_PARAMETER: draftId is required to update an email draft.");
+          }
+
+          // Step 1: Retrieve authoritative remote draft before applying edits
+          const getRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(draftId)}?format=full`, {
+            method: "GET",
+            headers: {
+              Authorization: `Bearer ${token}`,
+            },
+          });
+
+          if (getRes.status === 404) {
+            throw new Error("DRAFT_NOT_FOUND: The requested draft does not exist.");
+          }
+
+          if (!getRes.ok) {
+            const errBody = await getRes.json().catch(() => ({}));
+            throw new Error(errBody.error?.message || `Gmail API returned status ${getRes.status} while fetching draft`);
+          }
+
+          const remoteDraft = await getRes.json();
+
+          // Step 2: Pre-mutation MIME safety guard: reject attachments / complex structures / malformed payloads before destructive PUT
+          const remotePayload = remoteDraft.message?.payload;
+          if (!remotePayload || typeof remotePayload !== "object" || !Array.isArray(remotePayload.headers)) {
+            throw new Error("UNSUPPORTED_DRAFT_MIME_TYPE: Draft payload is missing or malformed; cannot safely reconstruct.");
+          }
+
+          const isUnsupportedMime = (p: any): boolean => {
+            if (!p) return false;
+            if (p.filename && p.filename.trim() !== "") return true;
+            if (p.body?.attachmentId) return true;
+            const mt = (p.mimeType || "").toLowerCase();
+            if (
+              mt.startsWith("multipart/mixed") ||
+              mt.startsWith("multipart/alternative") ||
+              mt.startsWith("multipart/related") ||
+              mt.startsWith("application/")
+            ) {
+              return true;
+            }
+            const cd = (p.headers || []).find((h: any) => h.name?.toLowerCase() === "content-disposition")?.value || "";
+            if (cd.toLowerCase().includes("attachment")) {
+              return true;
+            }
+            if (Array.isArray(p.parts)) {
+              return p.parts.some((sub: any) => isUnsupportedMime(sub));
+            }
+            return false;
+          };
+
+          if (isUnsupportedMime(remotePayload)) {
+            throw new Error("UNSUPPORTED_DRAFT_MIME_TYPE: Draft contains attachments or complex MIME structures that cannot be safely modified.");
+          }
+
+          // Step 3: Extract remote fields
+          const headers = remotePayload?.headers || [];
+          const getHeader = (name: string): string | undefined => {
+            return headers.find((h: any) => h.name?.toLowerCase() === name.toLowerCase())?.value;
+          };
+          const remoteSubject = getHeader("subject") || "(No Subject)";
+          const remoteTo = getHeader("to") || "";
+          const remoteCc = getHeader("cc") || undefined;
+          const remoteBcc = getHeader("bcc") || undefined;
+
+          let remoteBodyText = "";
+          const extractBodyText = (p: any): string => {
+            if (!p) return "";
+            if (p.mimeType === "text/plain" && p.body?.data) {
+              return Buffer.from(p.body.data, "base64url").toString("utf-8");
+            }
+            if (Array.isArray(p.parts)) {
+              for (const subPart of p.parts) {
+                const txt = extractBodyText(subPart);
+                if (txt) return txt;
+              }
+            }
+            return "";
+          };
+          remoteBodyText = extractBodyText(remotePayload);
+
+          // Step 4: Merge targeted fields preserving unaffected fields
+          const finalSubject = parameters?.subject !== undefined && parameters.subject !== null
+            ? String(parameters.subject)
+            : remoteSubject;
+
+          let finalTo: string[];
+          if (parameters?.to !== undefined && parameters.to !== null) {
+            finalTo = Array.isArray(parameters.to)
+              ? parameters.to.filter(Boolean)
+              : (parameters.to ? [parameters.to] : []);
+          } else {
+            finalTo = remoteTo ? remoteTo.split(",").map((s: string) => s.trim()).filter(Boolean) : [];
+          }
+
+          const finalBody = parameters?.bodyText !== undefined && parameters.bodyText !== null
+            ? String(parameters.bodyText)
+            : remoteBodyText;
+
+          let finalCc: string[] | undefined;
+          if (parameters?.cc !== undefined && parameters.cc !== null) {
+            finalCc = Array.isArray(parameters.cc) ? parameters.cc.filter(Boolean) : [parameters.cc];
+          } else if (remoteCc) {
+            finalCc = remoteCc.split(",").map((s: string) => s.trim()).filter(Boolean);
+          }
+
+          let finalBcc: string[] | undefined;
+          if (parameters?.bcc !== undefined && parameters.bcc !== null) {
+            finalBcc = Array.isArray(parameters.bcc) ? parameters.bcc.filter(Boolean) : [parameters.bcc];
+          } else if (remoteBcc) {
+            finalBcc = remoteBcc.split(",").map((s: string) => s.trim()).filter(Boolean);
+          }
+
+          // Step 5: Build RFC822 message
+          const rawRfc822 = buildRfc822Message({
+            to: finalTo,
+            subject: finalSubject,
+            bodyText: finalBody,
+            cc: finalCc,
+            bcc: finalBcc,
+          });
+
+          // Step 6: Issue PUT with 15s timeout
+          const abortController = new AbortController();
+          const timeoutId = setTimeout(() => abortController.abort(), 15000);
+
+          let putRes: Response;
+          try {
+            putRes = await fetch(`https://gmail.googleapis.com/gmail/v1/users/me/drafts/${encodeURIComponent(draftId)}`, {
+              method: "PUT",
+              headers: {
+                Authorization: `Bearer ${token}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({
+                id: draftId,
+                message: { raw: rawRfc822 },
+              }),
+              signal: abortController.signal,
+            });
+          } catch (err: any) {
+            if (err.name === "AbortError" || abortController.signal.aborted) {
+              throw new Error("UNKNOWN_EXTERNAL_STATE: Gmail draft update timed out after 15s. The update state is unknown; do not retry blindly.");
+            }
+            throw new Error(`UNKNOWN_EXTERNAL_STATE: Gmail draft update failed due to network error: ${err.message}. Do not retry blindly.`);
+          } finally {
+            clearTimeout(timeoutId);
+          }
+
+          if (!putRes.ok) {
+            const errBody = await putRes.json().catch(() => ({}));
+            throw new Error(errBody.error?.message || `Gmail API returned status ${putRes.status} on draft update`);
+          }
+
+          const updatedData = await putRes.json();
+          const updatedMessageId = updatedData.message?.id || updatedData.id || draftId;
+
+          return {
+            draftId: updatedData.id || draftId,
+            messageId: updatedMessageId,
+            subject: finalSubject,
+            to: finalTo.join(", "),
+            bodyText: finalBody,
+            updatedAt: Date.now(),
+            url: `https://mail.google.com/mail/u/0/#drafts/${updatedMessageId}`,
           };
         });
       }

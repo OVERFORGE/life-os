@@ -198,43 +198,15 @@ export class ContradictionResolver {
   }
 
   /**
-   * Checks known conflicting categorical values within semantic dimensions
-   * without using regular expressions.
+   * Evaluates contradiction through schema attribute slot comparison without hardcoded English word arrays.
+   * If both statements refer to the same domain attribute with mutually exclusive values, returns true.
    */
   private checkSemanticDimensionConflict(textA: string, textB: string): boolean {
-    const dimensionSets: string[][] = [
-      // Temporal preference
-      ["morning", "mornings", "night", "nights", "evening"],
-      // Dietary categories
-      ["vegetarian", "vegan", "meat", "beef", "chicken", "omnivore"],
-      // Work mode
-      ["remote", "wfh", "in-office", "commute"],
-      // Workout type
-      ["running", "cardio", "powerlifting", "heavy lifting"],
-    ];
+    const slotA = this.extractStructuredSlot(textA);
+    const slotB = this.extractStructuredSlot(textB);
 
-    for (const set of dimensionSets) {
-      const matchA = set.find((val) => textA.includes(val));
-      const matchB = set.find((val) => textB.includes(val));
-
-      if (matchA && matchB && matchA !== matchB) {
-        // If one is morning and one is night, or vegetarian vs meat -> contradiction
-        const isTemporalConflict =
-          (matchA.startsWith("morning") && (matchB.startsWith("night") || matchB.startsWith("evening"))) ||
-          (matchB.startsWith("morning") && (matchA.startsWith("night") || matchA.startsWith("evening")));
-
-        const isDietConflict =
-          ((matchA === "vegetarian" || matchA === "vegan") && (matchB === "meat" || matchB === "beef" || matchB === "chicken" || matchB === "omnivore")) ||
-          ((matchB === "vegetarian" || matchB === "vegan") && (matchA === "meat" || matchA === "beef" || matchA === "chicken" || matchA === "omnivore"));
-
-        const isWorkConflict =
-          ((matchA === "remote" || matchA === "wfh") && (matchB === "in-office" || matchB === "commute")) ||
-          ((matchB === "remote" || matchB === "wfh") && (matchA === "in-office" || matchA === "commute"));
-
-        if (isTemporalConflict || isDietConflict || isWorkConflict) {
-          return true;
-        }
-      }
+    if (slotA && slotB && slotA.attribute === slotB.attribute) {
+      return slotA.value !== slotB.value;
     }
 
     return false;

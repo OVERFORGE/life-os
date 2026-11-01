@@ -1,0 +1,82 @@
+flowchart TD
+    %% =========================================================================
+    %% Diagram 5: Goal, Task, and Project Intelligence Graph
+    %% Maps how tasks connect to goals, execution graphs, tension engines, and repairs
+    %% =========================================================================
+
+    subgraph STRATEGIC_GOALS ["Strategic Goal Layer"]
+        GOAL_DOC[("GoalHistory Model (MOD-006)<br/>• goalId, title, targetDate<br/>• priority, status (active/completed/paused)<br/>• milestones, progressScore")]
+        SVC_GOAL["GoalService (SVC-004)<br/>• Ingests goal mutations<br/>• Calculates global goal load"]
+    end
+
+    subgraph TASK_COMMITMENTS ["Operational Task & Project Layer"]
+        TASK_DOC[("Task Model (MOD-005)<br/>• taskId, title, dueDate, dueTime<br/>• priority (high/med/low)<br/>• status (pending/completed/deferred)<br/>• parentTaskId, goalId")]
+        SVC_TASK["TaskService (SVC-003)<br/>• Enforces single-task mutations<br/>• Projects TaskDTO to clients"]
+    end
+
+    subgraph DAG_EXECUTION_GRAPH ["Kernel Execution Graph (ENG-021)"]
+        GRAPH_BUILD["ExecutionGraph.buildFromDatabase(userId)<br/>• Resolves parent/child task dependencies<br/>• Connects tasks to parent goals<br/>• Computes topological ready vs blocked nodes"]
+        READY_NODES["Ready Nodes Queue<br/>(Zero unmet dependencies)"]
+        BLOCKED_NODES["Blocked Nodes List<br/>(Awaiting predecessor task completion)"]
+        CRITICAL_PATH["Critical Path Calculation<br/>(Longest dependency chain to goal target)"]
+    end
+
+    subgraph GOAL_INTELLIGENCE_SUBSYSTEM ["Goal Intelligence & Tension Engine (ENG-018)"]
+        ENG_TENSION["GoalIntelligenceEngine<br/>Evaluates 5-Axis Tension Vector:"]
+        AXIS_URGENCY["1. Urgency (Deadline Proximity)"]
+        AXIS_FRICTION["2. Friction (Blockage Ratio & Churn)"]
+        AXIS_CAPACITY["3. Capacity Match (Biological Alignment)"]
+        AXIS_MOMENTUM["4. Momentum (14-Day Velocity)"]
+        AXIS_ALIGNMENT["5. Strategic Alignment (Critical Path)"]
+        
+        GOAL_STATUS["Goal Tension Status Output:<br/>• aligned | strained | conflicting | toxic<br/>• Pressure Score (0 - 100)<br/>• Trend: rising | stable | falling"]
+    end
+
+    subgraph ADAPTIVE_REPAIR ["Adaptive Graph Repair Subsystem (ENG-022)"]
+        ENG_REPAIR["AdaptiveRepairEngine<br/>• 14 Ingestion Triggers (TaskCompleted, TaskDelayed, TaskFailed...)<br/>• Evaluates Propagation Chains<br/>• Proposes RepairPlan (UnlockNode, DelayNode, RepairSchedule)"]
+        GRAPH_APPLIER["ExecutionGraphApplier (Atomic CAS Transaction)"]
+    end
+
+    subgraph CONSUMER_DISCONNECT ["Downstream Consumer Disconnection"]
+        DASHBOARD_UI["Dashboard & Goal UI<br/>(Reads GoalIntelligenceResult via GoalService)"]
+        AVEN_CHAT["Aven Conversational Planner (Supervisor.ts)<br/>[CRITICAL GAP: Disconnected from GoalIntelligenceEngine]"]
+    end
+
+    %% Linkages
+    GOAL_DOC --> SVC_GOAL
+    TASK_DOC --> SVC_TASK
+    
+    TASK_DOC ==>|Hydrates Nodes & Edges| GRAPH_BUILD
+    GOAL_DOC ==>|Hydrates Root Goals| GRAPH_BUILD
+    
+    GRAPH_BUILD --> READY_NODES
+    GRAPH_BUILD --> BLOCKED_NODES
+    GRAPH_BUILD --> CRITICAL_PATH
+
+    GRAPH_BUILD ==>|graphSnapshot| ENG_TENSION
+    ENG_TENSION --> AXIS_URGENCY
+    ENG_TENSION --> AXIS_FRICTION
+    ENG_TENSION --> AXIS_CAPACITY
+    ENG_TENSION --> AXIS_MOMENTUM
+    ENG_TENSION --> AXIS_ALIGNMENT
+    
+    ENG_TENSION ==> GOAL_STATUS
+
+    %% Repair Loop
+    TASK_DOC -.->|Mutation Event Trigger| ENG_REPAIR
+    ENG_REPAIR --> GRAPH_APPLIER
+    GRAPH_APPLIER -.->|Increments GraphVersion| GRAPH_BUILD
+
+    %% Consumers
+    GOAL_STATUS ==>|Rendered cleanly| DASHBOARD_UI
+    GOAL_STATUS -.-x|DISCONNECTED: Aven planner does NOT receive goal pressure| AVEN_CHAT
+
+    %% Styling
+    classDef storage fill:#ede7f6,stroke:#512da8,stroke-width:2px;
+    classDef engine fill:#e8f5e9,stroke:#2e7d32,stroke-width:2px;
+    classDef disconnected fill:#ffebee,stroke:#c62828,stroke-dasharray: 5 5,stroke-width:2px;
+
+    class GOAL_DOC,TASK_DOC storage;
+    class SVC_GOAL,SVC_TASK,GRAPH_BUILD,READY_NODES,BLOCKED_NODES,CRITICAL_PATH,ENG_TENSION,ENG_REPAIR,GRAPH_APPLIER,DASHBOARD_UI engine;
+    class AVEN_CHAT disconnected;
+

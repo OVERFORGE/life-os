@@ -9,7 +9,7 @@ import { ActionProposal } from "../../orchestration/contracts/ActionProposalCont
 
 export type AutonomyLevel = "L0" | "L1" | "L2" | "L3" | "L4" | "L5";
 
-export type ProactiveUrgency = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL";
+export type ProactiveUrgency = "LOW" | "MEDIUM" | "HIGH" | "CRITICAL" | "CRITICAL_EMERGENCY";
 
 export type ProactiveDomain = "SCHEDULE" | "HEALTH" | "FOCUS" | "TASK" | "SYSTEM";
 
@@ -25,6 +25,7 @@ export interface IProactiveCandidate {
   dedupKey: string;
   actionValueScore: number;       // 0.0 - 1.0 (Value of taking the action)
   estimatedInterruptionCost: number; // 0.0 - 1.0 (Initial estimated cost)
+  confidenceScore?: number;       // 0.0 - 1.0 (Epistemic confidence)
   createdAt: number;
 }
 

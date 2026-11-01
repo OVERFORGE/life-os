@@ -1,12 +1,19 @@
 /**
- * LifeOS Mobile Realtime Event Transport (Phase 3)
+ * LifeOS Mobile Realtime Event Transport (Phase 3 / Step 3 V2.2)
  * 
  * Native-compatible Server-Sent Events (SSE) streaming transport for React Native.
  * Avoids browser-only WHATWG ReadableStream APIs by using React Native's XMLHttpRequest
  * incremental response parsing (readyState 3 / LOADING).
+ * 
+ * Step 3 V2.2 Enhancements:
+ * - Injects Authorization: Bearer <mobileJwt> from AsyncStorage (Condition 1)
+ * - Transmits Last-Event-ID for 5-point exact interval coverage replay
+ * - Handles system.resync_required for authoritative snapshot rehydration
+ * - Handles selective SWR invalidation tags
  */
 
-import { fetchWithAuth, API_URL } from '../utils/api';
+import AsyncStorage from '@react-native-async-storage/async-storage';
+import { API_URL } from '../utils/api';
 
 export interface TransportOptions {
   endpoint?: string;
@@ -18,11 +25,14 @@ export class InteractionEventTransport {
   private xhr: XMLHttpRequest | null = null;
   private onProjectionCallback: ((projection: any) => void) | null = null;
   private onStatusCallback: ((status: 'CONNECTED' | 'RECONNECTING' | 'DISCONNECTED') => void) | null = null;
+  private onInvalidationCallback: ((tags: string[]) => void) | null = null;
+  private onResyncRequiredCallback: (() => void) | null = null;
   private lastProcessedIndex = 0;
   private isExplicitlyClosed = false;
   private reconnectAttempts = 0;
   private reconnectTimer: ReturnType<typeof setTimeout> | null = null;
   private endpoint: string;
+  private lastAcknowledgedSeq: number = 0;
 
   constructor(options: TransportOptions = {}) {
     this.endpoint = options.endpoint || '/surface/events';
@@ -45,9 +55,25 @@ export class InteractionEventTransport {
   }
 
   /**
-   * Starts native SSE streaming via XMLHttpRequest.
+   * Registers callback for selective invalidation tags.
    */
-  public connect(): void {
+  public onInvalidation(cb: (tags: string[]) => void): this {
+    this.onInvalidationCallback = cb;
+    return this;
+  }
+
+  /**
+   * Registers callback for full snapshot resync requests.
+   */
+  public onResyncRequired(cb: () => void): this {
+    this.onResyncRequiredCallback = cb;
+    return this;
+  }
+
+  /**
+   * Starts native SSE streaming via XMLHttpRequest with Bearer token authentication.
+   */
+  public async connect(): Promise<void> {
     this.isExplicitlyClosed = false;
     this.cleanup();
 
@@ -60,6 +86,17 @@ export class InteractionEventTransport {
       this.xhr.setRequestHeader('Accept', 'text/event-stream');
       this.xhr.setRequestHeader('Cache-Control', 'no-cache');
 
+      // Security Condition 1: Inject Bearer Token
+      const token = await AsyncStorage.getItem('user_token');
+      if (token) {
+        this.xhr.setRequestHeader('Authorization', `Bearer ${token}`);
+      }
+
+      // Reconnect Token: Last-Event-ID
+      if (this.lastAcknowledgedSeq > 0) {
+        this.xhr.setRequestHeader('Last-Event-ID', String(this.lastAcknowledgedSeq));
+      }
+
       this.xhr.onreadystatechange = () => {
         if (!this.xhr) return;
 
@@ -69,6 +106,11 @@ export class InteractionEventTransport {
             this.reconnectAttempts = 0;
             this.onStatusCallback?.('CONNECTED');
             this.processResponseText(this.xhr.responseText);
+          } else if (this.xhr.status === 401 || this.xhr.status === 403) {
+            // Authentication rejection
+            this.onStatusCallback?.('DISCONNECTED');
+            this.disconnect();
+            return;
           }
         }
 
@@ -107,17 +149,46 @@ export class InteractionEventTransport {
       if (!trimmed) continue;
 
       const lines = trimmed.split('\n');
+      let eventType = 'message';
+      let eventId: number | null = null;
+      let rawData: string | null = null;
+
       for (const line of lines) {
-        if (line.startsWith('data: ')) {
-          try {
-            const rawJson = line.slice(6).trim();
-            const payload = JSON.parse(rawJson);
-            if (payload && payload.projection) {
-              this.onProjectionCallback?.(payload.projection);
-            }
-          } catch {
-            // Ignore heartbeats or non-JSON comments
+        if (line.startsWith(':')) {
+          // Keep-alive heartbeat ping or comment flush; ignore
+          continue;
+        }
+        if (line.startsWith('event: ')) {
+          eventType = line.slice(7).trim();
+        } else if (line.startsWith('id: ')) {
+          const parsed = parseInt(line.slice(4).trim(), 10);
+          if (!isNaN(parsed)) {
+            eventId = parsed;
           }
+        } else if (line.startsWith('data: ')) {
+          rawData = line.slice(6).trim();
+        }
+      }
+
+      if (eventId !== null && eventId > this.lastAcknowledgedSeq) {
+        this.lastAcknowledgedSeq = eventId;
+      }
+
+      if (eventType === 'system.resync_required') {
+        this.onResyncRequiredCallback?.();
+        continue;
+      }
+
+      if (rawData) {
+        try {
+          const payload = JSON.parse(rawData);
+          if (payload.type === 'INVALIDATE' && Array.isArray(payload.tags)) {
+            this.onInvalidationCallback?.(payload.tags);
+          } else if (payload.projection) {
+            this.onProjectionCallback?.(payload.projection);
+          }
+        } catch {
+          // Ignore non-JSON frames
         }
       }
     }
@@ -159,5 +230,9 @@ export class InteractionEventTransport {
     this.isExplicitlyClosed = true;
     this.cleanup();
     this.onStatusCallback?.('DISCONNECTED');
+  }
+
+  public getLastAcknowledgedSeq(): number {
+    return this.lastAcknowledgedSeq;
   }
 }

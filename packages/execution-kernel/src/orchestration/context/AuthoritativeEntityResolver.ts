@@ -235,7 +235,11 @@ export class AuthoritativeEntityResolver {
       candidates = knownTasks
         .filter((t) => {
           const tLower = t.title.toLowerCase();
+          const tId = (t.id || "").toLowerCase();
           return (
+            t.id === rawExpression ||
+            tId === trimmed ||
+            tId === searchTerm ||
             tLower.includes(searchTerm) ||
             searchTerm.includes(tLower) ||
             tLower.includes(trimmed)

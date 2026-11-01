@@ -10,18 +10,29 @@ export async function evaluateGoal(goal: any) {
   /* 1️⃣ Load / Init Stats         */
   /* ----------------------------- */
 
-  let stats = await GoalStats.findOne({ goalId: goal._id });
+  let stats = await GoalStats.findOne({ goalId: String(goal._id) });
 
   if (!stats) {
     stats = await GoalStats.create({
-      goalId: goal._id,
+      goalId: String(goal._id),
+      userId: goal.userId ? String(goal.userId) : "",
       currentScore: 0,
+      deliverableProgressPercent: 0,
+      completedMilestonesCount: 0,
+      totalMilestonesCount: 0,
+      completedTasksCount: 0,
+      totalTasksCount: 0,
+      projectionRevision: 0,
       state: "on_track",
       momentum: "flat",
       bestScoreEver: 0,
       bestStreakEver: 0,
       currentStreak: 0,
       daysSinceProgress: 0,
+      derivedFromVersions: {
+        goalVersion: goal.version ?? 0,
+        taskVersions: {},
+      },
     });
   }
 

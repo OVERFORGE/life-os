@@ -17,7 +17,6 @@ const ProfileHealthSchema = new Schema(
     sparsityScore:             { type: Number, default: 0, min: 0, max: 1 },
     confidenceIntegrityScore:  { type: Number, default: 0, min: 0, max: 1 },
     temporalDistributionScore: { type: Number, default: 0, min: 0, max: 1 },
-    // FIX 15 + FIX 17: Uncertainty surface for planner consumers
     validationWarnings:        { type: [String], default: [] },
     uncertaintyLevel:          { type: String, enum: ["low", "medium", "high"], default: "high" },
     inferenceQuality:          { type: String, enum: ["weak", "moderate", "strong"], default: "weak" },
@@ -26,10 +25,57 @@ const ProfileHealthSchema = new Schema(
   { _id: false }
 );
 
+const BehavioralMetricsSchema = new Schema(
+  {
+    taskCompletionRate: { type: Number, default: null },
+    procrastinationTendency: { type: Number, default: null },
+    burnoutRiskIndex: { type: Number, default: 0, min: 0, max: 1 },
+    deepWorkConsistency: { type: Number, default: 0, min: 0, max: 1 },
+    totalWeightedFinalizedCommitments: { type: Number, default: 0 },
+    decayHalfLifeDays: { type: Number, default: 21 },
+    confidenceTier: {
+      type: String,
+      enum: ["LOW", "MODERATE", "HIGH"],
+      default: "LOW",
+    },
+  },
+  { _id: false }
+);
 
 const BehavioralProfileSchema = new Schema(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
+    userId: { type: Schema.Types.Mixed, ref: "User", required: true, unique: true },
+
+    // Cross-Aggregate Monotonic Watermark Checkpoints
+    sourceCursors: {
+      type: Map,
+      of: Number,
+      default: {},
+    },
+
+    // 50-Entry FIFO Ring Buffer of Applied Observation IDs
+    recentObservationIds: {
+      type: [String],
+      default: [],
+    },
+
+    // Atomic CAS Rebuild Fencing Token
+    projectionRevision: {
+      type: Number,
+      default: 0,
+      required: true,
+    },
+
+    // Empirical MECE Metrics
+    metrics: {
+      type: BehavioralMetricsSchema,
+      default: () => ({}),
+    },
+
+    lastRecalculatedAt: {
+      type: Date,
+      default: null,
+    },
 
     wakeWindow: {
       averageMinutes: { type: Number, default: 480 }, // Default 8:00 AM
@@ -85,20 +131,7 @@ const BehavioralProfileSchema = new Schema(
       analyzedDays: { type: Number, default: 0 },
       lastUpdated: { type: Date, default: Date.now },
       profileHealth: { type: ProfileHealthSchema, default: () => ({}) },
-      
-      /**
-       * FUTURE ARCHITECTURE PLACEHOLDER: Data Reliability Scoring
-       * Detects batch-filled logs, missing days, or fake data.
-       * Default is 1 (perfect reliability). Lower score = less trust in this profile.
-       */
       dataQualityScore: { type: Number, default: 1, min: 0, max: 1 },
-
-      /**
-       * FUTURE ARCHITECTURE PLACEHOLDER: Circadian Drift Detection
-       * Preserves sequence metadata to track if wake/sleep is shifting 
-       * (e.g. 1AM -> 2AM -> 3AM) instead of randomly jumping.
-       * Will be populated in V2.
-       */
       circadianDriftDirection: { type: String, enum: ["earlier", "later", "stable", "none"], default: "none" },
     },
   },

@@ -32,10 +32,29 @@ export class FastPathExecutor {
   canHandle(message: string): boolean {
     const trimmed = message.trim().toLowerCase();
     
-    // Pattern 1: Mark/complete task: e.g. "mark task 123 complete", "complete task 123", "done with task 123"
-    if (/^(?:mark\s+)?(?:task\s+)?(.+?)\s+(?:as\s+)?(?:done|completed?)$/i.test(trimmed) ||
-        /^(?:mark\s+)?(?:done|complete)\s+(?:task\s+)?(.+)$/i.test(trimmed) ||
-        /^(?:finish|check\s+off)\s+(?:task\s+)?(.+)$/i.test(trimmed)) {
+    // Reject conversational or multi-clause statements
+    if (/^(?:i\s+|we\s+|can\s+you\s+|could\s+you\s+|please\s+check\s+if)/i.test(trimmed)) {
+      return false;
+    }
+
+    // Contextual pronouns ("that", "it", "this") require conversational activeFocus/anaphora resolution
+    if (/\b(?:that\s+task|this\s+task|task\s+that|task\s+this)\b/i.test(trimmed) ||
+        /^(?:complete|mark\s+done|finish|done\s+with|delete|remove)\s+(?:that|this|it)$/i.test(trimmed)) {
+      return false;
+    }
+
+    // Reject multi-clause compound requests (e.g. "..., then ...", "... and also ...", "... and create/send/log ...")
+    if (/\b(?:and\s+then|then\s+also|\b(?:and|,)\s+(?:create|add|send|log|complete|mark|delete|schedule|book|order|remind)\b)/i.test(trimmed)) {
+      return false;
+    }
+
+    // Pattern 1: Mark/complete task: e.g. "mark task 123 complete", "complete task 123", "done with task 123", "complete task 'Title'"
+    // Target must be an exact ID token ([a-zA-Z0-9_\-]+) or explicitly quoted string ("[^"]+" / '[^']+')
+    if (/^mark\s+(?:task\s+)?([a-zA-Z0-9_\-]+|"[^"]+"|\'[^\']+\')\s+(?:as\s+)?(?:done|completed?)$/i.test(trimmed) ||
+        /^(?:task\s+)?([a-zA-Z0-9_\-]+|"[^"]+"|\'[^\']+\')\s+(?:as\s+)?(?:done|completed?)$/i.test(trimmed) ||
+        /^(?:mark\s+)?(?:done|complete)\s+(?:task\s+)?([a-zA-Z0-9_\-]+|"[^"]+"|\'[^\']+\')$/i.test(trimmed) ||
+        /^(?:finish|check\s+off)\s+(?:task\s+)?([a-zA-Z0-9_\-]+|"[^"]+"|\'[^\']+\')$/i.test(trimmed) ||
+        /^done\s+with\s+(?:task\s+)?([a-zA-Z0-9_\-]+|"[^"]+"|\'[^\']+\')$/i.test(trimmed)) {
       return true;
     }
 
@@ -77,14 +96,19 @@ export class FastPathExecutor {
     const trimmed = message.trim();
 
     // Check complete task: e.g. "Mark task 123 complete", "complete task review pr"
-    const completeMatch1 = trimmed.match(/^(?:mark\s+)?(?:task\s+)?(.+?)\s+(?:as\s+)?(?:done|completed?)$/i);
-    const completeMatch2 = trimmed.match(/^(?:mark\s+)?(?:done|complete)\s+(?:task\s+)?(.+)$/i);
-    const completeMatch3 = trimmed.match(/^(?:finish|check\s+off)\s+(?:task\s+)?(.+)$/i);
+    const completeMatch1 = trimmed.match(/^mark\s+(?:task\s+)?([a-zA-Z0-9_\-]+|"[^"]+"|\'[^\']+\')\s+(?:as\s+)?(?:done|completed?)$/i) ||
+                           trimmed.match(/^(?:task\s+)?([a-zA-Z0-9_\-]+|"[^"]+"|\'[^\']+\')\s+(?:as\s+)?(?:done|completed?)$/i);
+    const completeMatch2 = trimmed.match(/^(?:mark\s+)?(?:done|complete)\s+(?:task\s+)?([a-zA-Z0-9_\-]+|"[^"]+"|\'[^\']+\')$/i);
+    const completeMatch3 = trimmed.match(/^(?:finish|check\s+off)\s+(?:task\s+)?([a-zA-Z0-9_\-]+|"[^"]+"|\'[^\']+\')$/i) ||
+                           trimmed.match(/^done\s+with\s+(?:task\s+)?([a-zA-Z0-9_\-]+|"[^"]+"|\'[^\']+\')$/i);
     
     const taskTarget = completeMatch1?.[1] || completeMatch2?.[1] || completeMatch3?.[1];
     if (taskTarget) {
       const cleanTarget = taskTarget.replace(/^["']|["']$/g, "").trim();
       const taskId = this.resolveTaskId(cleanTarget, context?.knownTasks);
+      if (!taskId) {
+        return null;
+      }
       return {
         id: generateId("act"),
         domain: "productivity",
@@ -94,7 +118,7 @@ export class FastPathExecutor {
         preconditions: { mustExist: true },
         rationale: "Deterministic fast-path command to complete task",
         reversibility: "reversible_with_compensation",
-        idempotencyKey: `fastpath_complete_${userId}_${taskId}_${Date.now()}`,
+        idempotencyKey: `fastpath_complete_${userId}_${taskId}`,
       };
     }
 
@@ -108,10 +132,10 @@ export class FastPathExecutor {
         id: generateId("act"),
         domain: "productivity",
         actionType: "create_task",
-        payload: { title: cleanTitle, priority: "medium" },
+        payload: { title: cleanTitle }, // Zero fabricated priority defaults!
         rationale: "Deterministic fast-path command to create task",
         reversibility: "reversible_with_compensation",
-        idempotencyKey: `fastpath_create_${userId}_${cleanTitle.replace(/\s+/g, "_")}_${Date.now()}`,
+        idempotencyKey: `fastpath_create_${userId}_${cleanTitle.toLowerCase().replace(/\s+/g, "_")}`,
       };
     }
 
@@ -120,6 +144,9 @@ export class FastPathExecutor {
     if (deleteMatch?.[1]) {
       const cleanTarget = deleteMatch[1].replace(/^["']|["']$/g, "").trim();
       const taskId = this.resolveTaskId(cleanTarget, context?.knownTasks);
+      if (!taskId) {
+        return null;
+      }
       return {
         id: generateId("act"),
         domain: "productivity",
@@ -129,7 +156,7 @@ export class FastPathExecutor {
         preconditions: { mustExist: true },
         rationale: "Deterministic fast-path command to delete task",
         reversibility: "reversible_with_compensation",
-        idempotencyKey: `fastpath_delete_${userId}_${taskId}_${Date.now()}`,
+        idempotencyKey: `fastpath_delete_${userId}_${taskId}`,
       };
     }
 
@@ -144,7 +171,7 @@ export class FastPathExecutor {
         payload: { meal },
         rationale: "Deterministic fast-path command to log meal",
         reversibility: "atomic_single_doc",
-        idempotencyKey: `fastpath_meal_${userId}_${Date.now()}`,
+        idempotencyKey: `fastpath_meal_${userId}_${meal.toLowerCase().replace(/\s+/g, "_")}`,
       };
     }
 
@@ -159,7 +186,7 @@ export class FastPathExecutor {
         payload: { type: "hydration", amount, unit },
         rationale: "Deterministic fast-path command to log hydration",
         reversibility: "atomic_single_doc",
-        idempotencyKey: `fastpath_water_${userId}_${Date.now()}`,
+        idempotencyKey: `fastpath_water_${userId}_${amount}_${unit}`,
       };
     }
 
@@ -175,7 +202,7 @@ export class FastPathExecutor {
         payload: { mode, durationDays },
         rationale: `User activated ${mode} context mode${durationDays ? ` for ${durationDays} days` : ""}`,
         reversibility: "atomic_single_doc",
-        idempotencyKey: `fastpath_mode_${userId}_${mode}_${Date.now()}`,
+        idempotencyKey: `fastpath_mode_${userId}_${mode}${durationDays ? `_${durationDays}` : ""}`,
       };
     }
 
@@ -190,7 +217,7 @@ export class FastPathExecutor {
         payload: { reason: "User requested return to standard operational mode" },
         rationale: "User cleared active context mode",
         reversibility: "atomic_single_doc",
-        idempotencyKey: `fastpath_clearmode_${userId}_${Date.now()}`,
+        idempotencyKey: `fastpath_clearmode_${userId}`,
       };
     }
 
@@ -251,7 +278,40 @@ export class FastPathExecutor {
     };
   }
 
-  private resolveTaskId(target: string, knownTasks?: Array<{ id: string; title: string }>): string {
+  /**
+   * Executes a validated ActionProposal directly through the kernel capability boundary.
+   */
+  async executeProposal(
+    proposal: ActionProposal,
+    userId: string,
+    context?: FastPathContext
+  ): Promise<FastPathResult> {
+    const startTime = Date.now();
+    const validation = await this.kernelService.validateActionProposals(userId, [proposal]);
+    if (!validation.valid || validation.validDecisions.length === 0) {
+      const reason = validation.rejectedProposals[0]?.reason || "Validation rejected";
+      return {
+        handled: true,
+        durationMs: Date.now() - startTime,
+        proposal,
+        userResponse: `I couldn't complete that request: ${reason}`,
+      };
+    }
+
+    const results = await this.kernelService.executeActionBatch(userId, validation.validDecisions);
+    const durationMs = Date.now() - startTime;
+    const userResponse = this.generateUserResponse(proposal, results);
+
+    return {
+      handled: true,
+      durationMs,
+      proposal,
+      kernelResults: results,
+      userResponse,
+    };
+  }
+
+  private resolveTaskId(target: string, knownTasks?: Array<{ id: string; title: string }>): string | null {
     if (!knownTasks || knownTasks.length === 0) {
       return target;
     }
@@ -263,11 +323,9 @@ export class FastPathExecutor {
     const byTitle = knownTasks.find((t) => t.title.toLowerCase() === target.toLowerCase());
     if (byTitle) return byTitle.id;
 
-    // Match by partial title
-    const byPartial = knownTasks.find((t) => t.title.toLowerCase().includes(target.toLowerCase()));
-    if (byPartial) return byPartial.id;
-
-    return target;
+    // Substring matching (.includes) is strictly removed to prevent ambiguous entity hijacking.
+    // If target is neither exact ID nor exact title in knownTasks, return null to yield to AuthoritativeEntityResolver!
+    return null;
   }
 
   /**

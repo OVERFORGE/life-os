@@ -20,6 +20,7 @@ import { NutritionEstimator } from "../../nutrition/nutritionEstimator";
 
 export interface SemanticInterpreterContext {
   userId: string;
+  userName?: string;
   conversationId?: string;
   timezone?: string;
   referenceTimeMs?: number;
@@ -136,6 +137,13 @@ CRITICAL INVARIANTS:
    - Gmail draft email ("can you draft me a mail to hire a co founder", "draft an email to pitch our product", "write a draft for a partnership"):
      Creating a draft in Gmail is completely non-destructive (the user can edit or delete it anytime). NEVER map drafting to send_message! Compose a complete, professional subject and bodyText:
      { "capabilityURN": "productivity.email.create_draft", "providerId": "gmail", "parameters": { "subject": "...", "bodyText": "..." }, "requiresConfirmation": false }
+    - Gmail update draft ("update the draft", "change the subject to ...", "for candidate name use Daksh", "use Daksh for candidate name", "add Daksh in the email draft", "change the draft"):
+      When the user instructs updating or revising an existing draft (e.g. activeFocus is an email draft, or from recent turn history):
+      { "capabilityURN": "productivity.email.update_draft", "providerId": "gmail", "parameters": { "draftId": "<draftId from activeFocus or context>", "subject": "...", "bodyText": "..." }, "requiresConfirmation": false }
+      CRITICAL SAFETY INVARIANTS:
+      - If the user specifies a placeholder or person's name replacement (e.g. "for candidate name use 'Daksh'"), substitute the name in the bodyText (replacing [Candidate Name] or equivalent).
+      - NEVER assign candidate name or placeholder name to the recipient 'to' field unless the user explicitly tells you to email/send to them!
+      - If the user says "use my name", sign with the user's name in the closing of the bodyText; NEVER set the user's name as the recipient 'to'!
    - Gmail send ("send an email to alex@example.com", "mail it to alex@example.com", "now mail this", "mail it to overforgegaming@gmail.com"):
      When the user instructs sending an email (or says "mail it to ...", "now mail this"):
      - If referring to a draft or email composed in previous turns, extract the subject and bodyText from the conversation context, apply any requested revisions (e.g. sender name "Daksh"), and emit:
@@ -313,6 +321,11 @@ function repairTruncatedJSON(jsonString: string): any {
 
 export class SemanticIntentInterpreter {
   private static instance: SemanticIntentInterpreter;
+  private mockChat?: (req: any) => Promise<string>;
+
+  setMockChat(fn?: (req: any) => Promise<string>): void {
+    this.mockChat = fn;
+  }
 
   static getInstance(): SemanticIntentInterpreter {
     if (!SemanticIntentInterpreter.instance) {
@@ -333,7 +346,8 @@ export class SemanticIntentInterpreter {
     // Call LLM for authoritative semantic interpretation
     if (
       !parsedTurn &&
-      ((process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== "mock_key_for_dev") ||
+      (this.mockChat ||
+       (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== "mock_key_for_dev") ||
        (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "mock_key_for_dev"))
     ) {
       try {
@@ -369,7 +383,8 @@ export class SemanticIntentInterpreter {
         const contextSummary = [
           `Current User Local Time: ${localDateStr} ${localTimeStr} (${weekdayStr}, Timezone: ${timezone}) [UTC ISO: ${refDate.toISOString()}]`,
           ctx.activeMode ? `Active Context Mode: ${ctx.activeMode}` : null,
-          ctx.activeFocus ? `Active Focus Entity: [${ctx.activeFocus.entityType}] "${ctx.activeFocus.displayName}" (id: ${ctx.activeFocus.entityId})` : null,
+          ctx.userName ? `Current User Name: "${ctx.userName}"` : null,
+          ctx.activeFocus ? `Active Focus Entity: [${ctx.activeFocus.entityType}] "${ctx.activeFocus.displayName}" (id: ${ctx.activeFocus.entityId})${ctx.activeFocus.metadata ? ` metadata: ${JSON.stringify(ctx.activeFocus.metadata)}` : ""}` : null,
           ctx.pendingOperation && (ctx.pendingOperation as any).state === "AWAITING_CLARIFICATION"
             ? `PENDING CLARIFICATION OPERATION: Currently awaiting user clarification for action "${ctx.pendingOperation.actionType}". Question asked was: "${ctx.pendingOperation.clarificationQuestion}". Missing requirement: ${JSON.stringify((ctx.pendingOperation as any).missingRequirement)}`
             : null,
@@ -395,12 +410,14 @@ export class SemanticIntentInterpreter {
 
         messages.push({ role: "user", content: trimmedInput });
 
-        const rawResponse = await groqChat({
-          messages,
-          model: process.env.GROQ_MODEL || "qwen/qwen3.8-27b",
-          temperature: 0.1,
-          max_tokens: 900,
-        });
+        const rawResponse = this.mockChat
+          ? await this.mockChat({ messages })
+          : await groqChat({
+              messages,
+              model: process.env.GROQ_MODEL || "qwen/qwen3.8-27b",
+              temperature: 0.1,
+              max_tokens: 900,
+            });
 
         const cleaned = cleanLLMResponse(rawResponse);
         const jsonStart = cleaned.indexOf("{");
@@ -624,7 +641,7 @@ export class SemanticIntentInterpreter {
       let actionType: DomainActionType = rawOp.actionType || "create_task";
       let payload = rawOp.payload || {};
 
-      if (rawOp.capabilityURN) {
+      if (rawOp.actionType === "external_capability_action" || (rawOp.capabilityURN && !DOMAIN_CAPABILITIES[actionType])) {
         actionType = "external_capability_action";
         if (!payload.capabilityURN) payload.capabilityURN = rawOp.capabilityURN;
         if (!payload.providerId) payload.providerId = rawOp.providerId || rawOp.providerHint;
@@ -857,10 +874,10 @@ export class SemanticIntentInterpreter {
       }
 
       // 4. Resolve entity references for actions requiring target entities
-      let targetRef = rawOp.targetReference;
+      let targetRef = rawOp.targetReference || payload.targetReference;
       const cap = DOMAIN_CAPABILITIES[actionType];
-      if (cap?.requiresTargetEntity) {
-        const rawTargetExpr = targetRef?.rawExpression || payload.title || payload.taskId || payload.goalId || "";
+      if (cap?.requiresTargetEntity && (!targetRef || !targetRef.resolvedEntityId)) {
+        const rawTargetExpr = targetRef?.rawExpression || targetRef?.semanticDescriptor || payload.title || payload.taskId || payload.goalId || "";
         if (rawTargetExpr) {
           const { AuthoritativeEntityResolver } = await import("../context/AuthoritativeEntityResolver");
           const resolver = AuthoritativeEntityResolver.getInstance();
@@ -1006,6 +1023,40 @@ export class SemanticIntentInterpreter {
    * Pure model-driven architecture: NEVER guesses with regexes or brittle substring checks.
    */
   private heuristicInterpretation(input: string, ctx: SemanticInterpreterContext): any {
+    const trimmed = input.trim();
+    const completeMatch = trimmed.match(/^complete\s+task\s+([a-zA-Z0-9_\-]+)$/i);
+    if (completeMatch) {
+      const taskId = completeMatch[1];
+      return {
+        turnId: `turn_${Date.now()}`,
+        rawUtterance: input,
+        primaryClassification: "ACTION_REQUEST",
+        ambiguityStatus: "UNAMBIGUOUS",
+        turnConfidence: 1.0,
+        conversationalSummary: `Complete task: ${taskId}`,
+        operations: [
+          {
+            operationId: `op_complete_${taskId}`,
+            domain: "productivity",
+            actionType: "complete_task",
+            capabilityURN: "complete_task",
+            intentCategory: "COMPLETE",
+            targetReference: {
+              referenceId: `ref_${taskId}`,
+              rawExpression: taskId,
+              entityType: "task",
+              resolutionStrategy: "EXPLICIT_ID",
+              resolvedEntityId: taskId,
+            },
+            payload: { taskId },
+            dependencies: [],
+            executionEligibility: "READY",
+          },
+        ],
+        entities: [],
+      };
+    }
+
     return {
       primaryClassification: "CASUAL_DIALOGUE",
       ambiguityStatus: "UNAMBIGUOUS",

@@ -1,8 +1,15 @@
+import mongoose from "mongoose";
+import { OutboxStorageService, OutboxEventDraft } from "../../events/persistence/OutboxStorageService";
 import { LifeSignal } from "@/features/signals/models/LifeSignal";
 import { Goal } from "@/features/goals/models/Goal";
 import { evaluateGoal } from "@/features/goals/engine/evaluateGoal";
 
-export async function handleCreateGoal(payload: any, userId: string) {
+export async function handleCreateGoal(
+    payload: any,
+    userId: string,
+    goalModel: any = Goal,
+    outboxService: OutboxStorageService = OutboxStorageService.getInstance()
+) {
     console.log("CREATE GOAL PAYLOAD:", payload);
 
     const finalSignals = [...(payload.signals || [])];
@@ -33,15 +40,51 @@ export async function handleCreateGoal(payload: any, userId: string) {
     }));
 
     let goal: any;
-    try {
-        goal = await Goal.create({
+    const goalId = new mongoose.Types.ObjectId();
+    const clientMutationId = `mut_goal_create_${goalId}_${Date.now()}`;
+    const diffHash = `diff_goal_create_${goalId}_1`;
+
+    const domainUpdates = {
+        title: payload.title,
+        type: payload.type || "maintenance",
+        cadence: payload.cadence || "daily",
+        status: payload.status || "active",
+        signals: formattedSignals,
+        userId: userId.toString(),
+    };
+
+    const eventDraft: OutboxEventDraft = {
+        userId: String(userId),
+        category: "DOMAIN_EVENT",
+        type: "domain.goal.created",
+        aggregateId: String(goalId),
+        aggregateType: "goal",
+        aggregateVersion: 1,
+        source: "kernel.goal.create",
+        payload: {
+            goalId: String(goalId),
+            userId: String(userId),
             title: payload.title,
-            type: payload.type || "maintenance",
-            cadence: payload.cadence || "daily",
-            status: payload.status || "active",
-            signals: formattedSignals,
-            userId: userId.toString(),
+            nature: (payload.type === "deliverable" || payload.nature === "finite_deliverable") ? "finite_deliverable" : "habitual_cadence",
+            targetDate: payload.targetDate,
+        },
+        occurredAt: new Date(),
+    };
+
+    try {
+        await outboxService.persistWithStandaloneFencing({
+            userId: String(userId),
+            aggregateModel: goalModel,
+            aggregateId: String(goalId),
+            clientMutationId,
+            diffHash,
+            expectedVersion: 0,
+            fencingEpoch: 0,
+            domainUpdates,
+            eventDrafts: [eventDraft],
+            isCreation: true,
         });
+        goal = await goalModel.findById(goalId);
     } catch (err: any) {
         if (err?.code === 11000) {
             throw new Error(`DUPLICATE_DETECTED: An active goal "${payload.title}" already exists.`);
@@ -50,7 +93,9 @@ export async function handleCreateGoal(payload: any, userId: string) {
     }
 
     try {
-        await evaluateGoal(goal);
+        if (goalModel === Goal) {
+            await evaluateGoal(goal);
+        }
     } catch (evalErr) {
         console.warn("[handleCreateGoal] evaluateGoal non-blocking error:", evalErr);
     }

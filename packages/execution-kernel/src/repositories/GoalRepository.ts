@@ -1,4 +1,4 @@
-import { Goal } from "@/features/goals/models/Goal";
+import { Goal } from "../../../../apps/web/features/goals/models/Goal";
 
 export interface GoalData {
   _id?: string;

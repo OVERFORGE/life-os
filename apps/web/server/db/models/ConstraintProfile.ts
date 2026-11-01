@@ -74,7 +74,7 @@ const ProfileHealthSchema = new Schema(
 
 const ConstraintProfileSchema = new Schema(
   {
-    userId: { type: Schema.Types.ObjectId, ref: "User", required: true, unique: true },
+    userId: { type: Schema.Types.Mixed, ref: "User", required: true, unique: true },
 
     recurringConstraints: {
       type: [RecurringConstraintSchema],

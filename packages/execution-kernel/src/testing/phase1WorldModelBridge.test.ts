@@ -10,8 +10,16 @@ import { WorldModelBridge } from '../worldv2/WorldModelBridge';
 import { ContextProjectionSerializer } from '../worldv2/ContextProjectionSerializer';
 import { ILifeContextProjection } from '../worldv2/contracts/LifeContextProjectionContracts';
 import { Supervisor } from '../orchestration/supervisor/Supervisor';
+import { SemanticIntentInterpreter } from '../orchestration/semantic/SemanticIntentInterpreter';
 
 test('PHASE 1: Canonical Unified World Model & Context Bridge Suite', async (suite) => {
+  SemanticIntentInterpreter.getInstance().setMockChat(async () =>
+    JSON.stringify({
+      primaryClassification: 'CASUAL_DIALOGUE',
+      operations: [],
+    })
+  );
+
   const bridge = WorldModelBridge.getInstance();
   const testUserId = `phase1_test_user_${Date.now()}`;
 
@@ -24,7 +32,9 @@ test('PHASE 1: Canonical Unified World Model & Context Bridge Suite', async (sui
 
     assert.ok(projection, 'Projection must exist');
     assert.equal(projection.userId, testUserId);
-    assert.equal(projection.degradation.isDegraded, false, 'Initial projection must not be degraded');
+    assert.equal(projection.degradation.isDegraded, true, 'Empty user projection must be truthfully marked as degraded');
+    assert.equal(projection.cognitiveState.state, 'UNKNOWN', 'Empty user cognitive state must be UNKNOWN');
+    assert.equal(projection.physicalReadiness.sleepDurationMinutes, null, 'Empty user sleep duration must be null');
     assert.ok(projection.cognitiveState, 'Cognitive state must be present');
     assert.ok(projection.physicalReadiness, 'Physical readiness must be present');
     assert.ok(projection.operationalSchedule, 'Operational schedule must be present');
@@ -100,7 +110,7 @@ test('PHASE 1: Canonical Unified World Model & Context Bridge Suite', async (sui
         { interventionId: 'int1', strategy: 'block_calendar_recovery', appliedAt: Date.now(), targetDomain: 'health', status: 'ACTIVE' },
       ],
       quietHoursActive: false,
-    };
+    } as any;
 
     // Serializing with constrained 200 char budget
     const result = ContextProjectionSerializer.serialize(mockProjection, { maxCharacterBudget: 220 });

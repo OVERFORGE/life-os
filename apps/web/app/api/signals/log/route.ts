@@ -1,9 +1,8 @@
 import { connectDB } from "@/server/db/connect";
 import { DailyLog } from "@/server/db/models/DailyLog";
-
 import { getAuthSession } from "@/lib/auth";
-
 import { NextResponse } from "next/server";
+import { OutboxStorageService, OutboxEventDraft } from "@life-os/execution-kernel";
 
 /* ===================================================== */
 /* Core Signal → Legacy Field Sync Map                   */
@@ -24,7 +23,6 @@ const CORE_SIGNAL_MAP: Record<string, { path: string }> = {
   executioners: { path: "work.executioners" },
   studied: { path: "work.studied" },
   mainWork: { path: "work.mainWork" },
-
 
   reading: { path: "habits.reading" },
   meditationHabit: { path: "habits.meditation" },
@@ -95,21 +93,62 @@ export async function POST(req: Request) {
   }
 
   /* ===================================================== */
-  /* Save Document (Atomic + Safe)                         */
+  /* Save Document with Standalone Outbox Fencing          */
   /* ===================================================== */
 
-  await DailyLog.findOneAndUpdate(
-    { userId, date },
-    {
-      $set: setPayload,
+  let dailyLog = await DailyLog.findOne({ userId, date });
+  if (!dailyLog) {
+    dailyLog = await DailyLog.create({
+      userId,
+      date,
+      version: 0,
+      mutationEpoch: 0,
+      recentMutationReceipts: [],
+    });
+  }
 
-      $setOnInsert: {
-        userId,
-        date,
-      },
+  const currentVersion = typeof dailyLog.version === "number" ? dailyLog.version : 0;
+  const currentEpoch = typeof dailyLog.mutationEpoch === "number" ? dailyLog.mutationEpoch : 0;
+  const clientMutationId = `mut_signal_${dailyLog._id}_${key}_${Date.now()}`;
+  const diffHash = `diff_signal_${dailyLog._id}_${key}_${currentVersion + 1}`;
+
+  // Ensure legacy record has version fields if missing
+  if (dailyLog.version === undefined || dailyLog.mutationEpoch === undefined) {
+    await DailyLog.updateOne(
+      { _id: dailyLog._id, version: { $exists: false } },
+      { $set: { version: 0, mutationEpoch: 0, recentMutationReceipts: [] } }
+    );
+  }
+
+  const outboxService = OutboxStorageService.getInstance();
+  const eventDraft: OutboxEventDraft = {
+    userId: String(userId),
+    category: "DOMAIN_EVENT",
+    type: "domain.signal.logged",
+    aggregateId: String(dailyLog._id),
+    aggregateType: "dailylog",
+    aggregateVersion: currentVersion + 1,
+    source: "web.signals.log",
+    payload: {
+      userId: String(userId),
+      date,
+      key,
+      value,
     },
-    { upsert: true }
-  );
+    occurredAt: new Date(),
+  };
+
+  await outboxService.persistWithStandaloneFencing({
+    userId: String(userId),
+    aggregateModel: DailyLog,
+    aggregateId: String(dailyLog._id),
+    clientMutationId,
+    diffHash,
+    expectedVersion: currentVersion,
+    fencingEpoch: currentEpoch,
+    domainUpdates: setPayload,
+    eventDrafts: [eventDraft],
+  });
 
   return NextResponse.json({
     ok: true,

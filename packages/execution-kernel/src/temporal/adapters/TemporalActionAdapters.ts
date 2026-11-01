@@ -20,10 +20,23 @@ function isDbConnected(): boolean {
   return Boolean(mongoose.connection && mongoose.connection.readyState === 1);
 }
 
+export interface TemporalAdapterDependencies {
+  occurrenceModel?: any;
+  seriesModel?: any;
+  taskModel?: any;
+  outboxService?: any;
+}
+
 /**
  * Adapter for scheduling a new TemporalOccurrence
  */
 export class ScheduleOccurrenceAdapter implements IKernelActionAdapter {
+  private deps?: TemporalAdapterDependencies;
+
+  constructor(deps?: TemporalAdapterDependencies) {
+    this.deps = deps;
+  }
+
   async validatePreconditions(
     proposal: ActionProposal,
     userId: string
@@ -94,13 +107,109 @@ export class ScheduleOccurrenceAdapter implements IKernelActionAdapter {
       metadata: payload.metadata || {},
     };
 
-    if (isDbConnected()) {
-      const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
-      await TemporalOccurrence.findOneAndUpdate(
-        { userId, occurrenceId },
-        docData,
-        { upsert: true, new: true }
-      );
+    if (this.deps?.occurrenceModel || isDbConnected()) {
+      const TemporalOccurrence = this.deps?.occurrenceModel || (await import("@/server/db/models/TemporalOccurrence")).TemporalOccurrence;
+      const TemporalSeriesTemplate = this.deps?.seriesModel || (await import("@/server/db/models/TemporalSeriesTemplate")).TemporalSeriesTemplate;
+      const Task = this.deps?.taskModel || (await import("@/server/db/models/Task")).Task;
+      const outboxService = this.deps?.outboxService || (await import("../../events/persistence/OutboxStorageService")).OutboxStorageService.getInstance();
+
+      const existing = await TemporalOccurrence.findOne({ userId, occurrenceId });
+
+      if (existing) {
+        const clientMutationId = `mut_temporal_${existing._id}_${Date.now()}`;
+        const diffHash = `diff_temporal_${existing._id}_${existing.version + 1}`;
+        await outboxService.persistWithStandaloneFencing({
+          aggregateType: "TemporalOccurrence",
+          aggregateModel: TemporalOccurrence,
+          aggregateId: String(existing._id),
+          clientMutationId,
+          diffHash,
+          expectedVersion: existing.version,
+          fencingEpoch: existing.mutationEpoch || 0,
+          domainUpdates: {
+            title: docData.title,
+            kind: docData.kind,
+            dateOnly: docData.dateOnly,
+            plannedInterval: docData.plannedInterval,
+            locationContext: docData.locationContext,
+            rigidity: docData.rigidity,
+            status: "SCHEDULED",
+            linkedEntity: docData.linkedEntity,
+            overrideType: "NONE",
+            metadata: docData.metadata,
+          },
+          eventDrafts: [
+            {
+              userId,
+              category: "DOMAIN_EVENT",
+              type: "domain.temporal.scheduled",
+              aggregateId: String(existing._id),
+              aggregateType: "TemporalOccurrence",
+              source: "TemporalActionAdapters:ScheduleOccurrenceAdapter",
+              payload: {
+                occurrenceId,
+                title: docData.title,
+                dateOnly: docData.dateOnly,
+                plannedInterval: docData.plannedInterval,
+                kind: docData.kind,
+              },
+            },
+          ],
+        });
+      } else {
+        const newDocId = new mongoose.Types.ObjectId();
+        const clientMutationId = `mut_temporal_${newDocId}_${Date.now()}`;
+        const diffHash = `diff_temporal_${newDocId}_1`;
+        await outboxService.persistWithStandaloneFencing({
+          aggregateType: "TemporalOccurrence",
+          aggregateModel: TemporalOccurrence,
+          aggregateId: String(newDocId),
+          clientMutationId,
+          diffHash,
+          expectedVersion: 0,
+          fencingEpoch: 0,
+          domainUpdates: {
+            occurrenceId,
+            userId,
+            seriesId: payload.seriesId,
+            title: docData.title,
+            kind: docData.kind,
+            dateOnly: docData.dateOnly,
+            plannedInterval: docData.plannedInterval,
+            locationContext: docData.locationContext,
+            rigidity: docData.rigidity,
+            status: "SCHEDULED",
+            linkedEntity: docData.linkedEntity,
+            overrideType: "NONE",
+            metadata: docData.metadata,
+          },
+          eventDrafts: [
+            {
+              userId,
+              category: "DOMAIN_EVENT",
+              type: "domain.temporal.scheduled",
+              aggregateId: String(newDocId),
+              aggregateType: "TemporalOccurrence",
+              source: "TemporalActionAdapters:ScheduleOccurrenceAdapter",
+              payload: {
+                occurrenceId,
+                title: docData.title,
+                dateOnly: docData.dateOnly,
+                plannedInterval: docData.plannedInterval,
+                kind: docData.kind,
+              },
+            },
+          ],
+          isCreation: true,
+        });
+      }
+
+      try {
+        const { TemporalPartitionRevisionService } = await import("../sweeper/TemporalPartitionRevisionService");
+        await TemporalPartitionRevisionService.getInstance().incrementPartitionRevision(userId, docData.dateOnly);
+      } catch {
+        // Safe fallback
+      }
     }
 
     return {
@@ -137,6 +246,12 @@ export class ScheduleOccurrenceAdapter implements IKernelActionAdapter {
  * Adapter for rescheduling an existing TemporalOccurrence
  */
 export class RescheduleOccurrenceAdapter implements IKernelActionAdapter {
+  private deps?: TemporalAdapterDependencies;
+
+  constructor(deps?: TemporalAdapterDependencies) {
+    this.deps = deps;
+  }
+
   async validatePreconditions(
     proposal: ActionProposal,
     userId: string
@@ -164,8 +279,12 @@ export class RescheduleOccurrenceAdapter implements IKernelActionAdapter {
       timezone: payload.timezone,
     });
 
-    if (isDbConnected()) {
-      const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
+    if (this.deps?.occurrenceModel || isDbConnected()) {
+      const TemporalOccurrence = this.deps?.occurrenceModel || (await import("@/server/db/models/TemporalOccurrence")).TemporalOccurrence;
+      const TemporalSeriesTemplate = this.deps?.seriesModel || (await import("@/server/db/models/TemporalSeriesTemplate")).TemporalSeriesTemplate;
+      const Task = this.deps?.taskModel || (await import("@/server/db/models/Task")).Task;
+      const outboxService = this.deps?.outboxService || (await import("../../events/persistence/OutboxStorageService")).OutboxStorageService.getInstance();
+
       const existing = await TemporalOccurrence.findOne({
         userId,
         occurrenceId: payload.occurrenceId,
@@ -174,58 +293,147 @@ export class RescheduleOccurrenceAdapter implements IKernelActionAdapter {
       if (existing) {
         previousInterval = existing.plannedInterval;
         if (norm.valid && norm.interval) {
-          existing.dateOnly = newDate;
-          existing.plannedInterval = norm.interval;
-          existing.status = "RESCHEDULED";
-          existing.overrideType = "SINGLE_INSTANCE_MODIFIED";
-          existing.version += 1;
-          await existing.save();
+          const clientMutationId = `mut_resched_${existing._id}_${Date.now()}`;
+          const diffHash = `diff_resched_${existing._id}_${existing.version + 1}`;
+          await outboxService.persistWithStandaloneFencing({
+            aggregateType: "TemporalOccurrence",
+            aggregateModel: TemporalOccurrence,
+            aggregateId: String(existing._id),
+            clientMutationId,
+            diffHash,
+            expectedVersion: existing.version,
+            fencingEpoch: existing.mutationEpoch || 0,
+            domainUpdates: {
+              dateOnly: newDate,
+              plannedInterval: norm.interval,
+              status: "RESCHEDULED",
+              overrideType: "SINGLE_INSTANCE_MODIFIED",
+            },
+            eventDrafts: [
+              {
+                userId,
+                category: "DOMAIN_EVENT",
+                type: "domain.temporal.rescheduled",
+                aggregateId: String(existing._id),
+                aggregateType: "TemporalOccurrence",
+                source: "TemporalActionAdapters:RescheduleOccurrenceAdapter",
+                payload: {
+                  occurrenceId: payload.occurrenceId,
+                  dateOnly: newDate,
+                  plannedInterval: norm.interval,
+                  previousInterval,
+                },
+              },
+            ],
+          });
         }
       } else if (payload.occurrenceId && payload.occurrenceId.startsWith("proj_")) {
         const parts = payload.occurrenceId.split("_");
         const seriesId = parts[1];
-        const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
         const series = await TemporalSeriesTemplate.findOne({ userId, seriesId });
         if (series && norm.valid && norm.interval) {
-          await TemporalOccurrence.create({
-            occurrenceId: payload.occurrenceId,
-            userId,
-            seriesId: series.seriesId,
-            title: series.title,
-            kind: series.kind || "ROUTINE_BLOCK",
-            dateOnly: newDate,
-            plannedInterval: norm.interval,
-            locationContext: series.locationContext || { category: "HOME", requiresPhysicalTransit: false },
-            rigidity: (series as any).rigidity || "ELASTIC",
-            status: "RESCHEDULED",
-            overrideType: "SINGLE_INSTANCE_MODIFIED",
-            version: 1,
+          const newDocId = new mongoose.Types.ObjectId();
+          const clientMutationId = `mut_resched_${newDocId}_${Date.now()}`;
+          const diffHash = `diff_resched_${newDocId}_1`;
+          await outboxService.persistWithStandaloneFencing({
+            aggregateType: "TemporalOccurrence",
+            aggregateModel: TemporalOccurrence,
+            aggregateId: String(newDocId),
+            clientMutationId,
+            diffHash,
+            expectedVersion: 0,
+            fencingEpoch: 0,
+            domainUpdates: {
+              occurrenceId: payload.occurrenceId,
+              userId,
+              seriesId: series.seriesId,
+              title: series.title,
+              kind: series.kind || "ROUTINE_BLOCK",
+              dateOnly: newDate,
+              plannedInterval: norm.interval,
+              locationContext: series.locationContext || { category: "HOME", requiresPhysicalTransit: false },
+              rigidity: (series as any).rigidity || "ELASTIC",
+              status: "RESCHEDULED",
+              overrideType: "SINGLE_INSTANCE_MODIFIED",
+            },
+            eventDrafts: [
+              {
+                userId,
+                category: "DOMAIN_EVENT",
+                type: "domain.temporal.rescheduled",
+                aggregateId: String(newDocId),
+                aggregateType: "TemporalOccurrence",
+                source: "TemporalActionAdapters:RescheduleOccurrenceAdapter",
+                payload: {
+                  occurrenceId: payload.occurrenceId,
+                  dateOnly: newDate,
+                  plannedInterval: norm.interval,
+                },
+              },
+            ],
+            isCreation: true,
           });
         }
       } else if (payload.occurrenceId && payload.occurrenceId.startsWith("task_")) {
         const taskId = payload.occurrenceId.replace("task_", "");
-        const { Task } = await import("@/server/db/models/Task");
         const task = await Task.findOne({ _id: taskId, userId });
         if (norm.valid && norm.interval) {
-          await TemporalOccurrence.create({
-            occurrenceId: payload.occurrenceId,
-            userId,
-            title: task?.title || payload.title || "Task",
-            kind: "WORK_SESSION",
-            dateOnly: newDate,
-            plannedInterval: norm.interval,
-            locationContext: { category: "HOME", requiresPhysicalTransit: false },
-            rigidity: "ELASTIC",
-            status: "RESCHEDULED",
-            overrideType: "SINGLE_INSTANCE_MODIFIED",
-            linkedEntity: {
-              entityType: "task",
-              entityId: taskId,
-              taskTitle: task?.title || payload.title || "Task",
+          const newDocId = new mongoose.Types.ObjectId();
+          const clientMutationId = `mut_resched_${newDocId}_${Date.now()}`;
+          const diffHash = `diff_resched_${newDocId}_1`;
+          await outboxService.persistWithStandaloneFencing({
+            aggregateType: "TemporalOccurrence",
+            aggregateModel: TemporalOccurrence,
+            aggregateId: String(newDocId),
+            clientMutationId,
+            diffHash,
+            expectedVersion: 0,
+            fencingEpoch: 0,
+            domainUpdates: {
+              occurrenceId: payload.occurrenceId,
+              userId,
+              title: task?.title || payload.title || "Task",
+              kind: "WORK_SESSION",
+              dateOnly: newDate,
+              plannedInterval: norm.interval,
+              locationContext: { category: "HOME", requiresPhysicalTransit: false },
+              rigidity: "ELASTIC",
+              status: "RESCHEDULED",
+              overrideType: "SINGLE_INSTANCE_MODIFIED",
+              linkedEntity: {
+                entityType: "task",
+                entityId: taskId,
+                taskTitle: task?.title || payload.title || "Task",
+              },
             },
-            version: 1,
+            eventDrafts: [
+              {
+                userId,
+                category: "DOMAIN_EVENT",
+                type: "domain.temporal.rescheduled",
+                aggregateId: String(newDocId),
+                aggregateType: "TemporalOccurrence",
+                source: "TemporalActionAdapters:RescheduleOccurrenceAdapter",
+                payload: {
+                  occurrenceId: payload.occurrenceId,
+                  dateOnly: newDate,
+                  plannedInterval: norm.interval,
+                },
+              },
+            ],
+            isCreation: true,
           });
         }
+      }
+
+      const affectedDates = previousInterval?.dateOnly && previousInterval.dateOnly !== newDate
+        ? [previousInterval.dateOnly, newDate]
+        : [newDate];
+      try {
+        const { TemporalPartitionRevisionService } = await import("../sweeper/TemporalPartitionRevisionService");
+        await TemporalPartitionRevisionService.getInstance().incrementPartitionRevision(userId, affectedDates);
+      } catch {
+        // Safe fallback
       }
     }
 
@@ -270,6 +478,12 @@ export class RescheduleOccurrenceAdapter implements IKernelActionAdapter {
  * Adapter for cancelling or skipping an existing TemporalOccurrence
  */
 export class CancelOccurrenceAdapter implements IKernelActionAdapter {
+  private deps?: TemporalAdapterDependencies;
+
+  constructor(deps?: TemporalAdapterDependencies) {
+    this.deps = deps;
+  }
+
   async validatePreconditions(
     proposal: ActionProposal,
     userId: string
@@ -287,65 +501,122 @@ export class CancelOccurrenceAdapter implements IKernelActionAdapter {
     const targetStatus = p.status === "SKIPPED" ? "SKIPPED" : "CANCELLED";
     let previousStatus = "SCHEDULED";
     let title = p.title || "Scheduled block";
+    let cancelDate: string = p.dateOnly || "";
 
-    if (isDbConnected()) {
-      const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
-      const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
+    if (this.deps?.occurrenceModel || isDbConnected()) {
+      const TemporalOccurrence = this.deps?.occurrenceModel || (await import("@/server/db/models/TemporalOccurrence")).TemporalOccurrence;
+      const TemporalSeriesTemplate = this.deps?.seriesModel || (await import("@/server/db/models/TemporalSeriesTemplate")).TemporalSeriesTemplate;
+      const outboxService = this.deps?.outboxService || (await import("../../events/persistence/OutboxStorageService")).OutboxStorageService.getInstance();
 
-      // 1. If no occurrenceId, attempt to find occurrence by title + dateOnly
+      // 1. If no occurrenceId, attempt to find occurrence by exact title + dateOnly
       if (!occId && p.title) {
         const todayStr = p.dateOnly || new Date().toISOString().split("T")[0];
-        const titleRegex = new RegExp(p.title.trim().split(" ")[0], "i");
+        const exactTitle = p.title.trim();
 
         const foundOcc = await TemporalOccurrence.findOne({
           userId,
           dateOnly: todayStr,
-          title: titleRegex,
+          title: exactTitle,
         });
 
         if (foundOcc) {
           occId = foundOcc.occurrenceId;
           previousStatus = foundOcc.status;
-          foundOcc.status = targetStatus;
-          foundOcc.overrideType = "SINGLE_INSTANCE_CANCELLED";
-          foundOcc.version += 1;
-          await foundOcc.save();
           title = foundOcc.title;
+          cancelDate = cancelDate || foundOcc.dateOnly;
+          const clientMutationId = `mut_cancel_${foundOcc._id}_${Date.now()}`;
+          const diffHash = `diff_cancel_${foundOcc._id}_${foundOcc.version + 1}`;
+          await outboxService.persistWithStandaloneFencing({
+            aggregateType: "TemporalOccurrence",
+            aggregateModel: TemporalOccurrence,
+            aggregateId: String(foundOcc._id),
+            clientMutationId,
+            diffHash,
+            expectedVersion: foundOcc.version,
+            fencingEpoch: foundOcc.mutationEpoch || 0,
+            domainUpdates: {
+              status: targetStatus,
+              overrideType: "SINGLE_INSTANCE_CANCELLED",
+            },
+            eventDrafts: [
+              {
+                userId,
+                category: "DOMAIN_EVENT",
+                type: "domain.temporal.deleted",
+                aggregateId: String(foundOcc._id),
+                aggregateType: "TemporalOccurrence",
+                source: "TemporalActionAdapters:CancelOccurrenceAdapter",
+                payload: {
+                  occurrenceId: occId,
+                  title,
+                  status: targetStatus,
+                },
+              },
+            ],
+          });
         } else {
           // Search in recurring series template
           const foundSeries = await TemporalSeriesTemplate.findOne({
             userId,
-            title: titleRegex,
+            title: exactTitle,
             status: "ACTIVE",
           });
           if (foundSeries) {
             occId = `proj_${foundSeries.seriesId}_${todayStr}`;
             title = foundSeries.title;
+            cancelDate = cancelDate || todayStr;
             const [sh, sm] = (foundSeries.baseStartTime || "09:00").split(":").map(Number);
             const startMinute = (sh || 0) * 60 + (sm || 0);
             const dur = foundSeries.baseDurationMinutes || 60;
-            await TemporalOccurrence.create({
-              occurrenceId: occId,
-              userId,
-              seriesId: foundSeries.seriesId,
-              title: foundSeries.title,
-              kind: foundSeries.kind || "ROUTINE_BLOCK",
-              dateOnly: todayStr,
-              plannedInterval: {
+            const newDocId = new mongoose.Types.ObjectId();
+            const clientMutationId = `mut_cancel_${newDocId}_${Date.now()}`;
+            const diffHash = `diff_cancel_${newDocId}_1`;
+            await outboxService.persistWithStandaloneFencing({
+              aggregateType: "TemporalOccurrence",
+              aggregateModel: TemporalOccurrence,
+              aggregateId: String(newDocId),
+              clientMutationId,
+              diffHash,
+              expectedVersion: 0,
+              fencingEpoch: 0,
+              domainUpdates: {
+                occurrenceId: occId,
+                userId,
+                seriesId: foundSeries.seriesId,
+                title: foundSeries.title,
+                kind: foundSeries.kind || "ROUTINE_BLOCK",
                 dateOnly: todayStr,
-                startMinute,
-                endMinute: startMinute + dur,
-                durationMinutes: dur,
-                startIsoUtc: `${todayStr}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00Z`,
-                endIsoUtc: `${todayStr}T${String(Math.floor((startMinute + dur) / 60)).padStart(2, "0")}:${String((startMinute + dur) % 60).padStart(2, "0")}:00Z`,
-                timezone: "UTC",
-                isMidnightCrossing: false,
+                plannedInterval: {
+                  dateOnly: todayStr,
+                  startMinute,
+                  endMinute: startMinute + dur,
+                  durationMinutes: dur,
+                  startIsoUtc: `${todayStr}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00Z`,
+                  endIsoUtc: `${todayStr}T${String(Math.floor((startMinute + dur) / 60)).padStart(2, "0")}:${String((startMinute + dur) % 60).padStart(2, "0")}:00Z`,
+                  timezone: "UTC",
+                  isMidnightCrossing: false,
+                },
+                locationContext: foundSeries.locationContext || { category: "HOME", requiresPhysicalTransit: false },
+                rigidity: (foundSeries as any).rigidity || "ELASTIC",
+                status: targetStatus,
+                overrideType: "SINGLE_INSTANCE_CANCELLED",
               },
-              locationContext: foundSeries.locationContext || { category: "HOME", requiresPhysicalTransit: false },
-              rigidity: (foundSeries as any).rigidity || "ELASTIC",
-              status: targetStatus,
-              overrideType: "SINGLE_INSTANCE_CANCELLED",
-              version: 1,
+              eventDrafts: [
+                {
+                  userId,
+                  category: "DOMAIN_EVENT",
+                  type: "domain.temporal.deleted",
+                  aggregateId: String(newDocId),
+                  aggregateType: "TemporalOccurrence",
+                  source: "TemporalActionAdapters:CancelOccurrenceAdapter",
+                  payload: {
+                    occurrenceId: occId,
+                    title,
+                    status: targetStatus,
+                  },
+                },
+              ],
+              isCreation: true,
             });
           }
         }
@@ -354,11 +625,38 @@ export class CancelOccurrenceAdapter implements IKernelActionAdapter {
         const existing = await TemporalOccurrence.findOne({ userId, occurrenceId: occId });
         if (existing) {
           previousStatus = existing.status;
-          existing.status = targetStatus;
-          existing.overrideType = "SINGLE_INSTANCE_CANCELLED";
-          existing.version += 1;
-          await existing.save();
           title = existing.title;
+          cancelDate = cancelDate || existing.dateOnly;
+          const clientMutationId = `mut_cancel_${existing._id}_${Date.now()}`;
+          const diffHash = `diff_cancel_${existing._id}_${existing.version + 1}`;
+          await outboxService.persistWithStandaloneFencing({
+            aggregateType: "TemporalOccurrence",
+            aggregateModel: TemporalOccurrence,
+            aggregateId: String(existing._id),
+            clientMutationId,
+            diffHash,
+            expectedVersion: existing.version,
+            fencingEpoch: existing.mutationEpoch || 0,
+            domainUpdates: {
+              status: targetStatus,
+              overrideType: "SINGLE_INSTANCE_CANCELLED",
+            },
+            eventDrafts: [
+              {
+                userId,
+                category: "DOMAIN_EVENT",
+                type: "domain.temporal.deleted",
+                aggregateId: String(existing._id),
+                aggregateType: "TemporalOccurrence",
+                source: "TemporalActionAdapters:CancelOccurrenceAdapter",
+                payload: {
+                  occurrenceId: occId,
+                  title,
+                  status: targetStatus,
+                },
+              },
+            ],
+          });
         } else if (occId.startsWith("proj_")) {
           // Materialize single cancelled instance from recurring series template
           const parts = occId.split("_");
@@ -370,31 +668,66 @@ export class CancelOccurrenceAdapter implements IKernelActionAdapter {
             const [sh, sm] = (series.baseStartTime || "09:00").split(":").map(Number);
             const startMinute = (sh || 0) * 60 + (sm || 0);
             const dur = series.baseDurationMinutes || 60;
-            await TemporalOccurrence.create({
-              occurrenceId: occId,
-              userId,
-              seriesId: series.seriesId,
-              title: series.title,
-              kind: series.kind || "ROUTINE_BLOCK",
-              dateOnly,
-              plannedInterval: {
+            const newDocId = new mongoose.Types.ObjectId();
+            const clientMutationId = `mut_cancel_${newDocId}_${Date.now()}`;
+            const diffHash = `diff_cancel_${newDocId}_1`;
+            await outboxService.persistWithStandaloneFencing({
+              aggregateType: "TemporalOccurrence",
+              aggregateModel: TemporalOccurrence,
+              aggregateId: String(newDocId),
+              clientMutationId,
+              diffHash,
+              expectedVersion: 0,
+              fencingEpoch: 0,
+              domainUpdates: {
+                occurrenceId: occId,
+                userId,
+                seriesId: series.seriesId,
+                title: series.title,
+                kind: series.kind || "ROUTINE_BLOCK",
                 dateOnly,
-                startMinute,
-                endMinute: startMinute + dur,
-                durationMinutes: dur,
-                startIsoUtc: `${dateOnly}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00Z`,
-                endIsoUtc: `${dateOnly}T${String(Math.floor((startMinute + dur) / 60)).padStart(2, "0")}:${String((startMinute + dur) % 60).padStart(2, "0")}:00Z`,
-                timezone: "UTC",
-                isMidnightCrossing: false,
+                plannedInterval: {
+                  dateOnly,
+                  startMinute,
+                  endMinute: startMinute + dur,
+                  durationMinutes: dur,
+                  startIsoUtc: `${dateOnly}T${String(sh).padStart(2, "0")}:${String(sm).padStart(2, "0")}:00Z`,
+                  endIsoUtc: `${dateOnly}T${String(Math.floor((startMinute + dur) / 60)).padStart(2, "0")}:${String((startMinute + dur) % 60).padStart(2, "0")}:00Z`,
+                  timezone: "UTC",
+                  isMidnightCrossing: false,
+                },
+                locationContext: series.locationContext || { category: "HOME", requiresPhysicalTransit: false },
+                rigidity: (series as any).rigidity || "ELASTIC",
+                status: targetStatus,
+                overrideType: "SINGLE_INSTANCE_CANCELLED",
               },
-              locationContext: series.locationContext || { category: "HOME", requiresPhysicalTransit: false },
-              rigidity: (series as any).rigidity || "ELASTIC",
-              status: targetStatus,
-              overrideType: "SINGLE_INSTANCE_CANCELLED",
-              version: 1,
+              eventDrafts: [
+                {
+                  userId,
+                  category: "DOMAIN_EVENT",
+                  type: "domain.temporal.deleted",
+                  aggregateId: String(newDocId),
+                  aggregateType: "TemporalOccurrence",
+                  source: "TemporalActionAdapters:CancelOccurrenceAdapter",
+                  payload: {
+                    occurrenceId: occId,
+                    title,
+                    status: targetStatus,
+                  },
+                },
+              ],
+              isCreation: true,
             });
           }
         }
+      }
+
+      const finalCancelDate = cancelDate || new Date().toISOString().split("T")[0];
+      try {
+        const { TemporalPartitionRevisionService } = await import("../sweeper/TemporalPartitionRevisionService");
+        await TemporalPartitionRevisionService.getInstance().incrementPartitionRevision(userId, finalCancelDate);
+      } catch {
+        // Safe fallback
       }
     }
 
@@ -450,14 +783,12 @@ export class CreateTemporalSeriesAdapter implements IKernelActionAdapter {
     const p = proposal.payload;
     const seriesId = p.seriesId || `ser_${Date.now()}_${Math.random().toString(36).substring(2, 7)}`;
 
-    const today = new Date();
-    const yr = today.getFullYear();
-    const mo = String(today.getMonth() + 1).padStart(2, "0");
-    const da = String(today.getDate()).padStart(2, "0");
-    const todayIso = `${yr}-${mo}-${da}`;
+    const todayIso = p.dateOnly || (p.effectiveStartDate ? String(p.effectiveStartDate).slice(0, 10) : new Date().toISOString().slice(0, 10));
+    const [iy, im, id] = todayIso.split("-").map(Number);
+    const initialDate = new Date(Date.UTC(iy, (im || 1) - 1, id || 1));
 
     const rec = p.recurrence || {};
-    let daysOfWeek: number[] = [today.getDay()];
+    let daysOfWeek: number[] = [initialDate.getUTCDay()];
     if (Array.isArray(rec.daysOfWeek) && rec.daysOfWeek.length > 0) {
       daysOfWeek = rec.daysOfWeek.map((d: any) => {
         if (typeof d === "number") return d;
@@ -514,19 +845,15 @@ export class CreateTemporalSeriesAdapter implements IKernelActionAdapter {
       // Pre-generate concrete TemporalOccurrence records for upcoming 12 weeks
       const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
       const [sy, sm, sd] = normalizedRecurrence.effectiveStartDate.split("-").map(Number);
-      const startRef = new Date(sy, sm - 1, sd);
+      const startRef = new Date(Date.UTC(sy, (sm || 1) - 1, sd || 1));
       const occurrencesToCreate: any[] = [];
 
       for (let dayOffset = 0; dayOffset < 84; dayOffset++) {
-        const curDate = new Date(startRef);
-        curDate.setDate(startRef.getDate() + dayOffset);
-        const dayOfWeek = curDate.getDay();
+        const curDate = new Date(startRef.getTime() + dayOffset * 86400000);
+        const dayOfWeek = curDate.getUTCDay();
 
         if (normalizedRecurrence.daysOfWeek.includes(dayOfWeek)) {
-          const cy = curDate.getFullYear();
-          const cm = String(curDate.getMonth() + 1).padStart(2, "0");
-          const cd = String(curDate.getDate()).padStart(2, "0");
-          const curDateIso = `${cy}-${cm}-${cd}`;
+          const curDateIso = curDate.toISOString().slice(0, 10);
 
           if (normalizedRecurrence.effectiveEndDate && curDateIso > normalizedRecurrence.effectiveEndDate) {
             break;
@@ -586,13 +913,70 @@ export class CreateTemporalSeriesAdapter implements IKernelActionAdapter {
     if (seriesId && isDbConnected()) {
       const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
       const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
-      await Promise.all([
-        TemporalSeriesTemplate.deleteOne({ userId, seriesId }),
-        TemporalOccurrence.deleteMany({ userId, seriesId }),
-      ]);
+      const { OutboxStorageService } = await import("../../events/persistence/OutboxStorageService");
+      const outboxService = OutboxStorageService.getInstance();
+
+      const occurrences = await TemporalOccurrence.find({ userId, seriesId, status: { $ne: "CANCELLED" } });
+      for (const occ of occurrences) {
+        const currentVersion = occ.version || 0;
+        const nextVersion = currentVersion + 1;
+        const eventDraft = {
+          userId: String(userId),
+          category: "DOMAIN_EVENT" as const,
+          type: "domain.temporal.deleted",
+          aggregateId: String(occ._id),
+          aggregateType: "occurrence" as const,
+          aggregateVersion: nextVersion,
+          source: "kernel.temporal.series_rollback",
+          payload: { occurrenceId: occ.occurrenceId, seriesId, status: "CANCELLED" },
+          occurredAt: new Date(),
+        };
+        await outboxService.persistWithStandaloneFencing({
+          userId: String(userId),
+          aggregateModel: TemporalOccurrence,
+          aggregateId: String(occ._id),
+          clientMutationId: `mut_rollback_occ_${occ._id}_${Date.now()}`,
+          diffHash: `diff_rollback_occ_${occ._id}_${nextVersion}`,
+          expectedVersion: currentVersion,
+          fencingEpoch: occ.mutationEpoch || 0,
+          domainUpdates: { status: "CANCELLED", overrideType: "SINGLE_INSTANCE_CANCELLED", updatedAt: new Date() },
+          eventDrafts: [eventDraft],
+          isDeletion: true,
+        });
+      }
+
+      const seriesDoc = await TemporalSeriesTemplate.findOne({ userId, seriesId });
+      if (seriesDoc) {
+        const currentVersion = (seriesDoc as any).version || 0;
+        const nextVersion = currentVersion + 1;
+        const eventDraft = {
+          userId: String(userId),
+          category: "DOMAIN_EVENT" as const,
+          type: "domain.temporal.template_deleted",
+          aggregateId: String(seriesDoc._id),
+          aggregateType: "workflow" as const,
+          aggregateVersion: nextVersion,
+          source: "kernel.temporal.series_rollback",
+          payload: { seriesId, status: "ARCHIVED" },
+          occurredAt: new Date(),
+        };
+        await outboxService.persistWithStandaloneFencing({
+          userId: String(userId),
+          aggregateModel: TemporalSeriesTemplate,
+          aggregateId: String(seriesDoc._id),
+          clientMutationId: `mut_rollback_series_${seriesDoc._id}_${Date.now()}`,
+          diffHash: `diff_rollback_series_${seriesDoc._id}_${nextVersion}`,
+          expectedVersion: currentVersion,
+          fencingEpoch: (seriesDoc as any).mutationEpoch || 0,
+          domainUpdates: { status: "ARCHIVED", updatedAt: new Date() },
+          eventDrafts: [eventDraft],
+          isDeletion: true,
+        });
+      }
+
       return {
         compensated: true,
-        reversalDetails: `Deleted created series and occurrences ${seriesId}`,
+        reversalDetails: `Soft-archived series and active occurrences for ${seriesId}`,
       };
     }
     return { compensated: true, reversalDetails: "Series creation compensated" };
@@ -651,29 +1035,66 @@ export class LogExecutionIntervalAdapter implements IKernelActionAdapter {
       const { ExecutionChronicle } = await import("@/server/db/models/ExecutionChronicle");
       const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
 
+      const completeOccurrence = async (occ: any) => {
+        const { OutboxStorageService } = await import("../../events/persistence/OutboxStorageService");
+        const outboxService = OutboxStorageService.getInstance();
+        const nextVersion = (occ.version || 0) + 1;
+        const clientMutationId = `mut_occ_complete_${occ._id}_${Date.now()}`;
+        const diffHash = `diff_occ_complete_${occ._id}_${nextVersion}`;
+        const completedAt = new Date();
+
+        const eventDraft = {
+          userId: String(userId),
+          category: "DOMAIN_EVENT" as const,
+          type: "domain.temporal.completed",
+          aggregateId: String(occ._id),
+          aggregateType: "occurrence" as const,
+          aggregateVersion: nextVersion,
+          source: "kernel.temporal.log_interval",
+          payload: {
+            occurrenceId: occ.occurrenceId,
+            title: occ.title,
+            dateOnly: occ.dateOnly,
+            status: "COMPLETED",
+            completedAt: completedAt.toISOString(),
+          },
+          occurredAt: completedAt,
+        };
+
+        await outboxService.persistWithStandaloneFencing({
+          userId: String(userId),
+          aggregateModel: TemporalOccurrence,
+          aggregateId: String(occ._id),
+          clientMutationId,
+          diffHash,
+          expectedVersion: occ.version || 0,
+          fencingEpoch: occ.mutationEpoch || 0,
+          domainUpdates: { status: "COMPLETED", updatedAt: completedAt },
+          eventDrafts: [eventDraft],
+        });
+      };
+
       // Attempt to link matching occurrence and mark it completed
       const todayIso = new Date(p.startedAtMs).toISOString().split("T")[0];
-      const titleKeyword = p.title.trim().split(" ")[0];
-      const titleRegex = new RegExp(titleKeyword, "i");
+      const exactTitle = p.title.trim();
 
       if (!occurrenceId) {
         const matchOcc = await TemporalOccurrence.findOne({
           userId,
           dateOnly: todayIso,
-          title: titleRegex,
+          title: exactTitle,
           status: { $ne: "CANCELLED" },
         });
 
         if (matchOcc) {
           occurrenceId = matchOcc.occurrenceId;
-          matchOcc.status = "COMPLETED";
-          await matchOcc.save();
+          await completeOccurrence(matchOcc);
         } else {
           // Check if there is a recurring series template matching today
           const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
           const matchSeries = await TemporalSeriesTemplate.findOne({
             userId,
-            title: titleRegex,
+            title: exactTitle,
             status: "ACTIVE",
           });
           if (matchSeries) {
@@ -709,8 +1130,7 @@ export class LogExecutionIntervalAdapter implements IKernelActionAdapter {
       } else {
         const matchOcc = await TemporalOccurrence.findOne({ userId, occurrenceId });
         if (matchOcc) {
-          matchOcc.status = "COMPLETED";
-          await matchOcc.save();
+          await completeOccurrence(matchOcc);
         }
       }
 

@@ -1,6 +1,7 @@
 import { connectDB } from "@/server/db/connect";
 import { Goal } from "@/features/goals/models/Goal";
 import { GOAL_TEMPLATES } from "@/features/goals/templates";
+import { createGoal } from "@/features/goals/engine/goalEngine";
 import { getAuthSession } from "@/lib/auth";
 
 export async function POST() {
@@ -16,17 +17,27 @@ export async function POST() {
     return Response.json({ ok: true, message: "Goals already exist" });
   }
 
-  const docs = GOAL_TEMPLATES.map((t) => ({
-    ...t,
-    userId: session.user.id,
-    cadence: "daily",
-    rules: {
-      minActiveDaysPerWeek: 3,
-      graceDaysPerWeek: 2,
-    },
-  }));
+  const createdGoals = [];
+  for (let i = 0; i < GOAL_TEMPLATES.length; i++) {
+    const t = GOAL_TEMPLATES[i];
+    const clientMutationId = `mut_bootstrap_goal_${session.user.id}_${i}`;
+    const result = await createGoal(
+      session.user.id,
+      {
+        ...t,
+        type: t.type as any,
+        cadence: "daily",
+        rules: {
+          minActiveDaysPerWeek: 3,
+          graceDaysPerWeek: 2,
+        },
+      },
+      { clientMutationId }
+    );
+    if (result.success) {
+      createdGoals.push(result.goal);
+    }
+  }
 
-  await Goal.insertMany(docs);
-
-  return Response.json({ ok: true });
+  return Response.json({ ok: true, count: createdGoals.length });
 }

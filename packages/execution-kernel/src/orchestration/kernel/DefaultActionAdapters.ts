@@ -402,54 +402,83 @@ export class DeferExecutionAdapter implements IKernelActionAdapter {
 
     if (isDbConnected()) {
       try {
-        const mongoose = require("mongoose");
-        const taskCollection = mongoose.connection.collection("tasks");
-        let taskQuery: any = { userId };
-        try {
-          taskQuery._id = new mongoose.Types.ObjectId(taskId);
-        } catch (_) {
-          taskQuery._id = taskId;
-        }
-
-        const task = await taskCollection.findOne(taskQuery);
+        const taskIdStr = String(taskId);
+        const { updateTask } = await import("@/features/tasks/engine/taskEngine");
+        const { Task } = await import("@/server/db/models/Task");
+        const task = await Task.findOne({
+          $or: [
+            { _id: mongoose.isValidObjectId(taskIdStr) ? new mongoose.Types.ObjectId(taskIdStr) : taskIdStr },
+            { _id: taskIdStr }
+          ],
+          userId
+        });
         if (task) {
           const now = Date.now();
           const newStartMs = now + deferMinutes * 60 * 1000;
           const newStartDate = new Date(newStartMs);
           const newDueTime = newStartDate.toLocaleTimeString("en-GB", { hour12: false, hour: "2-digit", minute: "2-digit" });
-          await taskCollection.updateOne(
-            { _id: task._id },
+          await updateTask(
+            userId,
+            String(task._id),
             {
-              $set: {
-                dueTime: newDueTime,
-                reminders: [newStartDate],
-                updatedAt: new Date(),
-              }
+              dueTime: newDueTime,
+              reminders: [newStartDate.toISOString()],
             }
           );
         }
       } catch (_) {}
 
       try {
-        const mongoose = require("mongoose");
-        const occCollection = mongoose.connection.collection("temporaloccurrences");
-        const occ = await occCollection.findOne({ occurrenceId: rawEntityId, userId });
+        const { TemporalOccurrence } = await import("@/server/db/models/TemporalOccurrence");
+        const { OutboxStorageService } = await import("../../events/persistence/OutboxStorageService");
+        const outboxService = OutboxStorageService.getInstance();
+        const occ = await TemporalOccurrence.findOne({ occurrenceId: rawEntityId, userId });
         if (occ) {
           const currentStart = occ.plannedInterval?.startIsoUtc ? new Date(occ.plannedInterval.startIsoUtc).getTime() : Date.now();
           const newStartMs = currentStart + deferMinutes * 60 * 1000;
           const newEndMs = newStartMs + (occ.plannedInterval?.durationMinutes || 15) * 60 * 1000;
-          await occCollection.updateOne(
-            { _id: occ._id },
-            {
-              $set: {
-                "plannedInterval.startIsoUtc": new Date(newStartMs).toISOString(),
-                "plannedInterval.endIsoUtc": new Date(newEndMs).toISOString(),
-                "plannedInterval.startMinute": (occ.plannedInterval?.startMinute || 0) + deferMinutes,
-                "plannedInterval.endMinute": (occ.plannedInterval?.endMinute || 0) + deferMinutes,
-                updatedAt: new Date(),
-              }
-            }
-          );
+          const currentVersion = typeof occ.version === "number" ? occ.version : 1;
+          const currentEpoch = typeof occ.mutationEpoch === "number" ? occ.mutationEpoch : 0;
+          const nextVersion = currentVersion + 1;
+          const clientMutationId = proposal.id ? `mut_defer_${proposal.id}` : `mut_defer_${occ._id}_${Date.now()}`;
+          const diffHash = `diff_defer_${occ._id}_${nextVersion}`;
+
+          const domainUpdates = {
+            "plannedInterval.startIsoUtc": new Date(newStartMs).toISOString(),
+            "plannedInterval.endIsoUtc": new Date(newEndMs).toISOString(),
+            "plannedInterval.startMinute": (occ.plannedInterval?.startMinute || 0) + deferMinutes,
+            "plannedInterval.endMinute": (occ.plannedInterval?.endMinute || 0) + deferMinutes,
+          };
+
+          const eventDraft = {
+            userId: String(userId),
+            category: "DOMAIN_EVENT" as const,
+            type: "domain.temporal.rescheduled",
+            aggregateId: String(occ._id),
+            aggregateType: "occurrence" as any,
+            aggregateVersion: nextVersion,
+            source: "kernel.adapters.defer_execution",
+            payload: {
+              occurrenceId: occ.occurrenceId,
+              userId,
+              reason: "deferred_by_user",
+              deferMinutes,
+              newStartIsoUtc: new Date(newStartMs).toISOString(),
+            },
+            occurredAt: new Date(),
+          };
+
+          await outboxService.persistWithStandaloneFencing({
+            userId: String(userId),
+            aggregateModel: TemporalOccurrence,
+            aggregateId: String(occ._id),
+            clientMutationId,
+            diffHash,
+            expectedVersion: currentVersion,
+            fencingEpoch: currentEpoch,
+            domainUpdates,
+            eventDrafts: [eventDraft],
+          });
         }
       } catch (_) {}
     }
@@ -768,16 +797,21 @@ export class ConfirmGoalAdapter implements IKernelActionAdapter {
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
     assertDatabaseConnected("confirm_goal");
-    const goalId = proposal.payload?.goalId || proposal.targetEntityId || proposal.payload?.proposalId;
+    const goalId = (proposal.payload?.goalId || proposal.targetEntityId || proposal.payload?.proposalId)?.toString();
     if (isDbConnected()) {
-      const { Goal } = await import("@/features/goals/models/Goal");
-      const userStr = userId.toString();
-      const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
-      const updated = await Goal.findOneAndUpdate(
-        { _id: goalId, userId: { $in: [userStr, userObjId] } },
-        { $set: { status: "active", confirmedAt: new Date() } },
-        { returnDocument: "after" }
+      const { updateGoal } = await import("@/features/goals/engine/goalEngine");
+      const clientMutationId = proposal.payload?.clientMutationId || `mut_goal_confirm_${goalId}_${Date.now()}`;
+      const result = await updateGoal(
+        userId,
+        goalId,
+        { status: "active", confirmedAt: new Date() },
+        undefined,
+        { clientMutationId, reason: "Goal confirmed via kernel adapter" }
       );
+      if (!result.success) {
+        throw new Error(result.error || `Failed to confirm goal ${goalId}`);
+      }
+      const updated = result.goal;
       return {
         success: true,
         goalId,
@@ -808,12 +842,23 @@ export class ConfirmGoalAdapter implements IKernelActionAdapter {
   }
 
   async compensate(proposal: ActionProposal, _previousResult: any, userId: string): Promise<CompensationResult> {
-    const goalId = proposal.payload?.goalId || proposal.targetEntityId;
+    const goalId = (proposal.payload?.goalId || proposal.targetEntityId)?.toString();
     if (goalId && isDbConnected()) {
-      const { Goal } = await import("@/features/goals/models/Goal");
-      const userStr = userId.toString();
-      const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
-      await Goal.findOneAndUpdate({ _id: goalId, userId: { $in: [userStr, userObjId] } }, { $set: { status: "proposed" } });
+      try {
+        const { updateGoal } = await import("@/features/goals/engine/goalEngine");
+        await updateGoal(
+          userId,
+          goalId,
+          { status: "proposed" },
+          undefined,
+          {
+            clientMutationId: `mut_goal_revert_confirm_${goalId}_${Date.now()}`,
+            reason: `Reverted goal confirmation for ${goalId || proposal.id}`,
+          }
+        );
+      } catch (err: any) {
+        return { compensated: false, error: err.message };
+      }
     }
     return {
       compensated: true,
@@ -868,18 +913,36 @@ export class ModifyWorkoutAdapter implements IKernelActionAdapter {
 
   async execute(proposal: ActionProposal, userId: string): Promise<any> {
     assertDatabaseConnected("modify_workout");
-    const sessionId = proposal.payload?.sessionId || proposal.targetEntityId;
+    const sessionId = (proposal.payload?.sessionId || proposal.targetEntityId)?.toString();
     if (isDbConnected()) {
-      const { WorkoutSession } = await import("@/server/db/models/WorkoutSession");
-      const updated = await WorkoutSession.findOneAndUpdate(
-        { _id: sessionId, userId },
-        { $set: proposal.payload },
-        { new: true }
+      const { updateSession } = await import("@/features/gym/engine/gymEngine");
+      const allowedUpdates: any = {};
+      if (proposal.payload?.exercises !== undefined) allowedUpdates.exercises = proposal.payload.exercises;
+      if (proposal.payload?.durationSeconds !== undefined) allowedUpdates.durationSeconds = proposal.payload.durationSeconds;
+      if (proposal.payload?.splitDayName !== undefined) allowedUpdates.splitDayName = proposal.payload.splitDayName;
+      if (proposal.payload?.workoutType !== undefined) allowedUpdates.workoutType = proposal.payload.workoutType;
+      if (proposal.payload?.calories !== undefined) allowedUpdates.calories = proposal.payload.calories;
+      if (proposal.payload?.strainScore !== undefined) allowedUpdates.strainScore = proposal.payload.strainScore;
+      if (proposal.payload?.date !== undefined) allowedUpdates.date = proposal.payload.date;
+      if (proposal.payload?.dateOnly !== undefined) allowedUpdates.dateOnly = proposal.payload.dateOnly;
+      if (proposal.payload?.routineId !== undefined) allowedUpdates.routineId = proposal.payload.routineId;
+      if (proposal.payload?.timezone !== undefined) allowedUpdates.timezone = proposal.payload.timezone;
+
+      const clientMutationId = proposal.payload?.clientMutationId || `mut_workout_mod_${sessionId}_${Date.now()}`;
+      const result = await updateSession(
+        userId,
+        sessionId,
+        allowedUpdates,
+        undefined,
+        { clientMutationId }
       );
+      if (!result.success) {
+        throw new Error(result.error || `Failed to update workout session ${sessionId}`);
+      }
       return {
         success: true,
         sessionId,
-        workout: updated,
+        workout: result.session,
       };
     }
     return {
@@ -889,7 +952,31 @@ export class ModifyWorkoutAdapter implements IKernelActionAdapter {
     };
   }
 
-  async compensate(proposal: ActionProposal, _previousResult: any, _userId: string): Promise<CompensationResult> {
+  async compensate(proposal: ActionProposal, previousResult: any, userId: string): Promise<CompensationResult> {
+    const sessionId = (proposal.payload?.sessionId || proposal.targetEntityId)?.toString();
+    if (sessionId && previousResult?.workout && isDbConnected()) {
+      try {
+        const { updateSession } = await import("@/features/gym/engine/gymEngine");
+        await updateSession(
+          userId,
+          sessionId,
+          {
+            exercises: previousResult.workout.exercises,
+            durationSeconds: previousResult.workout.durationSeconds,
+            calories: previousResult.workout.calories,
+            strainScore: previousResult.workout.strainScore,
+            workoutType: previousResult.workout.workoutType,
+            splitDayName: previousResult.workout.splitDayName,
+          },
+          undefined,
+          {
+            clientMutationId: `mut_workout_revert_${sessionId}_${Date.now()}`,
+          }
+        );
+      } catch (err: any) {
+        return { compensated: false, error: err.message };
+      }
+    }
     return {
       compensated: true,
       reversalDetails: `Reverted workout modification ${proposal.id}`,
@@ -940,12 +1027,58 @@ export class RecoveryConstraintAdapter implements IKernelActionAdapter {
     assertDatabaseConnected("apply_recovery_constraint");
     if (isDbConnected()) {
       const { DailyLog } = await import("@/server/db/models/DailyLog");
+      const { OutboxStorageService } = await import("../../events/persistence/OutboxStorageService");
+      const outboxService = OutboxStorageService.getInstance();
       const today = proposal.payload?.date || new Date().toISOString().split("T")[0];
-      await DailyLog.findOneAndUpdate(
-        { userId, date: today },
-        { $set: { "recoveryConstraint": proposal.payload } },
-        { upsert: true }
-      );
+      const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
+
+      const existing = await DailyLog.findOne({ userId: userObjId, date: today });
+      const isCreation = !existing;
+      const aggregateId = existing ? existing._id.toString() : new mongoose.Types.ObjectId().toString();
+      const expectedVersion = typeof existing?.version === "number" ? existing.version : 0;
+      const fencingEpoch = typeof existing?.mutationEpoch === "number" ? existing.mutationEpoch : 0;
+      const nextVersion = isCreation ? 1 : expectedVersion + 1;
+      const clientMutationId = proposal.payload?.clientMutationId || `mut_recovery_${aggregateId}_${Date.now()}`;
+      const diffHash = `diff_recovery_${aggregateId}_${nextVersion}`;
+
+      const domainUpdates: Record<string, any> = {
+        recoveryConstraint: proposal.payload,
+      };
+      if (isCreation) {
+        domainUpdates.userId = userObjId;
+        domainUpdates.date = today;
+      }
+
+      const eventDraft = {
+        userId: String(userId),
+        category: "DOMAIN_EVENT" as const,
+        type: "domain.health.recovery_constraint_applied",
+        aggregateId: String(aggregateId),
+        aggregateType: "dailylog" as const,
+        aggregateVersion: nextVersion,
+        source: "kernel.wellness.recovery_constraint",
+        payload: {
+          logId: String(aggregateId),
+          userId: String(userId),
+          date: today,
+          constraint: proposal.payload,
+        },
+        occurredAt: new Date(),
+      };
+
+      await outboxService.persistWithStandaloneFencing({
+        userId: String(userId),
+        aggregateModel: DailyLog,
+        aggregateId: String(aggregateId),
+        clientMutationId,
+        diffHash,
+        expectedVersion,
+        fencingEpoch,
+        domainUpdates,
+        eventDrafts: [eventDraft],
+        isCreation,
+      });
+
       return {
         success: true,
         constraint: proposal.payload,

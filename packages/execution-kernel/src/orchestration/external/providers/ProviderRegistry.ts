@@ -126,6 +126,7 @@ export class ProviderRegistry {
       advertisedCapabilities: [
         "productivity.email.send_message",
         "productivity.email.create_draft",
+        "productivity.email.update_draft",
         "productivity.email.search_messages",
         "productivity.email.read_thread",
         "productivity.email.read_message",

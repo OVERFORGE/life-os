@@ -24,7 +24,7 @@ test("Phase 2: Offline Zero Fake Success Enforcement", async () => {
   }
   delete process.env.LIFEOS_ALLOW_TEST_MOCKS;
 
-  const mockProposal = (actionType: string, payload: any): ActionProposal => ({
+  const mockProposal = (actionType: any, payload: any): ActionProposal => ({
     id: "prop_offline_001",
     planId: "plan_offline_001",
     actionType,
@@ -36,7 +36,7 @@ test("Phase 2: Offline Zero Fake Success Enforcement", async () => {
     payload,
     requiresConfirmation: false,
     estimatedImpact: "Testing offline throw",
-  });
+  } as any);
 
   const taskAdapter = new CreateTaskAdapter();
   const mealAdapter = new LogMealAdapter();
@@ -114,7 +114,7 @@ test("Phase 2: Live MongoDB Atlas State Persistence & Verification", async () =>
 
   // Test 1: Real Task Creation in MongoDB
   const taskTitle = `Phase2 Reality Task ${Date.now()}`;
-  const taskProposal: ActionProposal = {
+  const taskProposal: any = {
     id: "prop_p2_task",
     planId: "plan_p2",
     actionType: "create_task",
@@ -145,7 +145,7 @@ test("Phase 2: Live MongoDB Atlas State Persistence & Verification", async () =>
   assert.equal(persistedTask.status, "pending");
 
   // Test 2: Real Task Completion in MongoDB
-  const completeProposal: ActionProposal = {
+  const completeProposal: any = {
     id: "prop_p2_complete",
     planId: "plan_p2",
     actionType: "complete_task",
@@ -171,7 +171,7 @@ test("Phase 2: Live MongoDB Atlas State Persistence & Verification", async () =>
 
   // Test 3: Real Meal Logging with On-Demand FoodItem Upsert
   const uniqueFoodName = `Phase2 Sourdough Toast ${Date.now()}`;
-  const mealProposal: ActionProposal = {
+  const mealProposal: any = {
     id: "prop_p2_meal",
     planId: "plan_p2",
     actionType: "log_meal",
@@ -211,7 +211,7 @@ test("Phase 2: Live MongoDB Atlas State Persistence & Verification", async () =>
   assert.equal(createdFoodItem.macros?.protein, 8, "Protein correctly recorded in macros");
 
   // Test 4: Real Mental State Persistence in DailyLog
-  const mentalProposal: ActionProposal = {
+  const mentalProposal: any = {
     id: "prop_p2_mental",
     planId: "plan_p2",
     actionType: "record_mental_estimate",

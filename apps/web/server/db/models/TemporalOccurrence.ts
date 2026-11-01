@@ -31,6 +31,8 @@ export interface ITemporalOccurrenceDoc extends Document {
     taskTitle?: string;
   };
   version: number;
+  mutationEpoch: number;
+  recentMutationReceipts: any[];
   overrideType: "NONE" | "SINGLE_INSTANCE_MODIFIED" | "SINGLE_INSTANCE_CANCELLED";
   metadata?: Record<string, any>;
   createdAt: Date;
@@ -137,6 +139,14 @@ const TemporalOccurrenceSchema = new Schema<ITemporalOccurrenceDoc>(
     version: {
       type: Number,
       default: 1,
+    },
+    mutationEpoch: {
+      type: Number,
+      default: 0,
+    },
+    recentMutationReceipts: {
+      type: [Object],
+      default: [],
     },
     overrideType: {
       type: String,

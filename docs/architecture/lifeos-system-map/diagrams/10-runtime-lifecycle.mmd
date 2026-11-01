@@ -1,0 +1,61 @@
+```mermaid
+sequenceDiagram
+  autonumber
+  actor User as User / Client UI
+  participant API as Next.js API Layer
+  participant Auth as NextAuth / Session
+  participant DB as MongoDB (Mongoose)
+  participant Super as KernelSupervisor
+  participant Plan as DynamicWorkflowPlanner
+  participant Kernel as WorkflowExecutionGraph
+  participant Verify as ObjectiveVerificationEngine
+  participant Saga as CompensationSagaCoordinator
+
+  Note over User, DB: Phase 1: Startup & Session Hydration
+  User->>API: GET /api/dashboard (Bearer JWT)
+  API->>Auth: Validate JWT / Session Token
+  Auth-->>API: Valid Session (userId: "usr_123")
+  API->>DB: Query Tasks, Goals, HealthMetrics, Schedule
+  DB-->>API: Return User State Documents
+  API-->>User: 200 OK (Aggregated Dashboard JSON)
+
+  Note over User, Saga: Phase 2: Conversational Turn & Execution
+  User->>API: POST /api/conversation ("Schedule gym at 5pm and defer reading")
+  API->>Auth: Authenticate Request
+  API->>DB: Fetch Recent History & Active Goals
+  DB-->>API: History Records
+  
+  API->>Super: dispatchTurn(prompt, context)
+  Super->>Plan: plan(goal, availableCapabilities)
+  Plan-->>Super: DAG Plan [Step 1: CheckCal, Step 2: MoveReading, Step 3: InsertGym]
+  
+  Super->>Kernel: executeGraph(DAG)
+  
+  rect rgb(240, 248, 255)
+    Note over Kernel, Verify: Step Execution & Verification Loop
+    Kernel->>Kernel: Acquire Path Locks (concurrency <= 3)
+    Kernel->>DB: Mutate Task & Schedule Documents
+    DB-->>Kernel: Mutation Applied
+    Kernel->>Verify: verifyOutcome(actionId, expectedState)
+    alt Verification Succeeded
+      Verify-->>Kernel: Class 1 / Class 2 CONFIRMED
+      Kernel->>DB: Append Durable ActionAudit & Trace
+    else Verification Failed / Ambiguous
+      Verify-->>Kernel: FAILURE_DETECTED
+      Kernel->>Saga: executeCompensation(failedAction)
+      Saga->>DB: Rollback Previous Graph Actions
+      Saga-->>Kernel: Graph Safely Reverted
+    end
+  end
+
+  Kernel-->>Super: Execution Complete / Result Summary
+  Super-->>API: Turn Synthesized Response
+  API-->>User: 200 OK (Streamed Markdown Response + UI Updates)
+
+  Note over API, DB: Phase 3: Background & Asynchronous Processing
+  participant Hook as External Webhook (Whoop/GCal)
+  Hook->>API: POST /api/signals/ingest
+  API->>DB: Write Raw TelemetrySignalModel
+  Note right of API: Background Daemons (MorningBriefing, ProactiveAgent)<br/>ARE NOT RUNNING AUTOMATICALLY (No Cron Runner)
+```
+

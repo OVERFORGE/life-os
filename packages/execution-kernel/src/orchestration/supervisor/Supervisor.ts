@@ -1,5 +1,6 @@
 import { DynamicRouter, RoutingDecision } from "./DynamicRouter";
-import { FastPathExecutor, FastPathContext } from "./FastPathExecutor";
+import { evaluateOperationalRouting } from "./OperationalRoutingGate";
+import { CapabilityRegistry } from "../capabilities/CapabilityRegistry";
 import { ReActOrchestrator, ReActLoopResult } from "../react/ReActOrchestrator";
 import { ExecutionWorkspace } from "../workspace/ExecutionWorkspace";
 import { ProductionTracer, ProductionTraceContext } from "../observability/ProductionTracer";
@@ -22,7 +23,27 @@ import mongoose from "mongoose";
 import { AvenStreamEvent } from "../contracts/AvenStreamContracts";
 import { CapabilityPresentationRegistry } from "../external/presentation/CapabilityPresentationRegistry";
 import { WorldModelBridge } from "../../worldv2/WorldModelBridge";
+import { ContextProjectionSerializer } from "../../worldv2/ContextProjectionSerializer";
 import { ILifeContextProjection } from "../../worldv2/contracts/LifeContextProjectionContracts";
+import { IterativeActionDispatcher } from "../kernel/IterativeActionDispatcher";
+import { DynamicWorkflowPlanner } from "../planning/DynamicWorkflowPlanner";
+import { StepDataResolver } from "../workspace/StepDataResolver";
+import { assertValidHmacSecret } from "../contracts/WorkflowExecutionContracts";
+import { ExecutionPersistenceService } from "../workspace/ExecutionPersistenceService";
+
+export interface ProviderConnectionCheckResult {
+  connected: boolean;
+  status: "CONNECTED" | "DISCONNECTED" | "PERSISTENCE_UNAVAILABLE" | "NOT_REQUIRED";
+  providerDisplayName: string;
+  error?: string;
+}
+
+export interface IProviderConnectionChecker {
+  checkConnection(
+    userId: string,
+    providerId: string
+  ): Promise<ProviderConnectionCheckResult>;
+}
 
 export interface SupervisorRequest {
   userId: string;
@@ -33,6 +54,7 @@ export interface SupervisorRequest {
   timezone?: string;
   referenceTimeMs?: number;
   knownTasks?: Array<{ id: string; title: string }>;
+  activeFocus?: IContextEntityRef | null;
   onChunk?: (chunk: string) => void;
   onEvent?: (event: AvenStreamEvent) => void;
   surfaceContext?: {
@@ -68,16 +90,21 @@ export interface SupervisorResponse {
  */
 export class Supervisor {
   private static instance: Supervisor;
+  private connectionChecker?: IProviderConnectionChecker;
 
   constructor(
     private router: DynamicRouter,
-    private fastPath: FastPathExecutor,
-    private reactOrchestrator: ReActOrchestrator,
+    _legacyFastPath?: any,
+    private reactOrchestrator?: ReActOrchestrator,
     private kernel?: any
-  ) {}
+  ) { }
 
   getRouter(): DynamicRouter {
     return this.router;
+  }
+
+  setConnectionChecker(checker: IProviderConnectionChecker): void {
+    this.connectionChecker = checker;
   }
 
   static getInstance(): Supervisor {
@@ -87,13 +114,54 @@ export class Supervisor {
     return Supervisor.instance;
   }
 
-  static createDefault(customKernel?: any): Supervisor {
+  static createDefault(customKernel?: any, connectionChecker?: IProviderConnectionChecker): Supervisor {
     const { KernelCapabilityService } = require("../kernel/KernelCapabilityService");
     const kernel = customKernel || KernelCapabilityService.getInstance();
-    const fastPath = new FastPathExecutor(kernel);
-    const router = new DynamicRouter(fastPath);
+    const router = new DynamicRouter();
     const reactOrchestrator = ReActOrchestrator.createDefault(kernel);
-    return new Supervisor(router, fastPath, reactOrchestrator, kernel);
+    const supervisor = new Supervisor(router, null, reactOrchestrator, kernel);
+    if (connectionChecker) {
+      supervisor.setConnectionChecker(connectionChecker);
+    }
+    return supervisor;
+  }
+
+  private async executeFastAtomicProposal(
+    proposal: ActionProposal,
+    userId: string
+  ): Promise<{ handled: boolean; proposal: ActionProposal; kernelResults: any[]; userResponse: string }> {
+    const { KernelCapabilityService } = require("../kernel/KernelCapabilityService");
+    const kernelService = this.kernel || KernelCapabilityService.getInstance();
+    const validation = await kernelService.validateActionProposals(userId, [proposal]);
+    if (!validation.valid || validation.validDecisions.length === 0) {
+      const reason = validation.rejectedProposals[0]?.reason || "Validation rejected";
+      return {
+        handled: true,
+        proposal,
+        kernelResults: [],
+        userResponse: `I couldn't complete that request: ${reason}`,
+      };
+    }
+    const results = await kernelService.executeActionBatch(userId, validation.validDecisions);
+    let userResponse = "Completed request successfully.";
+    const act = String(proposal.actionType).toLowerCase();
+    if (act === "create_task") {
+      userResponse = `Created task: ${proposal.payload?.title || "new task"}.`;
+    } else if (act === "complete_task") {
+      userResponse = "Marked task as completed.";
+    } else if (act === "delete_task") {
+      userResponse = "Deleted task.";
+    } else if (act === "log_signal") {
+      userResponse = `Logged ${proposal.payload?.signalKey || "signal"}.`;
+    } else {
+      userResponse = `Action ${proposal.actionType} completed successfully.`;
+    }
+    return {
+      handled: true,
+      proposal,
+      kernelResults: results,
+      userResponse,
+    };
   }
 
   async execute(req: SupervisorRequest): Promise<SupervisorResponse> {
@@ -115,67 +183,20 @@ export class Supervisor {
     let earlyFillerEmitted = false;
     let mainExecutionFinished = false;
 
-    // 0a. Deterministic High-Velocity Fast Path Execution (< 1000ms latency budget)
-    if (this.fastPath.canHandle(req.message)) {
-      const fastContext: FastPathContext = {
-        executionId,
-        knownTasks: req.knownTasks,
-      };
-
-      const fastResult = await this.fastPath.execute(req.message, req.userId, fastContext);
-
-      if (fastResult.handled) {
-        const durationMs = Date.now() - startTime;
-        const actionsExecuted = fastResult.kernelResults?.filter((r) => r.success).length || 0;
-        const actionIds = fastResult.kernelResults?.map((r) => r.actionId) || [];
-        const routingDecision: RoutingDecision = {
-          strategy: "FAST_PATH",
-          confidence: 1.0,
-          rationale: "Deterministic high-velocity intent matching Fast Path criteria",
-        };
-
-        const traceContext = ProductionTracer.getInstance().recordTrace({
-          requestId,
-          executionId,
-          userId: req.userId,
-          actionIds,
-          eventIds: [],
-          durationMs,
-          routingStrategy: "FAST_PATH",
-          terminationReason: "GOAL_SATISFIED",
-          timestamp: Date.now(),
-        });
-
-        mainExecutionFinished = true;
-        req.onChunk?.(fastResult.userResponse);
-        return {
-          executionId,
-          requestId,
-          routingDecision,
-          response: fastResult.userResponse,
-          durationMs,
-          actionsExecuted,
-          workspaceStatus: "COMPLETED",
-          terminationReason: "GOAL_SATISFIED",
-          traceContext,
-        };
-      }
-    }
-
     // Launch instant model-driven semantic filler concurrently (< 180ms) for real-time voice responsiveness
     const fillerPromise = req.onChunk
       ? FastSemanticFiller.getInstance()
-          .generateFiller(req.message)
-          .then((filler) => {
-            if (filler && !mainExecutionFinished && req.onChunk) {
-              earlyFillerEmitted = true;
-              const cleanFiller = filler.replace(/[.!?\s]+$/, "") + ".\n\n";
-              req.onChunk(cleanFiller);
-              return filler;
-            }
-            return null;
-          })
-          .catch(() => null)
+        .generateFiller(req.message)
+        .then((filler) => {
+          if (filler && !mainExecutionFinished && req.onChunk) {
+            earlyFillerEmitted = true;
+            const cleanFiller = filler.replace(/[.!?\s]+$/, "") + ".\n\n";
+            req.onChunk(cleanFiller);
+            return filler;
+          }
+          return null;
+        })
+        .catch(() => null)
       : Promise.resolve(null);
 
     // 0. Pre-load Conversational State & Short-Term Memory (Phase 1)
@@ -211,23 +232,24 @@ export class Supervisor {
             { upsert: true }
           );
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     // Ingest authoritative LifeContextProjection from WorldModelBridge (Phase 1)
     const bridge = WorldModelBridge.getInstance();
-    const lifeContext = await bridge.getProjection(req.userId);
+    const lifeContext = await bridge.getProjection(req.userId, { timezone: req.timezone });
 
     // 1. Authoritative Semantic Interpretation via Aven with Bounded Context Projection
     const interpreter = SemanticIntentInterpreter.getInstance();
     const semanticTurn = await interpreter.interpret(req.message, {
       userId: req.userId,
+      userName: req.userName,
       conversationId,
       timezone: req.timezone,
       referenceTimeMs: req.referenceTimeMs,
       knownTasks: req.knownTasks,
       recentHistory: (loadedState?.recentMessages || []).slice(-16),
-      activeFocus: stm?.activeFocus || null,
+      activeFocus: req.activeFocus !== undefined ? req.activeFocus : (stm?.activeFocus || null),
       recentEntities: stm?.recentEntities || [],
       pendingOperation: pendingOp,
       activeMode: stm?.activeContextMode || "standard",
@@ -236,8 +258,175 @@ export class Supervisor {
       lifeContextProjection: lifeContext,
     });
 
-    // 2. Dynamic Routing Decision informed by SemanticTurn
+    // 2. Intent-tailored context selection for downstream planning & grounding (WP3/WP4)
+    const tailoredContext = ContextProjectionSerializer.selectContext(
+      lifeContext,
+      semanticTurn.primaryClassification || req.message,
+      1400
+    );
+
+    // Evaluate operational routing taxonomy (V2.3.0 Section 5)
+    const routingEval = evaluateOperationalRouting(semanticTurn);
+
+    // 2a. Fast Execution Gate for Single Atomic Operations (V2.3.0 Section 5)
+    if (routingEval.eligibleForImmediateExecution && routingEval.category === "SINGLE_ATOMIC_OPERATION" && routingEval.proposals?.[0]) {
+      const fastResult = await this.executeFastAtomicProposal(routingEval.proposals[0], req.userId);
+
+      if (fastResult.handled) {
+        const durationMs = Date.now() - startTime;
+        const actionsExecuted = fastResult.kernelResults?.filter((r) => r.success).length || 0;
+        const actionIds = fastResult.kernelResults?.map((r) => r.actionId) || [];
+        const fastDecision: RoutingDecision = {
+          strategy: "FAST_PATH",
+          confidence: 1.0,
+          rationale: "Deterministic atomic mutation meeting fast execution criteria",
+        };
+
+        const traceContext = ProductionTracer.getInstance().recordTrace({
+          requestId,
+          executionId,
+          userId: req.userId,
+          actionIds,
+          eventIds: [],
+          durationMs,
+          routingStrategy: "FAST_PATH",
+          terminationReason: "GOAL_SATISFIED",
+          timestamp: Date.now(),
+        });
+
+        mainExecutionFinished = true;
+        req.onChunk?.(fastResult.userResponse);
+        if (actionsExecuted > 0) {
+          bridge.invalidate(req.userId);
+        }
+        const fastLifeContext = await bridge.getProjection(req.userId, { timezone: req.timezone });
+        return {
+          executionId,
+          requestId,
+          routingDecision: fastDecision,
+          response: fastResult.userResponse,
+          durationMs,
+          actionsExecuted,
+          workspaceStatus: "COMPLETED",
+          terminationReason: "GOAL_SATISFIED",
+          traceContext,
+          lifeContext: fastLifeContext,
+        };
+      }
+    }
+
+    // 2b. Fail-Closed on Unregistered Capabilities (V2.3.0 Section 4 / Section 5)
+    if (routingEval.category === "UNREGISTERED_CAPABILITY") {
+      const response = routingEval.userExplanation || "The requested action cannot be executed because the required capability is not registered.";
+      mainExecutionFinished = true;
+      req.onChunk?.(response);
+      return {
+        executionId,
+        requestId,
+        routingDecision: {
+          strategy: "CONVERSATIONAL_LLM",
+          confidence: 1.0,
+          rationale: "Unregistered capability failed closed",
+        },
+        response,
+        durationMs: Date.now() - startTime,
+        actionsExecuted: 0,
+        workspaceStatus: "FAILED",
+        terminationReason: "UNREGISTERED_CAPABILITY",
+        lifeContext,
+      };
+    }
+
+    // 3. Dynamic Routing Decision informed by SemanticTurn
     const routingDecision = this.router.route(req.message, semanticTurn);
+
+    // Multi-Step Dependent Workflow Route (Stage 4 Dynamic Orchestration & Stage 1 Agency)
+    const isMultiStepGoal =
+      routingDecision.strategy === "DYNAMIC_WORKFLOW" ||
+      routingEval.category === "COMPOSITE_WORKFLOW_DAG";
+
+    if (isMultiStepGoal && semanticTurn.primaryClassification !== "CANCEL_OR_DISMISS" && semanticTurn.primaryClassification !== "CONFIRMATION" && !pendingOp) {
+      const dispatcher = IterativeActionDispatcher.getInstance(this.kernel);
+      let plan: any = null;
+      try {
+        const planner = new DynamicWorkflowPlanner({
+          llmClient: {
+            complete: async (prompt: string) => {
+              return groqChat({
+                messages: [{ role: "user", content: prompt }],
+                model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+                temperature: 0.1,
+                max_tokens: 1500,
+              });
+            },
+          },
+          allowBenchmarkFallback: process.env.NODE_ENV === "test",
+        });
+        plan = await planner.planWorkflow({
+          userRequest: req.message,
+          goal: req.message,
+          context: {
+            lifeContext,
+            tailoredContext: tailoredContext.serializedContext,
+          },
+        });
+      } catch (_) {}
+
+      let wfResult: any;
+      if (plan && plan.steps && plan.steps.length > 0) {
+        wfResult = await dispatcher.executeGraphWorkflow({
+          userId: req.userId,
+          userName: req.userName,
+          userRequest: req.message,
+          goal: req.message,
+          conversationId,
+          executionId,
+          plan,
+          onEvent: req.onEvent,
+          onChunk: req.onChunk,
+        });
+      } else {
+        wfResult = await dispatcher.executeWorkflow({
+          userId: req.userId,
+          userName: req.userName,
+          userRequest: req.message,
+          goal: req.message,
+          conversationId,
+          executionId,
+          onEvent: req.onEvent,
+          onChunk: req.onChunk,
+        });
+      }
+
+      let stmUpdates: Record<string, any> = {};
+      if (wfResult.pendingOperation) {
+        stmUpdates = { pendingOperation: wfResult.pendingOperation };
+        try {
+          if (mongoose.connection && mongoose.connection.readyState === 1) {
+            const { ConversationShortTermMemory } = await import("@/server/db/models/ConversationShortTermMemory");
+            await ConversationShortTermMemory.updateOne(
+              { conversationId, userId: req.userId },
+              { $set: stmUpdates },
+              { upsert: true }
+            );
+          }
+        } catch (_) { }
+      }
+
+      return {
+        executionId,
+        requestId,
+        routingDecision,
+        response: wfResult.response,
+        durationMs: Date.now() - startTime,
+        actionsExecuted: wfResult.actionsExecuted,
+        workspaceStatus: wfResult.status,
+        terminationReason: wfResult.outcomeStatus,
+        stmUpdates,
+        pendingOperation: wfResult.pendingOperation,
+        lifeContext,
+      };
+    }
 
     // 3. User Cancellation or Retraction Branch (Policy-driven per V2.2 Section 5)
     if (semanticTurn.primaryClassification === "CANCEL_OR_DISMISS") {
@@ -300,6 +489,7 @@ export class Supervisor {
             terminationReason: "AWAITING_CLARIFICATION",
             stmUpdates,
             pendingOperation: newPendingOp,
+            lifeContext,
           };
         }
       }
@@ -328,6 +518,7 @@ export class Supervisor {
         terminationReason: "CANCELLED_BY_USER",
         traceContext,
         stmUpdates,
+        lifeContext,
       };
     }
 
@@ -343,15 +534,7 @@ export class Supervisor {
         opPayload.priority = op.payload.priority;
       }
 
-      const isTemporalClarification =
-        op?.actionType === "create_temporal_series" ||
-        op?.actionType === "schedule_occurrence" ||
-        response.toLowerCase().includes("class") ||
-        response.toLowerCase().includes("schedule") ||
-        response.toLowerCase().includes("block") ||
-        response.toLowerCase().includes("routine");
-
-      const resolvedActionType = op?.actionType || (isTemporalClarification ? "create_temporal_series" : "create_task");
+      const resolvedActionType = op?.actionType || "create_task";
 
       const newPendingOp: IPendingOperationContext = {
         operationId: op?.operationId || generateId("pop"),
@@ -387,7 +570,7 @@ export class Supervisor {
             { upsert: true }
           );
         }
-      } catch (_) {}
+      } catch (_) { }
 
       const traceContext = ProductionTracer.getInstance().recordTrace({
         requestId,
@@ -412,6 +595,7 @@ export class Supervisor {
         traceContext,
         stmUpdates,
         pendingOperation: newPendingOp,
+        lifeContext,
       };
     }
 
@@ -431,7 +615,7 @@ export class Supervisor {
               req.onChunk?.(cleanFiller);
             }
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       // If turn is an EXPLICIT_CORRECTION, compensate previous operation first
@@ -441,12 +625,12 @@ export class Supervisor {
           const kernel = this.kernel || KernelCapabilityService.getInstance();
           try {
             await kernel.compensateAction(lastOp, req.userId);
-          } catch (_) {}
+          } catch (_) { }
         }
       }
 
       // Check for external capability requirements and provider connections
-      let missingProviderInfo: { providerId: string; providerDisplayName: string; capabilityURN: string } | null = null;
+      let missingProviderInfo: { providerId: string; providerDisplayName: string; capabilityURN: string; status?: string } | null = null;
       for (const op of semanticTurn.operations) {
         let reqProviderId: string | null = null;
         let capURN: string = op.capabilityURN || "";
@@ -473,6 +657,7 @@ export class Supervisor {
               providerId: reqProviderId,
               providerDisplayName: connCheck.providerDisplayName,
               capabilityURN: capURN || `productivity.${reqProviderId}`,
+              status: connCheck.status,
             };
             break;
           }
@@ -481,9 +666,12 @@ export class Supervisor {
 
       if (missingProviderInfo) {
         const pName = missingProviderInfo.providerDisplayName;
-        const connectMsg = missingProviderInfo.providerId === "spotify"
-          ? `I can do that once ${pName} is connected.`
-          : `I can handle that, but ${pName} isn't connected yet.`;
+        const isDbOffline = (missingProviderInfo as any).status === "PERSISTENCE_UNAVAILABLE";
+        const connectMsg = isDbOffline
+          ? `Database service is temporarily unavailable. Cannot verify authorization for ${pName}. Action aborted.`
+          : missingProviderInfo.providerId === "spotify"
+            ? `I can do that once ${pName} is connected.`
+            : `I can handle that, but ${pName} isn't connected yet.`;
 
         req.onEvent?.({
           type: "missing_connection",
@@ -491,8 +679,26 @@ export class Supervisor {
           providerDisplayName: pName,
           capabilityURN: missingProviderInfo.capabilityURN,
           message: connectMsg,
-          connectUrl: "/settings/connections",
+          connectUrl: isDbOffline ? "" : "/settings/connections",
         });
+
+        if (isDbOffline) {
+          mainExecutionFinished = true;
+          req.onChunk?.(connectMsg);
+          req.onEvent?.({ type: "assistant_delta", text: connectMsg });
+
+          return {
+            executionId,
+            requestId,
+            routingDecision,
+            response: connectMsg,
+            durationMs: Date.now() - startTime,
+            actionsExecuted: 0,
+            workspaceStatus: "COMPLETED",
+            terminationReason: "PERSISTENCE_UNAVAILABLE",
+            lifeContext,
+          };
+        }
 
         const op = semanticTurn.operations[0];
         const newPendingOp: IPendingOperationContext = {
@@ -522,7 +728,7 @@ export class Supervisor {
               { upsert: true }
             );
           }
-        } catch (_) {}
+        } catch (_) { }
 
         mainExecutionFinished = true;
         req.onChunk?.(connectMsg);
@@ -539,6 +745,7 @@ export class Supervisor {
           terminationReason: "MISSING_CONNECTION",
           stmUpdates,
           pendingOperation: newPendingOp,
+          lifeContext,
         };
       }
 
@@ -549,12 +756,179 @@ export class Supervisor {
         pendingOp &&
         (pendingOp as any).state === "AWAITING_CONFIRMATION" &&
         (semanticTurn.primaryClassification === "CONFIRMATION" ||
-         semanticTurn.primaryClassification === "CLARIFICATION_RESPONSE" ||
-         /^(?:yes|yep|yeah|sure|confirm|proceed|ok|okay|allow|do it|send it|go ahead)/i.test((req.message || "").trim()) ||
-         (semanticTurn.operations.length > 0 &&
-          Boolean((semanticTurn.operations[0] as any).confirmationGranted || semanticTurn.operations[0].executionEligibility === "READY")));
+          semanticTurn.primaryClassification === "CLARIFICATION_RESPONSE" ||
+          (semanticTurn.operations.length > 0 &&
+            Boolean((semanticTurn.operations[0] as any).confirmationGranted || semanticTurn.operations[0].executionEligibility === "READY")));
 
-      if (userConfirmedPending) {
+      if (userConfirmedPending && pendingOp) {
+        if ((pendingOp as any)?.approvalSignature) {
+          const tokenA = (pendingOp as any).claimFencingToken || `fnc_worker_${generateId("w")}`;
+
+          // Phase 1: Atomic Claim via findOneAndUpdate
+          if (mongoose.connection && mongoose.connection.readyState === 1) {
+            try {
+              const { ConversationShortTermMemory } = await import("@/server/db/models/ConversationShortTermMemory");
+              const claimedDoc = await (ConversationShortTermMemory as any).findOneAndUpdate(
+                {
+                  conversationId,
+                  userId: req.userId,
+                  "pendingOperation.operationId": pendingOp.operationId,
+                  "pendingOperation.state": "AWAITING_CONFIRMATION",
+                  "pendingOperation.expiresAt": { $gt: new Date() },
+                },
+                {
+                  $set: {
+                    "pendingOperation.state": "CLAIMED",
+                    "pendingOperation.claimedAt": new Date(),
+                    "pendingOperation.claimFencingToken": tokenA,
+                    "pendingOperation.leaseExpiresAt": new Date(Date.now() + 60000),
+                  },
+                  $inc: { "pendingOperation.dispatchGeneration": 1 },
+                },
+                { new: true }
+              );
+
+              if (!claimedDoc) {
+                const reply = "This action has already been claimed, processed, or expired.";
+                req.onChunk?.(reply);
+                return {
+                  executionId,
+                  requestId,
+                  routingDecision,
+                  response: reply,
+                  durationMs: Date.now() - startTime,
+                  actionsExecuted: 0,
+                  workspaceStatus: "COMPLETED",
+                  terminationReason: "ALREADY_CLAIMED_OR_EXPIRED",
+                };
+              }
+            } catch (_) { }
+          }
+
+          // Cryptographic Integrity Verification
+          const verifyResult = StepDataResolver.verifyApprovalSignature({
+            userId: req.userId,
+            executionId: pendingOp.executionId || executionId,
+            operationId: pendingOp.operationId,
+            capabilityURN: pendingOp.capabilityURN || (pendingOp.resolvedPayload as any)?.capabilityURN || "",
+            expiresAt: pendingOp.expiresAt,
+            payload: pendingOp.resolvedPayload || pendingOp.partialPayload,
+            signature: (pendingOp as any).approvalSignature,
+            keyVersion: (pendingOp as any).keyVersion,
+          });
+
+          if (!verifyResult.valid) {
+            try {
+              if (mongoose.connection && mongoose.connection.readyState === 1) {
+                const { ConversationShortTermMemory } = await import("@/server/db/models/ConversationShortTermMemory");
+                await ConversationShortTermMemory.updateOne(
+                  { conversationId, userId: req.userId },
+                  { $set: { "pendingOperation.state": "INVALIDATED" } }
+                );
+              }
+            } catch (_) { }
+
+            const reply = "Security error: Approved action parameters failed cryptographic integrity verification.";
+            req.onChunk?.(reply);
+            return {
+              executionId,
+              requestId,
+              routingDecision,
+              response: reply,
+              durationMs: Date.now() - startTime,
+              actionsExecuted: 0,
+              workspaceStatus: "COMPLETED",
+              terminationReason: "INTEGRITY_TAMPER_DETECTED",
+            };
+          }
+
+          // Phase 2: Pre-Dispatch Authority Gate
+          if (mongoose.connection && mongoose.connection.readyState === 1) {
+            try {
+              const { ConversationShortTermMemory } = await import("@/server/db/models/ConversationShortTermMemory");
+              const dispatchDoc = await (ConversationShortTermMemory as any).findOneAndUpdate(
+                {
+                  conversationId,
+                  userId: req.userId,
+                  "pendingOperation.operationId": pendingOp.operationId,
+                  "pendingOperation.state": "CLAIMED",
+                  "pendingOperation.claimFencingToken": tokenA,
+                  "pendingOperation.leaseExpiresAt": { $gt: new Date() },
+                },
+                {
+                  $set: {
+                    "pendingOperation.state": "DISPATCHED_IN_FLIGHT",
+                    "pendingOperation.dispatchedAt": new Date(),
+                  },
+                },
+                { new: true }
+              );
+
+              if (!dispatchDoc) {
+                const reply = "Action execution aborted: dispatch lease expired or authority was reclaimed.";
+                req.onChunk?.(reply);
+                return {
+                  executionId,
+                  requestId,
+                  routingDecision,
+                  response: reply,
+                  durationMs: Date.now() - startTime,
+                  actionsExecuted: 0,
+                  workspaceStatus: "COMPLETED",
+                  terminationReason: "FENCED_DISPATCH_ABORT",
+                };
+              }
+            } catch (_) { }
+          }
+
+          // Resume workflow via IterativeActionDispatcher with restored completedSteps
+          let existingSteps: any[] = [];
+          if (pendingOp.executionId) {
+            try {
+              const persistence = ExecutionPersistenceService.getInstance();
+              const restored = await persistence.restoreWorkspace(pendingOp.executionId, req.userId);
+              if (restored && restored.completedSteps) {
+                existingSteps = restored.completedSteps;
+              }
+            } catch (_) {}
+          }
+
+          const dispatcher = IterativeActionDispatcher.getInstance(this.kernel);
+          const wfResult = await dispatcher.resumeWorkflowWithApprovedAction(
+            req.userId,
+            pendingOp,
+            existingSteps,
+            {
+              workerId: tokenA,
+              onEvent: req.onEvent,
+              onChunk: req.onChunk,
+            }
+          );
+
+          const stmUpdates = { pendingOperation: null };
+          try {
+            if (mongoose.connection && mongoose.connection.readyState === 1) {
+              const { ConversationShortTermMemory } = await import("@/server/db/models/ConversationShortTermMemory");
+              await ConversationShortTermMemory.updateOne(
+                { conversationId, userId: req.userId },
+                { $set: stmUpdates }
+              );
+            }
+          } catch (_) { }
+
+          return {
+            executionId,
+            requestId,
+            routingDecision,
+            response: wfResult.response,
+            durationMs: Date.now() - startTime,
+            actionsExecuted: wfResult.actionsExecuted,
+            workspaceStatus: wfResult.status,
+            terminationReason: wfResult.outcomeStatus,
+            stmUpdates,
+          };
+        }
+
         if (semanticTurn.operations.length === 0 && pendingOp) {
           const restoredPayload = { ...(pendingOp.partialPayload || {}) };
           const capURN = restoredPayload.capabilityURN || (restoredPayload as any)?.parameters?.capabilityURN || (pendingOp as any).capabilityURN;
@@ -609,42 +983,22 @@ export class Supervisor {
           continue;
         }
 
-        // HITL Policy: Read operations and safe drafts do NOT require HITL. Only irreversible WRITE/MUTATION operations require HITL!
-        const isReadOperation =
-          capURN.includes("storage.list_files") ||
-          capURN.includes("storage.read_file") ||
-          capURN.includes("calendar.read_events") ||
-          capURN.includes("email.search_messages") ||
-          capURN.includes("email.read_thread") ||
-          capURN.includes("email.read_message") ||
-          capURN.includes("email.create_draft") ||
-          capURN.includes("contacts.search_contacts") ||
-          capURN.includes("contacts.get_contact") ||
-          capURN.includes("task.sync_tasks") ||
-          capURN.includes("biometrics.read") ||
-          capURN.includes("activity.sync_telemetry") ||
-          capURN.includes("activity.read_daily_summary") ||
-          capURN.includes("activity.read_sleep") ||
-          capURN.includes("git.list_prs") ||
-          capURN.includes("git.list_repos") ||
-          capURN.includes("git.search_code") ||
-          capURN.includes("media.read_current_track") ||
-          capURN.includes("context.system.search_web") ||
-          capURN.includes("context.system.open_url") ||
-          capURN.includes("context.system.read_clipboard");
+        // Authoritative HITL Policy: Governed strictly by CapabilityRegistry (V2.3.0 Section 3 / Section 5)
+        const registry = CapabilityRegistry.getInstance();
+        const opUrn = capURN || op.actionType;
+        const desc = registry.getCapability(opUrn);
 
-        const isWriteMutation =
-          !isReadOperation &&
-          (capURN.includes("write_file") ||
-           capURN.includes("delete") ||
-           capURN.includes("email.send_message") ||
-           capURN.includes("calendar.delete_event") ||
-           capURN.includes("git.create_issue") ||
-           op.actionType === "delete_task" ||
-           op.actionType === "delete_goal" ||
-           (isExplicitConf && !isReadOperation));
+        const requiresApproval = desc
+          ? desc.requiresApproval === true || (desc.requiredResources || []).some((r) => r.accessMode === "EXCLUSIVE_LOCK")
+          : true; // Unknown capabilities fail closed
 
-        if (isWriteMutation) {
+        const isReadOperation = desc
+          ? desc.category === "query" || desc.category === "discovery" || (!desc.isReversible && !desc.requiresApproval)
+          : false;
+
+        const isWriteMutation = desc ? requiresApproval || isExplicitConf : true;
+
+        if (isWriteMutation && !isReadOperation) {
           hitlRequiredOp = op;
           break;
         }
@@ -660,12 +1014,15 @@ export class Supervisor {
         };
 
         const targetPath = String(op.payload?.parameters?.path || op.payload?.path || "").trim();
-        const isWriteFile = capURN.includes("write_file");
-        const isDelete = capURN.includes("delete");
-        const isEmailSend = capURN.includes("email.send_message");
-        const isCalendarCreate = capURN.includes("calendar.create_event");
-        const isGitIssue = capURN.includes("git.create_issue");
-        const isWorkout = capURN.includes("activity.record_workout");
+        const capDesc = CapabilityRegistry.getCapability(capURN);
+        const opKind = capDesc?.operationKind || (capDesc?.requiresApproval ? "CREATE" : "READ");
+        const entityType = capDesc?.targetEntityType || "item";
+        const isDelete = opKind === "DELETE";
+        const isWriteFile = entityType === "file" && opKind === "CREATE";
+        const isEmailSend = entityType === "email" && (opKind === "CREATE" || opKind === "UPDATE");
+        const isCalendarCreate = entityType === "calendar_event" && opKind === "CREATE";
+        const isGitIssue = entityType === "issue" && opKind === "CREATE";
+        const isWorkout = entityType === "workout" && opKind === "CREATE";
 
         let verbalPrompt = `I'll need your permission to perform this action. Would you like me to proceed?`;
         let confirmTitle = `Confirm Action?`;
@@ -760,7 +1117,7 @@ export class Supervisor {
               { upsert: true }
             );
           }
-        } catch (_) {}
+        } catch (_) { }
 
         mainExecutionFinished = true;
         req.onChunk?.(verbalPrompt);
@@ -777,6 +1134,7 @@ export class Supervisor {
           terminationReason: "AWAITING_CONFIRMATION",
           stmUpdates,
           pendingOperation: newPendingOp,
+          lifeContext,
         };
       }
 
@@ -785,13 +1143,16 @@ export class Supervisor {
         if (!payload.title) {
           payload.title = payload.name || payload.habit || payload.goalTitle || payload.goal || payload.description || op.targetReference?.semanticDescriptor || op.targetReference?.rawExpression;
         }
+        const desc = CapabilityRegistry.getInstance().getCapability((op as any).capabilityURN || op.actionType);
+        const reversibility = desc?.reversibility || (desc?.isReversible ? "reversible_with_compensation" : "atomic_single_doc");
+
         return {
-          id: `prop_${op.operationId}_${Date.now()}_${idx}`,
+          id: `prop_${op.operationId}_${idx}`,
           planId: `plan_${executionId}`,
           actionType: op.actionType,
           domain: op.domain,
           riskClass: op.riskClass,
-          reversibility: op.riskClass === "HIGH_IRREVERSIBLE" ? "irreversible_external" : op.riskClass === "MEDIUM_COMPENSABLE" ? "reversible_with_compensation" : "atomic_single_doc",
+          reversibility,
           state: "PROPOSED",
           title: payload.title || op.payload?.description || op.actionType,
           rationale: semanticTurn.conversationalSummary,
@@ -799,7 +1160,7 @@ export class Supervisor {
           targetEntityId: op.targetReference?.resolvedEntityId || payload.taskId || payload.goalId,
           requiresConfirmation: op.executionEligibility === "REQUIRES_CLARIFICATION",
           estimatedImpact: op.actionType,
-          idempotencyKey: `${executionId}_${op.operationId}`,
+          idempotencyKey: `turn_${semanticTurn.turnId}_${op.operationId}`,
           dependencies: op.dependencies,
         };
       });
@@ -855,7 +1216,7 @@ export class Supervisor {
               { upsert: true }
             );
           }
-        } catch (_) {}
+        } catch (_) { }
 
         mainExecutionFinished = true;
         req.onChunk?.(clarificationQuestion);
@@ -870,6 +1231,7 @@ export class Supervisor {
           terminationReason: "AWAITING_CLARIFICATION",
           stmUpdates,
           pendingOperation: newPendingOp,
+          lifeContext,
         };
       }
 
@@ -932,10 +1294,11 @@ export class Supervisor {
         if (capURN) {
           const reqProvId = op.providerHint || op.payload?.providerId;
           const pres = CapabilityPresentationRegistry.getInstance().get(capURN as any, reqProvId);
+          const capDesc = CapabilityRegistry.getCapability(capURN);
           const resData = res.data || res.result || {};
           let humanMessage = res.success ? pres.completedPhrase : (res.error?.message || pres.failedPhrase);
 
-          if (res.success && (capURN.includes("playback") || capURN.includes("spotify"))) {
+          if (res.success && (reqProvId === "spotify" || capDesc?.domain === "wellness")) {
             if (resData.nowPlaying) {
               humanMessage = resData.isPlaying ? `Playing "${resData.nowPlaying}"` : `Paused "${resData.nowPlaying}"`;
             } else if (resData.command === "pause" || resData.isPlaying === false) {
@@ -945,7 +1308,7 @@ export class Supervisor {
             } else if (resData.command === "next" || resData.command === "skip") {
               humanMessage = "Skipped to next track";
             }
-          } else if (res.success && capURN.includes("storage.list_files")) {
+          } else if (res.success && capDesc?.capabilityURN === "productivity.storage.list_files") {
             const count = resData.totalCount ?? (resData.files?.length || 0);
             const ext = resData.extension ? ` ${resData.extension}` : "";
             const dir = String(resData.searchDirectory || op.payload?.parameters?.path || "").trim();
@@ -968,13 +1331,13 @@ export class Supervisor {
             const reqT = String(op.payload?.parameters?.type || "").toLowerCase();
             const n = reqT.includes("folder") ? "folder" : "file";
             humanMessage = count === 0 ? `No${ext} ${n}s found ${loc}` : `Found ${count}${ext} ${n}${count === 1 ? "" : "s"} ${loc}`;
-          } else if (res.success && capURN.includes("git.list_repos")) {
+          } else if (res.success && capDesc?.capabilityURN === "productivity.git.list_repos") {
             const count = resData.repositories?.length || 0;
             humanMessage = count === 0 ? "No repositories found on GitHub" : `Found ${count} GitHub repositor${count === 1 ? "y" : "ies"}`;
-          } else if (res.success && capURN.includes("git.list_prs")) {
+          } else if (res.success && capDesc?.capabilityURN === "productivity.git.list_prs") {
             const count = resData.pullRequests?.length || 0;
             humanMessage = count === 0 ? "No open pull requests" : `Found ${count} open pull request${count === 1 ? "" : "s"}`;
-          } else if (res.success && capURN.includes("open_url")) {
+          } else if (res.success && capDesc?.capabilityURN === "system.open_url") {
             humanMessage = `Opened in browser`;
           }
 
@@ -1017,31 +1380,32 @@ export class Supervisor {
       let recentEntities: IContextEntityRef[] = [...(stm?.recentEntities || [])];
       let recentlyExecutedOperations: IExecutedOperationSnapshot[] = [...(stm?.recentlyExecutedOperations || [])];
 
+      // Invalidate World Model cache on successful mutations so subsequent turns see fresh state
+      if (successfulExecutions.length > 0) {
+        bridge.invalidate(req.userId);
+      }
+
       for (let i = 0; i < successfulExecutions.length; i++) {
         const res = successfulExecutions[i];
         const op = semanticTurn.operations[i] || semanticTurn.operations[0];
-        const cap = DOMAIN_CAPABILITIES[res.actionType as DomainActionType];
+        const capURN = op?.capabilityURN || (op?.payload?.capabilityURN as string) || "";
+        const cap = CapabilityRegistry.getCapability(capURN) || DOMAIN_CAPABILITIES[res.actionType as DomainActionType];
         let entityId = res.targetEntity?.entityId || res.targetEntityId || res.data?.taskId || res.data?.goalId || res.data?._id || res.data?.id;
         let displayName = res.targetEntity?.displayName || res.data?.title || res.data?.taskTitle || res.data?.mealName || res.data?.name;
         let entityType: any = res.targetEntity?.entityType || cap?.targetEntityType || "task";
         const domain = res.targetEntity?.domain || op?.domain || "productivity";
 
         if (res.actionType === "external_capability_action") {
-          const capURN = op?.capabilityURN || (op?.payload?.capabilityURN as string) || "";
-          if (capURN.includes("storage.read_file") || capURN.includes("storage.write_file")) {
-            entityType = "file";
+          if (entityType === "file" || cap?.targetEntityType === "file") {
             displayName = res.data?.fileName || (res.data?.path ? require("path").basename(res.data.path) : undefined) || displayName || "file";
             entityId = res.data?.fileName || res.data?.path || displayName;
-          } else if (capURN.includes("email.read_message") || capURN.includes("email.read_thread")) {
-            entityType = "email";
+          } else if (entityType === "email" || cap?.targetEntityType === "email") {
             displayName = res.data?.subject || displayName || "email";
             entityId = res.data?.id || res.data?.threadId || entityId || displayName;
-          } else if (capURN.includes("email.search_messages")) {
-            entityType = "email";
             const firstMsg = res.data?.messages?.[0];
             if (firstMsg) {
-              displayName = firstMsg.subject || firstMsg.from || "email";
-              entityId = firstMsg.id || "email_message";
+              displayName = firstMsg.subject || firstMsg.from || displayName;
+              entityId = firstMsg.id || entityId;
             }
             if (res.data?.messages && Array.isArray(res.data.messages)) {
               for (const m of res.data.messages.slice(0, 5)) {
@@ -1057,11 +1421,13 @@ export class Supervisor {
                 }
               }
             }
-          } else if (capURN.includes("contacts")) {
-            entityType = "contact";
+          } else if (entityType === "contact" || cap?.targetEntityType === "contact") {
             const firstContact = res.data?.contacts?.[0] || res.data?.contact;
             displayName = firstContact?.name || displayName || "contact";
             entityId = firstContact?.id || firstContact?.email || displayName;
+          } else if (entityType === "email_draft" || cap?.targetEntityType === "email_draft") {
+            displayName = res.data?.subject || displayName || "Email Draft";
+            entityId = res.data?.draftId || entityId || "email_draft";
           }
         }
 
@@ -1077,6 +1443,12 @@ export class Supervisor {
             domain,
             updatedAt: new Date(),
             lastReferencedTurnId: semanticTurn.turnId,
+            metadata: (entityType === "email_draft" && res.data) ? {
+              draftId: res.data.draftId,
+              subject: res.data.subject,
+              to: res.data.to,
+              bodyText: res.data.bodyText,
+            } : undefined,
           };
 
           recentEntities = [
@@ -1092,10 +1464,10 @@ export class Supervisor {
           domain: op?.domain || "productivity",
           targetEntity: activeFocus
             ? {
-                entityType: activeFocus.entityType,
-                entityId: activeFocus.entityId,
-                displayName: activeFocus.displayName,
-              }
+              entityType: activeFocus.entityType,
+              entityId: activeFocus.entityId,
+              displayName: activeFocus.displayName,
+            }
             : undefined,
           payloadSnapshot: op?.payload || {},
           success: true,
@@ -1156,7 +1528,7 @@ export class Supervisor {
             { upsert: true }
           );
         }
-      } catch (_) {}
+      } catch (_) { }
 
       mainExecutionFinished = true;
       req.onChunk?.(response);
@@ -1186,6 +1558,7 @@ export class Supervisor {
         terminationReason: "GOAL_SATISFIED",
         traceContext,
         stmUpdates,
+        lifeContext,
       };
     }
 
@@ -1203,17 +1576,13 @@ export class Supervisor {
         actionsExecuted: 0,
         workspaceStatus: "COMPLETED",
         terminationReason: "CLARIFICATION_REQUIRED",
+        lifeContext,
       };
     }
 
     // 6. Fast Path Execution Branch (Fallback <= 1000ms)
-    if (routingDecision.strategy === "FAST_PATH") {
-      const fastContext: FastPathContext = {
-        executionId,
-        knownTasks: req.knownTasks,
-      };
-
-      const fastResult = await this.fastPath.execute(req.message, req.userId, fastContext);
+    if (routingDecision.strategy === "FAST_PATH" && routingEval.proposals?.[0]) {
+      const fastResult = await this.executeFastAtomicProposal(routingEval.proposals[0], req.userId);
 
       if (fastResult.handled) {
         const durationMs = Date.now() - startTime;
@@ -1234,6 +1603,11 @@ export class Supervisor {
 
         mainExecutionFinished = true;
         req.onChunk?.(fastResult.userResponse);
+        const bridge = WorldModelBridge.getInstance();
+        if (actionsExecuted > 0) {
+          bridge.invalidate(req.userId);
+        }
+        const fastLifeContext = await bridge.getProjection(req.userId, { timezone: req.timezone });
         return {
           executionId,
           requestId,
@@ -1244,6 +1618,7 @@ export class Supervisor {
           workspaceStatus: "COMPLETED",
           terminationReason: "GOAL_SATISFIED",
           traceContext,
+          lifeContext: fastLifeContext,
         };
       }
       // If fast path failed to extract or handle, fall through
@@ -1425,7 +1800,7 @@ export class Supervisor {
               { upsert: true }
             );
           }
-        } catch (_) {}
+        } catch (_) { }
       }
 
       const durationMs = Date.now() - startTime;
@@ -1457,6 +1832,7 @@ export class Supervisor {
         traceContext,
         stmUpdates,
         pendingOperation: stmUpdates?.pendingOperation,
+        lifeContext,
       };
     }
 
@@ -1485,7 +1861,7 @@ export class Supervisor {
             contextualGoal = `Recent conversation context:\n${recent}\n\nCurrent User Request: ${req.message}`;
           }
         }
-      } catch (_) {}
+      } catch (_) { }
     }
 
     const workspace = new ExecutionWorkspace({
@@ -1500,7 +1876,8 @@ export class Supervisor {
     const targetSpecialists = routingDecision.selectedSpecialists ||
       (routingDecision.targetDomain ? [routingDecision.targetDomain] : undefined);
 
-    const reactResult: ReActLoopResult = await this.reactOrchestrator.runLoop(
+    const orchestrator = this.reactOrchestrator || ReActOrchestrator.createDefault(this.kernel);
+    const reactResult: ReActLoopResult = await orchestrator.runLoop(
       executionId,
       req.userId,
       contextualGoal,
@@ -1546,6 +1923,7 @@ export class Supervisor {
       workspaceStatus: workspace.getState().status,
       terminationReason: reactResult.terminationReason,
       traceContext,
+      lifeContext,
     };
   }
 
@@ -1637,10 +2015,10 @@ export class Supervisor {
     const candidates = (actionType && FILLERS[actionType]) || (domain === "productivity"
       ? ["Understood, taking care of that for you now.", "On it, updating your system now."]
       : domain === "health"
-      ? ["Checking your health context and logging that now.", "Understood, updating your health log now."]
-      : domain === "wellness"
-      ? ["Reviewing your wellness context and recording that now."]
-      : ["Understood, processing that across your system now."]);
+        ? ["Checking your health context and logging that now.", "Understood, updating your health log now."]
+        : domain === "wellness"
+          ? ["Reviewing your wellness context and recording that now."]
+          : ["Understood, processing that across your system now."]);
 
     return candidates[Math.floor(Math.random() * candidates.length)];
   }
@@ -1688,7 +2066,11 @@ export class Supervisor {
   private async checkProviderConnection(
     userId: string,
     providerId: string
-  ): Promise<{ connected: boolean; providerDisplayName: string }> {
+  ): Promise<ProviderConnectionCheckResult> {
+    if (this.connectionChecker) {
+      return this.connectionChecker.checkConnection(userId, providerId);
+    }
+
     const { ProviderRegistry } = require("../external/providers/ProviderRegistry");
     const prov = ProviderRegistry.getInstance().get(providerId as any);
     const resolvedId = prov?.providerId || providerId;
@@ -1711,7 +2093,20 @@ export class Supervisor {
       resolvedId === "swiggy_suite" ||
       resolvedId === "aven_browser_agent"
     ) {
-      return { connected: true, providerDisplayName: displayName };
+      return { connected: true, status: "NOT_REQUIRED", providerDisplayName: displayName };
+    }
+
+    // Phase 1 Guard: Mongoose Connection State
+    // If MongoDB is not connected in production (readyState !== 1), return PERSISTENCE_UNAVAILABLE immediately!
+    // Never query Mongoose while disconnected to prevent buffer timeouts.
+    const mongooseConn = mongoose.connection;
+    if (!mongooseConn || mongooseConn.readyState !== 1) {
+      return {
+        connected: false,
+        status: "PERSISTENCE_UNAVAILABLE",
+        providerDisplayName: displayName,
+        error: "Database service temporarily offline",
+      };
     }
 
     try {
@@ -1719,14 +2114,14 @@ export class Supervisor {
       try {
         const mod = (await import("@/server/db/models/UserProviderConnection")) as any;
         UserProviderConnectionModel = mod.UserProviderConnection || mod.default;
-      } catch (_) {}
+      } catch (_) { }
 
       if (!UserProviderConnectionModel) {
         const g = globalThis as any;
         const gMongoose = g.mongoose?.conn || g.mongoose;
         UserProviderConnectionModel =
           gMongoose?.models?.UserProviderConnection ||
-          require("mongoose").models?.UserProviderConnection;
+          mongoose.models?.UserProviderConnection;
       }
 
       if (UserProviderConnectionModel) {
@@ -1736,14 +2131,13 @@ export class Supervisor {
             { providerId: { $in: [providerId, resolvedId] }, status: "ACTIVE" },
           ],
         }).lean();
-        return { connected: !!conn, providerDisplayName: displayName };
+        return { connected: !!conn, status: conn ? "CONNECTED" : "DISCONNECTED", providerDisplayName: displayName };
       }
     } catch (err) {
       console.error(`[Supervisor] checkProviderConnection DB error for '${providerId}':`, err);
     }
 
-    // SAFETY: If DB lookup failed or Mongoose isn't ready, default to DISCONNECTED.
-    // Never assume connected — this prevents hallucinated tool executions for unconfigured services.
-    return { connected: false, providerDisplayName: displayName };
+    return { connected: false, status: "DISCONNECTED", providerDisplayName: displayName };
   }
 }
+

@@ -20,6 +20,7 @@ export type CapabilityURN =
   | "productivity.calendar.update_event"
   | "productivity.email.send_message"
   | "productivity.email.create_draft"
+  | "productivity.email.update_draft"
   | "productivity.email.search_messages"
   | "productivity.email.read_thread"
   | "productivity.email.read_message"
@@ -118,6 +119,14 @@ export interface CapabilityParameterMap {
     to?: string[];
     subject: string;
     bodyText: string;
+    cc?: string[];
+    bcc?: string[];
+  };
+  "productivity.email.update_draft": {
+    draftId: string;
+    subject?: string;
+    bodyText?: string;
+    to?: string[] | string;
     cc?: string[];
     bcc?: string[];
   };
@@ -414,6 +423,15 @@ export interface CapabilityResultMap {
     subject: string;
     to?: string[];
     createdAt: number;
+    url?: string;
+  };
+  "productivity.email.update_draft": {
+    draftId: string;
+    messageId: string;
+    subject: string;
+    to?: string;
+    bodyText: string;
+    updatedAt: number;
     url?: string;
   };
   "productivity.email.search_messages": {

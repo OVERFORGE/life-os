@@ -146,6 +146,17 @@ export class CapabilityPresentationRegistry {
       failedPhrase: "Couldn't create draft",
     });
 
+    this.presentations.set("productivity.email.update_draft", {
+      capabilityURN: "productivity.email.update_draft",
+      displayName: "Email Draft Update",
+      providerDisplayName: "Gmail",
+      iconName: "FileEdit",
+      actionLabel: "Updating email draft",
+      progressPhrase: "Updating email draft...",
+      completedPhrase: "Draft updated in Gmail",
+      failedPhrase: "Couldn't update draft",
+    });
+
     this.presentations.set("productivity.email.search_messages", {
       capabilityURN: "productivity.email.search_messages",
       displayName: "Email Search",

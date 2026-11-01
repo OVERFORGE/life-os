@@ -141,7 +141,7 @@ describe("Context Modes (Seasons of Life) End-to-End Integration", () => {
     ];
 
     const resultSanctuary = lifeStateEngine.evaluate({
-      observations,
+      observations: observations as any,
       contextMode: sanctuaryMode,
     });
 
@@ -174,7 +174,7 @@ describe("Context Modes (Seasons of Life) End-to-End Integration", () => {
     ];
 
     const resultSprint = lifeStateEngine.evaluate({
-      observations: sprintObs,
+      observations: sprintObs as any,
       contextMode: sprintMode,
     });
 
@@ -185,7 +185,7 @@ describe("Context Modes (Seasons of Life) End-to-End Integration", () => {
   it("4. GoalIntelligenceEngine elevates sprint targets and defers secondary goals", async () => {
     const goalEngine = GoalIntelligenceEngine.getInstance();
 
-    const mockGraphSnapshot: ExecutionGraphSnapshot = {
+    const mockGraphSnapshot: any = {
       rootNodes: [],
       readyNodes: [
         {
@@ -254,7 +254,7 @@ describe("Context Modes (Seasons of Life) End-to-End Integration", () => {
   it("5. GoalIntelligenceEngine suspends urgency in Sanctuary and Sabbatical seasons", async () => {
     const goalEngine = GoalIntelligenceEngine.getInstance();
 
-    const mockGraphSnapshot: ExecutionGraphSnapshot = {
+    const mockGraphSnapshot: any = {
       rootNodes: [],
       readyNodes: [
         {

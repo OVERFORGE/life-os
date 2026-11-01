@@ -55,10 +55,10 @@ export class InterventionVerificationEngine {
       executedAt,
       windows: {
         t4h: {
-          measurementAt: executedAt + 4 * 60 * 60 * 1000,
+          measurementAt: executedAt + (input.customWindows?.tShortOffsetMs ?? 4 * 60 * 60 * 1000),
         },
         t24h: {
-          measurementAt: executedAt + 24 * 60 * 60 * 1000,
+          measurementAt: executedAt + (input.customWindows?.tLongOffsetMs ?? 24 * 60 * 60 * 1000),
         },
       },
       learningImplicationRecorded: false,
@@ -262,10 +262,11 @@ export class InterventionVerificationEngine {
     }
 
     const expected = record.expectedOutcome.expectedDelta;
+    const thresholdRatio = record.expectedOutcome.successThresholdRatio ?? 0.8;
     let evaluatedStatus: AttributionCategory = "UNCERTAIN";
     let confidence = 0.85;
 
-    if (observedDelta >= expected * 0.8) {
+    if (observedDelta >= expected * thresholdRatio) {
       evaluatedStatus = "EFFECTIVE";
       confidence = 0.90;
     } else if (observedDelta > 0) {

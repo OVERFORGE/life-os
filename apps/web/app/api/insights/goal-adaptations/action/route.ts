@@ -1,9 +1,9 @@
 import { connectDB } from "@/server/db/connect";
 import { getServerSession } from "next-auth";
 import { authOptions } from "@/app/api/auth/[...nextauth]/route";
-
 import { Goal } from "@/features/goals/models/Goal";
 import { GoalHistory } from "@/server/db/models/GoalHistory";
+import { goalEngine } from "@/features/goals/engine/goalEngine";
 
 export async function POST(req: Request) {
   const session = await getServerSession(authOptions);
@@ -32,11 +32,17 @@ export async function POST(req: Request) {
       return Response.json({ error: "Goal not found" }, { status: 404 });
     }
 
-    const previousValue = goal[suggestedChange.field];
+    const previousValue = (goal as any)[suggestedChange.field];
 
-    goal[suggestedChange.field] = suggestedChange.to;
+    const result = await goalEngine.updateGoal(
+      session.user.id,
+      goalId,
+      { [suggestedChange.field]: suggestedChange.to }
+    );
 
-    await goal.save();
+    if (!result.success) {
+      return Response.json({ error: result.error }, { status: 500 });
+    }
 
     await GoalHistory.create({
       goalId,
@@ -48,7 +54,7 @@ export async function POST(req: Request) {
       date: new Date(),
     });
 
-    return Response.json({ ok: true });
+    return Response.json({ ok: true, version: result.newVersion });
   }
 
   return Response.json({ ok: false });

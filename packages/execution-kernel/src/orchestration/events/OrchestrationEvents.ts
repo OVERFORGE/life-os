@@ -31,7 +31,10 @@ export type OrchestrationEventType =
   | "ExecutionCompleted"
   | "ExecutionEscalated"
   | "ExecutionFailed"
-  | "ExecutionCancelled";
+  | "ExecutionCancelled"
+  | "StepOutputRecorded"
+  | "PlanRevisionAdopted"
+  | "ExecutionPausedForApproval";
 
 export interface OrchestrationEvent<T = any> {
   id: string;

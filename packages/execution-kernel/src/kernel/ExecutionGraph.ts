@@ -1,6 +1,8 @@
 import { Task } from "@/server/db/models/Task";
 import { Goal } from "@/features/goals/models/Goal";
 import { GoalProposal } from "@/server/db/models/GoalProposal";
+import { ExecutionGraphDerivedModel, IGraphNodeSubdoc } from "@/server/db/models/ExecutionGraphDerivedModel";
+import { OutboxEventModel } from "@/server/db/models/OutboxEventModel";
 import { GraphVersion, createGraphVersion } from "./GraphVersion";
 
 // ──────────────────────────────────────────────
@@ -109,115 +111,202 @@ export class ExecutionGraph {
     return copy;
   }
 
-  static async buildFromDatabase(userId: string): Promise<ExecutionGraph> {
-    const graph = new ExecutionGraph();
+  static async buildFromDatabase(
+    userId: string,
+    options?: { allowDegraded?: boolean }
+  ): Promise<any> {
+    const graphId = `graph_${userId}`;
 
     try {
-      // 1. Fetch all user tasks
-      const tasks = await Task.find({ userId }).lean();
-      for (const t of tasks as any[]) {
-        const priorityNum =
-          t.priority === "high" ? 3 : t.priority === "medium" ? 2 : 1;
+      if (typeof ExecutionGraphDerivedModel?.findOne === "function") {
+        const cached = await ExecutionGraphDerivedModel.findOne({ graphId }).lean();
+        if (cached && Array.isArray(cached.nodes) && cached.nodes.length > 0) {
+          // Check pending/processing/dead-letter outbox events
+          let hasPendingEvents = false;
+          try {
+            if (typeof OutboxEventModel?.exists === "function") {
+              hasPendingEvents = !!(await OutboxEventModel.exists({
+                userId,
+                aggregateType: "task",
+                deliveryStatus: { $in: ["PENDING", "PROCESSING", "DEAD_LETTER"] },
+              }));
+            }
+          } catch {
+            hasPendingEvents = false;
+          }
 
-        graph.addNode({
-          id: t._id.toString(),
-          entityType: "task",
-          title: t.title || "Untitled Task",
-          status: t.status || "pending",
-          priority: priorityNum,
-          createdAt: new Date(t.createdAt || Date.now()),
-          updatedAt: new Date(t.updatedAt || Date.now()),
-          metadata: {
-            dueDate: t.dueDate,
-            goalId: t.goalId ? t.goalId.toString() : null,
-          },
-        });
-      }
+          let isFresh = !hasPendingEvents;
+          let stalenessReason = hasPendingEvents
+            ? "Pending/processing/dead-letter outbox events exist"
+            : "";
 
-      // Add task parent/child dependency edges
-      for (const t of tasks as any[]) {
-        const taskId = t._id.toString();
+          if (isFresh) {
+            let summary: any[] = [];
+            if (typeof Task?.aggregate === "function") {
+              summary = await Task.aggregate([
+                { $match: { userId, status: { $nin: ["archived", "deleted"] } } },
+                {
+                  $group: {
+                    _id: null,
+                    count: { $sum: 1 },
+                    versionSum: { $sum: "$version" },
+                    maxVersion: { $max: "$version" },
+                  },
+                },
+              ]);
+            } else if (typeof Task?.find === "function") {
+              const activeTasks = await Task.find({
+                userId,
+                status: { $nin: ["archived", "deleted"] },
+              }).lean();
+              summary = [
+                {
+                  count: activeTasks.length,
+                  versionSum: activeTasks.reduce((s: number, t: any) => s + (t.version || 1), 0),
+                  maxVersion: activeTasks.reduce((m: number, t: any) => Math.max(m, t.version || 1), 0),
+                },
+              ];
+            }
 
-        if (t.parentTaskId) {
-          const parentId = t.parentTaskId.toString();
-          if (graph.getNode(parentId)) {
-            graph.addEdge(taskId, parentId, "child");
-            graph.addEdge(parentId, taskId, "parent");
+            const currentCount = summary[0]?.count ?? 0;
+            const currentVersionSum = summary[0]?.versionSum ?? 0;
+            const currentMaxVersion = summary[0]?.maxVersion ?? 0;
+
+            if (
+              cached.sourceTaskCount !== currentCount ||
+              cached.sourceVersionSum !== currentVersionSum ||
+              cached.sourceMaxVersion !== currentMaxVersion
+            ) {
+              isFresh = false;
+              stalenessReason = `Source state mismatch (cached: count=${cached.sourceTaskCount}, vSum=${cached.sourceVersionSum}; current: count=${currentCount}, vSum=${currentVersionSum})`;
+            }
+          }
+
+          if (isFresh) {
+            const graph = new ExecutionGraph();
+            for (const n of cached.nodes) {
+              graph.addNode({
+                id: n.id,
+                entityType: "task",
+                title: n.title,
+                status: n.status,
+                priority: 2,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                metadata: { appliedVersion: n.appliedVersion },
+              });
+            }
+
+            for (const n of cached.nodes) {
+              if (Array.isArray(n.dependencies)) {
+                for (const depId of n.dependencies) {
+                  if (graph.getNode(depId)) {
+                    graph.addEdge(n.id, depId, "requires");
+                  }
+                }
+              }
+            }
+
+            await ExecutionGraph.overlayGoals(graph, userId);
+            if (options?.allowDegraded) {
+              return { graph, isDegraded: false };
+            }
+            return graph;
+          }
+
+          if (options?.allowDegraded) {
+            const graph = new ExecutionGraph();
+            for (const n of cached.nodes) {
+              graph.addNode({
+                id: n.id,
+                entityType: "task",
+                title: n.title,
+                status: n.status,
+                priority: 2,
+                createdAt: new Date(),
+                updatedAt: new Date(),
+                metadata: { appliedVersion: n.appliedVersion },
+              });
+            }
+            return { graph, isDegraded: true, stalenessReason };
           }
         }
-
-        if (t.goalId) {
-          const goalIdStr = t.goalId.toString();
-          if (graph.getNode(goalIdStr)) {
-            graph.addEdge(taskId, goalIdStr, "child");
-          }
-        }
       }
+    } catch {
+      // Non-blocking fallback to direct rebuild
+    }
 
-      // 2. Fetch all user goals from primary Goal collection
+    const rebuiltGraph = await ExecutionGraph.rebuildDirectlyFromDatabase(userId);
+    if (options?.allowDegraded) {
+      return { graph: rebuiltGraph, isDegraded: false };
+    }
+    return rebuiltGraph;
+  }
+
+  static async overlayGoals(graph: ExecutionGraph, userId: string): Promise<void> {
+    try {
       const goals = await Goal.find({ userId }).lean();
       for (const g of goals as any[]) {
         const goalIdStr = g._id.toString();
-        graph.addNode({
-          id: goalIdStr,
-          entityType: "goal",
-          title: g.title || "Untitled Goal",
-          status: g.status || "in_progress",
-          priority: 3,
-          createdAt: new Date(g.createdAt || Date.now()),
-          updatedAt: new Date(g.updatedAt || Date.now()),
-          metadata: {
-            category: g.type || g.category || "General",
-            type: g.type,
-            cadence: g.cadence,
-            nature: g.nature || "habitual_cadence",
-            targetCompletionDate: g.targetCompletionDate,
-            definitionOfDone: g.definitionOfDone,
-            deliverableProgressPercent: g.deliverableProgressPercent || 0,
-          },
-        });
+        if (!graph.getNode(goalIdStr)) {
+          graph.addNode({
+            id: goalIdStr,
+            entityType: "goal",
+            title: g.title || "Untitled Goal",
+            status: g.status || "in_progress",
+            priority: 3,
+            createdAt: new Date(g.createdAt || Date.now()),
+            updatedAt: new Date(g.updatedAt || Date.now()),
+            metadata: {
+              category: g.type || g.category || "General",
+              type: g.type,
+              cadence: g.cadence,
+              nature: g.nature || "habitual_cadence",
+              targetCompletionDate: g.targetCompletionDate,
+              definitionOfDone: g.definitionOfDone,
+              deliverableProgressPercent: g.deliverableProgressPercent || 0,
+            },
+          });
+        }
 
-        // Add milestone topological dependency nodes & edges
         if (Array.isArray(g.milestones) && g.milestones.length > 0) {
-          const sortedMilestones = [...g.milestones].sort((a: any, b: any) => (a.order || 0) - (b.order || 0));
+          const sortedMilestones = [...g.milestones].sort(
+            (a: any, b: any) => (a.order || 0) - (b.order || 0)
+          );
           let prevMilestoneId: string | null = null;
 
           for (const m of sortedMilestones) {
             const mId = m.milestoneId || `ms_${m._id || Math.random().toString(36).substring(2, 7)}`;
-            graph.addNode({
-              id: mId,
-              entityType: "milestone",
-              title: m.title || "Milestone",
-              status: m.completed ? "completed" : "pending",
-              priority: 3,
-              createdAt: new Date(g.createdAt || Date.now()),
-              updatedAt: new Date(g.updatedAt || Date.now()),
-              metadata: {
-                goalId: goalIdStr,
-                linkedTaskId: m.linkedTaskId,
-                order: m.order || 0,
-              },
-            });
+            if (!graph.getNode(mId)) {
+              graph.addNode({
+                id: mId,
+                entityType: "milestone",
+                title: m.title || "Milestone",
+                status: m.completed ? "completed" : "pending",
+                priority: 3,
+                createdAt: new Date(g.createdAt || Date.now()),
+                updatedAt: new Date(g.updatedAt || Date.now()),
+                metadata: {
+                  goalId: goalIdStr,
+                  linkedTaskId: m.linkedTaskId,
+                  order: m.order || 0,
+                },
+              });
+            }
 
-            // Milestone requires previous milestone in sequence
             if (prevMilestoneId) {
               graph.addEdge(mId, prevMilestoneId, "requires");
             }
             prevMilestoneId = mId;
 
-            // Milestone requires linked task if specified
             if (m.linkedTaskId && graph.getNode(m.linkedTaskId)) {
               graph.addEdge(mId, m.linkedTaskId, "requires");
             }
-
-            // Goal requires milestone
             graph.addEdge(goalIdStr, mId, "requires");
           }
         }
       }
 
-
-      // Also include active GoalProposals if any exist
       const proposals = await GoalProposal.find({ userId, status: "pending" }).lean();
       for (const p of proposals as any[]) {
         const pId = p._id.toString();
@@ -234,7 +323,101 @@ export class ExecutionGraph {
         }
       }
     } catch (err) {
-      console.error("Error constructing ExecutionGraph from database:", err);
+      console.error("Error overlaying goals onto ExecutionGraph:", err);
+    }
+  }
+
+  static async rebuildDirectlyFromDatabase(userId: string): Promise<ExecutionGraph> {
+    const graph = new ExecutionGraph();
+
+    try {
+      const rawTasks = await Task.find({ userId, status: { $nin: ["archived", "deleted"] } }).lean();
+      const tasks = Array.isArray(rawTasks) ? rawTasks : [];
+
+      for (const t of tasks as any[]) {
+        const priorityNum = t.priority === "high" ? 3 : t.priority === "medium" ? 2 : 1;
+
+        graph.addNode({
+          id: t._id.toString(),
+          entityType: "task",
+          title: t.title || "Untitled Task",
+          status: t.status || "pending",
+          priority: priorityNum,
+          createdAt: new Date(t.createdAt || Date.now()),
+          updatedAt: new Date(t.updatedAt || Date.now()),
+          metadata: {
+            dueDate: t.dueDate,
+            goalId: t.goalId ? t.goalId.toString() : null,
+            appliedVersion: t.version || 1,
+          },
+        });
+      }
+
+      for (const t of tasks as any[]) {
+        const taskId = t._id.toString();
+        if (t.parentTaskId) {
+          const parentId = t.parentTaskId.toString();
+          if (graph.getNode(parentId)) {
+            graph.addEdge(taskId, parentId, "child");
+            graph.addEdge(parentId, taskId, "parent");
+          }
+        }
+
+        if (t.goalId) {
+          const goalIdStr = t.goalId.toString();
+          if (graph.getNode(goalIdStr)) {
+            graph.addEdge(taskId, goalIdStr, "child");
+          }
+        }
+      }
+
+      await ExecutionGraph.overlayGoals(graph, userId);
+
+      // Persist projection to ExecutionGraphDerivedModel
+      try {
+        if (typeof ExecutionGraphDerivedModel?.findOneAndUpdate === "function") {
+          const graphId = `graph_${userId}`;
+          const nodes: IGraphNodeSubdoc[] = tasks.map((t: any) => ({
+            id: t._id.toString(),
+            title: t.title || "Untitled Task",
+            status: t.status === "completed" ? "completed" : "pending",
+            dependencies: t.dependencies || (t.parentTaskId ? [t.parentTaskId.toString()] : []),
+            appliedVersion: t.version || 1,
+          }));
+
+          const sourceTaskCount = nodes.length;
+          const sourceVersionSum = nodes.reduce((sum, n) => sum + (n.appliedVersion || 1), 0);
+          const sourceMaxVersion = nodes.reduce((max, n) => Math.max(max, n.appliedVersion || 1), 0);
+          const unblockedTaskIds = nodes.filter((n) => n.status === "pending").map((n) => n.id);
+
+          const existing = await ExecutionGraphDerivedModel.findOne({ graphId });
+          const filter: any = { graphId };
+          if (existing && typeof existing.projectionRevision === "number") {
+            filter.projectionRevision = existing.projectionRevision;
+          }
+
+          await ExecutionGraphDerivedModel.findOneAndUpdate(
+            filter,
+            {
+              $set: {
+                userId,
+                nodes,
+                unblockedTaskIds,
+                sourceTaskCount,
+                sourceVersionSum,
+                sourceMaxVersion,
+                lastAppliedAt: new Date(),
+              },
+              $inc: { projectionRevision: 1 },
+            },
+            { upsert: true, new: true }
+          );
+        }
+      } catch {
+        // Non-blocking projection save
+      }
+    } catch (err) {
+      console.error("Error constructing ExecutionGraph directly from database:", err);
     }
 
     return graph;

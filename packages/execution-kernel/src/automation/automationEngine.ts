@@ -4,12 +4,28 @@ import { syncEngine } from "./syncEngine";
 import { missedDayRecovery } from "./missedDayRecovery";
 import { NotificationLog } from "@/server/db/models/Notification";
 import { User } from "@/server/db/models/User";
+import { TemporalConflictConsumer } from "../events/consumers/TemporalConflictConsumer";
+import { runOutboxDispatchBatch } from "../events/dispatch/OutboxWorkerService";
 
 /**
  * automationEngine.ts
  * The Deterministic Brain of LifeOS. 
- * Orchestrates background loop operations (Sync, Loop, Recovery).
+ * Orchestrates background loop operations (Sync, Loop, Recovery, Projection Sweeper).
  */
+
+export async function reconcileStaleScheduleReports(userId: string, activeDateStr: string): Promise<string[]> {
+    try {
+        const consumer = new TemporalConflictConsumer();
+        const res = await consumer.sweepPartition(userId, activeDateStr);
+        if (res.status === "SUCCEEDED") {
+            return [`Reconciled schedule conflict report for date ${activeDateStr}`];
+        }
+        return [`Schedule sweep status: ${res.status} (${res.error || "none"})`];
+    } catch (err: any) {
+        return [`Schedule conflict reconciliation error: ${err?.message}`];
+    }
+}
+
 export async function runAutomation(userId: string) {
     const startTime = Date.now();
     let actions: string[] = [];
@@ -33,6 +49,20 @@ export async function runAutomation(userId: string) {
 
         const recoveryActions = await missedDayRecovery(userId, activeDateStr);
         actions.push(...recoveryActions);
+
+        // Milestone B Step 2: Temporal Schedule Conflict Partition Reconciliation
+        const scheduleActions = await reconcileStaleScheduleReports(userId, activeDateStr);
+        actions.push(...scheduleActions);
+
+        // Milestone B Step 2: Mode 1 In-Band Outbox Dispatch Batch
+        try {
+            const dispatchReport = await runOutboxDispatchBatch(20);
+            if (dispatchReport.leasedCount > 0) {
+                actions.push(`Dispatched ${dispatchReport.succeededCount}/${dispatchReport.leasedCount} outbox events (${dispatchReport.failedCount} failed, ${dispatchReport.deadLetterCount} DLQ)`);
+            }
+        } catch (err: any) {
+            actions.push(`Outbox dispatch batch error: ${err?.message}`);
+        }
 
         // 3. Collect active unread notifications generated recently
         const recentNotifs = await NotificationLog.find({ 

@@ -4,11 +4,13 @@ export interface IExecutionEventRecordDoc extends Document {
   executionId: string;
   seq: number;
   eventId: string;
+  checkpointId: string;
   type: string;
   source: string;
   timestamp: number;
   payload: any;
   causalityRef?: string;
+  retentionExpiresAt?: Date | null;
   createdAt: Date;
 }
 
@@ -27,6 +29,11 @@ const ExecutionEventRecordSchema = new Schema<IExecutionEventRecordDoc>(
       type: String,
       required: true,
       unique: true,
+    },
+    checkpointId: {
+      type: String,
+      required: true,
+      index: true,
     },
     type: {
       type: String,
@@ -48,6 +55,10 @@ const ExecutionEventRecordSchema = new Schema<IExecutionEventRecordDoc>(
     causalityRef: {
       type: String,
     },
+    retentionExpiresAt: {
+      type: Date,
+      default: null,
+    },
   },
   {
     timestamps: { createdAt: true, updatedAt: false },
@@ -56,6 +67,7 @@ const ExecutionEventRecordSchema = new Schema<IExecutionEventRecordDoc>(
 
 // Compound monotonic index: guarantee uniqueness of sequence number per execution
 ExecutionEventRecordSchema.index({ executionId: 1, seq: 1 }, { unique: true });
+ExecutionEventRecordSchema.index({ retentionExpiresAt: 1 }, { expireAfterSeconds: 0 });
 
 export const ExecutionEventRecordModel: Model<IExecutionEventRecordDoc> =
   mongoose.models.ExecutionEventRecord ||

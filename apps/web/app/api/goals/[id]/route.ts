@@ -8,7 +8,7 @@ import { adaptGoalToSystemState } from "@/features/goals/engine/adaptGoalToSyste
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
 import { getAuthSession } from "@/lib/auth";
-import { LifeSignal } from "@/features/signals/models/LifeSignal";
+import { goalEngine } from "@/features/goals/engine/goalEngine";
 
 export async function GET(
   req: Request,
@@ -112,22 +112,25 @@ export async function PUT(
   const body: any = await req.json();
   await connectDB();
 
-  const goal = await Goal.findOneAndUpdate(
-    { _id: id, userId: session.user.id },
-    {
-      title: body.title,
-      type: body.type,
-      signals: body.signals,
-      rules: body.rules,
-    },
-    { new: true }
+  const { expectedVersion, ...updates } = body;
+
+  const result = await goalEngine.updateGoal(
+    session.user.id,
+    id,
+    updates,
+    typeof expectedVersion === "number" ? expectedVersion : undefined
   );
 
-  if (!goal) {
-    return Response.json({ error: "Not found" }, { status: 404 });
+  if (!result.success) {
+    const status = result.statusCode || (result.code === "AGGREGATE_CONFLICT" ? 409 : 500);
+    return Response.json({ error: result.error, code: result.code }, { status });
   }
 
-  return Response.json({ ok: true });
+  return Response.json({
+    ok: true,
+    goal: result.goal,
+    version: result.newVersion,
+  });
 }
 
 export async function DELETE(
@@ -140,23 +143,18 @@ export async function DELETE(
   }
 
   const { id } = await context.params;
-  const goalToDelete = await Goal.findOne({ _id: id, userId: session.user.id });
-  
-  if (goalToDelete) {
-      const signalKeys = goalToDelete.signals.map((s: any) => s.key);
-      await Goal.deleteOne({ _id: id, userId: session.user.id });
-      await GoalStats.deleteOne({ goalId: id });
+  await connectDB();
 
-      if (signalKeys.length > 0) {
-          const remainingGoals = await Goal.find({ userId: session.user.id, "signals.key": { $in: signalKeys } });
-          const usedKeys = new Set(remainingGoals.flatMap(g => g.signals.map((s: any) => s.key)));
-          
-          const orphanedKeys = signalKeys.filter((k: string) => !usedKeys.has(k));
-          if (orphanedKeys.length > 0) {
-              await LifeSignal.deleteMany({ userId: session.user.id, key: { $in: orphanedKeys } });
-          }
-      }
+  const result = await goalEngine.deleteGoal(session.user.id, id);
+
+  if (!result.success) {
+    const status = result.statusCode || 500;
+    return Response.json({ error: result.error }, { status });
   }
 
-  return Response.json({ ok: true });
+  return Response.json({
+    ok: true,
+    archived: true,
+    goal: result.goal,
+  });
 }

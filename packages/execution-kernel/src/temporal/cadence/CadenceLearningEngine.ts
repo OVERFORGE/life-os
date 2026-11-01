@@ -29,6 +29,45 @@ export const DEFAULT_CADENCE_CONFIG: CadenceLearningConfig = {
   outlierZScoreThreshold: 2.5,
 };
 
+/**
+ * Computes circular trigonometric mean and dispersion for minute-of-day values (0..1439).
+ * Correctly averages midnight-crossing events (e.g. 23:45 and 00:15 -> 00:00 midnight).
+ */
+export function computeCircularMeanMinute(
+  minutes: Array<{ minute: number; weight: number }>
+): { meanMinute: number; varianceMinutes: number } {
+  if (minutes.length === 0) return { meanMinute: 0, varianceMinutes: 0 };
+
+  const totalWeight = minutes.reduce((sum, m) => sum + m.weight, 0);
+  if (totalWeight <= 0) return { meanMinute: 0, varianceMinutes: 0 };
+
+  let sinSum = 0;
+  let cosSum = 0;
+
+  for (const item of minutes) {
+    const theta = (item.minute * 2 * Math.PI) / 1440;
+    sinSum += Math.sin(theta) * item.weight;
+    cosSum += Math.cos(theta) * item.weight;
+  }
+
+  const meanSin = sinSum / totalWeight;
+  const meanCos = cosSum / totalWeight;
+
+  let meanTheta = Math.atan2(meanSin, meanCos);
+  if (meanTheta < 0) {
+    meanTheta += 2 * Math.PI;
+  }
+
+  const meanMinute = Math.round((meanTheta * 1440) / (2 * Math.PI)) % 1440;
+
+  // Angular dispersion / circular variance converted to minutes
+  const R = Math.min(1.0, Math.sqrt(meanSin * meanSin + meanCos * meanCos));
+  const circularVariance = Math.max(0, 1 - R);
+  const varianceMinutes = Math.round(Math.sqrt(circularVariance) * (1440 / (2 * Math.PI)));
+
+  return { meanMinute, varianceMinutes };
+}
+
 export class CadenceLearningEngine {
   private static instance: CadenceLearningEngine;
   private config: CadenceLearningConfig;
@@ -125,18 +164,12 @@ export class CadenceLearningEngine {
         const totalWeight = observations.reduce((sum, o) => sum + o.weight, 0);
         if (totalWeight <= 0) continue;
 
-        const weightedStartSum = observations.reduce((sum, o) => sum + o.startMinute * o.weight, 0);
-        const avgStart = Math.round(weightedStartSum / totalWeight);
+        const { meanMinute: avgStart, varianceMinutes } = computeCircularMeanMinute(
+          observations.map((o) => ({ minute: o.startMinute, weight: o.weight }))
+        );
 
         const weightedDurSum = observations.reduce((sum, o) => sum + o.duration * o.weight, 0);
         const avgDur = Math.round(weightedDurSum / totalWeight);
-
-        // Compute variance of start time
-        const varianceSum = observations.reduce(
-          (sum, o) => sum + Math.pow(o.startMinute - avgStart, 2) * o.weight,
-          0
-        );
-        const varianceMinutes = Math.round(Math.sqrt(varianceSum / totalWeight));
 
         // Confidence scales from 0.0 to 1.0 based on sample count vs threshold
         const sampleCount = observations.length;

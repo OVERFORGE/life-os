@@ -8,8 +8,8 @@ export interface CompensationResult {
 
 export interface IKernelActionAdapter<TPayload = any, TResult = any> {
   validatePreconditions(proposal: ActionProposal<TPayload>, userId: string): Promise<{ valid: boolean; reason?: string }>;
-  execute(proposal: ActionProposal<TPayload>, userId: string): Promise<TResult>;
-  compensate(proposal: ActionProposal<TPayload>, previousResult: TResult, userId: string): Promise<CompensationResult>;
+  execute(proposal: ActionProposal<TPayload>, userId: string, options?: any): Promise<TResult>;
+  compensate?(proposal: ActionProposal<TPayload>, previousResult: TResult, userId: string): Promise<CompensationResult>;
 }
 
 /**

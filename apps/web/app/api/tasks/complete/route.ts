@@ -35,7 +35,7 @@ export async function POST(req: Request) {
   } else {
     result = await completeTask(userId, taskId, timezone);
     // Refresh goal scores if task was linked to a goal
-    if (result.success && (result.task as any)?.goalId) {
+    if ((result.success || (result as any).parentCompleted) && (result.task as any)?.goalId) {
       await updateGoalStats(userId).catch(() => {});
     }
   }

@@ -100,7 +100,7 @@ test("Phase 15: Cross-device convergence: Simultaneous taps on Mobile, Desktop, 
     idempotencyKey,
     projectionVersion: initialProj.projectionVersion,
     timestampMs: now,
-  };
+  } as any;
 
   const desktopEnvelope: ISurfaceActionEnvelope = {
     actionId: "act_conv_001",
@@ -112,7 +112,7 @@ test("Phase 15: Cross-device convergence: Simultaneous taps on Mobile, Desktop, 
     idempotencyKey,
     projectionVersion: initialProj.projectionVersion,
     timestampMs: now + 2,
-  };
+  } as any;
 
   const webEnvelope: ISurfaceActionEnvelope = {
     actionId: "act_conv_001",
@@ -124,7 +124,7 @@ test("Phase 15: Cross-device convergence: Simultaneous taps on Mobile, Desktop, 
     idempotencyKey,
     projectionVersion: initialProj.projectionVersion,
     timestampMs: now + 5,
-  };
+  } as any;
 
   // Dispatch all 3 concurrently
   const [mobileRes, desktopRes, webRes] = await Promise.all([

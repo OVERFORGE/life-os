@@ -157,7 +157,7 @@ test("Phase 5: Allowlist Enforcement Strictly Prevents Cross-Domain Mutations", 
           actionType: "delete_task" as any, // Health specialist cannot delete tasks!
           payload: { taskId: "123" },
           rationale: "Unauthorized deletion attempt",
-        },
+        } as any,
       ]);
     },
     AllowlistViolationError

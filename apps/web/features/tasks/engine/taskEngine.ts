@@ -1,10 +1,11 @@
 // features/tasks/engine/taskEngine.ts
 // Deterministic CRUD + logic layer. NO LLM. All DB mutations go through here.
 
+import mongoose from "mongoose";
 import { Task } from "@/server/db/models/Task";
 import { Goal } from "@/features/goals/models/Goal";
 import { DailyLog } from "@/server/db/models/DailyLog";
-import { getActiveDate } from "@life-os/execution-kernel";
+import { getActiveDate, OutboxStorageService, OutboxEventDraft } from "@life-os/execution-kernel";
 
 /* ─────────────────────────────────────────────────────────── */
 /* Types                                                       */
@@ -93,10 +94,20 @@ function nextOccurrence(recurring: any, afterDate: string): string {
 /* createTask                                                  */
 /* ─────────────────────────────────────────────────────────── */
 
-export async function createTask(userId: string, input: CreateTaskInput, timezone?: string) {
+export async function createTask(
+  userId: string,
+  input: CreateTaskInput,
+  timezone?: string,
+  taskModel: any = Task,
+  outboxService: OutboxStorageService = OutboxStorageService.getInstance()
+) {
   const dueDate = resolveDate(input.dueDate, timezone);
+  const taskId = new mongoose.Types.ObjectId();
+  const createdAt = new Date();
+  const clientMutationId = (input as any)?.clientMutationId || `mut_task_create_${taskId}_v1`;
+  const diffHash = `diff_task_create_${taskId}_1`;
 
-  const task = await Task.create({
+  const domainUpdates = {
     userId,
     title: input.title,
     description: input.description || "",
@@ -109,8 +120,41 @@ export async function createTask(userId: string, input: CreateTaskInput, timezon
     parentTaskId: input.parentTaskId || null,
     reminders: input.reminders || [],
     metadata: input.metadata || {},
+  };
+
+  const eventDraft: OutboxEventDraft = {
+    userId: String(userId),
+    category: "DOMAIN_EVENT",
+    type: "domain.task.created",
+    aggregateId: String(taskId),
+    aggregateType: "task",
+    aggregateVersion: 1,
+    source: "web.tasks.create",
+    payload: {
+      taskId: String(taskId),
+      userId: String(userId),
+      title: input.title,
+      dueDate,
+      goalId: input.goalId ? String(input.goalId) : undefined,
+      priority: input.priority || "medium",
+    },
+    occurredAt: createdAt,
+  };
+
+  await outboxService.persistWithStandaloneFencing({
+    userId: String(userId),
+    aggregateModel: taskModel,
+    aggregateId: String(taskId),
+    clientMutationId,
+    diffHash,
+    expectedVersion: 0,
+    fencingEpoch: 0,
+    domainUpdates,
+    eventDrafts: [eventDraft],
+    isCreation: true,
   });
 
+  const task = await taskModel.findById(taskId);
   return { success: true, task };
 }
 
@@ -118,36 +162,159 @@ export async function createTask(userId: string, input: CreateTaskInput, timezon
 /* updateTask                                                  */
 /* ─────────────────────────────────────────────────────────── */
 
-export async function updateTask(userId: string, taskId: string, updates: Partial<CreateTaskInput>) {
-  const task = await Task.findOne({ _id: taskId, userId });
+export async function updateTask(
+  userId: string,
+  taskId: string,
+  updates: Partial<CreateTaskInput>,
+  taskModel: any = Task,
+  outboxService: OutboxStorageService = OutboxStorageService.getInstance()
+) {
+  const task = await taskModel.findOne({ _id: taskId, userId });
   if (!task) return { success: false, error: "Task not found" };
 
-  // Apply allowed updates
-  if (updates.title !== undefined) task.title = updates.title;
-  if (updates.description !== undefined) task.description = updates.description;
-  if (updates.dueDate !== undefined) task.dueDate = resolveDate(updates.dueDate);
-  if (updates.dueTime !== undefined) task.dueTime = updates.dueTime;
-  if (updates.priority !== undefined) task.priority = updates.priority;
-  if (updates.recurring !== undefined) task.recurring = updates.recurring;
-  if (updates.goalId !== undefined) task.goalId = updates.goalId;
-  if (updates.metadata !== undefined) task.metadata = { ...task.metadata, ...updates.metadata };
-  if (updates.reminders !== undefined) task.reminders = updates.reminders;
+  const currentVersion = typeof task.version === "number" ? task.version : 0;
+  const currentEpoch = typeof task.mutationEpoch === "number" ? task.mutationEpoch : 0;
+  const nextVersion = currentVersion + 1;
+  const clientMutationId = (updates as any)?.clientMutationId || `mut_task_update_${taskId}_v${nextVersion}`;
+  const diffHash = `diff_task_update_${taskId}_${nextVersion}`;
+  const updatedAt = new Date();
 
-  await task.save();
-  return { success: true, task };
+  const domainUpdates: Record<string, any> = {};
+  if (updates.title !== undefined) domainUpdates.title = updates.title;
+  if (updates.description !== undefined) domainUpdates.description = updates.description;
+  if (updates.dueDate !== undefined) domainUpdates.dueDate = resolveDate(updates.dueDate);
+  if (updates.dueTime !== undefined) domainUpdates.dueTime = updates.dueTime;
+  if (updates.priority !== undefined) domainUpdates.priority = updates.priority;
+  if (updates.recurring !== undefined) domainUpdates.recurring = updates.recurring;
+  if (updates.goalId !== undefined) domainUpdates.goalId = updates.goalId;
+  if (updates.metadata !== undefined) domainUpdates.metadata = { ...task.metadata, ...updates.metadata };
+  if (updates.reminders !== undefined) domainUpdates.reminders = updates.reminders;
+
+  const eventDraft: OutboxEventDraft = {
+    userId: String(userId),
+    category: "DOMAIN_EVENT",
+    type: "domain.task.updated",
+    aggregateId: String(taskId),
+    aggregateType: "task",
+    aggregateVersion: nextVersion,
+    source: "web.tasks.update",
+    payload: {
+      taskId: String(taskId),
+      userId: String(userId),
+      changes: domainUpdates,
+      updatedAt: updatedAt.toISOString(),
+      title: domainUpdates.title || task.title,
+      priority: domainUpdates.priority || task.priority,
+      dueDate: domainUpdates.dueDate || task.dueDate,
+    },
+    occurredAt: updatedAt,
+  };
+
+  await outboxService.persistWithStandaloneFencing({
+    userId: String(userId),
+    aggregateModel: taskModel,
+    aggregateId: String(taskId),
+    clientMutationId,
+    diffHash,
+    expectedVersion: currentVersion,
+    fencingEpoch: currentEpoch,
+    domainUpdates,
+    eventDrafts: [eventDraft],
+  });
+
+  const updatedTask = await taskModel.findById(taskId);
+  return { success: true, task: updatedTask };
 }
 
 /* ─────────────────────────────────────────────────────────── */
 /* deleteTask                                                  */
 /* ─────────────────────────────────────────────────────────── */
 
-export async function deleteTask(userId: string, taskId: string) {
-  const task = await Task.findOne({ _id: taskId, userId });
+export async function deleteTask(
+  userId: string,
+  taskId: string,
+  taskModel: any = Task,
+  outboxService: OutboxStorageService = OutboxStorageService.getInstance()
+) {
+  const task = await taskModel.findOne({ _id: taskId, userId });
   if (!task) return { success: false, error: "Task not found" };
 
-  // Also delete all subtasks
-  await Task.deleteMany({ parentTaskId: taskId, userId });
-  await task.deleteOne();
+  const currentVersion = typeof task.version === "number" ? task.version : 0;
+  const currentEpoch = typeof task.mutationEpoch === "number" ? task.mutationEpoch : 0;
+  const nextVersion = currentVersion + 1;
+  const clientMutationId = `mut_task_delete_${taskId}_v${nextVersion}`;
+  const diffHash = `diff_task_delete_${taskId}_${nextVersion}`;
+  const deletedAt = new Date();
+
+  // Also soft-archive all subtasks with canonical outbox persistence
+  if (taskModel.find) {
+    const subtasks = await taskModel.find({ parentTaskId: taskId, userId, status: { $ne: "archived" } });
+    for (const sub of subtasks) {
+      const subVersion = typeof sub.version === "number" ? sub.version : 0;
+      const subNextVersion = subVersion + 1;
+      const subEventDraft: OutboxEventDraft = {
+        userId: String(userId),
+        category: "DOMAIN_EVENT",
+        type: "domain.task.deleted",
+        aggregateId: String(sub._id),
+        aggregateType: "task",
+        aggregateVersion: subNextVersion,
+        source: "web.tasks.delete.cascade",
+        payload: {
+          taskId: String(sub._id),
+          parentTaskId: String(taskId),
+          userId: String(userId),
+          deletedAt: deletedAt.toISOString(),
+        },
+        occurredAt: deletedAt,
+      };
+
+      await outboxService.persistWithStandaloneFencing({
+        userId: String(userId),
+        aggregateModel: taskModel,
+        aggregateId: String(sub._id),
+        clientMutationId: `mut_subtask_del_${sub._id}_v${subNextVersion}`,
+        diffHash: `diff_subtask_del_${sub._id}_${subNextVersion}`,
+        expectedVersion: subVersion,
+        fencingEpoch: sub.mutationEpoch || 0,
+        domainUpdates: {
+          status: "archived",
+          archivedAt: deletedAt,
+        },
+        eventDrafts: [subEventDraft],
+        isDeletion: true,
+      });
+    }
+  }
+
+  const eventDraft: OutboxEventDraft = {
+    userId: String(userId),
+    category: "DOMAIN_EVENT",
+    type: "domain.task.deleted",
+    aggregateId: String(taskId),
+    aggregateType: "task",
+    aggregateVersion: nextVersion,
+    source: "web.tasks.delete",
+    payload: {
+      taskId: String(taskId),
+      userId: String(userId),
+      deletedAt: deletedAt.toISOString(),
+    },
+    occurredAt: deletedAt,
+  };
+
+  await outboxService.persistWithStandaloneFencing({
+    userId: String(userId),
+    aggregateModel: taskModel,
+    aggregateId: String(taskId),
+    clientMutationId,
+    diffHash,
+    expectedVersion: currentVersion,
+    fencingEpoch: currentEpoch,
+    domainUpdates: {},
+    eventDrafts: [eventDraft],
+    isDeletion: true,
+  });
 
   return { success: true };
 }
@@ -156,82 +323,380 @@ export async function deleteTask(userId: string, taskId: string) {
 /* completeTask                                                */
 /* ─────────────────────────────────────────────────────────── */
 
-export async function completeTask(userId: string, taskId: string, timezone?: string) {
-  const task = await Task.findOne({ _id: taskId, userId });
+export async function completeTask(
+  userId: string,
+  taskId: string,
+  timezone?: string,
+  taskModel: any = Task,
+  outboxService: OutboxStorageService = OutboxStorageService.getInstance()
+) {
+  const task = await taskModel.findOne({ _id: taskId, userId });
   if (!task) return { success: false, error: "Task not found" };
 
-  task.status = "completed";
-  task.completedAt = new Date();
-  await task.save();
+  const recurringSeriesId = task.recurringParentId || task._id;
+  const nextDate = task.recurring ? nextOccurrence(task.recurring, task.dueDate) : null;
 
-  // (REMOVED: The arbitrary signal +1 hack. Tasks are now natively calculated as a system.tasks_completed signal in the explainGoal engine.)
+  // If already completed: check if recurring successor exists or needs healing
+  if (task.status === "completed") {
+    if (task.recurring && nextDate) {
+      const existingSuccessor = await taskModel.findOne({
+        userId,
+        recurringParentId: recurringSeriesId,
+        dueDate: nextDate,
+      });
+      if (existingSuccessor) {
+        return { success: true, task, successor: existingSuccessor, deduplicated: true };
+      }
+      // Successor missing from prior crash -> heal below
+    } else {
+      return { success: true, task };
+    }
+  }
 
-  // ── Auto-spawn next recurring instance ───────────────────────────────────
-  if (task.recurring) {
-    const nextDate = nextOccurrence(task.recurring, task.dueDate);
-    await Task.create({
-      userId,
+  const completedAt = new Date();
+  const currentVersion = typeof task.version === "number" ? task.version : 0;
+  const currentEpoch = typeof task.mutationEpoch === "number" ? task.mutationEpoch : 0;
+  const nextVersion = currentVersion + 1;
+  const clientMutationId = `mut_task_complete_${taskId}_v${nextVersion}`;
+  const diffHash = `diff_task_complete_${taskId}_${nextVersion}`;
+
+  const eventDraft: OutboxEventDraft = {
+    userId: String(userId),
+    category: "DOMAIN_EVENT",
+    type: "domain.task.completed",
+    aggregateId: String(taskId),
+    aggregateType: "task",
+    aggregateVersion: nextVersion,
+    source: "web.tasks.complete",
+    payload: {
+      taskId: String(taskId),
+      userId: String(userId),
+      completedAt: completedAt.toISOString(),
+      goalId: task.goalId ? String(task.goalId) : undefined,
       title: task.title,
-      description: task.description,
-      dueDate: nextDate,
-      dueTime: task.dueTime,
-      priority: task.priority,
-      status: "pending",
-      recurring: task.recurring,
-      goalId: task.goalId,
-      reminders: task.reminders,
-      metadata: task.metadata,
-      recurringParentId: task.recurringParentId || task._id,
+    },
+    occurredAt: completedAt,
+  };
+
+  const isModeA = await outboxService.supportsTransactions();
+
+  if (isModeA && task.recurring && nextDate) {
+    // Mode A: Atomic Multi-Document Transaction
+    const succId = new mongoose.Types.ObjectId();
+    const succEventDraft: OutboxEventDraft = {
+      userId: String(userId),
+      category: "DOMAIN_EVENT",
+      type: "domain.task.created",
+      aggregateId: String(succId),
+      aggregateType: "task",
+      aggregateVersion: 1,
+      source: "web.tasks.complete.recur",
+      payload: {
+        taskId: String(succId),
+        userId: String(userId),
+        title: task.title,
+        dueDate: nextDate,
+        goalId: task.goalId ? String(task.goalId) : undefined,
+        priority: task.priority || "medium",
+        recurringParentId: String(recurringSeriesId),
+      },
+      occurredAt: completedAt,
+    };
+
+    let successorDoc: any = null;
+
+    await outboxService.persistWithTransaction({
+      userId: String(userId),
+      aggregateModel: taskModel,
+      aggregateId: String(taskId),
+      clientMutationId,
+      diffHash,
+      expectedVersion: currentVersion,
+      domainMutation: async (session) => {
+        const updated = await taskModel.findOneAndUpdate(
+          { _id: taskId, version: currentVersion },
+          {
+            $set: { status: "completed", completedAt, version: nextVersion },
+          },
+          { new: true, session }
+        );
+
+        const created = await taskModel.create(
+          [
+            {
+              _id: succId,
+              userId,
+              title: task.title,
+              description: task.description,
+              dueDate: nextDate,
+              dueTime: task.dueTime,
+              priority: task.priority,
+              status: "pending",
+              recurring: task.recurring,
+              goalId: task.goalId,
+              reminders: task.reminders,
+              metadata: task.metadata,
+              recurringParentId: recurringSeriesId,
+              version: 1,
+              mutationEpoch: 0,
+              recentMutationReceipts: [],
+            },
+          ],
+          { session }
+        );
+        successorDoc = created[0];
+        return { updatedDoc: updated, newVersion: nextVersion };
+      },
+      eventDrafts: [eventDraft, succEventDraft],
+    });
+
+    const updatedParent = await taskModel.findById(taskId);
+    return { success: true, task: updatedParent || task, successor: successorDoc };
+  }
+
+  // Mode B (or non-recurring Mode A):
+  if (task.status !== "completed") {
+    await outboxService.persistWithStandaloneFencing({
+      userId: String(userId),
+      aggregateModel: taskModel,
+      aggregateId: String(taskId),
+      clientMutationId,
+      diffHash,
+      expectedVersion: currentVersion,
+      fencingEpoch: currentEpoch,
+      domainUpdates: {
+        status: "completed",
+        completedAt,
+      },
+      eventDrafts: [eventDraft],
     });
   }
 
-  return { success: true, task };
+  const updatedParent = await taskModel.findById(taskId);
+
+  // Auto-spawn next recurring instance (Mode B staged recovery)
+  let successor: any = null;
+  if (task.recurring && nextDate) {
+    try {
+      const succId = new mongoose.Types.ObjectId();
+      const succClientMutationId = `mut_task_recur_${recurringSeriesId}_${nextDate}`;
+      const succDiffHash = `diff_task_recur_${recurringSeriesId}_${nextDate}`;
+
+      const succEventDraft: OutboxEventDraft = {
+        userId: String(userId),
+        category: "DOMAIN_EVENT",
+        type: "domain.task.created",
+        aggregateId: String(succId),
+        aggregateType: "task",
+        aggregateVersion: 1,
+        source: "web.tasks.complete.recur",
+        payload: {
+          taskId: String(succId),
+          userId: String(userId),
+          title: task.title,
+          dueDate: nextDate,
+          goalId: task.goalId ? String(task.goalId) : undefined,
+          priority: task.priority || "medium",
+          recurringParentId: String(recurringSeriesId),
+        },
+        occurredAt: completedAt,
+      };
+
+      await outboxService.persistWithStandaloneFencing({
+        userId: String(userId),
+        aggregateModel: taskModel,
+        aggregateId: String(succId),
+        clientMutationId: succClientMutationId,
+        diffHash: succDiffHash,
+        expectedVersion: 0,
+        fencingEpoch: 0,
+        domainUpdates: {
+          userId,
+          title: task.title,
+          description: task.description,
+          dueDate: nextDate,
+          dueTime: task.dueTime,
+          priority: task.priority,
+          status: "pending",
+          recurring: task.recurring,
+          goalId: task.goalId,
+          reminders: task.reminders,
+          metadata: task.metadata,
+          recurringParentId: recurringSeriesId,
+        },
+        eventDrafts: [succEventDraft],
+        isCreation: true,
+      });
+
+      successor = await taskModel.findById(succId);
+    } catch (err: any) {
+      if (err.code === 11000 || (err.name === "MongoServerError" && err.code === 11000)) {
+        // Unique partial index detected concurrent insert or retry
+        successor = await taskModel.findOne({
+          userId,
+          recurringParentId: recurringSeriesId,
+          dueDate: nextDate,
+        });
+        return { success: true, task: updatedParent || task, successor, deduplicated: true };
+      }
+
+      // Explicit partial failure reporting
+      return {
+        success: false,
+        status: "SUCCESSOR_CREATION_FAILED",
+        parentCompleted: true,
+        error: "Parent task completed but recurring successor creation failed. Retry completeTask to heal.",
+        task: updatedParent || task,
+      };
+    }
+  }
+
+  return { success: true, task: updatedParent || task, successor };
 }
 
 /* ─────────────────────────────────────────────────────────── */
 /* uncompleteTask                                              */
 /* ─────────────────────────────────────────────────────────── */
 
-export async function uncompleteTask(userId: string, taskId: string, timezone?: string) {
-  const task = await Task.findOne({ _id: taskId, userId });
+export async function uncompleteTask(
+  userId: string,
+  taskId: string,
+  timezone?: string,
+  taskModel: any = Task,
+  outboxService: OutboxStorageService = OutboxStorageService.getInstance()
+) {
+  const task = await taskModel.findOne({ _id: taskId, userId });
   if (!task) return { success: false, error: "Task not found" };
 
   if (task.status !== "completed") return { success: true, task };
 
-  task.status = "pending";
-  task.completedAt = null;
-  await task.save();
+  const currentVersion = typeof task.version === "number" ? task.version : 0;
+  const currentEpoch = typeof task.mutationEpoch === "number" ? task.mutationEpoch : 0;
+  const nextVersion = currentVersion + 1;
+  const clientMutationId = `mut_task_uncomplete_${taskId}_v${nextVersion}`;
+  const diffHash = `diff_task_uncomplete_${taskId}_${nextVersion}`;
+  const updatedAt = new Date();
 
-  // (REMOVED: Signal revert hack)
+  const domainUpdates = {
+    status: "pending",
+    completedAt: null,
+  };
 
-  // We do not delete the auto-spawned recurring instance as it could have been modified by the user.
-  return { success: true, task };
+  const eventDraft: OutboxEventDraft = {
+    userId: String(userId),
+    category: "DOMAIN_EVENT",
+    type: "domain.task.updated",
+    aggregateId: String(taskId),
+    aggregateType: "task",
+    aggregateVersion: nextVersion,
+    source: "web.tasks.uncomplete",
+    payload: {
+      taskId: String(taskId),
+      userId: String(userId),
+      status: "pending",
+      previousStatus: "completed",
+      updatedAt: updatedAt.toISOString(),
+    },
+    occurredAt: updatedAt,
+  };
+
+  await outboxService.persistWithStandaloneFencing({
+    userId: String(userId),
+    aggregateModel: taskModel,
+    aggregateId: String(taskId),
+    clientMutationId,
+    diffHash,
+    expectedVersion: currentVersion,
+    fencingEpoch: currentEpoch,
+    domainUpdates,
+    eventDrafts: [eventDraft],
+  });
+
+  const updatedTask = await taskModel.findById(taskId);
+  return { success: true, task: updatedTask || task, newVersion: nextVersion };
 }
 
 /* ─────────────────────────────────────────────────────────── */
 /* skipTask                                                    */
 /* ─────────────────────────────────────────────────────────── */
 
-export async function skipTask(userId: string, taskId: string) {
-  const task = await Task.findOne({ _id: taskId, userId });
+export async function skipTask(
+  userId: string,
+  taskId: string,
+  taskModel: any = Task,
+  outboxService: OutboxStorageService = OutboxStorageService.getInstance()
+) {
+  const task = await taskModel.findOne({ _id: taskId, userId });
   if (!task) return { success: false, error: "Task not found" };
 
-  task.status = "skipped";
-  await task.save();
-  return { success: true, task };
+  if (task.status === "skipped") return { success: true, task };
+
+  const currentVersion = typeof task.version === "number" ? task.version : 0;
+  const currentEpoch = typeof task.mutationEpoch === "number" ? task.mutationEpoch : 0;
+  const nextVersion = currentVersion + 1;
+  const clientMutationId = `mut_task_skip_${taskId}_v${nextVersion}`;
+  const diffHash = `diff_task_skip_${taskId}_${nextVersion}`;
+  const updatedAt = new Date();
+
+  const domainUpdates = {
+    status: "skipped",
+  };
+
+  const eventDraft: OutboxEventDraft = {
+    userId: String(userId),
+    category: "DOMAIN_EVENT",
+    type: "domain.task.updated",
+    aggregateId: String(taskId),
+    aggregateType: "task",
+    aggregateVersion: nextVersion,
+    source: "web.tasks.skip",
+    payload: {
+      taskId: String(taskId),
+      userId: String(userId),
+      status: "skipped",
+      previousStatus: task.status,
+      updatedAt: updatedAt.toISOString(),
+    },
+    occurredAt: updatedAt,
+  };
+
+  await outboxService.persistWithStandaloneFencing({
+    userId: String(userId),
+    aggregateModel: taskModel,
+    aggregateId: String(taskId),
+    clientMutationId,
+    diffHash,
+    expectedVersion: currentVersion,
+    fencingEpoch: currentEpoch,
+    domainUpdates,
+    eventDrafts: [eventDraft],
+  });
+
+  const updatedTask = await taskModel.findById(taskId);
+  return { success: true, task: updatedTask || task, newVersion: nextVersion };
 }
 
 /* ─────────────────────────────────────────────────────────── */
 /* skipAllForToday                                             */
 /* ─────────────────────────────────────────────────────────── */
 
-export async function skipAllForToday(userId: string, timezone?: string) {
+export async function skipAllForToday(
+  userId: string,
+  timezone?: string,
+  taskModel: any = Task,
+  outboxService: OutboxStorageService = OutboxStorageService.getInstance()
+) {
   const today = getActiveDate(timezone);
-  const result = await Task.updateMany(
-    { userId, dueDate: today, status: "pending" },
-    { $set: { status: "skipped" } }
-  );
-  return { success: true, skippedCount: result.modifiedCount };
+  const pendingTasks = await taskModel.find({ userId, dueDate: today, status: "pending" });
+
+  let count = 0;
+  for (const task of pendingTasks) {
+    const res = await skipTask(userId, String(task._id), taskModel, outboxService);
+    if (res.success) {
+      count++;
+    }
+  }
+  return { success: true, skippedCount: count };
 }
 
 /* ─────────────────────────────────────────────────────────── */
@@ -276,14 +741,58 @@ export async function getUpcomingTasks(userId: string, timezone?: string, days =
 /* rescheduleOverdue                                           */
 /* ─────────────────────────────────────────────────────────── */
 
-export async function rescheduleOverdue(userId: string, timezone?: string) {
+export async function rescheduleOverdue(
+  userId: string,
+  timezone?: string,
+  taskModel: any = Task,
+  outboxService: OutboxStorageService = OutboxStorageService.getInstance()
+) {
   const today = getActiveDate(timezone);
-  const overdue = await Task.find({ userId, dueDate: { $lt: today }, status: "pending" });
+  const overdue = await taskModel.find({ userId, dueDate: { $lt: today }, status: "pending" });
 
   let count = 0;
   for (const task of overdue) {
-    task.dueDate = today;
-    await task.save();
+    const currentVersion = typeof task.version === "number" ? task.version : 0;
+    const currentEpoch = typeof task.mutationEpoch === "number" ? task.mutationEpoch : 0;
+    const nextVersion = currentVersion + 1;
+    const clientMutationId = `mut_task_resched_${task._id}_v${nextVersion}`;
+    const diffHash = `diff_task_resched_${task._id}_${nextVersion}`;
+    const updatedAt = new Date();
+
+    const domainUpdates = {
+      dueDate: today,
+    };
+
+    const eventDraft: OutboxEventDraft = {
+      userId: String(userId),
+      category: "DOMAIN_EVENT",
+      type: "domain.task.updated",
+      aggregateId: String(task._id),
+      aggregateType: "task",
+      aggregateVersion: nextVersion,
+      source: "web.tasks.reschedule_overdue",
+      payload: {
+        taskId: String(task._id),
+        userId: String(userId),
+        dueDate: today,
+        previousDueDate: task.dueDate,
+        reason: "overdue_reschedule",
+        updatedAt: updatedAt.toISOString(),
+      },
+      occurredAt: updatedAt,
+    };
+
+    await outboxService.persistWithStandaloneFencing({
+      userId: String(userId),
+      aggregateModel: taskModel,
+      aggregateId: String(task._id),
+      clientMutationId,
+      diffHash,
+      expectedVersion: currentVersion,
+      fencingEpoch: currentEpoch,
+      domainUpdates,
+      eventDrafts: [eventDraft],
+    });
     count++;
   }
 

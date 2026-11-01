@@ -74,10 +74,14 @@ const GoalSchema = new mongoose.Schema(
       minActiveDaysPerWeek: { type: Number, default: 3 },
       graceDaysPerWeek: { type: Number, default: 2 },
     },
+
+    // Optimistic Concurrency & Outbox Fencing
+    version: { type: Number, default: 0 },
+    mutationEpoch: { type: Number, default: 0 },
+    recentMutationReceipts: { type: [Object], default: [] },
   },
   { timestamps: true }
 );
-
 
 // Pre-save normalization: guarantee string userId and trimmed title
 GoalSchema.pre("save", function () {

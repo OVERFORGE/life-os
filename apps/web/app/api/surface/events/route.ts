@@ -2,17 +2,28 @@ import { NextRequest } from "next/server";
 import { getAuthSession } from "@/lib/auth";
 import { connectDB } from "@/server/db/connect";
 import { apiError } from "@/lib/apiResponse";
-import { InteractionSurfaceService } from "@life-os/execution-kernel";
+import { SSEConnectionManager } from "@/server/services/SSEConnectionManager";
+import { UserDeliverySequencer } from "@life-os/execution-kernel";
 
 export const dynamic = "force-dynamic";
 
 export async function GET(req: NextRequest) {
   try {
+    // 1. Mandatory Ban on URL Query Tokens (Security Safeguard 4.3)
+    if (req.nextUrl.searchParams.has("token") || req.nextUrl.searchParams.has("auth")) {
+      return apiError(
+        "Authentication via query string tokens is prohibited. Use session cookies or Authorization header.",
+        "FORBIDDEN_AUTH_METHOD",
+        403
+      );
+    }
+
     const session = await getAuthSession();
     let userId = (session?.user as any)?.id;
 
     await connectDB();
 
+    // Development fallback strictly barred in production
     if (!userId && process.env.NODE_ENV !== "production") {
       const { User } = await import("@/server/db/models/User");
       const firstUser = await User.findOne().lean();
@@ -25,15 +36,82 @@ export async function GET(req: NextRequest) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
     }
 
-    const surfaceService = InteractionSurfaceService.getInstance();
+    const clientIp =
+      req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
+      req.headers.get("x-real-ip") ||
+      "127.0.0.1";
+
+    const lastEventIdHeader = req.headers.get("last-event-id");
+    const lastAckSeq = lastEventIdHeader ? parseInt(lastEventIdHeader, 10) : null;
+
+    const connManager = SSEConnectionManager.getInstance();
+    const sequencer = new UserDeliverySequencer();
     const encoder = new TextEncoder();
 
     let heartbeatTimer: NodeJS.Timeout | null = null;
-    let unsubscribe: (() => void) | null = null;
+    let streamId: string | null = null;
 
     const stream = new ReadableStream({
       async start(controller) {
-        // 1. Immediately send initial projection state
+        // 2. Register Active Stream & Enforce Concurrency Quotas
+        const reg = connManager.registerConnection(userId, clientIp, controller);
+        if (!reg.allowed) {
+          controller.enqueue(
+            encoder.encode(
+              `event: error\ndata: ${JSON.stringify({ error: reg.reason })}\n\n`
+            )
+          );
+          controller.close();
+          return;
+        }
+
+        streamId = reg.streamId!;
+
+        // 3. Bypass Reverse Proxy Buffering via 1024-byte comment flush
+        controller.enqueue(encoder.encode(connManager.getInitialFlushPadding()));
+
+        // 4. Replay Completeness Verification (5-Point Exact Interval Coverage)
+        if (lastAckSeq !== null && !isNaN(lastAckSeq)) {
+          const replayResult = await sequencer.verifyReplayInterval(userId, lastAckSeq);
+
+          if (replayResult.resyncRequired) {
+            // Emits system.resync_required if gap detected, buffer overflow, or cursor skew
+            const resyncMsg = connManager.formatSSEMessage(
+              "system.resync_required",
+              replayResult.currentSeq,
+              {
+                action: "FULL_SNAPSHOT_REHYDRATION",
+                reason: replayResult.reason,
+                lastAckSeq,
+                currentSeq: replayResult.currentSeq,
+              }
+            );
+            controller.enqueue(encoder.encode(resyncMsg));
+          } else if (replayResult.records && replayResult.records.length > 0) {
+            // Replay missed frames sequentially
+            for (const r of replayResult.records) {
+              const replayMsg = connManager.formatSSEMessage("message", r.deliverySeq, {
+                type: "INVALIDATE",
+                tags: r.invalidationTags || [],
+                deliverySeq: r.deliverySeq,
+                eventId: r.eventId,
+                eventType: r.eventType,
+                occurredAt: r.occurredAt,
+                isReplay: true,
+              });
+              controller.enqueue(encoder.encode(replayMsg));
+            }
+          }
+        } else {
+          // Cold Connection: emit connected baseline
+          const baselineMsg = connManager.formatSSEMessage("system.connected", 0, {
+            status: "CONNECTED",
+            userId,
+          });
+          controller.enqueue(encoder.encode(baselineMsg));
+        }
+
+        // 5. Send initial projection snapshot for authoritative UI hydration
         try {
           const { fetchAuthoritativeSurfaceProjection } = await import(
             "@/server/services/surfaceProjection.service"
@@ -42,29 +120,16 @@ export async function GET(req: NextRequest) {
             userId,
             req.headers.get("x-timezone") || undefined
           );
-          const initialEvent = `data: ${JSON.stringify({
+          const projectionMsg = `event: projection_sync\ndata: ${JSON.stringify({
             type: "PROJECTION_SYNC",
             projection: initialProjection,
           })}\n\n`;
-          controller.enqueue(encoder.encode(initialEvent));
+          controller.enqueue(encoder.encode(projectionMsg));
         } catch (err) {
-          console.warn("[Surface SSE] Initial projection error:", err);
+          console.warn("[Surface SSE] Initial projection hydration error:", err);
         }
 
-        // 2. Subscribe to live surface updates
-        unsubscribe = surfaceService.subscribe(userId, (projection) => {
-          try {
-            const eventPayload = `data: ${JSON.stringify({
-              type: "PROJECTION_UPDATE",
-              projection,
-            })}\n\n`;
-            controller.enqueue(encoder.encode(eventPayload));
-          } catch (err) {
-            console.error("[Surface SSE] Error enqueueing projection update:", err);
-          }
-        });
-
-        // 3. Keep-alive heartbeat ping every 15 seconds
+        // 6. Keep-Alive Heartbeat every 15 seconds
         heartbeatTimer = setInterval(() => {
           try {
             controller.enqueue(encoder.encode(": ping\n\n"));
@@ -75,13 +140,17 @@ export async function GET(req: NextRequest) {
       },
       cancel() {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
-        if (unsubscribe) unsubscribe();
+        if (streamId) {
+          connManager.unregisterConnection(userId, streamId);
+        }
       },
     });
 
     req.signal.addEventListener("abort", () => {
       if (heartbeatTimer) clearInterval(heartbeatTimer);
-      if (unsubscribe) unsubscribe();
+      if (streamId) {
+        connManager.unregisterConnection(userId, streamId);
+      }
     });
 
     return new Response(stream, {
@@ -94,6 +163,10 @@ export async function GET(req: NextRequest) {
     });
   } catch (err: any) {
     console.error("GET /api/surface/events Error:", err);
-    return apiError(err.message || "Failed to establish surface event stream", "INTERNAL_ERROR", 500);
+    return apiError(
+      err.message || "Failed to establish surface event stream",
+      "INTERNAL_ERROR",
+      500
+    );
   }
 }

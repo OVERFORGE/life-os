@@ -9,3 +9,4 @@ export * from "./SemanticTurnContracts";
 export * from "./ActionPayloadSchemas";
 export * from "./ExternalCapabilityContracts";
 export * from "./AvenStreamContracts";
+export * from "./WorkflowExecutionContracts";

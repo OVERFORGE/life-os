@@ -4,6 +4,7 @@ import { handleCreateGoal } from "./executionHandlers/handleCreateGoal";
 import { handleDeleteGoal } from "./executionHandlers/handleDeleteGoal";
 import { handleProposeGoal } from "./executionHandlers/handleProposeGoal";
 import { handleConfirmGoal } from "./executionHandlers/handleConfirmGoal";
+import { handleUpdateGoal } from "./executionHandlers/handleUpdateGoal";
 import { handleUpdateWeight } from "./executionHandlers/handleUpdateWeight";
 import { handleLogMeal } from "./executionHandlers/handleLogMeal";
 import { handleLogWorkout } from "./executionHandlers/handleLogWorkout";
@@ -40,6 +41,10 @@ export async function executeActions(actions: ExtractedAction[], userId: string,
                 case "delete_goal":
                     const deleteResult = await handleDeleteGoal(payload, userId);
                     results.push(deleteResult);
+                    break;
+                case "update_goal":
+                    const updateGoalResult = await handleUpdateGoal(payload, userId);
+                    results.push(updateGoalResult);
                     break;
                 case "update_weight":
                     const weightResult = await handleUpdateWeight(payload, userId);

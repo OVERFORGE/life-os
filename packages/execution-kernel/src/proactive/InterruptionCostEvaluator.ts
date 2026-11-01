@@ -1,8 +1,13 @@
 /**
- * Interruption Cost Evaluator (Phase 8)
+ * InterruptionCostEvaluator.ts
  * 
- * Computes whether the value of taking an action / alerting the user
- * exceeds the cost of interrupting them in their current state.
+ * Milestone B — Phase B4: Work Package 2 / Loop 4
+ * Evaluates interruption cost score strictly in range [0.0, 1.0].
+ * Features:
+ * - Bounded [0.0, 1.0] mathematical guarantees
+ * - Conservative Unknown State Handling (defaults to 0.85 cost when state is unknown)
+ * - Strict Emergency Bypass (ONLY CRITICAL_EMERGENCY overrides Quiet Hours)
+ * - Epistemic Confidence factored Action Value
  */
 
 import {
@@ -11,11 +16,11 @@ import {
 } from "./contracts/ProactiveContracts";
 
 export interface IUserRealtimeContext {
-  cognitiveLoad: number;             // 0.0 - 1.0
-  isQuietHours: boolean;
-  inMeeting: boolean;
-  inDeepWork: boolean;
-  recentNotificationCountToday: number;
+  cognitiveLoad?: number;             // 0.0 - 1.0
+  isQuietHours?: boolean;
+  inMeeting?: boolean;
+  inDeepWork?: boolean;
+  recentNotificationCountToday?: number;
   minutesUntilNextCommitment?: number;
 }
 
@@ -31,63 +36,105 @@ export class InterruptionCostEvaluator {
 
   evaluate(
     candidate: IProactiveCandidate,
-    context: IUserRealtimeContext
+    context?: IUserRealtimeContext | null
   ): IInterruptionCostEvaluation {
-    // 1. Calculate Interruption Cost
-    let cost = 0.20; // Base baseline cost for any unsolicited context switch
+    // 1. Conservative Unknown State Handling
+    // If context is omitted, null, or completely undefined, default conservatively to high resistance (0.85)
+    if (!context || (context.cognitiveLoad === undefined && context.isQuietHours === undefined)) {
+      const isCriticalEmergency = candidate.urgency === "CRITICAL_EMERGENCY";
+      const cost = isCriticalEmergency ? 0.0 : 0.85;
+      const confidence = candidate.confidenceScore ?? 1.0;
+      const actionValue = Math.min(1.0, candidate.actionValueScore * confidence);
+      const netValue = Number((actionValue - cost).toFixed(4));
 
-    if (context.isQuietHours) {
-      cost += 0.80; // Prohibitive barrier during designated sleep / quiet hours
+      return {
+        cost,
+        actionValue,
+        netValue,
+        shouldInterrupt: isCriticalEmergency || (netValue > 0.20 && actionValue >= 0.90),
+        quietHoursActive: false,
+        rationale: isCriticalEmergency
+          ? "CRITICAL_EMERGENCY alert executed despite unknown user context."
+          : `Conservative high-cost suppression (${cost}) applied due to unknown user context.`,
+      };
     }
-    if (context.inMeeting) {
-      cost += 0.40;
-    }
-    if (context.inDeepWork) {
-      cost += 0.35;
-    }
-    if (context.cognitiveLoad > 0.6) {
-      cost += 0.25 * context.cognitiveLoad;
-    }
-    // Fatigue escalation: each previous interruption increases resistance
-    cost += 0.15 * Math.min(context.recentNotificationCountToday, 5);
 
-    // Clamp cost to [0.0, 1.5]
-    cost = Math.min(1.5, Math.max(0.0, cost));
+    const isQuietHours = !!context.isQuietHours;
+    const isCriticalEmergency = candidate.urgency === "CRITICAL_EMERGENCY";
 
-    // 2. Calculate Action Value
+    // 2. Strict Emergency Bypass for Quiet Hours
+    if (isQuietHours && !isCriticalEmergency) {
+      const confidence = candidate.confidenceScore ?? 1.0;
+      const actionValue = Math.min(1.0, candidate.actionValueScore * confidence);
+      return {
+        cost: 1.0,
+        actionValue,
+        netValue: Number((actionValue - 1.0).toFixed(4)),
+        shouldInterrupt: false,
+        quietHoursActive: true,
+        rationale: `Suppressed due to active quiet hours. Urgency "${candidate.urgency}" does not qualify for critical emergency bypass.`,
+      };
+    }
+
+    // 3. Compute Base Cost and Contextual Adjustments
+    let cost = 0.20; // Baseline cost for unsolicited disruption
+
+    if (isCriticalEmergency) {
+      cost = 0.0;
+    } else {
+      if (context.inMeeting) {
+        cost += 0.35;
+      }
+      if (context.inDeepWork) {
+        cost += 0.30;
+      }
+      if (typeof context.cognitiveLoad === "number") {
+        cost += 0.20 * Math.max(0.0, Math.min(1.0, context.cognitiveLoad));
+      } else {
+        cost += 0.15; // Conservative penalty for missing cognitive load
+      }
+
+      // Interruption fatigue: +0.05 per prior notification today, capped at +0.25
+      const notifCount = context.recentNotificationCountToday ?? 0;
+      cost += 0.05 * Math.min(Math.max(0, notifCount), 5);
+    }
+
+    // STRICT BOUND: Ensure cost is clamped strictly within [0.0, 1.0]
+    cost = Math.min(1.0, Math.max(0.0, Number(cost.toFixed(4))));
+
+    // 4. Calculate Action Value (with confidence multiplier and urgency weight)
     const urgencyMultipliers: Record<string, number> = {
       LOW: 0.6,
       MEDIUM: 0.8,
       HIGH: 1.0,
-      CRITICAL: 1.5,
+      CRITICAL: 1.2,
+      CRITICAL_EMERGENCY: 2.0,
     };
     const mult = urgencyMultipliers[candidate.urgency] ?? 0.8;
-    const actionValue = Math.min(1.0, candidate.actionValueScore * mult);
+    const confidence = Math.min(1.0, Math.max(0.0, candidate.confidenceScore ?? 1.0));
+    const actionValue = Math.min(1.0, Math.max(0.0, Number((candidate.actionValueScore * confidence * mult).toFixed(4))));
 
-    // 3. Compute Net Value
-    const netValue = actionValue - cost;
+    // 5. Compute Net Value
+    const netValue = Number((actionValue - cost).toFixed(4));
 
-    // 4. Determine Interruption Decision
+    // 6. Final Decision & Rationale
     let shouldInterrupt = false;
     let rationale = "";
 
-    if (context.isQuietHours) {
-      if (candidate.urgency === "CRITICAL" && actionValue >= 0.90) {
-        shouldInterrupt = true;
-        rationale = "Critical emergency alert overrides quiet hours.";
-      } else {
-        shouldInterrupt = false;
-        rationale = "Suppressed due to active quiet hours (22:00 - 08:00).";
-      }
-    } else if (candidate.urgency === "CRITICAL") {
+    if (isCriticalEmergency) {
       shouldInterrupt = true;
-      rationale = "Critical urgency warrants immediate interruption.";
-    } else if (netValue > 0.15) {
+      rationale = isQuietHours
+        ? "CRITICAL_EMERGENCY alert strictly overrides Quiet Hours / DND."
+        : "CRITICAL_EMERGENCY alert warrants immediate unconstrained interruption.";
+    } else if (candidate.urgency === "CRITICAL" && netValue > 0.0) {
+      shouldInterrupt = true;
+      rationale = `Critical alert approved with positive net value (${netValue.toFixed(2)}).`;
+    } else if (netValue > 0.15 && actionValue >= 0.50) {
       shouldInterrupt = true;
       rationale = `Action value (${actionValue.toFixed(2)}) significantly exceeds interruption cost (${cost.toFixed(2)}).`;
     } else {
       shouldInterrupt = false;
-      rationale = `Interruption cost (${cost.toFixed(2)}) outweighs action value (${actionValue.toFixed(2)}).`;
+      rationale = `Interruption cost (${cost.toFixed(2)}) outweighs action value (${actionValue.toFixed(2)}) [net: ${netValue.toFixed(2)}].`;
     }
 
     return {
@@ -95,7 +142,7 @@ export class InterruptionCostEvaluator {
       actionValue,
       netValue,
       shouldInterrupt,
-      quietHoursActive: context.isQuietHours,
+      quietHoursActive: isQuietHours,
       rationale,
     };
   }

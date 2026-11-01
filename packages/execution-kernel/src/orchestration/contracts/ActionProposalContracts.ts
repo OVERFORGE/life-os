@@ -6,6 +6,8 @@
  * Invariant 12: No false "exactly once" guarantee is claimed without proof.
  */
 
+import type { CapabilityURN, CapabilityResultMap } from "./ExternalCapabilityContracts";
+
 export type DomainActionType =
   // Productivity actions
   | "create_task"
@@ -52,22 +54,22 @@ export interface DomainActionCapability {
   actionType: DomainActionType;
   domain: "productivity" | "health" | "wellness" | "context";
   operationKind:
-    | "CREATE"
-    | "READ"
-    | "UPDATE"
-    | "DELETE"
-    | "COMPLETE"
-    | "CANCEL"
-    | "RESCHEDULE"
-    | "PRIORITIZE"
-    | "APPEND_CORRECT"
-    | "CONFIRM"
-    | "RETRACT"
-    | "START"
-    | "DEFER"
-    | "PAUSE"
-    | "RESUME"
-    | "COMPENSATE";
+  | "CREATE"
+  | "READ"
+  | "UPDATE"
+  | "DELETE"
+  | "COMPLETE"
+  | "CANCEL"
+  | "RESCHEDULE"
+  | "PRIORITIZE"
+  | "APPEND_CORRECT"
+  | "CONFIRM"
+  | "RETRACT"
+  | "START"
+  | "DEFER"
+  | "PAUSE"
+  | "RESUME"
+  | "COMPENSATE";
   requiresTargetEntity: boolean;
   targetEntityType?: "task" | "goal" | "meal" | "workout" | "activity" | "context_mode" | "weight";
   supportsContinuation: boolean;
@@ -466,7 +468,7 @@ export interface ActionProposal<TPayload = any> {
   payload: TPayload;
   preconditions?: ActionPreconditions;
   rationale: string;
-  reversibility: "atomic_single_doc" | "reversible_with_compensation" | "irreversible_external";
+  reversibility: "atomic_single_doc" | "reversible_with_compensation" | "irreversible_external" | "irreversible_local";
   idempotencyKey: string;
 }
 
@@ -488,9 +490,11 @@ export type ActionExecutionStatus =
   | "REJECTED"
   | "NEEDS_CLARIFICATION"
   | "RECONCILING"
+  | "TIMED_OUT"
   | "COMPENSATING"
   | "COMPENSATED"
-  | "COMPENSATION_PARTIAL_MANUAL_REVIEW_REQUIRED";
+  | "COMPENSATION_PARTIAL_MANUAL_REVIEW_REQUIRED"
+  | "QUARANTINED";
 
 export interface ICanonicalExecutionEntity {
   entityId: string;
@@ -499,6 +503,20 @@ export interface ICanonicalExecutionEntity {
   domain: "productivity" | "health" | "wellness" | "context";
   status?: string;
   metadata?: Record<string, any>;
+}
+
+export type ResultProvenance =
+  | "LIVE_VERIFIED"
+  | "FIXTURE_PREVIEW"
+  | "CACHED_TELEMETRY"
+  | "REPLAY_MATCH"
+  | "TEST_SIMULATION";
+
+export interface ResultFreshnessMetadata {
+  recordedAt: number;
+  verifiedAt: number;
+  isStale: boolean;
+  ttlMs?: number;
 }
 
 export interface KernelExecutionResult<TData = any> {
@@ -515,4 +533,36 @@ export interface KernelExecutionResult<TData = any> {
   targetEntityId?: string;
   timestamp: number;
   compensated?: boolean;
+
+  // External capability metadata
+  capabilityURN?: CapabilityURN;
+  providerId?: string;
+  provenance?: ResultProvenance;
+  freshness?: ResultFreshnessMetadata;
+}
+
+/**
+ * Strongly typed external execution result narrowing payload to exact CapabilityResultMap[C]
+ */
+export interface ExternalExecutionResult<C extends CapabilityURN = CapabilityURN>
+  extends KernelExecutionResult<CapabilityResultMap[C]> {
+  actionType: "external_capability_action";
+  capabilityURN: C;
+  providerId: string;
+  provenance: ResultProvenance;
+  freshness: ResultFreshnessMetadata;
+  data: CapabilityResultMap[C];
+}
+
+/**
+ * Compile-time and runtime type guard verifying external capability results
+ */
+export function isExternalExecutionResult<C extends CapabilityURN>(
+  res: KernelExecutionResult,
+  urn?: C
+): res is ExternalExecutionResult<C> {
+  if (res.actionType !== "external_capability_action") return false;
+  if (!res.capabilityURN) return false;
+  if (urn !== undefined && res.capabilityURN !== urn) return false;
+  return true;
 }

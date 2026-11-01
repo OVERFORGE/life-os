@@ -320,7 +320,7 @@ describe("Semantic Entity Resolution & Goal Governance Suite (TC-G01 through TC-
       },
       dependencies: [],
       executionEligibility: "READY",
-    };
+    } as any;
 
     const res1 = await kernel.executeAction(isolatedUserId, p1);
     assert.ok(res1.success);
@@ -339,7 +339,7 @@ describe("Semantic Entity Resolution & Goal Governance Suite (TC-G01 through TC-
       },
       dependencies: [],
       executionEligibility: "READY",
-    };
+    } as any;
 
     const res2 = await kernel.executeAction(isolatedUserId, p2);
     assert.equal(res2.success, false, "Second goal proposal must fail duplicate detection");
@@ -386,7 +386,7 @@ describe("Semantic Entity Resolution & Goal Governance Suite (TC-G01 through TC-
       },
       dependencies: [],
       executionEligibility: "READY",
-    };
+    } as any;
 
     const res = await kernel.executeAction(isolatedUserId, p);
     assert.ok(res.success, `Archived goal must not block active creation: ${res.error}`);
@@ -455,7 +455,7 @@ describe("Semantic Entity Resolution & Goal Governance Suite (TC-G01 through TC-
       },
       dependencies: [],
       executionEligibility: "READY",
-    };
+    } as any;
 
     const execRes = await kernel.executeAction(isolatedUserId, p);
     assert.ok(execRes.success);
@@ -502,7 +502,7 @@ describe("Semantic Entity Resolution & Goal Governance Suite (TC-G01 through TC-
       },
       dependencies: [],
       executionEligibility: "READY",
-    };
+    } as any;
 
     const res = await kernel.executeAction(isolatedUserId, proposal);
     assert.ok(res.success);

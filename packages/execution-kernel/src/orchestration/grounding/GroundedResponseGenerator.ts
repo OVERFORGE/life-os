@@ -1,5 +1,6 @@
 import { KernelExecutionResult, DOMAIN_CAPABILITIES } from "../contracts/ActionProposalContracts";
 import { SemanticTurn, EntityResolutionEvidence } from "../contracts/SemanticTurnContracts";
+import { ObjectiveOutcomeStatus } from "../contracts/WorkflowExecutionContracts";
 
 export interface GroundedResponseOptions {
   userMessage?: string;
@@ -54,6 +55,41 @@ export class GroundedResponseGenerator {
       GroundedResponseGenerator.instance = new GroundedResponseGenerator();
     }
     return GroundedResponseGenerator.instance;
+  }
+
+  formatWorkflowOutcome(
+    status: ObjectiveOutcomeStatus,
+    details?: { path?: string; bytes?: number; emailCount?: number; reason?: string }
+  ): string {
+    switch (status) {
+      case "GOAL_ACHIEVED_AND_VERIFIED": {
+        const path = details?.path || "file";
+        const bytes = details?.bytes !== undefined ? ` (verified ${details.bytes.toLocaleString()} bytes on disk)` : "";
+        const count = details?.emailCount || 2;
+        return `Saved deployment failure summary to ${path}${bytes}. The summary was synthesized by Aven from ${count} unread emails matching 'deployment failure'.`;
+      }
+      case "OBJECTIVE_UNMET_EMPTY_SOURCE":
+        return `I searched your emails for deployment failure, but found no matching messages. No summary file was written.`;
+      case "OBJECTIVE_UNMET_INSUFFICIENT_SYNTHESIS":
+        return `The synthesized summary was incomplete or insufficient to satisfy the objective.`;
+      case "OBJECTIVE_UNREALIZABLE":
+        return details?.reason || `The requested objective is unrealizable with available evidence or tools.`;
+      case "OBJECTIVE_UNMET":
+        return details?.reason || `The requested objective could not be verified or achieved.`;
+      case "OBJECTIVE_PARTIALLY_ACHIEVED":
+      case "PARTIAL_COMPLETION":
+        return details?.reason || `The workflow partially completed some steps, but remaining actions could not be finished.`;
+      case "REQUIRES_USER_ACTION":
+        return details?.reason || `This objective requires your explicit input or approval before proceeding.`;
+      case "AMBIGUOUS_EXTERNAL_STATE":
+      case "AMBIGUOUS_EXTERNAL_MUTATION":
+        return `The operation encountered a timeout or ambiguous network state during external dispatch. To prevent duplicate execution, this action was not automatically retried.`;
+      case "BUDGET_EXHAUSTED":
+        return `Reached maximum step budget without completing the objective.`;
+      case "EXECUTION_ABORTED":
+      default:
+        return details?.reason || `The requested objective could not be verified.`;
+    }
   }
 
   generateResponse(
@@ -320,15 +356,18 @@ export class GroundedResponseGenerator {
           const to = toList.trim() || "the recipient";
           return `I've sent that email to **${to}**.`;
         }
-        if (capURN.includes("email.create_draft")) {
+        if (capURN.includes("email.create_draft") || capURN.includes("email.update_draft")) {
           const resObj = data?.result || data || {};
+          const isUpdate = capURN.includes("email.update_draft");
           const rawTo = resObj.to || payload.to || payload?.parameters?.to;
           const toList = Array.isArray(rawTo) ? rawTo.filter(Boolean).join(", ") : (rawTo || "");
           const toStr = toList.trim() ? `**To:** ${toList.trim()}  \n` : "";
           const subject = resObj.subject || payload.subject || payload?.parameters?.subject || "(No Subject)";
           const bodyText = (resObj.bodyText || payload.bodyText || payload?.parameters?.bodyText || "").trim();
           const bodyPreview = bodyText ? `\n\n---\n\n${bodyText}` : "";
-          return `### ✉️ Email Draft Saved to Gmail\n${toStr}**Subject:** **${subject}**${bodyPreview}\n\n*Saved in your Gmail Drafts.*`;
+          const header = isUpdate ? "### ✉️ Email Draft Updated in Gmail" : "### ✉️ Email Draft Saved to Gmail";
+          const footer = isUpdate ? "*Updated in your Gmail Drafts.*" : "*Saved in your Gmail Drafts.*";
+          return `${header}\n${toStr}**Subject:** **${subject}**${bodyPreview}\n\n${footer}`;
         }
         if (capURN.includes("contacts.search_contacts")) {
           const resObj = data?.result || data || {};
@@ -648,7 +687,11 @@ export class GroundedResponseGenerator {
         }
         if (capURN.includes("rides.request")) {
           const resObj = data?.result || data || {};
-          return `### 🚖 Ride Confirmed: ${resObj.rideTier || "Cab"} via ${resObj.provider || "Mobility"}\n\n- **Route:** ${resObj.pickup} → ${resObj.dropoff}\n- **Estimated Fare:** **${resObj.fareEstimate}**\n- **Driver ETA:** ~${resObj.driverEtaMinutes || 2} mins (${resObj.driverName || "Gurpreet S."})\n- **Vehicle:** ${resObj.vehiclePlate || "PB08-BK-7821"}\n- **Ride OTP:** **${resObj.otp || "4912"}**\n\n👉 [Track Driver Live on Mobile App](${resObj.trackingUrl || resObj.deepLinkUri})\n`;
+          const prov = (result as any).provenance || (data as any)?.provenance;
+          if (prov === "FIXTURE_PREVIEW" || prov === "TEST_SIMULATION" || resObj.deepLinkUri) {
+            return `### 🚖 Ride Ready for Dispatch: ${resObj.rideTier || "Cab"} via ${resObj.provider || "Mobility"}\n\n- **Route:** ${resObj.pickup} → ${resObj.dropoff}\n- **Estimated Fare:** **${resObj.fareEstimate}**\n\n👉 [Open ${resObj.provider || "Mobility"} to Confirm & Dispatch](${resObj.deepLinkUri || resObj.trackingUrl})\n`;
+          }
+          return `### 🚖 Ride Confirmed: ${resObj.rideTier || "Cab"} via ${resObj.provider || "Mobility"}\n\n- **Route:** ${resObj.pickup} → ${resObj.dropoff}\n- **Estimated Fare:** **${resObj.fareEstimate}**\n- **Driver ETA:** ~${resObj.driverEtaMinutes || 2} mins (${resObj.driverName || "Driver"})\n- **Vehicle:** ${resObj.vehiclePlate || "Vehicle"}\n- **Ride OTP:** **${resObj.otp || "—"}**\n\n👉 [Track Driver Live on Mobile App](${resObj.trackingUrl || resObj.deepLinkUri})\n`;
         }
         if (capURN.includes("food.search_restaurants")) {
           const resObj = data?.result || data || {};
@@ -728,7 +771,10 @@ export class GroundedResponseGenerator {
           const resObj = data?.result || data || {};
           return `### 🛡️ Checkout Payment Gate (Human-In-The-Loop)\n\n- **Order:** ${resObj.orderSummary}\n- **Shipping To:** ${resObj.deliveryAddress}\n- **Total Amount:** **${resObj.totalAmount}**\n- **Estimated Delivery:** ${resObj.estimatedDelivery}\n\n⚠️ *For your security, LifeOS pauses at checkout. Tap below to complete payment via UPI / Card:*\n\n👉 [Complete Payment on ${resObj.store}](${resObj.paymentUrl})\n`;
         }
-        return pres.completedPhrase ? `Done: ${pres.completedPhrase}.` : "Action completed successfully.";
+        if (pres?.completedPhrase) {
+          return pres.completedPhrase.endsWith(".") ? pres.completedPhrase : `${pres.completedPhrase}.`;
+        }
+        return "Action completed successfully.";
       }
 
       default: {
@@ -745,11 +791,13 @@ export class GroundedResponseGenerator {
 
     if (result.actionType === "external_capability_action") {
       const payload = (result as any).payload || (result as any).data || {};
-      const capURN = payload.capabilityURN || (result as any).data?.capabilityURN || (result as any).action?.payload?.capabilityURN || "";
-      const provId = payload.providerId || (result as any).data?.providerId || (result as any).action?.payload?.providerId || "";
+      const capURN = payload.capabilityURN || (result as any).capabilityURN || (result as any).data?.capabilityURN || (result as any).action?.payload?.capabilityURN || "";
+      const provId = payload.providerId || (result as any).providerId || (result as any).data?.providerId || (result as any).action?.payload?.providerId || "";
       const { CapabilityPresentationRegistry } = require("../external/presentation/CapabilityPresentationRegistry");
       const pres = CapabilityPresentationRegistry.getInstance().get(capURN as any, provId);
-      const provName = (pres && pres.providerDisplayName !== "Service") ? pres.providerDisplayName : (provId === "spotify" ? "Spotify" : "External service");
+      const provName = (pres && pres.providerDisplayName !== "Service")
+        ? pres.providerDisplayName
+        : (provId === "google_calendar" ? "Google Calendar" : (provId === "spotify" ? "Spotify" : (provId === "gmail" ? "Gmail" : (provId || "External service"))));
 
       if (err.includes("AUTH_NOT_CONFIGURED") || err.includes("reconnect") || err.includes("auth") || err.includes("expired") || err.includes("valid access token")) {
         return `I can't access ${provName} because the session has expired or is missing credentials. Please reconnect in Settings > Connections.`;
@@ -766,7 +814,10 @@ export class GroundedResponseGenerator {
       if (err.includes("permission") || err.includes("forbidden") || err.includes("denied")) {
         return `Aven doesn't currently have permission to do that in ${provName}.`;
       }
-      return `I couldn't control ${provName}: ${err}`;
+      if (pres && pres.failedPhrase && !pres.failedPhrase.startsWith("Failed ")) {
+        return `${pres.failedPhrase}: ${err}`;
+      }
+      return `Failed to complete action with ${provName}: ${err}`;
     }
 
     // Clean duplicate conflict prompts

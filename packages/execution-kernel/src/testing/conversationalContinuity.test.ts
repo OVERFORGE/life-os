@@ -511,7 +511,7 @@ describe("Conversational Continuity & Operation Lifecycle Suite (TC-01 through T
       estimatedImpact: "create_task",
       idempotencyKey: `replay_${Date.now()}`,
       dependencies: [],
-    };
+    } as any;
 
     const validation = await kernel.validateActionProposals(isolatedUserId, [proposal]);
     assert.equal(validation.valid, true);
