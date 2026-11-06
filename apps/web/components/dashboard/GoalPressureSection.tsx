@@ -1,8 +1,9 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
 import { GoalDTO } from "@life-os/execution-kernel";
-import { TrendingUp, TrendingDown, Minus } from "lucide-react";
+import { TrendingUp, TrendingDown, Minus, ArrowRight } from "lucide-react";
 
 interface GoalPressureSectionProps {
   goals?: GoalDTO[] | null;
@@ -32,13 +33,22 @@ export function GoalPressureSection({
   return (
     <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-6 shadow-sm space-y-6">
       {/* Header */}
-      <div className="space-y-1">
-        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
-          GOAL LOAD
+      <div className="flex items-center justify-between">
+        <div className="space-y-1">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+            GOAL LOAD
+          </div>
+          <div className="text-xs font-medium text-gray-400">
+            Jarvis system-wide goal pressure
+          </div>
         </div>
-        <div className="text-xs font-medium text-gray-400">
-          Jarvis system-wide goal pressure
-        </div>
+        <Link
+          href="/goals"
+          className="text-xs font-medium text-[#E8414A] hover:underline flex items-center gap-1 transition-colors"
+        >
+          <span>Open Goals</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
 
       {/* Progress Bar & Load Score */}
@@ -112,12 +122,13 @@ export function GoalPressureSection({
               const TrendIcon = trend === "rising" ? TrendingUp : trend === "falling" ? TrendingDown : Minus;
 
               return (
-                <div
+                <Link
                   key={goal.id}
-                  className="bg-[#161618] border border-[#2A2B2F] rounded-xl p-4 space-y-2"
+                  href="/goals"
+                  className="block bg-[#161618] border border-[#2A2B2F] rounded-xl p-4 space-y-2 hover:border-[#E8414A]/40 transition-colors cursor-pointer group"
                 >
                   <div className="flex items-center justify-between text-xs">
-                    <span className="font-bold text-gray-100 truncate">{goal.title}</span>
+                    <span className="font-bold text-gray-100 group-hover:text-white truncate">{goal.title}</span>
                     <span className="font-mono text-xs font-bold text-[#E8414A] shrink-0 ml-2">
                       {pressureScore}/100
                     </span>
@@ -136,7 +147,7 @@ export function GoalPressureSection({
                       {goal.pressure.explanation}
                     </div>
                   )}
-                </div>
+                </Link>
               );
             })}
           </div>

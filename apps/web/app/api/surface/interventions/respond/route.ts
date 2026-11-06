@@ -7,7 +7,7 @@ import {
   ExpiredInterventionError,
   InvalidInterventionStateError,
   RetiredKeyVersionError,
-} from "../../../../../../packages/execution-kernel/src/autonomous/HITLGovernanceEngine";
+} from "@life-os/execution-kernel";
 
 export async function POST(req: Request) {
   const session = await getAuthSession();

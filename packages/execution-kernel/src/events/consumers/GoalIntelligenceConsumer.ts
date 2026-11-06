@@ -377,7 +377,7 @@ export class GoalIntelligenceConsumer implements ICanonicalConsumer {
           const completedMilestones =
             goal.milestones?.filter((m: any) => m.completed).length ?? 0;
 
-          const [completedTasksCount, totalTasksCount] = await Promise.all([
+          let [completedTasksCount, totalTasksCount] = await Promise.all([
             resolveQuery(this.taskModel.countDocuments({ goalId, status: "completed" }).session(session)),
             resolveQuery(this.taskModel.countDocuments({ goalId, status: { $nin: ["archived", "deleted"] } }).session(session)),
           ]);

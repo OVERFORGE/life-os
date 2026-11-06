@@ -3,6 +3,7 @@
 import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
 import { useSession } from "next-auth/react";
 import { KernelClient } from "@/lib/kernelClient";
+import { useLifeOSReactiveStream } from "@/features/runtime/hooks/useLifeOSReactiveStream";
 import {
   DashboardDTO,
   ExecutionGraphDTO,
@@ -210,6 +211,19 @@ export function KernelProvider({ children }: { children: ReactNode }) {
       refreshAll();
     }
   }, [isAuthenticated]);
+
+  // Step 3 V2.2: Reactive Multi-Surface Invalidation Subscription
+  useLifeOSReactiveStream({
+    onInvalidateTags: (tags: string[]) => {
+      if (!isAuthenticated) return;
+      if (tags.includes("goals") || tags.includes("all")) refreshModule("goals");
+      if (tags.includes("tasks") || tags.includes("all")) refreshModule("tasks");
+      if (tags.includes("dashboard") || tags.includes("all")) refreshModule("dashboard");
+      if (tags.includes("world") || tags.includes("all")) refreshModule("world");
+      if (tags.includes("insights") || tags.includes("all")) refreshModule("insights");
+      if (tags.includes("learning") || tags.includes("all")) refreshModule("learning");
+    },
+  });
 
   return (
     <KernelContext.Provider

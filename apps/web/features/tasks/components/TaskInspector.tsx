@@ -4,6 +4,8 @@ import { Check, Clock, Zap, Target, Trash2, Calendar, GripVertical } from "lucid
 export function TaskInspector({ taskId }: { taskId: string }) {
   const [task, setTask] = useState<any>(null);
   const [loading, setLoading] = useState(true);
+  const [saving, setSaving] = useState(false);
+  const [saveStatus, setSaveStatus] = useState<string | null>(null);
 
   useEffect(() => {
     fetchTask();
@@ -37,6 +39,41 @@ export function TaskInspector({ taskId }: { taskId: string }) {
     });
   };
 
+  const saveTask = async () => {
+    setSaving(true);
+    setSaveStatus(null);
+    try {
+      const res = await fetch(`/api/tasks/update`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          taskId,
+          title: task.title,
+          description: task.description,
+        })
+      });
+      if (res.ok) {
+        setSaveStatus("Saved ✅");
+        setTimeout(() => setSaveStatus(null), 2500);
+      }
+    } catch (err) {
+      console.error("Failed to save task updates:", err);
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  const deleteTask = async () => {
+    if (typeof window !== "undefined" && window.confirm("Are you sure you want to delete this task?")) {
+      await fetch(`/api/tasks/delete`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ taskId })
+      });
+      window.location.href = "/tasks";
+    }
+  };
+
   if (loading) return <div className="text-sm text-[#9ca3af] animate-pulse">Loading task context...</div>;
   if (!task) return <div className="text-sm text-[#ef4444]">Task not found</div>;
 
@@ -45,20 +82,34 @@ export function TaskInspector({ taskId }: { taskId: string }) {
       
       {/* Header Actions */}
       <div className="flex items-center justify-between pb-4 border-b border-[#2A2B2F]">
-        <button 
-          onClick={toggleComplete}
-          className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
-            task.status === "completed" 
-              ? "bg-[#E8414A] text-white shadow-sm" 
-              : "bg-[#2A2B2F] text-gray-300 hover:text-white hover:bg-[#3A3C42]"
-          }`}
-        >
-          <Check size={14} />
-          {task.status === "completed" ? "Completed" : "Mark Complete"}
-        </button>
+        <div className="flex items-center gap-3">
+          <button 
+            onClick={toggleComplete}
+            className={`flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-medium transition-all ${
+              task.status === "completed" 
+                ? "bg-[#E8414A] text-white shadow-sm" 
+                : "bg-[#2A2B2F] text-gray-300 hover:text-white hover:bg-[#3A3C42]"
+            }`}
+          >
+            <Check size={14} />
+            {task.status === "completed" ? "Completed" : "Mark Complete"}
+          </button>
+
+          <button
+            onClick={saveTask}
+            disabled={saving}
+            className="px-4 py-2 rounded-lg text-sm font-medium bg-[#1F2023] hover:bg-[#2A2B2F] border border-[#2A2B2F] text-gray-200 transition-colors"
+          >
+            {saving ? "Saving..." : saveStatus || "Save Changes"}
+          </button>
+        </div>
 
         <div className="flex items-center gap-2">
-          <button className="p-2 rounded-lg text-[#ef4444] hover:bg-[#ef4444]/10 transition-colors">
+          <button 
+            onClick={deleteTask}
+            title="Delete Task"
+            className="p-2 rounded-lg text-[#ef4444] hover:bg-[#ef4444]/10 transition-colors"
+          >
             <Trash2 size={16} />
           </button>
         </div>

@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { InsightDTO } from "@life-os/execution-kernel";
 
 interface InsightsSectionProps {
@@ -12,15 +14,25 @@ export function InsightsSection({ insights }: InsightsSectionProps) {
 
   return (
     <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-6 shadow-sm space-y-4">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
-        SYSTEM OBSERVATIONS & INSIGHTS
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+          SYSTEM OBSERVATIONS & INSIGHTS
+        </div>
+        <Link
+          href="/insights"
+          className="flex items-center gap-1 text-xs text-[#E8414A] font-medium hover:underline"
+        >
+          <span>View All Insights</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
 
       <div className="space-y-3">
         {insights.map((insight) => (
-          <div
+          <Link
             key={insight.id}
-            className="bg-[#161618] border border-[#2A2B2F] rounded-xl p-4 space-y-1.5"
+            href="/insights"
+            className="block bg-[#161618] border border-[#2A2B2F] hover:border-[#E8414A]/40 hover:bg-[#1a1b1e] transition-all rounded-xl p-4 space-y-1.5 cursor-pointer"
           >
             <div className="flex items-center justify-between text-xs">
               <span className="font-bold text-gray-100">{insight.title}</span>
@@ -31,7 +43,7 @@ export function InsightsSection({ insights }: InsightsSectionProps) {
             <p className="text-xs text-gray-300 leading-relaxed">
               {insight.message}
             </p>
-          </div>
+          </Link>
         ))}
       </div>
     </div>

@@ -2,6 +2,7 @@
 
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import {
   Power,
   ChevronRight,
@@ -14,6 +15,8 @@ import {
   Settings as SettingsIcon,
   ShieldCheck,
   Plug,
+  Sliders,
+  Tags,
 } from "lucide-react";
 
 interface UserProfile {
@@ -61,6 +64,13 @@ export default function SettingsDashboard() {
       route: "/settings/personalization",
     },
     {
+      title: "Ambient & Voice Surfaces",
+      desc: "Desktop system tray, wake words, mic diagnostics & hotkeys",
+      icon: Sliders,
+      iconBg: "bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] group-hover:text-[#E8414A] group-hover:border-[#E8414A]/40",
+      route: "/settings/ambient",
+    },
+    {
       title: "Locations & Zones",
       desc: "Voice assistant geofencing, home/work zones & triggers",
       icon: MapPin,
@@ -87,6 +97,13 @@ export default function SettingsDashboard() {
       icon: Scale,
       iconBg: "bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] group-hover:text-[#E8414A] group-hover:border-[#E8414A]/40",
       route: "/settings/weights",
+    },
+    {
+      title: "Custom Categories",
+      desc: "Configure daily activity dimensions, metric order & custom tracking",
+      icon: Tags,
+      iconBg: "bg-[#26282E] text-[#ECE7E3] border border-[#3E424B] group-hover:text-[#E8414A] group-hover:border-[#E8414A]/40",
+      route: "/settings/categories",
     },
   ];
 
@@ -143,10 +160,10 @@ export default function SettingsDashboard() {
             {navItems.map((item) => {
               const Icon = item.icon;
               return (
-                <div
+                <Link
                   key={item.title}
-                  onClick={() => router.push(item.route)}
-                  className="bg-[#1F2023] border border-[#2A2B2F] hover:border-[#383A40] rounded-2xl p-5 cursor-pointer transition-all flex items-center justify-between group shadow-sm hover:shadow-md"
+                  href={item.route}
+                  className="bg-[#1F2023] border border-[#2A2B2F] hover:border-[#383A40] rounded-2xl p-5 cursor-pointer transition-all flex items-center justify-between group shadow-sm hover:shadow-md block"
                 >
                   <div className="flex items-center gap-4">
                     <div className={`p-3 rounded-xl ${item.iconBg}`}>
@@ -160,7 +177,7 @@ export default function SettingsDashboard() {
                     </div>
                   </div>
                   <ChevronRight className="w-5 h-5 text-gray-400 group-hover:translate-x-1 transition-transform" />
-                </div>
+                </Link>
               );
             })}
           </div>

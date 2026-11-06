@@ -1,12 +1,19 @@
+import Link from "next/link";
 import { Log, average } from "../utils/stats";
 
-function StatCard({ title, value }: { title: string; value: string }) {
-  return (
-    <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-xl p-4">
-      <div className="text-sm text-gray-400">{title}</div>
-      <div className="text-2xl font-bold">{value}</div>
+function StatCard({ title, value, href }: { title: string; value: string; href?: string }) {
+  const content = (
+    <div className="bg-[#1F2023] border border-[#2A2B2F] hover:border-[#E8414A]/40 hover:bg-[#25262B] transition-all rounded-xl p-4 cursor-pointer group">
+      <div className="text-sm text-gray-400 group-hover:text-gray-300">{title}</div>
+      <div className="text-2xl font-bold text-gray-100 group-hover:text-white font-mono">{value}</div>
     </div>
   );
+
+  if (href) {
+    return <Link href={href}>{content}</Link>;
+  }
+
+  return content;
 }
 
 export function SummaryGrid({ logs }: { logs: Log[] }) {
@@ -21,10 +28,10 @@ export function SummaryGrid({ logs }: { logs: Log[] }) {
 
   return (
     <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-      <StatCard title="Avg Mood (7d)" value={avgMood.toFixed(1)} />
-      <StatCard title="Avg Energy (7d)" value={avgEnergy.toFixed(1)} />
-      <StatCard title="Gym Days (7d)" value={String(gymDays)} />
-      <StatCard title="Coding Days (7d)" value={String(codingDays)} />
+      <StatCard title="Avg Mood (7d)" value={avgMood.toFixed(1)} href="/checkin" />
+      <StatCard title="Avg Energy (7d)" value={avgEnergy.toFixed(1)} href="/checkin" />
+      <StatCard title="Gym Days (7d)" value={String(gymDays)} href="/gym" />
+      <StatCard title="Coding Days (7d)" value={String(codingDays)} href="/checkin" />
     </div>
   );
 }

@@ -1,8 +1,9 @@
 "use client";
 
 import React, { useState } from "react";
+import Link from "next/link";
 import { ExecutionGraphDTO, TaskDTO } from "@life-os/execution-kernel";
-import { CheckCircle2, Clock } from "lucide-react";
+import { CheckCircle2, Clock, ArrowRight } from "lucide-react";
 
 interface TaskPanelProps {
   graph?: ExecutionGraphDTO | null;
@@ -26,8 +27,17 @@ export function TaskPanel({ graph }: TaskPanelProps) {
     <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-6 shadow-sm space-y-5">
       {/* Header & Tabs */}
       <div className="flex flex-wrap items-center justify-between gap-4 border-b border-[#2A2B2F]/50 pb-4">
-        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
-          EXECUTION TASK REGISTRY
+        <div className="flex items-center gap-3">
+          <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+            EXECUTION TASK REGISTRY
+          </div>
+          <Link
+            href="/tasks"
+            className="text-xs font-medium text-[#E8414A] hover:underline flex items-center gap-1 transition-colors"
+          >
+            <span>Open Tasks</span>
+            <ArrowRight className="w-3.5 h-3.5" />
+          </Link>
         </div>
 
         <div className="flex items-center bg-[#161618] p-1 rounded-xl border border-[#2A2B2F] text-xs font-medium">
@@ -72,9 +82,10 @@ export function TaskPanel({ graph }: TaskPanelProps) {
       ) : (
         <div className="space-y-2.5 max-h-80 overflow-y-auto pr-1">
           {currentTasks.map((task) => (
-            <div
+            <Link
               key={task.id}
-              className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#161618] border border-[#2A2B2F]"
+              href="/tasks"
+              className="flex items-center justify-between gap-3 p-3 rounded-xl bg-[#161618] border border-[#2A2B2F] hover:border-[#E8414A]/40 transition-colors cursor-pointer group"
             >
               <div className="flex items-center gap-3 min-w-0">
                 <div
@@ -83,7 +94,7 @@ export function TaskPanel({ graph }: TaskPanelProps) {
                   }`}
                 />
                 <div className="min-w-0">
-                  <div className="text-xs font-bold text-gray-100 truncate">{task.title}</div>
+                  <div className="text-xs font-bold text-gray-100 group-hover:text-white truncate">{task.title}</div>
                   {task.blockReason && (
                     <div className="text-[11px] text-[#E8414A] truncate">
                       Blocked: {task.blockReason}
@@ -102,7 +113,7 @@ export function TaskPanel({ graph }: TaskPanelProps) {
                   </span>
                 )}
               </div>
-            </div>
+            </Link>
           ))}
         </div>
       )}

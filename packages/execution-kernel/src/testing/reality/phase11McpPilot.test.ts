@@ -19,7 +19,7 @@ test("PHASE 11: Controlled MCP Evaluation & Pilot Suite", async (suite) => {
   suite.before(async () => {
     const mongoUri = process.env.MONGODB_URI;
     if (mongoUri && mongoose.connection.readyState === 0) {
-      await mongoose.connect(mongoUri, { dbName: "lifeos" });
+      await mongoose.connect(mongoUri, { dbName: "life-os" });
     }
   });
 

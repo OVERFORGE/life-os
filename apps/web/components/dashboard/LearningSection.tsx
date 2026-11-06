@@ -1,6 +1,8 @@
 "use client";
 
 import React from "react";
+import Link from "next/link";
+import { ArrowRight } from "lucide-react";
 import { LearningDTO } from "@life-os/execution-kernel";
 
 interface LearningSectionProps {
@@ -36,8 +38,17 @@ export function LearningSection({ learning }: LearningSectionProps) {
 
   return (
     <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-6 shadow-sm space-y-6">
-      <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
-        BEHAVIORAL MODEL & LEARNING SIGNALS
+      <div className="flex items-center justify-between">
+        <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
+          BEHAVIORAL MODEL & LEARNING SIGNALS
+        </div>
+        <Link
+          href="/insights"
+          className="flex items-center gap-1 text-xs text-[#E8414A] font-medium hover:underline"
+        >
+          <span>View Insights & Model</span>
+          <ArrowRight className="w-3.5 h-3.5" />
+        </Link>
       </div>
 
       {hasRealProfile && (

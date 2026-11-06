@@ -466,6 +466,7 @@ export interface ActionProposal<TPayload = any> {
   actionType: DomainActionType;
   targetEntityId?: string;
   payload: TPayload;
+  parameters?: any;
   preconditions?: ActionPreconditions;
   rationale: string;
   reversibility: "atomic_single_doc" | "reversible_with_compensation" | "irreversible_external" | "irreversible_local";

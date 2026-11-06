@@ -415,4 +415,5 @@ export * from "./events";
 // Milestone B — Phase B4: Autonomous Execution & Compensation Gateway
 export * from "./autonomy/AutonomousActionReverser";
 export * from "./autonomy/contracts/AutonomyContracts";
+export * from "./autonomous/HITLGovernanceEngine";
 

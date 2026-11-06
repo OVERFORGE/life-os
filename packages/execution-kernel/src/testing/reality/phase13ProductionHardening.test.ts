@@ -15,7 +15,7 @@ test("PHASE 13: Real-System Production Hardening & Mock Purge Suite", async (sui
   suite.before(async () => {
     const mongoUri = process.env.MONGODB_URI;
     if (mongoUri && mongoose.connection.readyState === 0) {
-      await mongoose.connect(mongoUri, { dbName: "lifeos", serverSelectionTimeoutMS: 5000 });
+      await mongoose.connect(mongoUri, { dbName: "life-os", serverSelectionTimeoutMS: 5000 });
     }
   });
 

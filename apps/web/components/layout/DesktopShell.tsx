@@ -8,7 +8,7 @@ import { AmbientActiveExecutionBanner } from "@/components/surface/AmbientActive
 import { usePathname, useRouter } from "next/navigation";
 import { useSession } from "next-auth/react";
 
-const PUBLIC_PATHS = ["/", "/login", "/desktop-login", "/desktop-callback"];
+const PUBLIC_PATHS = ["/", "/login", "/desktop-login", "/desktop-callback", "/hud"];
 
 export function DesktopShell({ children }: { children: ReactNode }) {
   const pathname = usePathname();

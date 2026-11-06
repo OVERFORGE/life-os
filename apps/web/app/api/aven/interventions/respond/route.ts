@@ -1,2 +1,2 @@
-export { POST } from "../../surface/interventions/respond/route";
+export { POST } from "@/app/api/surface/interventions/respond/route";
 

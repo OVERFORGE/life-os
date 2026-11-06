@@ -158,7 +158,22 @@ export class OutboxStorageService {
    */
   public async persistWithTransaction(
     params: ModeACommitParams
-  ): Promise<{ events: IOutboxEventDoc[]; updatedDoc: any; receipt: IMutationReceiptDoc }> {
+  ): Promise<{ success: boolean; events: IOutboxEventDoc[]; updatedDoc: any; receipt: IMutationReceiptDoc; isIdempotentReplay?: boolean }> {
+    // Step 0: Check for Idempotent Replay via Durable Mutation Receipt
+    if (params.clientMutationId) {
+      const receiptId = `${params.userId}:${params.aggregateId}:${params.clientMutationId}`;
+      const existingReceipt = await this.receiptModel.findOne({ receiptId });
+      if (existingReceipt) {
+        return {
+          success: true,
+          events: [],
+          updatedDoc: null,
+          receipt: existingReceipt,
+          isIdempotentReplay: true,
+        };
+      }
+    }
+
     const session = await mongoose.startSession();
     let resultEvents: IOutboxEventDoc[] = [];
     let updatedDoc: any = null;
@@ -243,7 +258,7 @@ export class OutboxStorageService {
         const isGraphMutation = params.eventDrafts.some(
           (d) => ["task", "goal"].includes(String(d.aggregateType).toLowerCase())
         );
-        if (isGraphMutation) {
+        if (isGraphMutation && mongoose.connection?.readyState === 1) {
           try {
             const { UserGraphRevisionModel } = await import("../../../../../apps/web/server/db/models/UserGraphRevisionModel");
             await UserGraphRevisionModel.updateOne(
@@ -258,6 +273,7 @@ export class OutboxStorageService {
       });
 
       return {
+        success: true,
         events: resultEvents,
         updatedDoc,
         receipt: receiptDoc!,
@@ -273,7 +289,24 @@ export class OutboxStorageService {
    */
   public async persistWithStandaloneFencing(
     params: ModeBCommitParams
-  ): Promise<{ events: IOutboxEventDoc[]; receipt: IMutationReceiptDoc }> {
+  ): Promise<{ success: boolean; events: IOutboxEventDoc[]; receipt: IMutationReceiptDoc; isIdempotentReplay?: boolean }> {
+    // Step 0: Check for Idempotent Replay via Durable Mutation Receipt
+    if (params.clientMutationId) {
+      const effectiveUserId = params.userId || params.eventDrafts?.[0]?.userId || "";
+      const receiptQuery = effectiveUserId
+        ? { receiptId: `${effectiveUserId}:${params.aggregateId}:${params.clientMutationId}` }
+        : { aggregateId: params.aggregateId, clientMutationId: params.clientMutationId };
+      const existingReceipt = await this.receiptModel.findOne(receiptQuery);
+      if (existingReceipt) {
+        return {
+          success: true,
+          events: [],
+          receipt: existingReceipt,
+          isIdempotentReplay: true,
+        };
+      }
+    }
+
     const nextVersion = params.expectedVersion + 1;
     const occurredAt = new Date();
 
@@ -440,7 +473,7 @@ export class OutboxStorageService {
     const isGraphMutation = params.eventDrafts.some(
       (d) => ["task", "goal"].includes(String(d.aggregateType).toLowerCase())
     );
-    if (isGraphMutation) {
+    if (isGraphMutation && mongoose.connection?.readyState === 1) {
       try {
         const { UserGraphRevisionModel } = await import("../../../../../apps/web/server/db/models/UserGraphRevisionModel");
         await UserGraphRevisionModel.updateOne(
@@ -454,6 +487,7 @@ export class OutboxStorageService {
     }
 
     return {
+      success: true,
       events: promotedEvents,
       receipt,
     };
