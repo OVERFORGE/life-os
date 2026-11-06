@@ -52,6 +52,9 @@ export function useLifeOSReactiveStream(options?: {
   customMutate?: SWRMutateFn;
 }) {
   const endpoint = options?.endpoint || "/api/surface/events";
+  const optionsRef = useRef(options);
+  optionsRef.current = options;
+
   const [state, setState] = useState<ReactiveStreamState>({
     role: "FOLLOWER",
     isConnected: false,
@@ -79,7 +82,7 @@ export function useLifeOSReactiveStream(options?: {
             if (Array.isArray(key) && key.includes(tag)) return true;
             return false;
           },
-          options?.customMutate
+          optionsRef.current?.customMutate
         );
       }
 
@@ -92,18 +95,18 @@ export function useLifeOSReactiveStream(options?: {
         );
       }
 
-      options?.onInvalidateTags?.(tags);
+      optionsRef.current?.onInvalidateTags?.(tags);
     },
-    [options]
+    []
   );
 
   const handleResyncRequired = useCallback(() => {
     // Full snapshot rehydration: revalidate all active SWR queries
-    invokeSafeMutate(() => true, options?.customMutate);
+    invokeSafeMutate(() => true, optionsRef.current?.customMutate);
     if (typeof window !== "undefined") {
       window.dispatchEvent(new CustomEvent("lifeos:resync_required"));
     }
-  }, [options]);
+  }, []);
 
   const openLeaderStream = useCallback(() => {
     if (typeof window === "undefined") return;
@@ -140,7 +143,7 @@ export function useLifeOSReactiveStream(options?: {
         try {
           const payload = JSON.parse(event.data);
           if (payload.projection) {
-            options?.onProjectionSync?.(payload.projection);
+            optionsRef.current?.onProjectionSync?.(payload.projection);
           }
         } catch {}
       });
@@ -155,7 +158,7 @@ export function useLifeOSReactiveStream(options?: {
     } catch (err) {
       console.warn("[useLifeOSReactiveStream] Failed to open EventSource:", err);
     }
-  }, [endpoint, options]);
+  }, [endpoint]);
 
   useEffect(() => {
     const coordinator = TabSyncCoordinator.getInstance();
@@ -179,11 +182,16 @@ export function useLifeOSReactiveStream(options?: {
       },
     });
 
-    setState((prev) => ({
-      ...prev,
-      role: coordinator.getRole(),
-      isDegraded: coordinator.isDegraded(),
-    }));
+    const currentRole = coordinator.getRole();
+    const currentDegraded = coordinator.isDegraded();
+    setState((prev) => {
+      if (prev.role === currentRole && prev.isDegraded === currentDegraded) return prev;
+      return {
+        ...prev,
+        role: currentRole,
+        isDegraded: currentDegraded,
+      };
+    });
 
     // Follower Degraded Mode: Rehydrate on tab focus if degraded
     const onFocus = () => {
@@ -202,7 +210,7 @@ export function useLifeOSReactiveStream(options?: {
         eventSourceRef.current = null;
       }
     };
-  }, [openLeaderStream, handleInvalidation, handleResyncRequired]);
+  }, [endpoint, openLeaderStream, handleInvalidation, handleResyncRequired]);
 
   return state;
 }

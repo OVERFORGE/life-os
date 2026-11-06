@@ -117,7 +117,7 @@ export function KernelProvider({ children }: { children: ReactNode }) {
 
   const [state, setState] = useState<KernelState>(initialState);
 
-  const setModuleLoading = (key: KernelModuleKey, isLoading: boolean) => {
+  const setModuleLoading = useCallback((key: KernelModuleKey, isLoading: boolean) => {
     setState((prev) => ({
       ...prev,
       metadata: {
@@ -125,14 +125,14 @@ export function KernelProvider({ children }: { children: ReactNode }) {
         loading: { ...prev.metadata.loading, [key]: isLoading },
       },
     }));
-  };
+  }, []);
 
-  const setModuleData = (key: KernelModuleKey, data: any, error: string | null = null) => {
+  const setModuleData = useCallback((key: KernelModuleKey, data: any, error: string | null = null) => {
     setState((prev) => ({
       ...prev,
       modules: {
         ...prev.modules,
-        [key]: data,
+        [key]: data !== undefined ? data : prev.modules[key],
       },
       metadata: {
         ...prev.metadata,
@@ -141,7 +141,7 @@ export function KernelProvider({ children }: { children: ReactNode }) {
         timestamps: { ...prev.metadata.timestamps, [key]: Date.now() },
       },
     }));
-  };
+  }, []);
 
   const refreshModule = useCallback(
     async (key: KernelModuleKey) => {
@@ -184,10 +184,10 @@ export function KernelProvider({ children }: { children: ReactNode }) {
         }
         setModuleData(key, data, null);
       } catch (err: any) {
-        setModuleData(key, state.modules[key], err.message || `Failed to fetch ${key}`);
+        setModuleData(key, undefined, err.message || `Failed to fetch ${key}`);
       }
     },
-    [isAuthenticated, state.modules]
+    [isAuthenticated, setModuleLoading, setModuleData]
   );
 
   const refreshAll = useCallback(async () => {
@@ -213,8 +213,8 @@ export function KernelProvider({ children }: { children: ReactNode }) {
   }, [isAuthenticated]);
 
   // Step 3 V2.2: Reactive Multi-Surface Invalidation Subscription
-  useLifeOSReactiveStream({
-    onInvalidateTags: (tags: string[]) => {
+  const handleInvalidateTags = useCallback(
+    (tags: string[]) => {
       if (!isAuthenticated) return;
       if (tags.includes("goals") || tags.includes("all")) refreshModule("goals");
       if (tags.includes("tasks") || tags.includes("all")) refreshModule("tasks");
@@ -223,6 +223,11 @@ export function KernelProvider({ children }: { children: ReactNode }) {
       if (tags.includes("insights") || tags.includes("all")) refreshModule("insights");
       if (tags.includes("learning") || tags.includes("all")) refreshModule("learning");
     },
+    [isAuthenticated, refreshModule]
+  );
+
+  useLifeOSReactiveStream({
+    onInvalidateTags: handleInvalidateTags,
   });
 
   return (

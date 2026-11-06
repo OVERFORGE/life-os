@@ -13,14 +13,16 @@ export function AmbientActiveExecutionBanner() {
     pauseExecution,
   } = useInteractionSurface();
 
-  // Local live tick to keep chronometer smooth every second
+  const active = projection?.activeExecution;
+  const isExecuting = Boolean(active && projection?.interactionMode !== "SILENT");
+
+  // Local live tick to keep chronometer smooth every second only when execution is active
   const [, setTick] = useState(0);
   useEffect(() => {
+    if (!isExecuting) return;
     const timer = setInterval(() => setTick((t) => t + 1), 1000);
     return () => clearInterval(timer);
-  }, []);
-
-  const active = projection?.activeExecution;
+  }, [isExecuting]);
 
   // Silence Invariant: When dormant or silent, display nothing
   if (!active || projection?.interactionMode === "SILENT") {
