@@ -62,8 +62,13 @@ Thumbs.db
 *.apk
 
 
+# ============================================
+# Markdown & Documentation (Only root README.md allowed on GitHub)
+# ============================================
+documentation/
+docs/
 *.md
-!README.md
-!documentation/**
+**/*.md
+!/README.md
 /graph
 .obsidian
