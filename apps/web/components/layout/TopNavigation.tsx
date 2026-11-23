@@ -3,6 +3,7 @@
 import React, { useState, useEffect } from "react";
 import { Search, Command, Minus, Square, X } from "lucide-react";
 import { useSession } from "next-auth/react";
+import { usePathname } from "next/navigation";
 import Link from "next/link";
 import {
   minimizeWindow,
@@ -60,22 +61,36 @@ export function TopNavigation({
       .slice(0, 2)
       .toUpperCase() || "AJ";
 
+  const pathname = usePathname();
+  let workspaceName = "Cockpit";
+  if (pathname.startsWith("/aven") || pathname.startsWith("/dashboard/assistant")) workspaceName = "Aven";
+  else if (pathname.startsWith("/calendar") || pathname.startsWith("/timeline") || pathname.startsWith("/history")) workspaceName = "Timeline";
+  else if (pathname.startsWith("/tasks") || pathname.startsWith("/execute")) workspaceName = "Execute";
+  else if (pathname.startsWith("/trajectory") || pathname.startsWith("/goals")) workspaceName = "Trajectory";
+  else if (pathname.startsWith("/checkin") || pathname.startsWith("/vitals") || pathname.startsWith("/gym") || pathname.startsWith("/nutrition")) workspaceName = "Vitals";
+  else if (pathname.startsWith("/settings")) workspaceName = "Settings";
+
   return (
     <header
       className="flex h-11 w-full shrink-0 items-center justify-between px-4 bg-[#111113] border-b border-[#23242A]/80 select-none z-50"
       style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
       onDoubleClick={handleMaximize}
     >
-      {/* Left: LifeOS Studio Pill */}
-      <div className="flex items-center gap-3">
-        <div
-          className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#17171A] border border-[#23242A] shadow-sm select-none"
+      {/* Left: LifeOS Studio Pill & Workspace Breadcrumb */}
+      <div className="flex items-center gap-2.5">
+        <Link
+          href="/dashboard"
+          className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#17171A] border border-[#23242A] shadow-sm select-none hover:border-[#D98B2B]/40 transition-colors"
           style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
         >
-          <span className="w-2 h-2 rounded-full bg-[#D98B2B] shadow-[0_0_8px_rgba(217,139,43,0.9)]" />
+          <span className="w-1.5 h-1.5 rounded-full bg-[#D98B2B] shadow-[0_0_8px_rgba(217,139,43,0.9)]" />
           <span className="text-xs font-semibold tracking-tight text-[#F7F5F0]">
             LifeOS Studio
           </span>
+        </Link>
+        <div className="flex items-center gap-1.5 text-xs font-medium">
+          <span className="text-[#45434A]">/</span>
+          <span className="text-[#C5C2BA]">{workspaceName}</span>
         </div>
       </div>
 

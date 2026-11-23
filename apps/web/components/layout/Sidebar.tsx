@@ -5,6 +5,7 @@ import { usePathname, useRouter } from "next/navigation";
 import { useEffect } from "react";
 import {
   Compass,
+  Sparkles,
   Calendar,
   Zap,
   Target,
@@ -29,13 +30,21 @@ const PRIMARY_WORKSPACES: WorkspaceItem[] = [
     label: "Cockpit",
     shortcut: "1",
     icon: Compass,
-    matches: (p) => p === "/dashboard" || p === "/cockpit" || p.startsWith("/dashboard/"),
+    matches: (p) => (p === "/dashboard" || p === "/cockpit" || p.startsWith("/dashboard/")) && !p.startsWith("/dashboard/assistant"),
+  },
+  {
+    id: "aven",
+    href: "/aven",
+    label: "Aven",
+    shortcut: "2",
+    icon: Sparkles,
+    matches: (p) => p === "/aven" || p.startsWith("/aven/") || p.startsWith("/dashboard/assistant"),
   },
   {
     id: "timeline",
     href: "/calendar",
     label: "Timeline",
-    shortcut: "2",
+    shortcut: "3",
     icon: Calendar,
     matches: (p) => p === "/calendar" || p === "/timeline" || p === "/history" || p.startsWith("/calendar/"),
   },
@@ -43,7 +52,7 @@ const PRIMARY_WORKSPACES: WorkspaceItem[] = [
     id: "execute",
     href: "/tasks",
     label: "Execute",
-    shortcut: "3",
+    shortcut: "4",
     icon: Zap,
     matches: (p) => p === "/tasks" || p === "/execute" || p.startsWith("/tasks/") || p.startsWith("/execute/"),
   },
@@ -51,7 +60,7 @@ const PRIMARY_WORKSPACES: WorkspaceItem[] = [
     id: "trajectory",
     href: "/trajectory",
     label: "Trajectory",
-    shortcut: "4",
+    shortcut: "5",
     icon: Target,
     matches: (p) => p === "/goals" || p === "/trajectory" || p.startsWith("/goals/") || p.startsWith("/trajectory/"),
   },
@@ -59,7 +68,7 @@ const PRIMARY_WORKSPACES: WorkspaceItem[] = [
     id: "vitals",
     href: "/checkin",
     label: "Vitals",
-    shortcut: "5",
+    shortcut: "6",
     icon: Activity,
     matches: (p) =>
       p === "/checkin" ||

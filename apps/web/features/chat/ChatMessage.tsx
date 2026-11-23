@@ -1,3 +1,6 @@
+"use client";
+
+import React, { useState, useRef, useEffect } from "react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import {
@@ -25,10 +28,10 @@ import {
   FileText,
   Cloud,
   MailOpen,
+  Sparkles,
 } from "lucide-react";
-import { useState, useRef, useEffect } from "react";
 import { ToolActivityItem, ConfirmationItem, MissingConnectionItem } from "./useChat";
-import CarouselView, { CarouselCardItem } from "./CarouselView";
+import CarouselView from "./CarouselView";
 
 type Props = {
   role: "user" | "assistant";
@@ -174,14 +177,17 @@ export default function ChatMessage({
     }
   };
 
-  // Thinking State Pill
+  // Thinking State Pill (Calm glowing Torus / Amber pulse)
   if (!isUser && !displayContent && (!toolActivities || toolActivities.length === 0)) {
     return (
-      <div className="flex w-full justify-start py-3">
-        <div className="flex items-center gap-2.5 px-4 py-2 rounded-full bg-[#1F2023] border border-[#2A2B2F] text-gray-300 text-xs shadow-sm">
-          <span className="w-2 h-2 rounded-full bg-[#E8414A] animate-pulse" />
-          <span className="font-medium text-gray-300">
-            {statusPhase === "understanding" ? "Understanding your request…" : "Checking context…"}
+      <div className="flex w-full justify-start py-3 animate-in fade-in duration-200">
+        <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-[#1b1b1d] border border-[#26262a] text-[#C5C2BA] text-xs shadow-sm">
+          <div className="relative w-3.5 h-3.5 flex items-center justify-center">
+            <span className="absolute inset-0 rounded-full bg-[#ffb86c]/30 animate-ping" />
+            <span className="relative w-2 h-2 rounded-full bg-[#ffb86c]" />
+          </div>
+          <span className="font-mono text-[11px] text-[#F7F5F0]">
+            {statusPhase === "understanding" ? "Understanding your request…" : "Checking execution context…"}
           </span>
         </div>
       </div>
@@ -189,21 +195,32 @@ export default function ChatMessage({
   }
 
   return (
-    <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"}`}>
+    <div className={`flex w-full ${isUser ? "justify-end" : "justify-start"} animate-in fade-in duration-200`}>
       <div
         className={`flex flex-col group w-full ${
-          isUser ? "items-end max-w-[60%]" : "items-start max-w-[85%]"
+          isUser ? "items-end max-w-xl" : "items-start max-w-2xl"
         }`}
       >
-        {/* Tool Activity Cards (Part XI & Part XIV) */}
+        {/* Tool Activity Cards */}
         {!isUser && toolActivities && toolActivities.length > 0 && (
-          <div className="w-full space-y-2.5 mb-3">
+          <div className="w-full space-y-2 mb-3">
             {toolActivities.map((act, idx) => {
-              const isSpotify = act.providerId === "spotify" || act.capabilityURN.includes("playback") || act.capabilityURN.includes("spotify");
-              const isPaused = act.details?.command === "pause" || act.details?.isPlaying === false || act.humanMessage.toLowerCase().includes("paused");
+              const isSpotify =
+                act.providerId === "spotify" ||
+                act.capabilityURN.includes("playback") ||
+                act.capabilityURN.includes("spotify");
+              const isPaused =
+                act.details?.command === "pause" ||
+                act.details?.isPlaying === false ||
+                act.humanMessage.toLowerCase().includes("paused");
               const device = act.details?.deviceName;
               const spotifyId = act.details?.spotifyId;
-              const itemType = act.details?.itemType === "playlist" ? "playlist" : act.details?.itemType === "artist" ? "artist" : "track";
+              const itemType =
+                act.details?.itemType === "playlist"
+                  ? "playlist"
+                  : act.details?.itemType === "artist"
+                  ? "artist"
+                  : "track";
               const spotifyUrl = act.details?.spotifyUrl;
               const nowPlaying = act.details?.nowPlaying;
 
@@ -211,27 +228,26 @@ export default function ChatMessage({
                 return (
                   <div
                     key={`${act.id || act.providerId}_${idx}`}
-                    className="w-full bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-3.5 shadow-sm space-y-3 transition-colors hover:border-[#3A3C42]"
+                    className="w-full bg-[#1b1b1d] border border-[#26262a] rounded-2xl p-3.5 shadow-sm space-y-3 transition-colors hover:border-[#ffb86c]/40"
                   >
-                    {/* Header Row */}
                     <div className="flex items-center justify-between gap-3">
                       <div className="flex items-center gap-2.5 min-w-0">
-                        <div className="w-8 h-8 rounded-xl bg-[#26282E] text-gray-300 border border-[#3E424B] flex items-center justify-center shrink-0">
-                          {renderToolIcon(act.iconName, "w-4 h-4 text-gray-300")}
+                        <div className="w-8 h-8 rounded-xl bg-[#111113] text-[#ffb86c] border border-[#23242A] flex items-center justify-center shrink-0">
+                          {renderToolIcon(act.iconName, "w-4 h-4 text-[#ffb86c]")}
                         </div>
                         <div className="min-w-0">
                           <div className="flex items-center gap-2">
-                            <h4 className="text-xs font-bold text-white">
+                            <h4 className="text-xs font-semibold text-[#F7F5F0]">
                               {act.providerDisplayName}
                             </h4>
                             {device && (
-                              <span className="text-[10px] font-medium px-1.5 py-0.5 rounded-md bg-[#161618] text-gray-400 border border-[#2A2B2F] flex items-center gap-1">
-                                <Speaker className="w-2.5 h-2.5 text-gray-400" />
+                              <span className="text-[10px] font-mono px-1.5 py-0.5 rounded-md bg-[#111113] text-[#85827A] border border-[#23242A] flex items-center gap-1">
+                                <Speaker className="w-2.5 h-2.5 text-[#ffb86c]" />
                                 {device}
                               </span>
                             )}
                           </div>
-                          <p className="text-xs text-gray-400 mt-0.5 truncate max-w-[240px] sm:max-w-sm">
+                          <p className="text-xs text-[#C5C2BA] mt-0.5 truncate max-w-[240px] sm:max-w-sm">
                             {act.humanMessage}
                           </p>
                         </div>
@@ -239,25 +255,25 @@ export default function ChatMessage({
 
                       <div className="flex items-center gap-2 shrink-0">
                         {act.state === "started" && (
-                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-gray-400">
-                            <Loader2 className="w-3 h-3 animate-spin text-gray-400" />
-                            <span className="text-[11px] font-medium">Connecting</span>
+                          <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#ffb86c]/10 border border-[#ffb86c]/20 text-xs text-[#ffb86c]">
+                            <Loader2 className="w-3 h-3 animate-spin text-[#ffb86c]" />
+                            <span className="text-[10px] font-mono">Connecting</span>
                           </div>
                         )}
                         {act.state === "completed" && (
                           <div
-                            className={`flex items-center gap-1 px-2 py-0.5 rounded-full text-[11px] font-medium ${
+                            className={`flex items-center gap-1 px-2.5 py-0.5 rounded-full text-[10px] font-mono font-medium ${
                               isPaused
-                                ? "bg-[#161618] text-gray-400 border border-[#2A2B2F]"
-                                : "bg-[#1F2023] text-[#ECE7E3] border border-[#2A2B2F]"
+                                ? "bg-[#111113] text-[#85827A] border border-[#23242A]"
+                                : "bg-[#ffb86c]/15 text-[#ffb86c] border border-[#ffb86c]/30"
                             }`}
                           >
-                            {isPaused ? <Pause className="w-2.5 h-2.5" /> : <Check className="w-3 h-3 text-[#E8414A]" />}
+                            {isPaused ? <Pause className="w-2.5 h-2.5" /> : <Check className="w-3 h-3 text-[#ffb86c]" />}
                             <span>{isPaused ? "Paused" : "Active"}</span>
                           </div>
                         )}
                         {act.state === "failed" && (
-                          <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-red-500/10 border border-red-500/20 text-[11px] text-red-400 font-medium">
+                          <div className="flex items-center gap-1 px-2.5 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-[10px] font-mono text-rose-400 font-medium">
                             <AlertCircle className="w-2.5 h-2.5" />
                             <span>Failed</span>
                           </div>
@@ -267,7 +283,7 @@ export default function ChatMessage({
                             href={spotifyUrl}
                             target="_blank"
                             rel="noopener noreferrer"
-                            className="p-1.5 text-gray-400 hover:text-white rounded-lg hover:bg-white/5 transition-colors"
+                            className="p-1.5 text-[#85827A] hover:text-[#F7F5F0] rounded-lg hover:bg-[#23242A] transition-colors"
                             title="Open in Spotify"
                           >
                             <ExternalLink className="w-3.5 h-3.5" />
@@ -276,9 +292,8 @@ export default function ChatMessage({
                       </div>
                     </div>
 
-                    {/* Spotify Interactive Embed or Media Info Bar */}
                     {spotifyId ? (
-                      <div className="w-full rounded-xl overflow-hidden border border-[#2A2B2F] bg-[#161618]">
+                      <div className="w-full rounded-xl overflow-hidden border border-[#23242A] bg-[#111113]">
                         <iframe
                           src={`https://open.spotify.com/embed/${itemType}/${spotifyId}?utm_source=generator&theme=0`}
                           width="100%"
@@ -290,17 +305,17 @@ export default function ChatMessage({
                         />
                       </div>
                     ) : nowPlaying ? (
-                      <div className="w-full rounded-xl bg-[#18191B] border border-[#26272B] p-2.5 flex items-center justify-between">
+                      <div className="w-full rounded-xl bg-[#111113] border border-[#23242A] p-2.5 flex items-center justify-between">
                         <div className="flex items-center gap-2.5 min-w-0">
-                          <div className="w-7 h-7 rounded-lg bg-[#26282E] border border-[#3E424B] flex items-center justify-center shrink-0">
-                            <Music className="w-3 h-3 text-gray-300" />
+                          <div className="w-7 h-7 rounded-lg bg-[#17171A] border border-[#23242A] flex items-center justify-center shrink-0">
+                            <Music className="w-3 h-3 text-[#ffb86c]" />
                           </div>
                           <div className="min-w-0">
-                            <p className="text-xs font-semibold text-white truncate max-w-[280px]">
+                            <p className="text-xs font-semibold text-[#F7F5F0] truncate max-w-[280px]">
                               {nowPlaying}
                             </p>
                             {act.details?.artistName && (
-                              <p className="text-[11px] text-gray-400 truncate">
+                              <p className="text-[11px] text-[#85827A] truncate font-mono">
                                 {act.details.artistName}
                               </p>
                             )}
@@ -315,39 +330,39 @@ export default function ChatMessage({
               return (
                 <div
                   key={`${act.id || act.providerId}_${idx}`}
-                  className="w-full bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-4 shadow-sm flex items-center justify-between"
+                  className="w-full bg-[#1b1b1d] border border-[#26262a] rounded-2xl p-3.5 shadow-sm flex items-center justify-between"
                 >
-                  <div className="flex items-center gap-3.5 min-w-0">
-                    <div className="p-2.5 rounded-xl border flex items-center justify-center shrink-0 bg-[#26282E] text-[#ECE7E3] border-[#3E424B]">
+                  <div className="flex items-center gap-3 min-w-0">
+                    <div className="p-2 rounded-xl border flex items-center justify-center shrink-0 bg-[#111113] text-[#ffb86c] border-[#23242A]">
                       {renderToolIcon(act.iconName, "w-4 h-4")}
                     </div>
                     <div className="min-w-0">
-                      <h4 className="text-xs font-bold text-white tracking-wide">
+                      <h4 className="text-xs font-semibold text-[#F7F5F0] tracking-wide">
                         {act.providerDisplayName}
                       </h4>
-                      <p className="text-xs text-gray-300 font-medium mt-0.5 truncate max-w-[280px] sm:max-w-md">
+                      <p className="text-xs text-[#C5C2BA] mt-0.5 truncate max-w-[280px] sm:max-w-md">
                         {act.humanMessage}
                       </p>
                     </div>
                   </div>
 
-                  <div className="flex items-center gap-2.5 pl-3 shrink-0">
+                  <div className="flex items-center gap-2 shrink-0">
                     {act.state === "started" && !displayContent && (
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/5 border border-white/10 text-xs text-gray-300">
-                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#E8414A]" />
-                        <span className="text-[11px] font-medium">Connecting</span>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-[#ffb86c]/10 border border-[#ffb86c]/20 text-xs text-[#ffb86c]">
+                        <Loader2 className="w-3.5 h-3.5 animate-spin text-[#ffb86c]" />
+                        <span className="text-[10px] font-mono">Active</span>
                       </div>
                     )}
                     {((act.state === "completed") || (act.state === "started" && displayContent)) && (
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-semibold text-[#ECE7E3] bg-[#1F2023] border border-[#2A2B2F]">
-                        <Check className="w-3.5 h-3.5 text-[#E8414A]" />
-                        <span className="text-[11px]">Active</span>
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full text-xs font-medium text-[#ffb86c] bg-[#ffb86c]/15 border border-[#ffb86c]/30">
+                        <Check className="w-3.5 h-3.5 text-[#ffb86c]" />
+                        <span className="text-[10px] font-mono">Executed</span>
                       </div>
                     )}
                     {act.state === "failed" && (
-                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-red-500/10 border border-red-500/20 text-xs text-red-400 font-semibold">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-rose-500/10 border border-rose-500/20 text-xs text-rose-400 font-medium">
                         <AlertCircle className="w-3.5 h-3.5" />
-                        <span className="text-[11px]">Unavailable</span>
+                        <span className="text-[10px] font-mono">Failed</span>
                       </div>
                     )}
                   </div>
@@ -357,18 +372,18 @@ export default function ChatMessage({
           </div>
         )}
 
-        {/* Missing Connection Card (Part VI & Part XVII) */}
+        {/* Missing Connection Card */}
         {!isUser && missingConnection && (
-          <div className="w-full bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-4 mb-3 shadow-sm flex items-center justify-between">
+          <div className="w-full bg-[#1b1b1d] border border-[#26262a] rounded-2xl p-4 mb-3 shadow-sm flex items-center justify-between">
             <div className="flex items-center gap-3">
-              <div className="p-2.5 rounded-xl bg-[#26282E] text-gray-300 border border-[#3E424B]">
+              <div className="p-2.5 rounded-xl bg-[#111113] text-[#ffb86c] border border-[#23242A]">
                 {renderToolIcon(missingConnection.iconName)}
               </div>
               <div>
-                <h4 className="text-xs font-bold text-white">
+                <h4 className="text-xs font-semibold text-[#F7F5F0]">
                   {missingConnection.providerDisplayName}
                 </h4>
-                <p className="text-xs text-gray-400 mt-0.5">
+                <p className="text-xs text-[#85827A] mt-0.5">
                   {missingConnection.message}
                 </p>
               </div>
@@ -382,7 +397,7 @@ export default function ChatMessage({
                   window.location.href = missingConnection.connectUrl || "/settings/connections";
                 }
               }}
-              className="px-3.5 py-1.5 bg-[#E8414A]/10 hover:bg-[#E8414A]/20 border border-[#E8414A]/30 text-[#E8414A] rounded-xl text-xs font-bold tracking-wide transition-colors flex items-center gap-1.5"
+              className="px-3.5 py-1.5 bg-[#ffb86c]/15 hover:bg-[#ffb86c]/25 border border-[#ffb86c]/40 text-[#ffb86c] rounded-xl text-xs font-bold tracking-wide transition cursor-pointer flex items-center gap-1.5"
             >
               <Plug size={12} />
               Connect {missingConnection.providerDisplayName}
@@ -390,79 +405,62 @@ export default function ChatMessage({
           </div>
         )}
 
-        {/* Claude Desktop-Style Human-in-the-Loop (HITL) Permission Card */}
+        {/* HITL Permission Card / Proposed Change (Image 1 & Stitch Format) */}
         {!isUser && confirmation && (
-          <div className="w-full bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-5 mb-3 shadow-md space-y-3.5 transition-all">
-            {/* Header Badge */}
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <div className="w-7 h-7 rounded-lg bg-[#26282E] border border-[#3E424B] flex items-center justify-center shrink-0">
-                  <ShieldAlert className="w-4 h-4 text-[#E8414A]" />
-                </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-mono uppercase tracking-wider px-2 py-0.5 rounded-full bg-[#E8414A]/10 text-[#E8414A] border border-[#E8414A]/20">
-                      Permission Required
+          <div className="w-full bg-[#1b1b1d] border border-[#26262a] rounded-xl p-4 my-2 shadow-lg flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex flex-col gap-1 min-w-0">
+              <span className="text-[10px] font-mono uppercase tracking-wider text-[#C5C2BA]/70">
+                {confirmation.title || "Proposed Change"}
+              </span>
+              <span className="text-sm font-medium text-[#F7F5F0] truncate">
+                {confirmation.message}
+              </span>
+              {confirmation.details && Object.keys(confirmation.details).length > 0 && (
+                <div className="flex flex-wrap items-center gap-2 mt-1">
+                  {Object.entries(confirmation.details).map(([k, v]) => (
+                    <span
+                      key={k}
+                      className="text-[10px] font-mono px-2 py-0.5 rounded-md bg-[#111113] border border-[#23242A] text-[#ffb86c]"
+                    >
+                      {k}: {v}
                     </span>
-                  </div>
-                  <h4 className="text-sm font-bold text-white mt-0.5">{confirmation.title}</h4>
+                  ))}
                 </div>
-              </div>
+              )}
             </div>
 
-            {/* Description Message */}
-            {confirmation.message && (
-              <p className="text-xs text-gray-300 leading-relaxed font-normal">
-                {confirmation.message}
-              </p>
-            )}
-
-            {/* Structured Scope & Target Details */}
-            {confirmation.details && Object.keys(confirmation.details).length > 0 && (
-              <div className="bg-[#18191B] border border-[#26272B] rounded-xl p-3 space-y-1.5">
-                {Object.entries(confirmation.details).map(([key, value]) => (
-                  <div key={key} className="text-xs flex items-center justify-between gap-2">
-                    <span className="text-gray-400 font-medium">{key}</span>
-                    <span className="text-gray-200 font-mono text-[11px] bg-[#1F2023] px-2 py-0.5 rounded-md border border-[#2A2B2F] truncate max-w-[240px]">
-                      {value}
-                    </span>
-                  </div>
-                ))}
-              </div>
-            )}
-
-            {/* Action Buttons / Resolved State */}
-            <div className="flex items-center gap-2 pt-0.5">
+            <div className="flex items-center gap-2 shrink-0">
               {decision === "allowed" ? (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-[#1F2023] border border-[#2A2B2F] text-xs font-semibold text-[#FFFDFC]">
-                  <Check className="w-3.5 h-3.5 text-[#E8414A]" />
-                  <span>Access Allowed</span>
+                <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-[#ffb86c]/15 border border-[#ffb86c]/30 text-xs font-mono text-[#ffb86c]">
+                  <Check className="w-3.5 h-3.5 text-[#ffb86c]" />
+                  <span>Confirmed</span>
                 </div>
               ) : decision === "denied" ? (
-                <div className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-red-500/10 border border-red-500/20 text-xs font-semibold text-red-400">
+                <div className="flex items-center gap-1.5 px-3.5 py-1.5 rounded-lg bg-rose-500/10 border border-rose-500/20 text-xs font-mono text-rose-400">
                   <AlertCircle className="w-3.5 h-3.5" />
-                  <span>Access Denied</span>
+                  <span>Declined</span>
                 </div>
               ) : (
                 <>
                   <button
-                    onClick={() => {
-                      setDecision("allowed");
-                      onConfirm?.(confirmation.actionId, true);
-                    }}
-                    className="px-4 py-2 bg-[#E8414A] hover:bg-[#d0353e] text-white rounded-xl text-xs font-bold tracking-wide transition-all shadow-sm active:scale-95 flex items-center gap-1.5"
-                  >
-                    <Check className="w-3.5 h-3.5" />
-                    {confirmation.confirmLabel || "Allow"}
-                  </button>
-                  <button
+                    type="button"
                     onClick={() => {
                       setDecision("denied");
                       onConfirm?.(confirmation.actionId, false);
                     }}
-                    className="px-4 py-2 bg-[#26282E] hover:bg-[#30333A] border border-[#3E424B] text-gray-300 hover:text-white rounded-xl text-xs font-semibold transition-all active:scale-95"
+                    className="px-3.5 py-1.5 rounded-lg bg-[#26262a] hover:bg-[#353437] text-xs font-medium text-[#C5C2BA] hover:text-[#F7F5F0] transition cursor-pointer"
                   >
-                    {confirmation.cancelLabel || "Deny"}
+                    {confirmation.cancelLabel || "Adjust"}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setDecision("allowed");
+                      onConfirm?.(confirmation.actionId, true);
+                    }}
+                    className="px-4 py-1.5 rounded-lg bg-[#ffb86c] hover:bg-[#ffb86c]/90 text-[#1A0F00] text-xs font-semibold shadow-md transition active:scale-95 cursor-pointer"
+                  >
+                    {confirmation.confirmLabel || "Confirm"}
                   </button>
                 </>
               )}
@@ -472,179 +470,188 @@ export default function ChatMessage({
 
         {/* Main Response Content */}
         {displayContent ? (
-          <div
-            className={`
-            text-[15px]
-            leading-relaxed
-            whitespace-pre-wrap
-            break-words
-            w-full
-            ${
-              isUser
-                ? "bg-[#1F2023] border border-[#2A2B2F] text-gray-100 rounded-2xl rounded-tr-sm px-5 py-4 shadow-sm"
-                : "bg-transparent text-gray-200 py-1"
-            }
-            `}
-          >
-            <ReactMarkdown
-              remarkPlugins={[remarkGfm]}
-              components={{
-                table: ({ children }) => (
-                  <div className="w-full my-3 overflow-x-auto rounded-xl border border-[#2A2B2F] bg-[#1F2023] shadow-sm">
-                    <table className="w-full text-left text-xs border-collapse">
-                      {children}
-                    </table>
-                  </div>
-                ),
-                thead: ({ children }) => (
-                  <thead className="bg-[#26282E] border-b border-[#2A2B2F] text-[#FFFDFC] uppercase text-[10px] tracking-wider font-semibold">
-                    {children}
-                  </thead>
-                ),
-                tbody: ({ children }) => (
-                  <tbody className="divide-y divide-[#2A2B2F]/60 text-gray-200">
-                    {children}
-                  </tbody>
-                ),
-                tr: ({ children }) => (
-                  <tr className="hover:bg-white/[0.03] transition-colors">
-                    {children}
-                  </tr>
-                ),
-                th: ({ children }) => (
-                  <th className="px-3.5 py-2.5 font-semibold text-[#FFFDFC]">
-                    {children}
-                  </th>
-                ),
-                td: ({ children }) => (
-                  <td className="px-3.5 py-2.5 text-gray-200 align-middle">
-                    {children}
-                  </td>
-                ),
-                blockquote: ({ children }) => (
-                  <blockquote className="my-2.5 border-l-2 border-[#E8414A] bg-[#18191B] py-2 px-3.5 rounded-r-lg text-xs italic text-gray-300 leading-relaxed">
-                    {children}
-                  </blockquote>
-                ),
-                a: ({ href, children }) => (
-                  <a
-                    href={href}
-                    onClick={(e) => handleExternalLinkClick(e, href)}
-                    className="text-[#E8414A] hover:underline font-bold cursor-pointer inline-flex items-center gap-1 mx-0.5"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                  >
-                    <span>{children}</span>
-                    <ExternalLink className="w-3 h-3 inline shrink-0 opacity-70" />
-                  </a>
-                ),
-                code: ({ inline, className, children, ...props }: any) => {
-                  const matchCarousel =
-                    className === "language-lifeos-carousel" ||
-                    className === "language-carousel";
-                  if (matchCarousel && typeof children === "string") {
-                    try {
-                      const parsed = JSON.parse(children.trim());
-                      if (Array.isArray(parsed) && parsed.length > 0) {
-                        return (
-                          <CarouselView
-                            items={parsed}
-                            onOpenLink={(url) => handleExternalLinkClick(undefined, url)}
-                          />
-                        );
-                      }
-                    } catch (_) {}
-                  }
-
-                  if (inline) {
-                    return (
-                      <code className="px-1.5 py-0.5 rounded bg-[#26282E] text-[#ECE7E3] font-mono text-[11px] border border-[#3E424B]">
-                        {children}
-                      </code>
-                    );
-                  }
-                  return (
-                    <div className="my-2.5 rounded-xl bg-[#18191B] border border-[#2A2B2F] p-3 overflow-x-auto">
-                      <code className="font-mono text-xs text-gray-200" {...props}>
-                        {children}
-                      </code>
-                    </div>
-                  );
-                },
-                hr: () => <hr className="my-3.5 border-t border-[#2A2B2F]" />,
-                h3: ({ children }) => (
-                  <h3 className="text-sm font-bold text-[#FFFDFC] mt-3.5 mb-2 flex items-center gap-1.5">
-                    {children}
-                  </h3>
-                ),
-                h4: ({ children }) => (
-                  <h4 className="text-xs font-bold text-[#FFFDFC] uppercase tracking-wider mt-2.5 mb-1.5">
-                    {children}
-                  </h4>
-                ),
-                ul: ({ children }) => (
-                  <ul className="list-disc ml-5 space-y-1.5 my-2.5 text-gray-200 text-xs sm:text-[13px]">
-                    {children}
-                  </ul>
-                ),
-                ol: ({ children }) => (
-                  <ol className="list-decimal ml-5 space-y-1.5 my-2.5 text-gray-200 text-xs sm:text-[13px]">
-                    {children}
-                  </ol>
-                ),
-                li: ({ children }) => (
-                  <li className="leading-relaxed">{children}</li>
-                ),
-                p: ({ children }) => (
-                  <p className="mb-2.5 last:mb-0 leading-relaxed text-gray-200 text-xs sm:text-[13px]">{children}</p>
-                ),
-                strong: ({ children }) => (
-                  <strong className="font-semibold text-[#FFFDFC]">{children}</strong>
-                ),
-              }}
-            >
+          isUser ? (
+            /* User Message Bubble */
+            <div className="px-4 py-3 rounded-2xl bg-[#1b1b1d] border border-[#26262a] text-[14px] leading-relaxed text-[#F7F5F0] shadow-sm">
               {displayContent}
-            </ReactMarkdown>
-          </div>
+            </div>
+          ) : (
+            /* Assistant Direct Markdown Stream (Stitch Canvas Style) */
+            <div className="text-[14px] sm:text-[15px] leading-relaxed text-[#e5e1e4] w-full py-1">
+              <ReactMarkdown
+                remarkPlugins={[remarkGfm]}
+                components={{
+                  table: ({ children }) => (
+                    <div className="w-full my-3 overflow-x-auto rounded-xl border border-[#23242A] bg-[#17171A] shadow-sm custom-h-scrollbar">
+                      <table className="w-full text-left text-xs border-collapse font-sans">
+                        {children}
+                      </table>
+                    </div>
+                  ),
+                  thead: ({ children }) => (
+                    <thead className="bg-[#111113] border-b border-[#23242A] text-[#ffb86c] uppercase text-[10px] tracking-wider font-mono">
+                      {children}
+                    </thead>
+                  ),
+                  tbody: ({ children }) => (
+                    <tbody className="divide-y divide-[#23242A] text-[#C5C2BA]">
+                      {children}
+                    </tbody>
+                  ),
+                  tr: ({ children }) => (
+                    <tr className="hover:bg-white/[0.02] transition-colors">
+                      {children}
+                    </tr>
+                  ),
+                  th: ({ children }) => (
+                    <th className="px-3.5 py-2.5 font-semibold font-mono text-[#ffb86c]">
+                      {children}
+                    </th>
+                  ),
+                  td: ({ children }) => (
+                    <td className="px-3.5 py-2.5 text-[#C5C2BA] align-middle font-mono text-xs">
+                      {children}
+                    </td>
+                  ),
+                  blockquote: ({ children }) => (
+                    <blockquote className="my-2.5 border-l-2 border-[#ffb86c] bg-[#17171A] py-2 px-3.5 rounded-r-lg text-xs italic text-[#C5C2BA] leading-relaxed">
+                      {children}
+                    </blockquote>
+                  ),
+                  a: ({ href, children }) => (
+                    <a
+                      href={href}
+                      onClick={(e) => handleExternalLinkClick(e, href)}
+                      className="text-[#ffb86c] hover:underline font-medium cursor-pointer inline-flex items-center gap-1 mx-0.5"
+                      target="_blank"
+                      rel="noopener noreferrer"
+                    >
+                      <span>{children}</span>
+                      <ExternalLink className="w-3 h-3 inline shrink-0 opacity-70" />
+                    </a>
+                  ),
+                  code: ({ inline, className, children, ...props }: any) => {
+                    const matchCarousel =
+                      className === "language-lifeos-carousel" ||
+                      className === "language-carousel";
+                    if (matchCarousel && typeof children === "string") {
+                      try {
+                        const parsed = JSON.parse(children.trim());
+                        if (Array.isArray(parsed) && parsed.length > 0) {
+                          return (
+                            <CarouselView
+                              items={parsed}
+                              onOpenLink={(url) => handleExternalLinkClick(undefined, url)}
+                            />
+                          );
+                        }
+                      } catch (_) {}
+                    }
+
+                    if (inline) {
+                      return (
+                        <code className="px-1.5 py-0.5 rounded bg-[#111113] text-[#ffb86c] font-mono text-[11px] border border-[#23242A]">
+                          {children}
+                        </code>
+                      );
+                    }
+                    return (
+                      <div className="my-2.5 rounded-xl bg-[#111113] border border-[#23242A] p-3.5 overflow-x-auto custom-h-scrollbar">
+                        <code className="font-mono text-xs text-[#F7F5F0]" {...props}>
+                          {children}
+                        </code>
+                      </div>
+                    );
+                  },
+                  hr: () => <hr className="my-3.5 border-t border-[#23242A]" />,
+                  h1: ({ children }) => (
+                    <h1 className="text-base font-bold text-[#F7F5F0] mt-4 mb-2">
+                      {children}
+                    </h1>
+                  ),
+                  h2: ({ children }) => (
+                    <h2 className="text-sm font-bold text-[#F7F5F0] mt-3.5 mb-1.5">
+                      {children}
+                    </h2>
+                  ),
+                  h3: ({ children }) => (
+                    <h3 className="text-xs font-bold text-[#ffb86c] uppercase tracking-wider font-mono mt-3 mb-1.5">
+                      {children}
+                    </h3>
+                  ),
+                  h4: ({ children }) => (
+                    <h4 className="text-[11px] font-bold text-[#85827A] uppercase tracking-wider font-mono mt-2.5 mb-1">
+                      {children}
+                    </h4>
+                  ),
+                  ul: ({ children }) => (
+                    <ul className="list-disc ml-5 space-y-1.5 my-2.5 text-[#C5C2BA] text-xs sm:text-[13px]">
+                      {children}
+                    </ul>
+                  ),
+                  ol: ({ children }) => (
+                    <ol className="list-decimal ml-5 space-y-1.5 my-2.5 text-[#C5C2BA] text-xs sm:text-[13px]">
+                      {children}
+                    </ol>
+                  ),
+                  li: ({ children }) => (
+                    <li className="leading-relaxed">{children}</li>
+                  ),
+                  p: ({ children }) => (
+                    <p className="mb-2.5 last:mb-0 leading-relaxed text-[#e5e1e4] text-xs sm:text-[14px]">
+                      {children}
+                    </p>
+                  ),
+                  strong: ({ children }) => (
+                    <strong className="font-semibold text-[#F7F5F0]">{children}</strong>
+                  ),
+                }}
+              >
+                {displayContent}
+              </ReactMarkdown>
+            </div>
+          )
         ) : null}
 
         {/* Actions Row (Listen / Copy) */}
         {displayContent && (
           <div
-            className={`mt-2 ${isUser ? "mr-2" : "ml-1"} flex items-center gap-2 ${
+            className={`mt-1.5 ${isUser ? "mr-1" : "ml-0.5"} flex items-center gap-2 ${
               isPlaying ? "opacity-100" : "opacity-0 group-hover:opacity-100"
             } transition-opacity duration-200`}
           >
             {!isUser && (
               <button
+                type="button"
                 onClick={handleToggleAudio}
-                className={`flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-xs font-medium transition-colors ${
+                className={`flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-xs font-mono transition-colors cursor-pointer ${
                   isPlaying
-                    ? "text-[#E8414A] bg-[#E8414A]/15 border border-[#E8414A]/30 shadow-sm"
-                    : "text-[#9ca3af] hover:text-gray-300 hover:bg-white/5"
+                    ? "text-[#ffb86c] bg-[#ffb86c]/15 border border-[#ffb86c]/30 shadow-sm"
+                    : "text-[#85827A] hover:text-[#F7F5F0] hover:bg-[#1E1F24]"
                 }`}
                 title={isPlaying ? "Stop listening" : "Listen to response"}
               >
                 {isPlaying ? (
                   <>
-                    <Square size={12} className="fill-current text-[#E8414A] animate-pulse" />
-                    <span className="text-[#E8414A] font-semibold">Stop</span>
+                    <Square size={11} className="fill-current text-[#ffb86c] animate-pulse" />
+                    <span className="text-[#ffb86c] font-semibold text-[11px]">Stop</span>
                   </>
                 ) : (
                   <>
-                    <Volume2 size={14} />
-                    <span>Listen</span>
+                    <Volume2 size={13} />
+                    <span className="text-[11px]">Listen</span>
                   </>
                 )}
               </button>
             )}
 
             <button
+              type="button"
               onClick={handleCopy}
-              className="flex items-center gap-1.5 px-2 py-1.5 rounded-lg text-[#9ca3af] hover:text-gray-300 hover:bg-white/5 transition-colors text-xs font-medium"
+              className="flex items-center gap-1.5 px-2.5 py-1 rounded-lg text-[#85827A] hover:text-[#F7F5F0] hover:bg-[#1E1F24] transition-colors text-[11px] font-mono cursor-pointer"
             >
-              {copied ? <Check size={14} className="text-[#E8414A]" /> : <Copy size={14} />}
-              {copied ? "Copied" : "Copy"}
+              {copied ? <Check size={13} className="text-[#ffb86c]" /> : <Copy size={13} />}
+              <span>{copied ? "Copied" : "Copy"}</span>
             </button>
           </div>
         )}

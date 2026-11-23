@@ -1,7 +1,7 @@
 "use client";
 
-import { useState } from "react";
-import { Send, Mic } from "lucide-react";
+import React, { useState, useRef } from "react";
+import { ArrowUp, Mic, Loader2 } from "lucide-react";
 
 type Props = {
   onSend: (text: string) => void;
@@ -11,74 +11,75 @@ type Props = {
 
 export default function ChatInput({ onSend, loading, onVoiceClick }: Props) {
   const [text, setText] = useState("");
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
   function handleSend() {
-    if (!text.trim()) return;
-
+    if (!text.trim() || loading) return;
     onSend(text);
     setText("");
+    if (textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+    }
   }
 
   function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
-    if (e.key === 'Enter' && !e.shiftKey) {
+    if (e.key === "Enter" && !e.shiftKey) {
       e.preventDefault();
       handleSend();
     }
   }
 
   return (
-    <div className="w-full max-w-3xl mx-auto px-4 pb-6">
-      <div className="flex items-center gap-2 bg-[#161618] rounded-2xl border border-[#2A2B2F] px-4 py-3 shadow-lg focus-within:border-gray-600 transition-colors">
-        <textarea
-          value={text}
-          onChange={(e) => {
-            setText(e.target.value);
-            e.target.style.height = "auto";
-            e.target.style.height = `${Math.min(e.target.scrollHeight, 150)}px`;
-          }}
-          onKeyDown={handleKeyDown}
-          placeholder="Type your command..."
-          rows={1}
-          style={{ maxHeight: "150px" }}
-          className="
-            flex-1
-            w-full
-            bg-transparent
-            resize-none
-            text-base
-            text-gray-100
-            placeholder-gray-500
-            py-1
-            outline-none
-            scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent
-          "
-        />
-
-        {/* Realtime Voice Call Button */}
-        <button
-          type="button"
-          onClick={onVoiceClick}
-          disabled={loading}
-          title="Start Realtime Voice Call (Full-Duplex)"
-          className="ml-2 p-2.5 rounded-xl bg-[#2A2B2F] transition-all hover:bg-[#E8414A]/20 hover:border-[#E8414A]/40 border border-transparent hover:text-[#F9A8AC] text-gray-300 disabled:opacity-50 active:scale-95"
-        >
-          <Mic size={18} />
-        </button>
-
-        {/* Send Button */}
-        <button
-          onClick={handleSend}
-          disabled={loading || !text.trim()}
-          className={`
-            ml-2 p-2.5 rounded-xl transition-all active:scale-95 disabled:opacity-50
-            ${text.trim() ? 'bg-[#E8414A] hover:bg-[#D62C35]' : 'bg-[#2A2B2F]'}
-          `}
-        >
-          <Send 
-            size={18} 
-            className={text.trim() ? "text-white" : "text-gray-500"} 
+    <div className="w-full px-4 sm:px-6 pb-5 pt-2 flex-shrink-0 z-10">
+      <div className="max-w-3xl mx-auto">
+        <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#1b1b1d] border border-[#26262a] focus-within:border-[#ffb86c]/60 transition-all shadow-xl">
+          <textarea
+            ref={textareaRef}
+            value={text}
+            onChange={(e) => {
+              setText(e.target.value);
+              e.target.style.height = "auto";
+              e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+            }}
+            onKeyDown={handleKeyDown}
+            placeholder="Ask Aven anything..."
+            rows={1}
+            style={{ maxHeight: "140px" }}
+            className="flex-1 w-full bg-transparent resize-none text-sm text-[#F7F5F0] placeholder:text-[#C5C2BA]/50 py-1 outline-none custom-h-scrollbar leading-relaxed"
           />
-        </button>
+
+          <div className="flex items-center gap-1.5 shrink-0 self-end mb-0.5">
+            {/* Realtime Voice Call / Mic Button */}
+            <button
+              type="button"
+              onClick={onVoiceClick}
+              disabled={loading}
+              title="Voice input (local & private)"
+              className="relative w-8 h-8 rounded-xl hover:bg-[#26262a] text-[#C5C2BA] hover:text-[#F7F5F0] flex items-center justify-center transition-colors cursor-pointer"
+            >
+              <Mic size={16} />
+              <span
+                className="absolute top-1.5 right-1.5 w-1.5 h-1.5 rounded-full bg-emerald-400"
+                title="Local private audio"
+              />
+            </button>
+
+            {/* Upward Arrow Send Button */}
+            <button
+              type="button"
+              onClick={handleSend}
+              disabled={loading || !text.trim()}
+              className="w-8 h-8 rounded-xl bg-[#ffb86c] hover:bg-[#ffb86c]/90 disabled:opacity-40 text-[#1A0F00] flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-md"
+              title="Send message"
+            >
+              {loading ? (
+                <Loader2 size={16} className="animate-spin text-[#1A0F00]" />
+              ) : (
+                <ArrowUp size={16} className="stroke-[2.5]" />
+              )}
+            </button>
+          </div>
+        </div>
       </div>
     </div>
   );
