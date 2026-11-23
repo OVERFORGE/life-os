@@ -49,11 +49,11 @@ const PRIMARY_WORKSPACES: WorkspaceItem[] = [
   },
   {
     id: "trajectory",
-    href: "/goals",
+    href: "/trajectory",
     label: "Trajectory",
     shortcut: "4",
     icon: Target,
-    matches: (p) => p === "/goals" || p === "/trajectory" || p.startsWith("/goals/"),
+    matches: (p) => p === "/goals" || p === "/trajectory" || p.startsWith("/goals/") || p.startsWith("/trajectory/"),
   },
   {
     id: "vitals",
@@ -117,7 +117,7 @@ export function Sidebar({
           router.push("/tasks");
         } else if (e.key === "4") {
           e.preventDefault();
-          router.push("/goals");
+          router.push("/trajectory");
         } else if (e.key === "5") {
           e.preventDefault();
           router.push("/checkin");

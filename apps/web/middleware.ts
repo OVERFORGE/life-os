@@ -8,6 +8,7 @@ const PROTECTED_PREFIXES = [
   "/settings",
   "/tasks",
   "/goals",
+  "/trajectory",
   "/gym",
   "/nutrition",
   "/history",

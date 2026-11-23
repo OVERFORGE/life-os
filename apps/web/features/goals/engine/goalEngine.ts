@@ -22,6 +22,7 @@ export interface CreateGoalInput {
   title: string;
   description?: string;
   nature?: "finite_deliverable" | "habitual_cadence";
+  horizon?: "1 Month" | "3 Months" | "6 Months" | "1 Year" | "Custom";
   type?: "identity" | "performance" | "maintenance";
   cadence?: "daily" | "weekly" | "flexible";
   definitionOfDone?: string;
@@ -46,6 +47,14 @@ export interface CreateGoalInput {
   };
   confirmedAt?: Date;
   status?: "active" | "proposed" | "archived" | "completed";
+}
+
+function getUserIdMatcher(userId: string) {
+  const matchers: any[] = [userId, String(userId)];
+  if (mongoose.Types.ObjectId.isValid(userId)) {
+    matchers.push(new mongoose.Types.ObjectId(userId));
+  }
+  return { $in: matchers };
 }
 
 export interface GoalEngineOptions {
@@ -77,6 +86,7 @@ export async function createGoal(
     title: input.title?.trim(),
     description: input.description || "",
     nature: input.nature || "habitual_cadence",
+    horizon: input.horizon || "3 Months",
     type: input.type || "performance",
     cadence: input.cadence || "daily",
     status: input.status || "active",
@@ -139,7 +149,7 @@ export async function updateGoal(
   const goalModel = options?.goalModel || Goal;
   const outboxService = options?.outboxService || OutboxStorageService.getInstance();
 
-  const goal = await goalModel.findOne({ _id: goalId, userId });
+  const goal = await goalModel.findOne({ _id: goalId, userId: getUserIdMatcher(userId) });
   if (!goal) {
     return { success: false, error: "Goal not found", statusCode: 404 };
   }
@@ -169,6 +179,7 @@ export async function updateGoal(
   if (updates.title !== undefined) domainUpdates.title = updates.title.trim();
   if (updates.description !== undefined) domainUpdates.description = updates.description;
   if (updates.nature !== undefined) domainUpdates.nature = updates.nature;
+  if (updates.horizon !== undefined) domainUpdates.horizon = updates.horizon;
   if (updates.type !== undefined) domainUpdates.type = updates.type;
   if (updates.cadence !== undefined) domainUpdates.cadence = updates.cadence;
   if (updates.status !== undefined) domainUpdates.status = updates.status;
@@ -230,7 +241,7 @@ export async function completeGoal(
   const goalModel = options?.goalModel || Goal;
   const outboxService = options?.outboxService || OutboxStorageService.getInstance();
 
-  const goal = await goalModel.findOne({ _id: goalId, userId });
+  const goal = await goalModel.findOne({ _id: goalId, userId: getUserIdMatcher(userId) });
   if (!goal) {
     return { success: false, error: "Goal not found", statusCode: 404 };
   }
@@ -307,7 +318,7 @@ export async function deleteGoal(
   const goalModel = options?.goalModel || Goal;
   const outboxService = options?.outboxService || OutboxStorageService.getInstance();
 
-  const goal = await goalModel.findOne({ _id: goalId, userId });
+  const goal = await goalModel.findOne({ _id: goalId, userId: getUserIdMatcher(userId) });
   if (!goal) {
     return { success: false, error: "Goal not found", statusCode: 404 };
   }

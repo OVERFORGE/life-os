@@ -35,6 +35,12 @@ const GoalSchema = new mongoose.Schema(
       index: true,
     },
 
+    horizon: {
+      type: String,
+      enum: ["1 Month", "3 Months", "6 Months", "1 Year", "Custom"],
+      default: "3 Months",
+    },
+
     definitionOfDone: { type: String },
     targetCompletionDate: { type: Date },
 
