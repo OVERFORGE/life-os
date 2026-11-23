@@ -8,6 +8,7 @@ export default function NewGoalPage() {
   const router = useRouter();
 
   const [title, setTitle] = useState('');
+  const [nature, setNature] = useState<'finite_deliverable' | 'habitual_cadence'>('habitual_cadence');
   const [type, setType] = useState('identity');
   const [signals, setSignals] = useState<{ key: string; weight: number }[]>([]);
   
@@ -46,7 +47,7 @@ export default function NewGoalPage() {
       const res = await fetch('/api/goals/create', {
         method: 'POST',
         headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ title, type, signals })
+        body: JSON.stringify({ title, type, nature, signals })
       });
       const data = await res.json();
       if (data.id) {
@@ -83,14 +84,43 @@ export default function NewGoalPage() {
         
         {/* Title */}
         <div className="mb-8">
-          {sectionLabel('Goal Title')}
+          {sectionLabel('Title')}
           <input
             type="text"
             className="w-full bg-[#1F2023] border border-[#2A2B2F] text-gray-100 p-4 rounded-2xl text-lg font-bold focus:border-[#E8414A] focus:outline-none placeholder:text-gray-600 transition-colors"
-            placeholder="e.g. Master React Native"
+            placeholder="e.g. Master React Native or Daily Deep Work"
             value={title}
             onChange={(e) => setTitle(e.target.value)}
           />
+        </div>
+
+        {/* Nature Selector */}
+        <div className="mb-8">
+          {sectionLabel('Format')}
+          <div className="flex gap-3">
+            <button
+              type="button"
+              onClick={() => setNature('habitual_cadence')}
+              className={`flex-1 py-3 px-4 rounded-xl border text-xs font-bold transition-all ${
+                nature === 'habitual_cadence'
+                  ? 'bg-[#E8414A]/10 border-[#E8414A] text-[#E8414A]'
+                  : 'bg-[#1F2023] border-[#2A2B2F] text-gray-400 hover:bg-[#2A2B2F]'
+              }`}
+            >
+              Habit (14-Day Rolling Cadence)
+            </button>
+            <button
+              type="button"
+              onClick={() => setNature('finite_deliverable')}
+              className={`flex-1 py-3 px-4 rounded-xl border text-xs font-bold transition-all ${
+                nature === 'finite_deliverable'
+                  ? 'bg-[#E8414A]/10 border-[#E8414A] text-[#E8414A]'
+                  : 'bg-[#1F2023] border-[#2A2B2F] text-gray-400 hover:bg-[#2A2B2F]'
+              }`}
+            >
+              Goal (Finite Deliverable)
+            </button>
+          </div>
         </div>
 
         {/* Type */}

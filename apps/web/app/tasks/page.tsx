@@ -14,6 +14,8 @@ import {
   X,
   Trash2,
   Layers,
+  Calendar,
+  Clock,
 } from "lucide-react";
 
 interface Subtask {
@@ -54,9 +56,10 @@ export default function ExecutePage() {
   const [timerSecondsLeft, setTimerSecondsLeft] = useState(45 * 60);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
 
-  // New Task Modal State
+  // New Task Modal State (Deep Form)
   const [isNewTaskModalOpen, setIsNewTaskModalOpen] = useState(false);
   const [newTaskTitle, setNewTaskTitle] = useState("");
+  const [newTaskDescription, setNewTaskDescription] = useState("");
   const [newTaskPriority, setNewTaskPriority] = useState<"high" | "medium" | "low">("medium");
   const [newTaskStatus, setNewTaskStatus] = useState<"pending" | "in_progress" | "waiting">("pending");
   const [newTaskDueDate, setNewTaskDueDate] = useState(() => {
@@ -64,10 +67,24 @@ export default function ExecutePage() {
     return d.toISOString().split("T")[0];
   });
   const [newTaskDueTime, setNewTaskDueTime] = useState("");
+  const [newTaskRecurringType, setNewTaskRecurringType] = useState<"none" | "daily" | "weekly" | "custom">("none");
+  const [newTaskRecurringInterval, setNewTaskRecurringInterval] = useState("1");
+  const [newTaskGoalId, setNewTaskGoalId] = useState<string | null>(null);
+  const [newTaskEnergyCost, setNewTaskEnergyCost] = useState(5);
   const [newTaskDuration, setNewTaskDuration] = useState("45");
   const [newTaskSubtasks, setNewTaskSubtasks] = useState<string[]>([]);
   const [newSubtaskInput, setNewSubtaskInput] = useState("");
   const [isSubmitting, setIsSubmitting] = useState(false);
+  const [availableGoals, setAvailableGoals] = useState<any[]>([]);
+
+  useEffect(() => {
+    fetch("/api/goals/list")
+      .then((res) => res.json())
+      .then((data) => {
+        if (Array.isArray(data)) setAvailableGoals(data);
+      })
+      .catch((err) => console.error("Failed to fetch goals for task form:", err));
+  }, []);
 
   // Task Details Modal / Drawer
   const [selectedTask, setSelectedTask] = useState<TaskItem | null>(null);
@@ -316,11 +333,20 @@ export default function ExecutePage() {
     const subtasksList = newTaskSubtasks.map((title) => ({ title, done: false }));
     const durMinutes = parseInt(newTaskDuration, 10) || 45;
 
+    let recurring = null;
+    if (newTaskRecurringType !== "none") {
+      recurring = {
+        type: newTaskRecurringType,
+        interval: newTaskRecurringType === "custom" ? parseInt(newTaskRecurringInterval, 10) || 1 : 1,
+      };
+    }
+
     // Optimistic ID
     const tempId = `temp-${Date.now()}`;
     const optimisticTask: TaskItem = {
       id: tempId,
       title: newTaskTitle.trim(),
+      description: newTaskDescription.trim(),
       priority: newTaskPriority,
       status: newTaskStatus,
       dueDate: newTaskDueDate || undefined,
@@ -338,11 +364,17 @@ export default function ExecutePage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           title: newTaskTitle.trim(),
+          description: newTaskDescription.trim(),
           priority: newTaskPriority,
           status: newTaskStatus,
           dueDate: newTaskDueDate,
           dueTime: newTaskDueTime || null,
-          metadata: { estimatedDuration: durMinutes },
+          recurring,
+          goalId: newTaskGoalId || null,
+          metadata: {
+            energyCost: newTaskEnergyCost,
+            estimatedDuration: durMinutes,
+          },
           subtasks: subtasksList,
         }),
       });
@@ -356,7 +388,12 @@ export default function ExecutePage() {
     } finally {
       setIsSubmitting(false);
       setNewTaskTitle("");
+      setNewTaskDescription("");
       setNewTaskDueTime("");
+      setNewTaskRecurringType("none");
+      setNewTaskGoalId(null);
+      setNewTaskEnergyCost(5);
+      setNewTaskDuration("45");
       setNewTaskSubtasks([]);
       setNewSubtaskInput("");
     }
@@ -936,111 +973,142 @@ export default function ExecutePage() {
         )}
       </div>
 
-      {/* NEW TASK MODAL */}
+      {/* NEW TASK DEEP FORM MODAL (Matches Screenshots 3, 4, 5) */}
       {isNewTaskModalOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/75 backdrop-blur-sm animate-in fade-in duration-200">
-          <div className="bg-[#17171A] border border-[#23242A] rounded-2xl w-full max-w-lg p-5 sm:p-6 shadow-2xl flex flex-col gap-4">
-            {/* Modal Header */}
-            <div className="flex items-center justify-between pb-3 border-b border-[#23242A]">
-              <div className="flex items-center gap-2">
-                <Plus size={18} className="text-[#E29D52]" />
-                <h3 className="text-base font-semibold text-[#F7F5F0]">Create New Task</h3>
+        <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/80 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-[#141518] border border-[#23242A] rounded-2xl w-full max-w-2xl max-h-[92vh] flex flex-col shadow-2xl overflow-hidden">
+            {/* Header */}
+            <div className="flex items-center justify-between px-6 py-4 border-b border-[#23242A] bg-[#17181C]">
+              <div className="flex items-center gap-3">
+                <button
+                  type="button"
+                  onClick={() => setIsNewTaskModalOpen(false)}
+                  className="w-8 h-8 rounded-full bg-[#1F2023] border border-[#2A2B2F] flex items-center justify-center text-[#85827A] hover:text-[#F7F5F0] hover:bg-[#2A2B2F] transition-colors"
+                >
+                  <X size={16} />
+                </button>
+                <h2 className="text-lg font-bold text-[#F7F5F0] tracking-tight">New Task</h2>
               </div>
               <button
                 type="button"
                 onClick={() => setIsNewTaskModalOpen(false)}
-                className="p-1 rounded-lg text-[#85827A] hover:text-[#F7F5F0] hover:bg-[#23242A] transition-colors"
+                className="text-xs text-[#85827A] hover:text-[#C5C2BA] font-medium"
               >
-                <X size={16} />
+                Close
               </button>
             </div>
 
-            {/* Modal Form */}
-            <form onSubmit={handleCreateTask} className="flex flex-col gap-4">
+            {/* Scrollable Form Body */}
+            <form onSubmit={handleCreateTask} className="flex-1 overflow-y-auto p-6 space-y-6 custom-h-scrollbar">
+              {/* SECTION: WHAT NEEDS TO BE DONE? */}
               <div>
-                <label className="block text-xs font-medium text-[#C5C2BA] mb-1">
-                  Task Title *
+                <label className="text-[10px] font-bold text-[#85827A] uppercase tracking-widest block mb-2">
+                  What needs to be done?
                 </label>
-                <input
-                  type="text"
-                  required
-                  autoFocus
-                  value={newTaskTitle}
-                  onChange={(e) => setNewTaskTitle(e.target.value)}
-                  placeholder="e.g. Systems Architecture & Service Flow"
-                  className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3.5 py-2 text-xs text-[#F7F5F0] placeholder:text-[#55534E] focus:border-[#E29D52] focus:ring-0 outline-none"
-                />
-              </div>
-
-              {/* Priority & Status Controls */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-[#C5C2BA] mb-1">
-                    Priority
-                  </label>
-                  <select
-                    value={newTaskPriority}
-                    onChange={(e) => setNewTaskPriority(e.target.value as any)}
-                    className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3 py-2 text-xs text-[#F7F5F0] focus:border-[#E29D52] focus:ring-0 outline-none"
-                  >
-                    <option value="high">High Priority</option>
-                    <option value="medium">Medium</option>
-                    <option value="low">Low</option>
-                  </select>
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-[#C5C2BA] mb-1">
-                    Initial Status
-                  </label>
-                  <select
-                    value={newTaskStatus}
-                    onChange={(e) => setNewTaskStatus(e.target.value as any)}
-                    className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3 py-2 text-xs text-[#F7F5F0] focus:border-[#E29D52] focus:ring-0 outline-none"
-                  >
-                    <option value="pending">To do</option>
-                    <option value="in_progress">In progress</option>
-                    <option value="waiting">Waiting</option>
-                  </select>
-                </div>
-              </div>
-
-              {/* Due Date & Scheduled Time */}
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="block text-xs font-medium text-[#C5C2BA] mb-1">
-                    Due Date
-                  </label>
-                  <input
-                    type="date"
-                    value={newTaskDueDate}
-                    onChange={(e) => setNewTaskDueDate(e.target.value)}
-                    className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3 py-2 text-xs text-[#F7F5F0] focus:border-[#E29D52] focus:ring-0 outline-none"
-                  />
-                </div>
-
-                <div>
-                  <label className="block text-xs font-medium text-[#C5C2BA] mb-1">
-                    Scheduled Time / Slot
-                  </label>
+                <div className="space-y-2.5">
                   <input
                     type="text"
-                    value={newTaskDueTime}
-                    onChange={(e) => setNewTaskDueTime(e.target.value)}
-                    placeholder="e.g. 09:45 – 11:30"
-                    className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3 py-2 text-xs text-[#F7F5F0] placeholder:text-[#55534E] focus:border-[#E29D52] focus:ring-0 outline-none"
+                    required
+                    autoFocus
+                    placeholder="Task title..."
+                    value={newTaskTitle}
+                    onChange={(e) => setNewTaskTitle(e.target.value)}
+                    className="w-full bg-[#18191E] border border-[#262830] rounded-xl px-4 py-3 text-sm font-semibold text-[#F7F5F0] placeholder:text-[#55534E] focus:border-[#E29D52] focus:outline-none transition-colors"
+                  />
+                  <textarea
+                    placeholder="Add context or notes... (optional)"
+                    value={newTaskDescription}
+                    onChange={(e) => setNewTaskDescription(e.target.value)}
+                    className="w-full bg-[#18191E] border border-[#262830] rounded-xl px-4 py-2.5 text-xs text-[#C5C2BA] placeholder:text-[#55534E] focus:border-[#E29D52] focus:outline-none transition-colors min-h-[75px] resize-none"
                   />
                 </div>
               </div>
 
-              {/* Subtasks Builder */}
+              {/* SECTION: SCHEDULE */}
               <div>
-                <label className="block text-xs font-medium text-[#C5C2BA] mb-1">
-                  Subtasks Checklist
+                <label className="text-[10px] font-bold text-[#85827A] uppercase tracking-widest block mb-2">
+                  Schedule
                 </label>
-                <div className="flex gap-2 mb-2">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="relative">
+                    <Calendar size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#E29D52]" />
+                    <input
+                      type="date"
+                      value={newTaskDueDate}
+                      onChange={(e) => setNewTaskDueDate(e.target.value)}
+                      className="w-full bg-[#18191E] border border-[#262830] rounded-xl pl-10 pr-3.5 py-2.5 text-xs font-semibold text-[#F7F5F0] focus:border-[#E29D52] focus:outline-none transition-colors"
+                    />
+                  </div>
+                  <div className="relative">
+                    <Clock size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${newTaskDueTime ? "text-[#E29D52]" : "text-[#55534E]"}`} />
+                    <input
+                      type="time"
+                      value={newTaskDueTime}
+                      onChange={(e) => setNewTaskDueTime(e.target.value)}
+                      className="w-full bg-[#18191E] border border-[#262830] rounded-xl pl-10 pr-3.5 py-2.5 text-xs font-semibold text-[#F7F5F0] focus:border-[#E29D52] focus:outline-none transition-colors"
+                    />
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION: PRIORITY */}
+              <div>
+                <label className="text-[10px] font-bold text-[#85827A] uppercase tracking-widest block mb-2">
+                  Priority
+                </label>
+                <div className="grid grid-cols-3 gap-2.5">
+                  {(["low", "medium", "high"] as const).map((p) => {
+                    const isSelected = newTaskPriority === p;
+                    const colors = {
+                      low: isSelected ? "border-[#A0A2A8]/50 text-[#C5C2BA] bg-[#22242B]" : "border-[#262830] text-[#71737D] bg-[#18191E]",
+                      medium: isSelected ? "border-[#E29D52] text-[#E29D52] bg-[#E29D52]/10" : "border-[#262830] text-[#71737D] bg-[#18191E]",
+                      high: isSelected ? "border-[#E8414A] text-[#E8414A] bg-[#E8414A]/10" : "border-[#262830] text-[#71737D] bg-[#18191E]",
+                    };
+                    return (
+                      <button
+                        key={p}
+                        type="button"
+                        onClick={() => setNewTaskPriority(p)}
+                        className={`py-2.5 rounded-xl border font-bold text-xs capitalize transition-all ${colors[p]}`}
+                      >
+                        {p}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* SECTION: SUBTASKS */}
+              <div>
+                <label className="text-[10px] font-bold text-[#85827A] uppercase tracking-widest block mb-2">
+                  Subtasks ({newTaskSubtasks.length})
+                </label>
+                {newTaskSubtasks.length > 0 && (
+                  <div className="space-y-1.5 mb-2.5">
+                    {newTaskSubtasks.map((st, i) => (
+                      <div
+                        key={i}
+                        className="flex items-center justify-between px-3 py-2 rounded-xl bg-[#18191E] border border-[#262830] text-xs text-[#F7F5F0]"
+                      >
+                        <div className="flex items-center gap-2.5 truncate">
+                          <span className="w-1.5 h-1.5 rounded-full bg-[#E29D52] flex-shrink-0" />
+                          <span className="truncate">{st}</span>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={() => setNewTaskSubtasks(newTaskSubtasks.filter((_, idx) => idx !== i))}
+                          className="text-[#85827A] hover:text-[#E8414A] p-0.5 ml-2"
+                        >
+                          <X size={14} />
+                        </button>
+                      </div>
+                    ))}
+                  </div>
+                )}
+                <div className="flex gap-2">
                   <input
                     type="text"
+                    placeholder="Add a subtask..."
                     value={newSubtaskInput}
                     onChange={(e) => setNewSubtaskInput(e.target.value)}
                     onKeyDown={(e) => {
@@ -1052,8 +1120,7 @@ export default function ExecutePage() {
                         }
                       }
                     }}
-                    placeholder="Add a subtask (press Enter)"
-                    className="flex-1 bg-[#111113] border border-[#23242A] rounded-xl px-3 py-1.5 text-xs text-[#F7F5F0] placeholder:text-[#55534E] focus:border-[#E29D52] focus:ring-0 outline-none"
+                    className="flex-1 bg-[#18191E] border border-[#262830] rounded-xl px-3.5 py-2.5 text-xs text-[#F7F5F0] placeholder:text-[#55534E] focus:border-[#E29D52] focus:outline-none transition-colors"
                   />
                   <button
                     type="button"
@@ -1063,50 +1130,148 @@ export default function ExecutePage() {
                         setNewSubtaskInput("");
                       }
                     }}
-                    className="px-3 py-1.5 rounded-xl bg-[#23242A] hover:bg-[#2F3038] text-xs font-medium text-[#F7F5F0] transition-colors"
+                    className="w-10 rounded-xl bg-[#E29D52]/10 border border-[#E29D52]/30 flex items-center justify-center text-[#E29D52] hover:bg-[#E29D52]/20 transition-colors"
                   >
-                    Add
+                    <Plus size={16} />
                   </button>
                 </div>
+              </div>
 
-                {newTaskSubtasks.length > 0 && (
-                  <div className="flex flex-col gap-1.5 max-h-32 overflow-y-auto">
-                    {newTaskSubtasks.map((st, i) => (
-                      <div
-                        key={i}
-                        className="flex items-center justify-between px-2.5 py-1 rounded-lg bg-[#111113] border border-[#23242A] text-xs text-[#C5C2BA]"
-                      >
-                        <span className="truncate">{st}</span>
-                        <button
-                          type="button"
-                          onClick={() =>
-                            setNewTaskSubtasks(newTaskSubtasks.filter((_, idx) => idx !== i))
-                          }
-                          className="text-[#85827A] hover:text-[#E8414A]"
-                        >
-                          <X size={12} />
-                        </button>
-                      </div>
-                    ))}
+              {/* SECTION: REPEATS */}
+              <div>
+                <label className="text-[10px] font-bold text-[#85827A] uppercase tracking-widest block mb-2">
+                  Repeats
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  {(["none", "daily", "weekly", "custom"] as const).map((rt) => (
+                    <button
+                      key={rt}
+                      type="button"
+                      onClick={() => setNewTaskRecurringType(rt)}
+                      className={`px-4 py-2 rounded-xl border text-xs capitalize transition-colors font-semibold ${
+                        newTaskRecurringType === rt
+                          ? "bg-[#E29D52]/10 border-[#E29D52] text-[#E29D52]"
+                          : "bg-[#18191E] border-[#262830] text-[#71737D] hover:bg-[#22242B]"
+                      }`}
+                    >
+                      {rt}
+                    </button>
+                  ))}
+                </div>
+                {newTaskRecurringType === "custom" && (
+                  <div className="flex items-center gap-2.5 mt-2.5 bg-[#18191E] border border-[#262830] rounded-xl px-3.5 py-2 max-w-fit">
+                    <span className="text-xs text-[#85827A]">Every</span>
+                    <input
+                      type="number"
+                      min="1"
+                      value={newTaskRecurringInterval}
+                      onChange={(e) => setNewTaskRecurringInterval(e.target.value)}
+                      className="bg-[#111113] border border-[#262830] text-center font-bold text-xs text-[#F7F5F0] rounded-lg w-14 py-1 focus:border-[#E29D52] focus:outline-none"
+                    />
+                    <span className="text-xs text-[#85827A]">days</span>
                   </div>
                 )}
               </div>
 
-              {/* Submit Buttons */}
-              <div className="flex items-center justify-end gap-2.5 pt-3 border-t border-[#23242A]">
-                <button
-                  type="button"
-                  onClick={() => setIsNewTaskModalOpen(false)}
-                  className="px-4 py-2 rounded-xl text-xs font-medium text-[#C5C2BA] hover:bg-[#23242A] transition-colors"
-                >
-                  Cancel
-                </button>
+              {/* SECTION: LINK TO GOAL */}
+              <div>
+                <label className="text-[10px] font-bold text-[#85827A] uppercase tracking-widest block mb-2">
+                  Link to Goal
+                </label>
+                <div className="flex flex-wrap gap-2">
+                  <button
+                    type="button"
+                    onClick={() => setNewTaskGoalId(null)}
+                    className={`px-4 py-2 rounded-xl border text-xs transition-colors font-semibold ${
+                      newTaskGoalId === null
+                        ? "bg-[#E29D52]/15 border-[#E29D52] text-[#E29D52]"
+                        : "bg-[#18191E] border-[#262830] text-[#71737D] hover:bg-[#22242B]"
+                    }`}
+                  >
+                    None
+                  </button>
+                  {availableGoals.map((g: any) => {
+                    const gId = g.id || g._id;
+                    const isSelected = newTaskGoalId === gId;
+                    return (
+                      <button
+                        key={gId}
+                        type="button"
+                        onClick={() => setNewTaskGoalId(gId)}
+                        className={`px-4 py-2 rounded-xl border text-xs transition-colors font-semibold max-w-[280px] truncate ${
+                          isSelected
+                            ? "bg-[#E29D52]/15 border-[#E29D52] text-[#E29D52]"
+                            : "bg-[#18191E] border-[#262830] text-[#71737D] hover:bg-[#22242B]"
+                        }`}
+                      >
+                        {g.title}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* SECTION: ENERGY COST — X/10 */}
+              <div>
+                <label className="text-[10px] font-bold text-[#85827A] uppercase tracking-widest block mb-2">
+                  Energy Cost — {newTaskEnergyCost}/10
+                </label>
+                <div className="bg-[#18191E] border border-[#262830] rounded-xl p-3.5">
+                  <div className="flex items-center justify-between gap-1 sm:gap-2">
+                    {[1, 2, 3, 4, 5, 6, 7, 8, 9, 10].map((v) => (
+                      <button
+                        key={v}
+                        type="button"
+                        onClick={() => setNewTaskEnergyCost(v)}
+                        className={`flex-1 aspect-square rounded-lg flex items-center justify-center transition-all ${
+                          newTaskEnergyCost >= v
+                            ? "bg-[#E29D52]/20 border border-[#E29D52]/40"
+                            : "bg-[#22242B] border border-transparent hover:bg-[#2A2B33]"
+                        }`}
+                      >
+                        <span
+                          className={`w-2 h-2 rounded-full ${
+                            newTaskEnergyCost >= v ? "bg-[#E29D52]" : "bg-[#55534E]"
+                          }`}
+                        />
+                      </button>
+                    ))}
+                  </div>
+                  <div className="flex justify-between items-center mt-2 text-[10px] font-bold text-[#85827A] uppercase tracking-widest">
+                    <span>Low</span>
+                    <span>High</span>
+                  </div>
+                </div>
+              </div>
+
+              {/* SECTION: ESTIMATED DURATION */}
+              <div>
+                <label className="text-[10px] font-bold text-[#85827A] uppercase tracking-widest block mb-2">
+                  Estimated Duration
+                </label>
+                <div className="flex items-center bg-[#18191E] border border-[#262830] rounded-xl px-4 py-2.5 focus-within:border-[#E29D52] transition-colors max-w-sm">
+                  <Timer size={16} className="text-[#85827A] mr-3" />
+                  <input
+                    type="number"
+                    min="5"
+                    step="5"
+                    placeholder="Minutes (e.g. 45)"
+                    value={newTaskDuration}
+                    onChange={(e) => setNewTaskDuration(e.target.value)}
+                    className="flex-1 bg-transparent text-xs font-bold text-[#F7F5F0] focus:outline-none placeholder:text-[#55534E]"
+                  />
+                  <span className="text-xs font-bold text-[#85827A] ml-2">min</span>
+                </div>
+              </div>
+
+              {/* SUBMIT BUTTON */}
+              <div className="pt-2">
                 <button
                   type="submit"
-                  disabled={isSubmitting}
-                  className="px-4 py-2 rounded-xl bg-[#E29D52] hover:bg-[#E29D52]/90 text-[#1A0F00] font-semibold text-xs shadow transition-all active:scale-95 disabled:opacity-50"
+                  disabled={isSubmitting || !newTaskTitle.trim()}
+                  className="w-full py-3.5 rounded-xl bg-[#E29D52] hover:bg-[#E29D52]/90 disabled:opacity-50 text-[#1A0F00] font-bold text-xs uppercase tracking-wider transition-all shadow-lg active:scale-98 flex items-center justify-center"
                 >
-                  {isSubmitting ? "Creating..." : "Create Task"}
+                  {isSubmitting ? "Creating Task..." : "Create Task"}
                 </button>
               </div>
             </form>

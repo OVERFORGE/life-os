@@ -5,9 +5,9 @@ import { useRouter } from 'next/navigation';
 import { ArrowLeft, Calendar, Clock, Timer, X, Plus } from 'lucide-react';
 
 const PRIORITIES = [
-  { key: 'low',    label: 'Low',    color: 'text-gray-300',  border: 'border-gray-300/20',  activeBg: 'bg-gray-300/10' },
-  { key: 'medium', label: 'Medium', color: 'text-[#F9A8AC]', border: 'border-[#F9A8AC]/30', activeBg: 'bg-[#F9A8AC]/10' },
-  { key: 'high',   label: 'High',   color: 'text-[#E8414A]', border: 'border-[#E8414A]/40', activeBg: 'bg-[#E8414A]/10' },
+  { key: 'low',    label: 'Low',    color: 'text-[#C5C2BA]', border: 'border-[#A0A2A8]/40', activeBg: 'bg-[#22242B]' },
+  { key: 'medium', label: 'Medium', color: 'text-[#E29D52]', border: 'border-[#E29D52]', activeBg: 'bg-[#E29D52]/10' },
+  { key: 'high',   label: 'High',   color: 'text-[#E8414A]', border: 'border-[#E8414A]', activeBg: 'bg-[#E8414A]/10' },
 ];
 
 export default function NewTaskPage() {

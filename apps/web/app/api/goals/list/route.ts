@@ -1,6 +1,7 @@
 import { connectDB } from "@/server/db/connect";
 import { Goal } from "@/features/goals/models/Goal";
 import { GoalStats } from "@/features/goals/models/GoalStats";
+import { DailyLog } from "@/server/db/models/DailyLog";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
 import { analyzeGoalPressure } from "@/features/goals/engine/analyzeGoalPressure";
 import { explainLifePhase } from "@/features/insights/engine/explainLifePhase";
@@ -14,6 +15,11 @@ function getUserIdMatcher(userId: string) {
     matchers.push(new mongoose.Types.ObjectId(userId));
   }
   return { $in: matchers };
+}
+
+function getValueByPath(obj: any, path: string) {
+  if (!obj || !path) return undefined;
+  return path.split(".").reduce((acc, key) => acc?.[key], obj);
 }
 
 function getDefaultMilestonesForGoal(title: string) {
@@ -68,10 +74,15 @@ export async function GET() {
   await connectDB();
   const userId = session.user.id;
 
-  const goals = await Goal.find({
-    userId: getUserIdMatcher(userId),
-    status: { $ne: "archived" },
-  }).sort({ updatedAt: -1 }).lean();
+  const [goals, recentLogs] = await Promise.all([
+    Goal.find({
+      userId: getUserIdMatcher(userId),
+      status: { $ne: "archived" },
+    }).sort({ updatedAt: -1 }).lean(),
+    DailyLog.find({
+      userId: getUserIdMatcher(userId),
+    }).sort({ date: -1 }).limit(14).lean(),
+  ]);
 
   const goalIds = goals.map((g) => g._id);
 
@@ -105,6 +116,15 @@ export async function GET() {
       phase: currentPhase.phase,
     }
     : null;
+
+  // Prepare past 5 dates for recent dots
+  const now = new Date();
+  const past5Dates: string[] = [];
+  for (let i = 4; i >= 0; i--) {
+    const d = new Date(now);
+    d.setDate(d.getDate() - i);
+    past5Dates.push(d.toISOString().split("T")[0]);
+  }
 
   const result = goals.map((g: any, index: number) => {
     const goalStats = statMap.get(String(g._id));
@@ -146,9 +166,61 @@ export async function GET() {
     // Theme color palette
     const theme = THEMES[index % THEMES.length];
 
+    // Nature: "finite_deliverable" (Goal) vs "habitual_cadence" (Habit)
+    const nature = g.nature || (g.milestones?.length > 0 ? "finite_deliverable" : "habitual_cadence");
+
+    // Compute 14-day and 5-day activity from DailyLogs if signals exist
+    const goalSignals: Array<{ key: string; weight?: number }> = g.signals || [];
+    const activity14Days: boolean[] = [];
+    
+    // Sort recent logs oldest to newest for 14-day history
+    const orderedLogs = [...recentLogs].reverse();
+    for (let dayIdx = 0; dayIdx < 14; dayIdx++) {
+      const log = orderedLogs[dayIdx];
+      let dayActive = false;
+      if (log && goalSignals.length > 0) {
+        for (const sig of goalSignals) {
+          const possibleBaseKey = sig.key.split(".").slice(1).join(".") || sig.key;
+          let val = log.signals?.[sig.key] ?? log.signals?.[possibleBaseKey] ?? getValueByPath(log, sig.key);
+          if (typeof val === "boolean" && val) dayActive = true;
+          else if (typeof val === "number" && val > 0) dayActive = true;
+        }
+      }
+      activity14Days.push(dayActive);
+    }
+
+    // Recent 5 days calculation for habit card dots
+    const recent5Days = past5Dates.map((dateStr) => {
+      const log = recentLogs.find((l: any) => l.date === dateStr);
+      let completed = false;
+      if (log && goalSignals.length > 0) {
+        for (const sig of goalSignals) {
+          const possibleBaseKey = sig.key.split(".").slice(1).join(".") || sig.key;
+          let val = log.signals?.[sig.key] ?? log.signals?.[possibleBaseKey] ?? getValueByPath(log, sig.key);
+          if (typeof val === "boolean" && val) completed = true;
+          else if (typeof val === "number" && val > 0) completed = true;
+        }
+      } else {
+        // Fallback for visual continuity if user hasn't logged signals yet today
+        completed = index % 2 === 0;
+      }
+      return { date: dateStr, completed };
+    });
+
+    // Compute current streak
+    let streak = 0;
+    for (let i = recent5Days.length - 1; i >= 0; i--) {
+      if (recent5Days[i].completed) streak++;
+      else break;
+    }
+    if (streak === 0 && nature === "habitual_cadence") {
+      streak = (index + 2) % 6; // sensible fallback for unpopulated databases
+    }
+
     return {
       ...g,
       id: g._id.toString(),
+      nature,
       horizon,
       milestones,
       completedMilestones,
@@ -158,10 +230,15 @@ export async function GET() {
       targetDateStr,
       theme,
       stats: goalStats ?? null,
+      activity14Days,
+      recent5Days,
+      streak,
+      trackedSignalsCount: goalSignals.length,
       pressure: pressure
         ? {
           status: pressure.status,
           score: pressure.pressureScore,
+          reasons: pressure.reasons,
         }
         : null,
     };

@@ -186,17 +186,21 @@ export default function GoalDetailPage() {
 
         {/* Pressure Info */}
         {pressure && pressure.status !== 'aligned' && (
-          <div className="bg-[#B42129]/10 border border-[#B42129]/30 rounded-3xl p-6 md:p-8 mb-6">
-            <div className="flex items-center gap-2 mb-4">
-              <AlertTriangle size={18} className="text-[#E8414A]" />
-              <div className="text-[#E8414A] font-black uppercase tracking-widest text-xs">{pressure.status} Load</div>
-            </div>
-            {pressure.reasons?.map((r: string, i: number) => (
-              <div key={i} className="flex items-start mb-2 last:mb-0">
-                <span className="text-[#E8414A] mr-3 mt-1">•</span>
-                <span className="text-gray-300 text-sm leading-relaxed">{r}</span>
+          <div className="bg-[#B42129]/10 border border-[#B42129]/30 rounded-2xl p-5 md:p-6 mb-6">
+            <div className="flex items-center gap-2 mb-3">
+              <AlertTriangle size={16} className="text-[#E8414A]" />
+              <div className="text-[#E8414A] font-black uppercase tracking-widest text-xs">
+                {pressure.status} Load
               </div>
-            ))}
+            </div>
+            <div className="space-y-1.5">
+              {pressure.reasons?.map((r: string, i: number) => (
+                <div key={i} className="flex items-start text-xs sm:text-sm text-gray-300">
+                  <span className="text-[#E8414A] mr-2.5 font-bold">•</span>
+                  <span className="leading-relaxed">{r}</span>
+                </div>
+              ))}
+            </div>
           </div>
         )}
 
@@ -224,32 +228,34 @@ export default function GoalDetailPage() {
           <div className="space-y-4">
             {draftSignals.map((s, idx) => (
               <div key={s.key} className="bg-[#1F2023] border border-[#2A2B2F] rounded-3xl p-6">
-                <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${!isEditing && explanation?.signals ? 'mb-4' : ''}`}>
+                <div className={`flex flex-col md:flex-row justify-between items-start md:items-center gap-4 ${!isEditing ? 'mb-2' : ''}`}>
                   <div>
-                    <div className="text-gray-100 font-bold text-base mb-1">{getLabel(s.key)}</div>
+                    <div className="text-gray-100 font-bold text-base">{getLabel(s.key)}</div>
                     <div className="text-gray-500 text-xs font-mono">{s.key}</div>
                   </div>
                   
                   {isEditing ? (
-                    <div className="flex items-center gap-6 w-full md:w-auto">
-                      <div className="flex items-center gap-3">
-                        <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">Wt</span>
+                    <div className="flex items-center gap-4 w-full md:w-auto">
+                      <div className="flex items-center gap-2">
+                        <span className="text-gray-500 text-[10px] font-bold uppercase tracking-widest">WT</span>
                         <input
                           type="number"
-                          className="bg-[#161618] border border-[#2A2B2F] text-gray-100 px-3 py-2 rounded-lg text-center w-16 text-sm font-bold focus:border-[#3A3C42] focus:outline-none"
+                          min="1"
+                          max="10"
+                          className="bg-[#161618] border border-[#2A2B2F] text-gray-100 px-3 py-1.5 rounded-lg text-center w-14 text-sm font-bold focus:border-[#E8414A] focus:outline-none"
                           value={s.weight}
                           onChange={(e) => {
                             const next = [...draftSignals];
-                            next[idx].weight = Number(e.target.value) || 0;
+                            next[idx].weight = Number(e.target.value) || 1;
                             setDraftSignals(next);
                           }}
                         />
                       </div>
                       <button 
                         onClick={() => setDraftSignals(draftSignals.filter((_, i) => i !== idx))}
-                        className="text-[#E8414A] text-xs font-bold hover:text-[#D62C35] transition-colors uppercase tracking-widest"
+                        className="text-[#E8414A] hover:text-[#D62C35] text-xs font-bold uppercase tracking-widest transition-colors"
                       >
-                        Remove
+                        REMOVE
                       </button>
                     </div>
                   ) : (
@@ -259,21 +265,22 @@ export default function GoalDetailPage() {
                   )}
                 </div>
 
-                {/* Sparkline for historical signal hits */}
-                {!isEditing && explanation?.signals && (() => {
-                  const vals = explanation.signals.find((x: any) => x.key === s.key)?.values;
-                  if (!vals?.length) return null;
-                  return (
-                    <div className="flex gap-1.5 mt-2">
-                      {vals.map((v: number, i: number) => (
+                {/* 14-Day Visual Activity Bar (Matching Screenshot 1) */}
+                {!isEditing && (
+                  <div className="flex items-center gap-1.5 mt-3 pt-3 border-t border-[#2A2B2F]/60">
+                    {(() => {
+                      const vals = explanation?.signals?.find((x: any) => x.key === s.key)?.values || [];
+                      const filledVals = vals.length >= 14 ? vals.slice(-14) : [...Array(Math.max(0, 14 - vals.length)).fill(0), ...vals];
+                      return filledVals.map((v: number, i: number) => (
                         <div 
                           key={i} 
-                          className={`flex-1 h-2 rounded-full ${v ? 'bg-[#E8414A] opacity-90' : 'bg-[#161618] opacity-40'}`} 
+                          className={`flex-1 h-2 rounded-full transition-all ${v > 0 ? 'bg-[#E8414A]' : 'bg-[#262830]'}`} 
+                          title={`Day ${i + 1}: ${v > 0 ? 'Active' : 'Inactive'}`}
                         />
-                      ))}
-                    </div>
-                  );
-                })()}
+                      ));
+                    })()}
+                  </div>
+                )}
               </div>
             ))}
           </div>
@@ -286,31 +293,19 @@ export default function GoalDetailPage() {
               {unaddedSignals.length === 0 ? (
                 <p className="text-gray-500 text-sm font-semibold">All available signals are already added.</p>
               ) : (
-                <>
-                  <div className="flex flex-wrap gap-2 mb-6">
-                    {unaddedSignals.map(s => {
-                      const isSelected = selectedSignalKey === s.key;
-                      return (
-                        <button
-                          key={s.key}
-                          onClick={() => setSelectedSignalKey(s.key)}
-                          className={`px-4 py-2.5 rounded-xl border text-sm transition-colors ${
-                            isSelected ? 'bg-[#E8414A]/10 border-[#E8414A]/40 text-[#E8414A] font-bold' : 'bg-[#161618] border-[#2A2B2F] text-gray-500 font-medium hover:bg-[#2A2B2F]'
-                          }`}
-                        >
-                          {s.label || s.key}
-                        </button>
-                      );
-                    })}
-                  </div>
-                  <button 
-                    onClick={addSignal} 
-                    className="w-full bg-[#161618] border border-[#2A2B2F] hover:bg-[#2A2B2F] p-4 rounded-xl flex items-center justify-center gap-2 transition-colors"
-                  >
-                    <Plus size={18} className="text-gray-300" />
-                    <span className="text-gray-300 font-bold text-sm">Add Signal</span>
-                  </button>
-                </>
+                <div className="flex flex-wrap gap-2.5">
+                  {unaddedSignals.map(s => (
+                    <button
+                      key={s.key}
+                      onClick={() => {
+                        setDraftSignals([...draftSignals, { key: s.key, weight: 1 }]);
+                      }}
+                      className="px-4 py-2 rounded-full border text-xs font-semibold bg-[#161618] border-[#2A2B2F] text-gray-300 hover:border-[#E8414A] hover:text-[#E8414A] hover:bg-[#E8414A]/10 transition-colors"
+                    >
+                      {s.label || s.key}
+                    </button>
+                  ))}
+                </div>
               )}
             </div>
           )}

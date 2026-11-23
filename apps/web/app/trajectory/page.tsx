@@ -1,6 +1,7 @@
 "use client";
 
 import React, { useState, useEffect, useMemo, useRef } from "react";
+import { useRouter } from "next/navigation";
 import {
   Search,
   Plus,
@@ -49,6 +50,11 @@ interface TrajectoryGoal {
     dot: string;
     hex: string;
   };
+  signals?: Array<{ key: string; weight: number }>;
+  recent5Days?: Array<{ date: string; completed: boolean }>;
+  activity14Days?: boolean[];
+  streak?: number;
+  trackedSignalsCount?: number;
   pressure?: {
     status: string;
     score: number;
@@ -77,6 +83,7 @@ const HORIZON_TABS = ["All Goals", "1 Month", "3 Months", "1 Year", "Custom"] as
 type HorizonTab = (typeof HORIZON_TABS)[number];
 
 export default function TrajectoryPage() {
+  const router = useRouter();
   const queryClient = useQueryClient();
   const searchInputRef = useRef<HTMLInputElement>(null);
 
@@ -106,9 +113,9 @@ export default function TrajectoryPage() {
   const [newHabitGoalTitle, setNewHabitGoalTitle] = useState("");
   const [newHabitCategory, setNewHabitCategory] = useState("routine");
 
-  // Fetch Goals
+  // Fetch All Goals & Habits from Canonical Goal Engine
   const {
-    data: goals = [],
+    data: allGoals = [],
     isLoading: isGoalsLoading,
     refetch: refetchGoals,
   } = useQuery<TrajectoryGoal[]>({
@@ -121,20 +128,18 @@ export default function TrajectoryPage() {
     refetchInterval: 15000,
   });
 
-  // Fetch Habits
-  const {
-    data: habits = [],
-    isLoading: isHabitsLoading,
-    refetch: refetchHabits,
-  } = useQuery<TrajectoryHabit[]>({
-    queryKey: ["habits"],
-    queryFn: async () => {
-      const res = await fetch("/api/habits");
-      if (!res.ok) throw new Error("Failed to fetch habits");
-      return res.json();
-    },
-    refetchInterval: 15000,
-  });
+  // Partition into Strategic Deliverable Goals vs Continuous Supporting Habits
+  const deliverableGoals = useMemo(() => {
+    return allGoals.filter((g) => g.nature !== "habitual_cadence");
+  }, [allGoals]);
+
+  const habits = useMemo(() => {
+    const list = allGoals.filter((g) => g.nature === "habitual_cadence");
+    if (list.length > 0) return list;
+    const withSignals = allGoals.filter((g) => (g.signals || []).length > 0);
+    if (withSignals.length > 0) return withSignals;
+    return [] as TrajectoryGoal[];
+  }, [allGoals]);
 
   // Hotkey listener for ⌘F / Ctrl+F
   useEffect(() => {
@@ -155,7 +160,7 @@ export default function TrajectoryPage() {
 
   // Filter Goals based on Horizon & Search
   const filteredGoals = useMemo(() => {
-    return goals.filter((g) => {
+    return deliverableGoals.filter((g) => {
       // Horizon filter
       if (selectedHorizon !== "All Goals") {
         const h = (g.horizon || "").toLowerCase();
@@ -178,46 +183,33 @@ export default function TrajectoryPage() {
 
       return true;
     });
-  }, [goals, selectedHorizon, searchQuery]);
+  }, [deliverableGoals, selectedHorizon, searchQuery]);
 
-  // Habit Day Toggle Mutation
-  const toggleHabitMutation = useMutation({
-    mutationFn: async ({ habitId, date }: { habitId: string; date?: string }) => {
-      const res = await fetch(`/api/habits/${habitId}/toggle`, {
+  // Create Habit Mutation (Creates a canonical habitual_cadence Goal)
+  const createHabitMutation = useMutation({
+    mutationFn: async () => {
+      const res = await fetch("/api/goals/create", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ date }),
+        body: JSON.stringify({
+          title: newHabitTitle.trim(),
+          nature: "habitual_cadence",
+          cadence: newHabitFrequency.toLowerCase().includes("daily") ? "daily" : "weekly",
+          type: "identity",
+          signals: [
+            { key: "work.deepWorkHours", weight: 3 },
+            { key: "mental.energy", weight: 1 },
+          ],
+        }),
       });
-      if (!res.ok) throw new Error("Failed to toggle habit");
+      if (!res.ok) throw new Error("Failed to create habit");
       return res.json();
     },
-    onMutate: async ({ habitId, date }) => {
-      await queryClient.cancelQueries({ queryKey: ["habits"] });
-      const previousHabits = queryClient.getQueryData<TrajectoryHabit[]>(["habits"]);
-      if (previousHabits) {
-        queryClient.setQueryData<TrajectoryHabit[]>(
-          ["habits"],
-          previousHabits.map((h) => {
-            if (h.id !== habitId) return h;
-            const updatedRecent = h.recentDays.map((d) => {
-              if (date && d.date === date) {
-                return { ...d, completed: !d.completed };
-              }
-              return d;
-            });
-            return { ...h, recentDays: updatedRecent };
-          })
-        );
-      }
-      return { previousHabits };
-    },
-    onError: (_err, _vars, context) => {
-      if (context?.previousHabits) {
-        queryClient.setQueryData(["habits"], context.previousHabits);
-      }
-    },
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["habits"] });
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: queryKeys.goals() });
+      setIsAddHabitModalOpen(false);
+      setNewHabitTitle("");
+      setNewHabitFrequency("Daily");
     },
   });
 
@@ -259,31 +251,6 @@ export default function TrajectoryPage() {
         "Prototype delivery & local integration",
         "Validation & stress test deployment",
       ]);
-    },
-  });
-
-  // Create Habit Mutation
-  const createHabitMutation = useMutation({
-    mutationFn: async () => {
-      const res = await fetch("/api/habits", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          title: newHabitTitle.trim(),
-          frequency: newHabitFrequency,
-          supportingGoalTitle: newHabitGoalTitle ? `Supports ${newHabitGoalTitle}` : "General Cadence",
-          category: newHabitCategory,
-        }),
-      });
-      if (!res.ok) throw new Error("Failed to create habit");
-      return res.json();
-    },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["habits"] });
-      setIsAddHabitModalOpen(false);
-      setNewHabitTitle("");
-      setNewHabitFrequency("Daily");
-      setNewHabitGoalTitle("");
     },
   });
 
@@ -401,7 +368,7 @@ export default function TrajectoryPage() {
             </span>
           </div>
 
-          {isGoalsLoading && goals.length === 0 ? (
+          {isGoalsLoading && deliverableGoals.length === 0 ? (
             <div className="flex flex-col items-center justify-center p-12 bg-[#17171A] rounded-2xl border border-[#23242A]">
               <RefreshCw className="w-6 h-6 text-[#ffb86c] animate-spin mb-3" />
               <span className="text-xs text-[#C5C2BA]/70 font-mono">Synchronizing Trajectory Goals...</span>
@@ -528,11 +495,15 @@ export default function TrajectoryPage() {
 
           {/* 3-Column Habit Grid */}
           <div className="grid grid-cols-1 md:grid-cols-3 gap-3">
-            {habits.map((habit) => {
+            {habits.map((habit: any) => {
+              const days = habit.recent5Days || habit.recentDays || [];
+              const frequencyLabel = habit.cadence ? (habit.cadence === "daily" ? "Daily" : habit.cadence === "weekly" ? "Weekly" : "Flexible") : habit.frequency || "Daily";
+              const subtitle = habit.supportingGoalTitle || (habit.signals?.length ? `${habit.signals.length} tracked signals` : "Continuous Cadence");
               return (
                 <div
                   key={habit.id}
-                  className="p-3.5 rounded-xl bg-[#17171A] border border-[#23242A] hover:border-[#D98B2B]/40 transition-all flex flex-col justify-between gap-3 shadow-sm group"
+                  onClick={() => router.push(`/goals/${habit.id}`)}
+                  className="p-3.5 rounded-xl bg-[#17171A] border border-[#23242A] hover:border-[#ffb86c]/40 transition-all flex flex-col justify-between gap-3 shadow-sm group cursor-pointer"
                 >
                   <div className="flex items-start justify-between gap-2">
                     <div className="flex flex-col min-w-0 flex-1">
@@ -540,38 +511,34 @@ export default function TrajectoryPage() {
                         {habit.title}
                       </span>
                       <span className="text-[11px] text-[#C5C2BA]/60 mt-0.5 truncate">
-                        {habit.supportingGoalTitle || "General Focus"}
+                        {subtitle}
                       </span>
                     </div>
 
                     <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#111113] border border-[#23242A] text-[#C5C2BA] flex-shrink-0">
-                      {habit.frequency}
+                      {frequencyLabel}
                     </span>
                   </div>
 
-                  {/* Recent Activity Dot Trail (Interactive Toggle) */}
+                  {/* Recent Activity Dot Trail */}
                   <div className="flex items-center justify-between pt-1 border-t border-[#23242A]/50">
                     <span className="text-[10px] font-mono text-[#C5C2BA]/50">
                       Recent activity
                     </span>
 
-                    <div className="flex items-center gap-1.5">
-                      {habit.recentDays.map((day, idx) => {
-                        const isLatest = idx === habit.recentDays.length - 1;
+                    <div className="flex items-center gap-1.5" onClick={(e) => e.stopPropagation()}>
+                      {days.map((day: any, idx: number) => {
+                        const isLatest = idx === days.length - 1;
                         return (
-                          <button
+                          <div
                             key={day.date}
-                            type="button"
-                            title={`${day.date}: ${day.completed ? "Completed" : "Not completed"} (click to toggle)`}
-                            onClick={() =>
-                              toggleHabitMutation.mutate({ habitId: habit.id, date: day.date })
-                            }
-                            className={`w-2 h-2 rounded-full transition-all cursor-pointer hover:scale-125 ${
+                            title={`${day.date}: ${day.completed ? "Active" : "Inactive"}`}
+                            className={`w-2 h-2 rounded-full transition-all ${
                               day.completed
                                 ? "bg-emerald-400"
                                 : isLatest
                                 ? "bg-[#ffb86c]"
-                                : "bg-[#282930] hover:bg-[#3e404b]"
+                                : "bg-[#282930]"
                             }`}
                           />
                         );
@@ -804,7 +771,7 @@ export default function TrajectoryPage() {
                   className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3 py-2 text-xs text-[#F7F5F0] focus:ring-1 focus:ring-[#ffb86c] outline-none"
                 >
                   <option value="">-- Link to an active goal --</option>
-                  {goals.map((g) => (
+                  {deliverableGoals.map((g) => (
                     <option key={g.id} value={g.title}>
                       {g.title}
                     </option>
