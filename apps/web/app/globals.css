@@ -1,8 +1,10 @@
 @import "tailwindcss";
 
 :root {
-  --background: #ffffff;
-  --foreground: #171717;
+  --background: #111113;
+  --foreground: #F7F5F0;
+  --font-geist-sans: "Geist", -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-geist-mono: "JetBrains Mono", ui-monospace, monospace;
 }
 
 @theme inline {
@@ -11,32 +13,53 @@
   --font-sans: var(--font-geist-sans);
   --font-mono: var(--font-geist-mono);
 
-  --color-lifeos-dark-1: #161618;
-  --color-lifeos-dark-2: #1F2023;
-  --color-lifeos-dark-3: #2A2B2F;
+  /* LifeOS Warm Intelligence Primary Tokens */
+  --color-lifeos-smoked-obsidian: #111113;
+  --color-lifeos-card-basalt: #17171A;
+  --color-lifeos-elevated-basalt: #1E1F24;
+  --color-lifeos-border-hairline: #23242A;
+  --color-lifeos-border-interactive: #32343D;
+  --color-lifeos-parchment: #F7F5F0;
+  --color-lifeos-champagne-grey: #C5C2BA;
+  --color-lifeos-weathered-stone: #85827A;
+  --color-lifeos-radiant-amber: #D98B2B;
+  --color-lifeos-warm-champagne: #F5E6C8;
+  --color-lifeos-organic-sage: #6B8E7B;
+  --color-lifeos-destructive: #DE4343;
 
-  --color-lifeos-light-1: #F6F3F1;
-  --color-lifeos-light-2: #ECE7E3;
-  --color-lifeos-light-3: #FFFDFC;
+  /* Backward Compatible Legacy Variable Mapping */
+  --color-lifeos-dark-1: #111113;
+  --color-lifeos-dark-2: #17171A;
+  --color-lifeos-dark-3: #1E1F24;
 
-  --color-lifeos-red-1: #F9A8AC;
-  --color-lifeos-red-2: #F3767D;
-  --color-lifeos-red-3: #E8414A;
-  --color-lifeos-red-4: #D62C35;
-  --color-lifeos-red-5: #B42129;
+  --color-lifeos-light-1: #C5C2BA;
+  --color-lifeos-light-2: #F5E6C8;
+  --color-lifeos-light-3: #F7F5F0;
+
+  --color-lifeos-red-1: #F5E6C8;
+  --color-lifeos-red-2: #E59B3C;
+  --color-lifeos-red-3: #D98B2B;
+  --color-lifeos-red-4: #9E5F14;
+  --color-lifeos-red-5: #4E2C00;
 }
 
 @media (prefers-color-scheme: dark) {
   :root {
-    --background: #0a0a0a;
-    --foreground: #ededed;
+    --background: #111113;
+    --foreground: #F7F5F0;
   }
 }
 
 body {
-  background: var(--color-lifeos-dark-1);
-  color: var(--color-lifeos-light-3);
+  background: #111113;
+  color: #F7F5F0;
   font-family: var(--font-sans);
+  overflow-x: hidden;
+}
+
+::selection {
+  background: rgba(217, 139, 43, 0.25);
+  color: #F7F5F0;
 }
 
 /* Dark themed scrollbars - app wide */
@@ -62,4 +85,11 @@ body {
 textarea {
   scrollbar-width: thin;
   scrollbar-color: rgba(255,255,255,0.08) transparent;
+}
+
+/* Dynamic Ledge Notch Transparency */
+html:has(#dynamic-ledge-notch),
+body:has(#dynamic-ledge-notch) {
+  background: transparent !important;
+  overflow: hidden !important;
 }

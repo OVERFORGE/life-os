@@ -1,8 +1,15 @@
 "use client";
 
-import { Bell, Search, Command } from "lucide-react";
+import React, { useState, useEffect } from "react";
+import { Search, Command, Minus, Square, X } from "lucide-react";
 import { useSession } from "next-auth/react";
 import Link from "next/link";
+import {
+  minimizeWindow,
+  toggleMaximizeWindow,
+  closeWindow,
+  isWindowMaximized,
+} from "@/lib/desktopBridge";
 
 interface TopNavigationProps {
   isSidebarCollapsed?: boolean;
@@ -14,45 +21,123 @@ export function TopNavigation({
   onToggleSidebar,
 }: TopNavigationProps = {}) {
   const { data: session } = useSession();
+  const [isMaximized, setIsMaximized] = useState(false);
+
+  useEffect(() => {
+    let mounted = true;
+    const checkMax = async () => {
+      const max = await isWindowMaximized();
+      if (mounted) setIsMaximized(max);
+    };
+    checkMax();
+    const interval = setInterval(checkMax, 1500);
+    return () => {
+      mounted = false;
+      clearInterval(interval);
+    };
+  }, []);
+
+  const handleMinimize = async () => {
+    await minimizeWindow();
+  };
+
+  const handleMaximize = async () => {
+    await toggleMaximizeWindow();
+    const max = await isWindowMaximized();
+    setIsMaximized(max);
+  };
+
+  const handleClose = async () => {
+    await closeWindow();
+  };
+
+  const userName = session?.user?.name || "Arjun";
+  const userInitials =
+    userName
+      .split(" ")
+      .map((n) => n[0])
+      .join("")
+      .slice(0, 2)
+      .toUpperCase() || "AJ";
 
   return (
-    <header className="flex h-16 shrink-0 items-center justify-between px-6 bg-[#161618] border-b border-[#2A2B2F]">
-      
-      {/* Search / Command Palette Trigger */}
-      <div className="flex flex-1 items-center">
+    <header
+      className="flex h-11 w-full shrink-0 items-center justify-between px-4 bg-[#111113] border-b border-[#23242A]/80 select-none z-50"
+      style={{ WebkitAppRegion: "drag" } as React.CSSProperties}
+      onDoubleClick={handleMaximize}
+    >
+      {/* Left: LifeOS Studio Pill */}
+      <div className="flex items-center gap-3">
+        <div
+          className="flex items-center gap-2 px-3 py-1 rounded-full bg-[#17171A] border border-[#23242A] shadow-sm select-none"
+          style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+        >
+          <span className="w-2 h-2 rounded-full bg-[#D98B2B] shadow-[0_0_8px_rgba(217,139,43,0.9)]" />
+          <span className="text-xs font-semibold tracking-tight text-[#F7F5F0]">
+            LifeOS Studio
+          </span>
+        </div>
+      </div>
+
+      {/* Right: Search + Profile + Window Controls */}
+      <div
+        className="flex items-center gap-3"
+        style={{ WebkitAppRegion: "no-drag" } as React.CSSProperties}
+      >
+        {/* Search / Command Palette Trigger */}
         <button
           onClick={() => window.dispatchEvent(new CustomEvent("open-command-palette"))}
-          className="flex w-full max-w-md items-center gap-3 rounded-xl bg-[#1F2023] border border-[#2A2B2F] px-4 py-2.5 text-sm text-gray-400 transition-all duration-200 hover:bg-[#2A2B2F] group"
+          className="flex items-center gap-2.5 rounded-xl bg-[#17171A] border border-[#23242A] px-3.5 py-1.5 text-xs text-[#85827A] transition-all hover:bg-[#1E1F24] hover:border-[#32343D] hover:text-[#C5C2BA] group cursor-pointer"
+          title="Search commands, notes (⌘K)"
         >
-          <Search size={16} className="text-[#9ca3af] group-hover:text-gray-300 transition-colors" />
-          <span>Search or type a command...</span>
-          <div className="ml-auto flex items-center gap-1 rounded bg-[#2A2B2F] px-1.5 py-0.5 text-[10px] font-bold text-gray-400">
+          <Search size={13} className="text-[#85827A] group-hover:text-[#C5C2BA] transition-colors" />
+          <span className="hidden sm:inline text-xs text-[#85827A]">Search commands, notes...</span>
+          <div className="flex items-center gap-0.5 rounded bg-[#111113] border border-[#23242A] px-1.5 py-0.5 text-[10px] font-mono font-medium text-[#85827A]">
             <Command size={10} />
             <span>K</span>
           </div>
         </button>
-      </div>
 
-      {/* Actions */}
-      <div className="flex items-center gap-5">
-        <Link href="/notifications" className="relative p-2 text-gray-400 hover:text-gray-200 transition-colors block">
-          <Bell size={20} />
-          <span className="absolute right-1.5 top-1.5 h-2 w-2 rounded-full bg-[#E8414A] ring-2 ring-[#161618]"></span>
-        </Link>
-        
+        {/* User Profile Avatar with Online Sync Dot */}
         <Link
           href="/settings"
-          className="h-9 w-9 overflow-hidden rounded-full border border-[#2A2B2F] bg-[#1F2023] cursor-pointer hover:border-gray-500 transition-colors block"
-          title="Account Settings"
+          className="relative flex items-center justify-center w-7 h-7 rounded-full bg-[#D98B2B]/15 border border-[#D98B2B]/30 hover:border-[#D98B2B]/60 transition-all cursor-pointer group"
+          title={`Signed in as ${userName} (${session?.user?.email || "Local Vault"})`}
         >
-          {session?.user?.image ? (
-            <img src={session.user.image} alt="Profile" className="h-full w-full object-cover" />
-          ) : (
-            <img src="https://api.dicebear.com/7.x/avataaars/svg?seed=LifeOS" alt="Profile" className="h-full w-full object-cover" />
-          )}
+          <span className="text-[11px] font-semibold text-[#F5E6C8] font-mono">
+            {userInitials}
+          </span>
+          <span
+            className="absolute -bottom-0.5 -right-0.5 w-2 h-2 rounded-full bg-[#6B8E7B] border-2 border-[#111113] shadow-sm"
+            title="Vault Synchronized"
+          />
         </Link>
+
+        {/* Native Window Controls */}
+        <div className="flex items-center gap-0.5 ml-1">
+          <button
+            onClick={handleMinimize}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[#85827A] hover:text-[#F7F5F0] hover:bg-[#1E1F24] transition-colors cursor-pointer"
+            title="Minimize"
+          >
+            <Minus size={13} strokeWidth={2} />
+          </button>
+          <button
+            onClick={handleMaximize}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[#85827A] hover:text-[#F7F5F0] hover:bg-[#1E1F24] transition-colors cursor-pointer"
+            title="Maximize / Restore"
+          >
+            <Square size={11} strokeWidth={2} />
+          </button>
+          <button
+            onClick={handleClose}
+            className="w-7 h-7 rounded-lg flex items-center justify-center text-[#85827A] hover:text-[#DE4343] hover:bg-[#DE4343]/10 transition-colors cursor-pointer"
+            title="Close"
+          >
+            <X size={13} strokeWidth={2} />
+          </button>
+        </div>
       </div>
-      
     </header>
   );
 }

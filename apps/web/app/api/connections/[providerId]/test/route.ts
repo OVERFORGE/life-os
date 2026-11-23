@@ -230,7 +230,9 @@ export async function POST(req: NextRequest, props: RouteParams) {
         conn.preferences instanceof Map
           ? Object.fromEntries(conn.preferences)
           : (conn.preferences as any) || {};
-      const vaultPath = prefs.vaultPath || prefs.path || path.join(os.homedir(), "Documents", "Obsidian");
+      const getHome = () => (typeof os.homedir === "function" ? os.homedir() : "");
+      const defaultVault = path.resolve(getHome(), "Documents", "Obsidian");
+      const vaultPath = prefs.vaultPath || prefs.path || defaultVault;
 
       if (fs.existsSync(vaultPath)) {
         try {

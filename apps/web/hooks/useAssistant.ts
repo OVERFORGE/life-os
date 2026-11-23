@@ -1,13 +1,27 @@
-import { useKernelContext } from "@/providers/KernelProvider";
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
+import { KernelClient } from "@/lib/kernelClient";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useAssistant() {
-  const { modules, metadata, refreshModule } = useKernelContext();
+  const { data: session, status } = useSession();
+  const isAuthenticated = status === "authenticated" && Boolean((session?.user as any)?.id);
+
+  const query = useQuery({
+    queryKey: queryKeys.assistant(),
+    queryFn: () => KernelClient.getAssistantContext(),
+    enabled: isAuthenticated,
+  });
 
   return {
-    assistantContext: modules.assistant,
-    isLoading: metadata.loading.assistant,
-    error: metadata.errors.assistant,
-    lastUpdated: metadata.timestamps.assistant,
-    refresh: () => refreshModule("assistant"),
+    assistantContext: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error ? (query.error as Error).message : null,
+    lastUpdated: query.dataUpdatedAt || null,
+    refresh: async () => {
+      await query.refetch();
+    },
   };
 }

@@ -32,6 +32,9 @@ build
 # ============================================
 
 # Rust compiled output (very large — compiled at build time)
+target/
+**/target/
+tools/aven-wake-detector/target/
 apps/desktop/src-tauri/target/
 
 # Node.js binary bundled for sidecar (~70MB — downloaded by build script)

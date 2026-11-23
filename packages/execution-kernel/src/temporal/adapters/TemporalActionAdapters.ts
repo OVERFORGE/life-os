@@ -659,9 +659,9 @@ export class CancelOccurrenceAdapter implements IKernelActionAdapter {
           });
         } else if (occId.startsWith("proj_")) {
           // Materialize single cancelled instance from recurring series template
-          const parts = occId.split("_");
-          const seriesId = parts[1];
-          const dateOnly = parts[2] || (p.dateOnly || new Date().toISOString().split("T")[0]);
+          const lastUnderscore = occId.lastIndexOf("_");
+          const dateOnly = (lastUnderscore > 5 ? occId.slice(lastUnderscore + 1) : "") || (p.dateOnly || new Date().toISOString().split("T")[0]);
+          const seriesId = lastUnderscore > 5 ? occId.slice("proj_".length, lastUnderscore) : occId.replace("proj_", "");
           const series = await TemporalSeriesTemplate.findOne({ userId, seriesId });
           if (series) {
             title = series.title;

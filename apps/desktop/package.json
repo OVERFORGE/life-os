@@ -2,27 +2,17 @@
   "name": "desktop",
   "private": true,
   "version": "0.1.1",
-  "type": "module",
+  "main": "dist/main/index.js",
   "scripts": {
-    "dev": "tauri dev",
-    "build-desktop": "powershell.exe -ExecutionPolicy Bypass -File ../../scripts/build-desktop.ps1",
-    "build": "tsc && vite build",
-    "preview": "vite preview",
-    "tauri": "tauri"
+    "dev": "tsc -p tsconfig.main.json && electron .",
+    "build": "tsc -p tsconfig.main.json",
+    "package": "tsc -p tsconfig.main.json && electron-builder"
   },
-  "dependencies": {
-    "@tauri-apps/api": "^2",
-    "@tauri-apps/plugin-deep-link": "~2.4.9",
-    "@tauri-apps/plugin-opener": "^2",
-    "react": "^19.1.0",
-    "react-dom": "^19.1.0"
-  },
+  "dependencies": {},
   "devDependencies": {
-    "@tauri-apps/cli": "^2",
-    "@types/react": "^19.1.8",
-    "@types/react-dom": "^19.1.6",
-    "@vitejs/plugin-react": "^4.6.0",
-    "typescript": "~5.8.3",
-    "vite": "^7.0.4"
+    "@types/node": "^20.14.0",
+    "electron": "^45.4.1",
+    "electron-builder": "^26.18.0",
+    "typescript": "~5.8.3"
   }
 }

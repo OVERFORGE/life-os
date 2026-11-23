@@ -27,6 +27,18 @@ function getWeekDays(referenceDate: string): string[] {
   return days;
 }
 
+function getMonthDays(referenceDate: string): string[] {
+  const [y, m] = referenceDate.split("-").map(Number);
+  const lastDay = new Date(y, m, 0).getDate();
+  const days: string[] = [];
+  for (let d = 1; d <= lastDay; d++) {
+    const mo = String(m).padStart(2, "0");
+    const da = String(d).padStart(2, "0");
+    days.push(`${y}-${mo}-${da}`);
+  }
+  return days;
+}
+
 export async function GET(req: NextRequest) {
   try {
     const session = await getAuthSession();
@@ -56,27 +68,28 @@ export async function GET(req: NextRequest) {
 
     const { TemporalSeriesTemplate } = await import("@/server/db/models/TemporalSeriesTemplate");
 
-    // ─── WEEK OR AGENDA VIEW ───
-    if (view === "week" || view === "agenda") {
-      const weekDays = getWeekDays(dateOnly);
-      const startDate = weekDays[0];
-      const endDate = weekDays[6];
+    // ─── WEEK, AGENDA, OR MONTH VIEW ───
+    if (view === "week" || view === "agenda" || view === "month") {
+      const targetDays = view === "month" ? getMonthDays(dateOnly) : getWeekDays(dateOnly);
+      const startDate = targetDays[0];
+      const endDate = targetDays[targetDays.length - 1];
 
-      const weekStartMs = new Date(`${startDate}T00:00:00Z`).getTime() - 6 * 3600 * 1000;
-      const weekEndMs = new Date(`${endDate}T23:59:59Z`).getTime() + 6 * 3600 * 1000;
+      const rangeStartMs = new Date(`${startDate}T00:00:00Z`).getTime() - 6 * 3600 * 1000;
+      const rangeEndMs = new Date(`${endDate}T23:59:59Z`).getTime() + 6 * 3600 * 1000;
 
       const [allOccurrences, allChronicles, allTasks, activeSeries] = await Promise.all([
         TemporalOccurrence.find({
           userId,
-          dateOnly: { $in: weekDays },
+          dateOnly: { $in: targetDays },
+          status: { $ne: "CANCELLED" },
         }).lean(),
         ExecutionChronicle.find({
           userId,
-          startedAtMs: { $gte: weekStartMs, $lte: weekEndMs },
+          startedAtMs: { $gte: rangeStartMs, $lte: rangeEndMs },
         }).lean(),
         Task.find({
           userId,
-          dueDate: { $in: weekDays },
+          dueDate: { $in: targetDays },
           status: { $ne: "skipped" },
         }).lean(),
         TemporalSeriesTemplate.find({
@@ -94,7 +107,7 @@ export async function GET(req: NextRequest) {
         dueTime?: string | null;
       }> = [];
 
-      const daysProjections = weekDays.map((day) => {
+      const daysProjections = targetDays.map((day) => {
         const dayOccurrences = allOccurrences.filter((o: any) => o.dateOnly === day);
         const dayStartMs = new Date(`${day}T00:00:00Z`).getTime() - 6 * 3600 * 1000;
         const dayEndMs = new Date(`${day}T23:59:59Z`).getTime() + 6 * 3600 * 1000;
@@ -205,10 +218,19 @@ export async function GET(req: NextRequest) {
           }
         }
 
+        const seenKeys = new Set<string>();
+        const dedupedOccurrences = effectiveOccurrences.filter((occ: any) => {
+          if (occ.status === "CANCELLED") return false;
+          const key = `${(occ.title || "").trim().toLowerCase()}_${occ.dateOnly}_${occ.plannedInterval?.startMinute}`;
+          if (seenKeys.has(key)) return false;
+          seenKeys.add(key);
+          return true;
+        });
+
         return engine.projectDayTimeline(
           userId,
           day,
-          effectiveOccurrences as any,
+          dedupedOccurrences as any,
           dayChronicles as any,
           timezone
         );
@@ -227,6 +249,7 @@ export async function GET(req: NextRequest) {
     const occurrences = await TemporalOccurrence.find({
       userId,
       dateOnly,
+      status: { $ne: "CANCELLED" },
     }).lean();
 
     const dayStartMs = new Date(`${dateOnly}T00:00:00Z`).getTime() - 6 * 3600 * 1000;
@@ -361,10 +384,19 @@ export async function GET(req: NextRequest) {
       }
     }
 
+    const seenKeys = new Set<string>();
+    const dedupedOccurrences = effectiveOccurrences.filter((occ: any) => {
+      if (occ.status === "CANCELLED") return false;
+      const key = `${(occ.title || "").trim().toLowerCase()}_${occ.dateOnly}_${occ.plannedInterval?.startMinute}`;
+      if (seenKeys.has(key)) return false;
+      seenKeys.add(key);
+      return true;
+    });
+
     const projection = engine.projectDayTimeline(
       userId,
       dateOnly,
-      effectiveOccurrences as any,
+      dedupedOccurrences as any,
       chronicles as any,
       timezone
     );

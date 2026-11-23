@@ -20,7 +20,7 @@ export default function SplashScreen() {
 
         const initialUrl = await Linking.getInitialURL();
         if (initialUrl && initialUrl.includes('aven-transient')) {
-          router.replace('/aven-transient?mode=voice');
+          router.replace('/aven-transient?mode=voice' as any);
           return;
         }
         if (initialUrl && initialUrl.includes('chat-modal')) {

@@ -38,7 +38,13 @@ export default function AmbientSettingsPage() {
   useEffect(() => {
     try {
       const savedWake = localStorage.getItem("lifeos_ambient_wakeword");
-      if (savedWake !== null) setWakeWordEnabled(savedWake === "true");
+      const isWakeEnabled = savedWake === "true";
+      setWakeWordEnabled(isWakeEnabled);
+      if (isWakeEnabled) {
+        import("@/lib/desktopBridge").then(({ startWakeWord }) => startWakeWord());
+      } else {
+        import("@/lib/desktopBridge").then(({ stopWakeWord }) => stopWakeWord());
+      }
 
       const savedNotifs = localStorage.getItem("lifeos_ambient_notifs");
       if (savedNotifs !== null) setNotificationsEnabled(savedNotifs === "true");
@@ -56,6 +62,20 @@ export default function AmbientSettingsPage() {
     try {
       localStorage.setItem(key, String(value));
     } catch {}
+  };
+
+  const handleWakeWordToggle = async (enabled: boolean) => {
+    saveSetting("lifeos_ambient_wakeword", enabled, setWakeWordEnabled);
+    try {
+      const { startWakeWord, stopWakeWord } = await import("@/lib/desktopBridge");
+      if (enabled) {
+        await startWakeWord();
+      } else {
+        await stopWakeWord();
+      }
+    } catch (err) {
+      console.warn("[AmbientSettings] Wake word toggle bridge error:", err);
+    }
   };
 
   const toggleNotifications = async (enabled: boolean) => {
@@ -206,7 +226,7 @@ export default function AmbientSettingsPage() {
             <input
               type="checkbox"
               checked={wakeWordEnabled}
-              onChange={(e) => saveSetting("lifeos_ambient_wakeword", e.target.checked, setWakeWordEnabled)}
+              onChange={(e) => handleWakeWordToggle(e.target.checked)}
               className="sr-only peer"
             />
             <div className="w-11 h-6 bg-[#2A2B2F] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#E8414A]"></div>

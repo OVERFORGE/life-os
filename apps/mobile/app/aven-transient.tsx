@@ -308,7 +308,7 @@ export default function AvenTransientModal(props: AvenTransientProps) {
 
       const started = await voiceRecorderRef.current.startRecording(
         async (uri) => {
-          if (!isActiveRef.current || isCancelledRef.current) return;
+          if (!isActiveRef.current || isCancelledRef.current || !uri) return;
           await handleVoiceCaptured(uri);
         },
         {
@@ -609,7 +609,7 @@ export default function AvenTransientModal(props: AvenTransientProps) {
 
   return (
     <View style={styles.scrimContainer}>
-      <StatusBar style="light" translucent backgroundColor="transparent" />
+      <StatusBar style="light" />
 
       {/* Dismissal Backdrop Tap Area */}
       <TouchableOpacity

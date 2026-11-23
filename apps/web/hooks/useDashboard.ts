@@ -1,13 +1,27 @@
-import { useKernelContext } from "@/providers/KernelProvider";
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
+import { KernelClient } from "@/lib/kernelClient";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useDashboard() {
-  const { modules, metadata, refreshModule } = useKernelContext();
+  const { data: session, status } = useSession();
+  const isAuthenticated = status === "authenticated" && Boolean((session?.user as any)?.id);
+
+  const query = useQuery({
+    queryKey: queryKeys.dashboard(),
+    queryFn: () => KernelClient.getDashboard(),
+    enabled: isAuthenticated,
+  });
 
   return {
-    dashboard: modules.dashboard,
-    isLoading: metadata.loading.dashboard,
-    error: metadata.errors.dashboard,
-    lastUpdated: metadata.timestamps.dashboard,
-    refresh: () => refreshModule("dashboard"),
+    dashboard: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error ? (query.error as Error).message : null,
+    lastUpdated: query.dataUpdatedAt || null,
+    refresh: async () => {
+      await query.refetch();
+    },
   };
 }

@@ -114,12 +114,13 @@ export async function createTask(
     dueDate,
     dueTime: input.dueTime || null,
     priority: input.priority || "medium",
-    status: "pending",
+    status: (input as any).status || "pending",
     recurring: input.recurring || null,
     goalId: input.goalId || null,
     parentTaskId: input.parentTaskId || null,
     reminders: input.reminders || [],
     metadata: input.metadata || {},
+    subtasks: (input as any).subtasks || [],
   };
 
   const eventDraft: OutboxEventDraft = {
@@ -162,6 +163,13 @@ export async function createTask(
 /* updateTask                                                  */
 /* ─────────────────────────────────────────────────────────── */
 
+function getUserIdMatcher(userId: any) {
+  if (mongoose.Types.ObjectId.isValid(userId)) {
+    return { $in: [userId, new mongoose.Types.ObjectId(userId), String(userId)] };
+  }
+  return userId;
+}
+
 export async function updateTask(
   userId: string,
   taskId: string,
@@ -169,7 +177,7 @@ export async function updateTask(
   taskModel: any = Task,
   outboxService: OutboxStorageService = OutboxStorageService.getInstance()
 ) {
-  const task = await taskModel.findOne({ _id: taskId, userId });
+  const task = await taskModel.findOne({ _id: taskId, userId: getUserIdMatcher(userId) });
   if (!task) return { success: false, error: "Task not found" };
 
   const currentVersion = typeof task.version === "number" ? task.version : 0;
@@ -189,6 +197,8 @@ export async function updateTask(
   if (updates.goalId !== undefined) domainUpdates.goalId = updates.goalId;
   if (updates.metadata !== undefined) domainUpdates.metadata = { ...task.metadata, ...updates.metadata };
   if (updates.reminders !== undefined) domainUpdates.reminders = updates.reminders;
+  if ((updates as any).status !== undefined) domainUpdates.status = (updates as any).status;
+  if ((updates as any).subtasks !== undefined) domainUpdates.subtasks = (updates as any).subtasks;
 
   const eventDraft: OutboxEventDraft = {
     userId: String(userId),
@@ -236,7 +246,7 @@ export async function deleteTask(
   taskModel: any = Task,
   outboxService: OutboxStorageService = OutboxStorageService.getInstance()
 ) {
-  const task = await taskModel.findOne({ _id: taskId, userId });
+  const task = await taskModel.findOne({ _id: taskId, userId: getUserIdMatcher(userId) });
   if (!task) return { success: false, error: "Task not found" };
 
   const currentVersion = typeof task.version === "number" ? task.version : 0;
@@ -330,7 +340,7 @@ export async function completeTask(
   taskModel: any = Task,
   outboxService: OutboxStorageService = OutboxStorageService.getInstance()
 ) {
-  const task = await taskModel.findOne({ _id: taskId, userId });
+  const task = await taskModel.findOne({ _id: taskId, userId: getUserIdMatcher(userId) });
   if (!task) return { success: false, error: "Task not found" };
 
   const recurringSeriesId = task.recurringParentId || task._id;
@@ -565,7 +575,7 @@ export async function uncompleteTask(
   taskModel: any = Task,
   outboxService: OutboxStorageService = OutboxStorageService.getInstance()
 ) {
-  const task = await taskModel.findOne({ _id: taskId, userId });
+  const task = await taskModel.findOne({ _id: taskId, userId: getUserIdMatcher(userId) });
   if (!task) return { success: false, error: "Task not found" };
 
   if (task.status !== "completed") return { success: true, task };
@@ -626,7 +636,7 @@ export async function skipTask(
   taskModel: any = Task,
   outboxService: OutboxStorageService = OutboxStorageService.getInstance()
 ) {
-  const task = await taskModel.findOne({ _id: taskId, userId });
+  const task = await taskModel.findOne({ _id: taskId, userId: getUserIdMatcher(userId) });
   if (!task) return { success: false, error: "Task not found" };
 
   if (task.status === "skipped") return { success: true, task };

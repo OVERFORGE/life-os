@@ -1,13 +1,27 @@
-import { useKernelContext } from "@/providers/KernelProvider";
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
+import { KernelClient } from "@/lib/kernelClient";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useInsights() {
-  const { modules, metadata, refreshModule } = useKernelContext();
+  const { data: session, status } = useSession();
+  const isAuthenticated = status === "authenticated" && Boolean((session?.user as any)?.id);
+
+  const query = useQuery({
+    queryKey: queryKeys.insights(),
+    queryFn: () => KernelClient.getInsights(),
+    enabled: isAuthenticated,
+  });
 
   return {
-    insights: modules.insights,
-    isLoading: metadata.loading.insights,
-    error: metadata.errors.insights,
-    lastUpdated: metadata.timestamps.insights,
-    refresh: () => refreshModule("insights"),
+    insights: query.data ?? null,
+    isLoading: query.isLoading,
+    error: query.error ? (query.error as Error).message : null,
+    lastUpdated: query.dataUpdatedAt || null,
+    refresh: async () => {
+      await query.refetch();
+    },
   };
 }

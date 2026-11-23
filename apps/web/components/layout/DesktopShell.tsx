@@ -3,6 +3,7 @@
 import { ReactNode, useEffect, useState } from "react";
 import { Sidebar } from "./Sidebar";
 import { TopNavigation } from "./TopNavigation";
+import { OfflineBanner } from "./OfflineBanner";
 import { CommandPalette } from "../ui/CommandPalette";
 import { AmbientActiveExecutionBanner } from "@/components/surface/AmbientActiveExecutionBanner";
 import { usePathname, useRouter } from "next/navigation";
@@ -65,47 +66,56 @@ export function DesktopShell({ children }: { children: ReactNode }) {
     }
   }, [status, session, isPublic, router]);
 
-  // On the landing page, login page, or internal admin console, bypass consumer shell
-  if (isPublic || pathname.startsWith("/admin")) {
+  // For Desktop HUD overlay, ensure 100% transparent background for Dynamic Ledge notch
+  if (pathname === "/hud") {
     return (
-      <div className="flex flex-col min-h-screen bg-[#09090B] text-gray-100">
+      <div className="w-screen h-screen bg-transparent overflow-hidden select-none">
         {children}
       </div>
     );
   }
 
-  // While session is loading on a protected route, show nothing to avoid flicker
+  // On the landing page, login page, or internal admin console, bypass consumer shell
+  if (isPublic || pathname.startsWith("/admin")) {
+    return (
+      <div className="flex flex-col min-h-screen bg-[#111113] text-[#F7F5F0]">
+        {children}
+      </div>
+    );
+  }
+
+  // While session is loading on a protected route, show dark canvas to avoid flicker
   if (status === "loading" || status === "unauthenticated") {
-    return <div className="h-screen w-full bg-[#0A0A0B]" />;
+    return <div className="h-screen w-full bg-[#111113]" />;
   }
 
   return (
-    <div className="flex h-screen overflow-hidden bg-[#0A0A0B] p-3 text-gray-100 selection:bg-[#E8414A] selection:text-white font-[var(--font-regular)]">
+    <div className="flex flex-col h-screen overflow-hidden bg-[#111113] text-[#F7F5F0] selection:bg-[#D98B2B]/30 selection:text-[#F7F5F0] font-sans">
       
-      {/* Left Sidebar - Native Dark */}
-      <div
-        className={`rounded-2xl overflow-hidden border border-[#2A2B2F] bg-[#161618] shadow-sm transition-all duration-300 ease-in-out shrink-0 ${
-          isSidebarCollapsed ? "w-[68px]" : "w-[260px]"
-        }`}
-      >
+      {/* 1. Full-Width Top Horizon Bar (Acts as the Native Electron Window Top Bar) */}
+      <TopNavigation
+        isSidebarCollapsed={isSidebarCollapsed}
+        onToggleSidebar={toggleSidebar}
+      />
+
+      <OfflineBanner />
+
+      {/* 2. Master Viewport Body (Floating Left Rail + Main Content Canvas) */}
+      <div className="flex flex-1 min-h-0 px-3 pb-3 gap-3 overflow-hidden pt-2">
+        {/* Floating Left Dock */}
         <Sidebar
           isCollapsed={isSidebarCollapsed}
           onToggleCollapse={toggleSidebar}
         />
-      </div>
 
-      {/* Main Content Area */}
-      <div className="flex flex-col flex-1 min-w-0 bg-[#161618] relative rounded-2xl overflow-hidden border border-[#2A2B2F] shadow-sm ml-3">
-        <TopNavigation
-          isSidebarCollapsed={isSidebarCollapsed}
-          onToggleSidebar={toggleSidebar}
-        />
-        
-        <main className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth">
-          <div className="mx-auto max-w-7xl h-full">
-            {children}
-          </div>
-        </main>
+        {/* Floating Main Content Workspace Canvas */}
+        <div className="flex flex-col flex-1 min-w-0 bg-[#111113] relative rounded-2xl overflow-hidden border border-[#23242A] shadow-2xl">
+          <main className="flex-1 overflow-y-auto overflow-x-hidden relative scroll-smooth bg-[#111113]">
+            <div className="h-full">
+              {children}
+            </div>
+          </main>
+        </div>
       </div>
       
       {/* Global Modals & Ambient Interaction Layer */}
@@ -115,4 +125,3 @@ export function DesktopShell({ children }: { children: ReactNode }) {
     </div>
   );
 }
-

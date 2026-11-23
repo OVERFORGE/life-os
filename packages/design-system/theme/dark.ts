@@ -3,25 +3,25 @@ import { palette } from '../tokens/colors';
 export const darkTheme = {
   colors: {
     background: {
-      base: palette.neutral[900], // #161618
-      deep: palette.neutral[900],
-      shell: palette.neutral[900], // #161618
-      workspace: palette.neutral[800], // #1F2023
-      card: palette.neutral[800], // #1F2023
-      elevated: palette.neutral[700], // #2A2B2F
+      base: palette.neutral[900], // #111113 (Smoked Obsidian)
+      deep: palette.neutral[950], // #0B0B0C (Deep Void)
+      shell: palette.neutral[900], // #111113
+      workspace: palette.neutral[900], // #111113
+      card: palette.neutral[800], // #17171A (Card Basalt)
+      elevated: palette.neutral[700], // #1E1F24 (Elevated Basalt)
       highlight: palette.alpha.white5,
     },
     text: {
-      primary: palette.neutral[50], // #FFFDFC
-      secondary: palette.neutral[100], // #ECE7E3
-      muted: palette.neutral[400], // #9BA1A6
+      primary: palette.neutral[50], // #F7F5F0 (Parchment White)
+      secondary: palette.neutral[200], // #C5C2BA (Champagne Grey)
+      muted: palette.neutral[400], // #85827A (Weathered Stone)
     },
     brand: {
-      primary: palette.primary[500], // #E8414A
-      dark: palette.primary[700], // #D62C35
-      deep: palette.primary[900], // #B42129
-      light: palette.primary[400],
-      lighter: palette.primary[300],
+      primary: palette.primary[500], // #D98B2B (Radiant Amber)
+      dark: palette.primary[700], // #9E5F14
+      deep: palette.primary[900], // #4E2C00
+      light: palette.primary[400], // #E59B3C
+      lighter: palette.primary[300], // #F5E6C8 (Warm Champagne)
     },
     status: {
       error: palette.status.error,
@@ -29,9 +29,10 @@ export const darkTheme = {
       success: palette.status.success,
     },
     border: {
-      default: palette.neutral[700], // #2A2B2F instead of alpha whites
-      active: palette.primary[700], // #D62C35 (subtle red)
-      highlight: palette.primary[500], // #E8414A (brand red)
+      default: palette.neutral[600], // #23242A (Subtle hairline)
+      active: palette.primary[500], // #D98B2B (Radiant Amber)
+      highlight: palette.primary[300], // #F5E6C8 (Champagne)
+      interactive: palette.neutral[500], // #32343D
     }
   }
 } as const;

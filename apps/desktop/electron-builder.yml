@@ -1,0 +1,18 @@
+appId: com.lifeos.desktop
+productName: LifeOS
+directories:
+  output: release
+  buildResources: build
+files:
+  - dist/**/*
+  - node_modules/**/*
+  - package.json
+extraResources:
+  - from: ../../tools/aven-wake-detector/target/debug/aven-wake-detector.exe
+    to: bin/aven-wake-detector.exe
+win:
+  target: nsis
+nsis:
+  oneClick: false
+  allowToChangeInstallationDirectory: true
+

@@ -7,6 +7,7 @@ import type {
   SurfaceActionType,
 } from "@life-os/execution-kernel";
 import { useSession } from "next-auth/react";
+import { updateTrayStatus } from "@/lib/desktopBridge";
 
 function computeClientActionIdempotencyKey(
   userId: string,
@@ -42,29 +43,20 @@ export function useInteractionSurface() {
 
   const eventSourceRef = useRef<EventSource | null>(null);
 
-  // Sync state to native Desktop System Tray if running under Tauri
+  // Sync state to native Desktop System Tray if running under desktop runtime
   useEffect(() => {
-    if (typeof window !== "undefined" && ("__TAURI_INTERNALS__" in window || "__TAURI__" in window)) {
-      try {
-        const invoke = (window as unknown as { __TAURI__?: { core?: { invoke: (cmd: string, args: Record<string, unknown>) => Promise<void> } } }).__TAURI__?.core?.invoke;
-        if (invoke) {
-          if (projection?.activeExecution) {
-            const exec = projection.activeExecution;
-            const remainingMins = Math.max(0, Math.ceil(exec.remainingSeconds / 60));
-            invoke("update_tray_status", {
-              title: exec.title,
-              tooltip: `LifeOS — Active: ${exec.title} (${remainingMins}m left)`
-            }).catch(() => {});
-          } else {
-            invoke("update_tray_status", {
-              title: "LifeOS",
-              tooltip: "LifeOS: Calm"
-            }).catch(() => {});
-          }
-        }
-      } catch {
-        // Native Tauri bridge not available in browser runtime
-      }
+    if (projection?.activeExecution) {
+      const exec = projection.activeExecution;
+      const remainingMins = Math.max(0, Math.ceil(exec.remainingSeconds / 60));
+      updateTrayStatus({
+        title: exec.title,
+        tooltip: `LifeOS — Active: ${exec.title} (${remainingMins}m left)`
+      });
+    } else {
+      updateTrayStatus({
+        title: "LifeOS",
+        tooltip: "LifeOS: Calm"
+      });
     }
   }, [projection]);
 
@@ -137,6 +129,12 @@ export function useInteractionSurface() {
         entityId,
         seed
       );
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        setSyncStatus("OFFLINE");
+        setErrorMessage("Offline: LifeOS is in read-only mode to prevent state conflict.");
+        return null;
+      }
 
       const envelope: ISurfaceActionEnvelope<T> = {
         sourceSurface: "WEB_STICKY_BAR",

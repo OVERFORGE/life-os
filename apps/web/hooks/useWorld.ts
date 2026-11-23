@@ -1,8 +1,21 @@
-import { useKernelContext } from "@/providers/KernelProvider";
+"use client";
+
+import { useQuery } from "@tanstack/react-query";
+import { useSession } from "next-auth/react";
+import { KernelClient } from "@/lib/kernelClient";
+import { queryKeys } from "@/lib/queryKeys";
 
 export function useWorld() {
-  const { modules, metadata, refreshModule } = useKernelContext();
-  const world = modules.world;
+  const { data: session, status } = useSession();
+  const isAuthenticated = status === "authenticated" && Boolean((session?.user as any)?.id);
+
+  const query = useQuery({
+    queryKey: queryKeys.world(),
+    queryFn: () => KernelClient.getWorld(),
+    enabled: isAuthenticated,
+  });
+
+  const world = query.data ?? null;
 
   return {
     world,
@@ -11,9 +24,11 @@ export function useWorld() {
     trends: world?.trends || [],
     projectStates: world?.projectStates || [],
     insights: world?.insights || [],
-    isLoading: metadata.loading.world,
-    error: metadata.errors.world,
-    lastUpdated: metadata.timestamps.world,
-    refresh: () => refreshModule("world"),
+    isLoading: query.isLoading,
+    error: query.error ? (query.error as Error).message : null,
+    lastUpdated: query.dataUpdatedAt || null,
+    refresh: async () => {
+      await query.refetch();
+    },
   };
 }

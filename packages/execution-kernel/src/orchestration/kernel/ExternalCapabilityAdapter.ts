@@ -2376,7 +2376,12 @@ ${bodyText.slice(0, 4000)}`;
       case "productivity.storage.list_files": {
         const fs = require("fs");
         const path = require("path");
-        const os = require("os");
+        const getLocalUserPath = (...parts: string[]) => {
+          const getBase = () => {
+            try { return require("os").homedir(); } catch { return ""; }
+          };
+          return path.resolve(getBase(), ...parts);
+        };
 
         // 1. Google Drive provider dispatch
         if (providerId === "google_drive") {
@@ -2461,10 +2466,10 @@ ${bodyText.slice(0, 4000)}`;
           const vaultPath = (userConn.preferences as any)?.vaultPath || (userConn.preferences as any)?.path;
           const candidatePaths = [
             vaultPath,
-            path.join(os.homedir(), "Documents", "Obsidian"),
-            path.join(os.homedir(), "Obsidian"),
-            path.join(os.homedir(), "Documents", "Obsidian Vault"),
-            path.join(os.homedir(), "Desktop", "Obsidian"),
+            getLocalUserPath("Documents", "Obsidian"),
+            getLocalUserPath("Obsidian"),
+            getLocalUserPath("Documents", "Obsidian Vault"),
+            getLocalUserPath("Desktop", "Obsidian"),
           ].filter(Boolean);
 
           let resolvedVaultDir = candidatePaths.find((p: string) => fs.existsSync(p));
@@ -2568,15 +2573,14 @@ ${bodyText.slice(0, 4000)}`;
         // Resolve candidate directories on the local machine
         let targetDirs: string[] = [];
         if (reqPath.toLowerCase() === "desktop") {
-          const home = os.homedir();
-          const p1 = path.join(home, "Desktop");
-          const p2 = path.join(home, "OneDrive", "Desktop");
+          const p1 = getLocalUserPath("Desktop");
+          const p2 = getLocalUserPath("OneDrive", "Desktop");
           if (fs.existsSync(p2)) targetDirs.push(p2);
           if (fs.existsSync(p1) && !targetDirs.includes(p1)) targetDirs.push(p1);
         } else if (reqPath.toLowerCase() === "downloads") {
-          targetDirs.push(path.join(os.homedir(), "Downloads"));
+          targetDirs.push(getLocalUserPath("Downloads"));
         } else if (reqPath.toLowerCase() === "documents") {
-          targetDirs.push(path.join(os.homedir(), "Documents"));
+          targetDirs.push(getLocalUserPath("Documents"));
         } else if (reqPath.length === 2 && reqPath[1] === ":") {
           targetDirs.push(`${reqPath.toUpperCase()}\\`);
         } else if (reqPath.toLowerCase().endsWith(" drive") && reqPath.length >= 7) {
@@ -2649,7 +2653,12 @@ ${bodyText.slice(0, 4000)}`;
       case "productivity.storage.write_file": {
         const fs = require("fs");
         const path = require("path");
-        const os = require("os");
+        const getLocalUserPath = (...parts: string[]) => {
+          const getBase = () => {
+            try { return require("os").homedir(); } catch { return ""; }
+          };
+          return path.resolve(getBase(), ...parts);
+        };
 
         const rawPath = String(parameters?.path || "Desktop/untitled.txt").trim();
         const content = typeof parameters?.content === "string" ? parameters.content : String(parameters?.content || "");
@@ -2657,7 +2666,7 @@ ${bodyText.slice(0, 4000)}`;
         // 1. Obsidian Vault write
         if (providerId === "obsidian_vault") {
           const userConn = await this.getProviderConnection(userId, "obsidian_vault");
-          const vaultPath = (userConn.preferences as any)?.vaultPath || path.join(os.homedir(), "Documents", "Obsidian");
+          const vaultPath = (userConn.preferences as any)?.vaultPath || getLocalUserPath("Documents", "Obsidian");
           if (!fs.existsSync(vaultPath)) fs.mkdirSync(vaultPath, { recursive: true });
           const baseName = path.basename(rawPath);
           const fileName = baseName.toLowerCase().endsWith(".md") ? baseName : `${baseName}.md`;
@@ -2691,7 +2700,6 @@ ${bodyText.slice(0, 4000)}`;
         }
 
         // 3. Local Filesystem write
-        const home = os.homedir();
         let targetFilePath = "";
 
         if (path.isAbsolute(rawPath) || /^[a-zA-Z]:[\\/]/.test(rawPath)) {
@@ -2702,20 +2710,20 @@ ${bodyText.slice(0, 4000)}`;
 
           if (lower.startsWith("desktop/") || lower === "desktop") {
             const sub = normalized.slice("desktop".length).replace(/^\/+/, "") || "untitled.txt";
-            const pOneDrive = path.join(home, "OneDrive", "Desktop");
-            const pDesktop = path.join(home, "Desktop");
+            const pOneDrive = getLocalUserPath("OneDrive", "Desktop");
+            const pDesktop = getLocalUserPath("Desktop");
             const baseDir = fs.existsSync(pOneDrive) ? pOneDrive : pDesktop;
             targetFilePath = path.join(baseDir, sub);
           } else if (lower.startsWith("downloads/") || lower === "downloads") {
             const sub = normalized.slice("downloads".length).replace(/^\/+/, "") || "untitled.txt";
-            targetFilePath = path.join(home, "Downloads", sub);
+            targetFilePath = getLocalUserPath("Downloads", sub);
           } else if (lower.startsWith("documents/") || lower === "documents") {
             const sub = normalized.slice("documents".length).replace(/^\/+/, "") || "untitled.txt";
-            targetFilePath = path.join(home, "Documents", sub);
+            targetFilePath = getLocalUserPath("Documents", sub);
           } else {
             // Default to Desktop if relative path with file name (e.g. "palindrome.py")
-            const pOneDrive = path.join(home, "OneDrive", "Desktop");
-            const pDesktop = path.join(home, "Desktop");
+            const pOneDrive = getLocalUserPath("OneDrive", "Desktop");
+            const pDesktop = getLocalUserPath("Desktop");
             const baseDir = fs.existsSync(pOneDrive) ? pOneDrive : pDesktop;
             targetFilePath = path.join(baseDir, rawPath);
           }
@@ -2740,7 +2748,12 @@ ${bodyText.slice(0, 4000)}`;
       case "productivity.storage.read_file": {
         const fs = require("fs");
         const path = require("path");
-        const os = require("os");
+        const getLocalUserPath = (...parts: string[]) => {
+          const getBase = () => {
+            try { return require("os").homedir(); } catch { return ""; }
+          };
+          return path.resolve(getBase(), ...parts);
+        };
         const rawPath = String(parameters?.path || "").trim();
 
         const extractPdfText = async (buffer: Buffer): Promise<string> => {
@@ -2904,7 +2917,7 @@ Instructions:
         // 2. Obsidian Vault read
         if (providerId === "obsidian_vault") {
           const userConn = await this.getProviderConnection(userId, "obsidian_vault");
-          const vaultPath = (userConn.preferences as any)?.vaultPath || path.join(os.homedir(), "Documents", "Obsidian");
+          const vaultPath = (userConn.preferences as any)?.vaultPath || getLocalUserPath("Documents", "Obsidian");
           const baseName = path.basename(rawPath);
           const fileName = baseName.toLowerCase().endsWith(".md") ? baseName : `${baseName}.md`;
           const targetPath = path.join(vaultPath, fileName);
@@ -2933,7 +2946,6 @@ Instructions:
           throw new Error("Notion page reading requires full API integration. Please ensure Notion is properly connected.");
         }
 
-        const home = os.homedir();
         let targetFilePath = "";
 
         if (path.isAbsolute(rawPath) || /^[a-zA-Z]:[\\/]/.test(rawPath)) {
@@ -2943,19 +2955,19 @@ Instructions:
           const lower = normalized.toLowerCase();
           if (lower.startsWith("desktop/") || lower === "desktop") {
             const sub = normalized.slice("desktop".length).replace(/^\/+/, "");
-            const pOneDrive = path.join(home, "OneDrive", "Desktop");
-            const pDesktop = path.join(home, "Desktop");
+            const pOneDrive = getLocalUserPath("OneDrive", "Desktop");
+            const pDesktop = getLocalUserPath("Desktop");
             const baseDir = fs.existsSync(pOneDrive) ? pOneDrive : pDesktop;
             targetFilePath = sub ? path.join(baseDir, sub) : baseDir;
           } else if (lower.startsWith("downloads/")) {
             const sub = normalized.slice("downloads".length).replace(/^\/+/, "");
-            targetFilePath = path.join(home, "Downloads", sub);
+            targetFilePath = getLocalUserPath("Downloads", sub);
           } else if (lower.startsWith("documents/")) {
             const sub = normalized.slice("documents".length).replace(/^\/+/, "");
-            targetFilePath = path.join(home, "Documents", sub);
+            targetFilePath = getLocalUserPath("Documents", sub);
           } else {
-            const pOneDrive = path.join(home, "OneDrive", "Desktop", rawPath);
-            const pDesktop = path.join(home, "Desktop", rawPath);
+            const pOneDrive = getLocalUserPath("OneDrive", "Desktop", rawPath);
+            const pDesktop = getLocalUserPath("Desktop", rawPath);
             if (fs.existsSync(pOneDrive)) targetFilePath = pOneDrive;
             else if (fs.existsSync(pDesktop)) targetFilePath = pDesktop;
             else targetFilePath = path.resolve(process.cwd(), rawPath);

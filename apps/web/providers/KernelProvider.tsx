@@ -1,9 +1,10 @@
 "use client";
 
-import React, { createContext, useContext, useState, useEffect, useCallback, ReactNode } from "react";
+import React, { createContext, useContext, useCallback, ReactNode, useMemo } from "react";
+import { useQueryClient } from "@tanstack/react-query";
 import { useSession } from "next-auth/react";
-import { KernelClient } from "@/lib/kernelClient";
 import { useLifeOSReactiveStream } from "@/features/runtime/hooks/useLifeOSReactiveStream";
+import { queryKeys, CanonicalTagToQueryMap, CanonicalTag } from "@/lib/queryKeys";
 import {
   DashboardDTO,
   ExecutionGraphDTO,
@@ -54,190 +55,144 @@ export interface KernelContextValue extends KernelState {
   refreshAll: () => Promise<void>;
 }
 
-const initialMetadata: KernelState["metadata"] = {
-  loading: {
-    dashboard: false,
-    tasks: false,
-    goals: false,
-    world: false,
-    learning: false,
-    insights: false,
-    settings: false,
-    assistant: false,
-    conversation: false,
-    diagnostics: false,
-  },
-  errors: {
-    dashboard: null,
-    tasks: null,
-    goals: null,
-    world: null,
-    learning: null,
-    insights: null,
-    settings: null,
-    assistant: null,
-    conversation: null,
-    diagnostics: null,
-  },
-  timestamps: {
-    dashboard: null,
-    tasks: null,
-    goals: null,
-    world: null,
-    learning: null,
-    insights: null,
-    settings: null,
-    assistant: null,
-    conversation: null,
-    diagnostics: null,
-  },
-};
-
-const initialState: KernelState = {
-  modules: {
-    dashboard: null,
-    tasks: null,
-    goals: null,
-    world: null,
-    learning: null,
-    insights: null,
-    settings: null,
-    assistant: null,
-    conversation: null,
-    diagnostics: null,
-  },
-  metadata: initialMetadata,
-};
-
 const KernelContext = createContext<KernelContextValue | null>(null);
 
 export function KernelProvider({ children }: { children: ReactNode }) {
+  const queryClient = useQueryClient();
   const { data: session, status } = useSession();
   const isAuthenticated = status === "authenticated" && Boolean((session?.user as any)?.id);
 
-  const [state, setState] = useState<KernelState>(initialState);
-
-  const setModuleLoading = useCallback((key: KernelModuleKey, isLoading: boolean) => {
-    setState((prev) => ({
-      ...prev,
-      metadata: {
-        ...prev.metadata,
-        loading: { ...prev.metadata.loading, [key]: isLoading },
-      },
-    }));
-  }, []);
-
-  const setModuleData = useCallback((key: KernelModuleKey, data: any, error: string | null = null) => {
-    setState((prev) => ({
-      ...prev,
-      modules: {
-        ...prev.modules,
-        [key]: data !== undefined ? data : prev.modules[key],
-      },
-      metadata: {
-        ...prev.metadata,
-        loading: { ...prev.metadata.loading, [key]: false },
-        errors: { ...prev.metadata.errors, [key]: error },
-        timestamps: { ...prev.metadata.timestamps, [key]: Date.now() },
-      },
-    }));
-  }, []);
-
-  const refreshModule = useCallback(
-    async (key: KernelModuleKey) => {
-      if (!isAuthenticated) return;
-      setModuleLoading(key, true);
-
-      try {
-        let data: any = null;
-        switch (key) {
-          case "dashboard":
-            data = await KernelClient.getDashboard();
-            break;
-          case "tasks":
-            data = await KernelClient.getTasks();
-            break;
-          case "goals":
-            data = await KernelClient.getGoals();
-            break;
-          case "world":
-            data = await KernelClient.getWorld();
-            break;
-          case "learning":
-            data = await KernelClient.getLearning();
-            break;
-          case "insights":
-            data = await KernelClient.getInsights();
-            break;
-          case "settings":
-            data = await KernelClient.getSettings();
-            break;
-          case "assistant":
-            data = await KernelClient.getAssistantContext();
-            break;
-          case "conversation":
-            data = await KernelClient.getConversation("default");
-            break;
-          case "diagnostics":
-            data = await KernelClient.getDiagnostics("kernel_provider_poll");
-            break;
-        }
-        setModuleData(key, data, null);
-      } catch (err: any) {
-        setModuleData(key, undefined, err.message || `Failed to fetch ${key}`);
-      }
-    },
-    [isAuthenticated, setModuleLoading, setModuleData]
-  );
-
-  const refreshAll = useCallback(async () => {
-    if (!isAuthenticated) return;
-    await Promise.all([
-      refreshModule("dashboard"),
-      refreshModule("tasks"),
-      refreshModule("goals"),
-      refreshModule("world"),
-      refreshModule("learning"),
-      refreshModule("insights"),
-      refreshModule("settings"),
-      refreshModule("assistant"),
-      refreshModule("diagnostics"),
-    ]);
-  }, [isAuthenticated, refreshModule]);
-
-  // Initial load when authenticated
-  useEffect(() => {
-    if (isAuthenticated) {
-      refreshAll();
-    }
-  }, [isAuthenticated]);
-
-  // Step 3 V2.2: Reactive Multi-Surface Invalidation Subscription
+  // Invalidation ingestion from the reactive SSE stream
   const handleInvalidateTags = useCallback(
     (tags: string[]) => {
       if (!isAuthenticated) return;
-      if (tags.includes("goals") || tags.includes("all")) refreshModule("goals");
-      if (tags.includes("tasks") || tags.includes("all")) refreshModule("tasks");
-      if (tags.includes("dashboard") || tags.includes("all")) refreshModule("dashboard");
-      if (tags.includes("world") || tags.includes("all")) refreshModule("world");
-      if (tags.includes("insights") || tags.includes("all")) refreshModule("insights");
-      if (tags.includes("learning") || tags.includes("all")) refreshModule("learning");
+      for (const tag of tags) {
+        if (tag === "all") {
+          queryClient.invalidateQueries({ queryKey: queryKeys.all });
+        } else if (tag in CanonicalTagToQueryMap) {
+          queryClient.invalidateQueries({
+            queryKey: CanonicalTagToQueryMap[tag as CanonicalTag],
+          });
+        }
+      }
     },
-    [isAuthenticated, refreshModule]
+    [isAuthenticated, queryClient]
   );
 
   useLifeOSReactiveStream({
     onInvalidateTags: handleInvalidateTags,
   });
 
+  const refreshModule = useCallback(
+    async (moduleKey: KernelModuleKey) => {
+      if (!isAuthenticated) return;
+      if (moduleKey in CanonicalTagToQueryMap) {
+        await queryClient.invalidateQueries({
+          queryKey: CanonicalTagToQueryMap[moduleKey as CanonicalTag],
+        });
+      } else if (moduleKey === "diagnostics") {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.diagnostics(),
+        });
+      } else if (moduleKey === "conversation") {
+        await queryClient.invalidateQueries({
+          queryKey: queryKeys.conversation(),
+        });
+      }
+    },
+    [isAuthenticated, queryClient]
+  );
+
+  const refreshAll = useCallback(async () => {
+    if (!isAuthenticated) return;
+    await queryClient.invalidateQueries({ queryKey: queryKeys.all });
+  }, [isAuthenticated, queryClient]);
+
+  // Backward compatibility state shim for any legacy context consumers
+  const getModuleState = useCallback(
+    (key: readonly string[]) => {
+      const qState = queryClient.getQueryState(key);
+      const data = queryClient.getQueryData(key);
+      return {
+        data: (data ?? null) as any,
+        loading: qState?.status === "pending" && qState?.fetchStatus === "fetching",
+        error: qState?.error ? (qState.error as Error).message : null,
+        timestamp: qState?.dataUpdatedAt || null,
+      };
+    },
+    [queryClient]
+  );
+
+  const contextValue: KernelContextValue = useMemo(() => {
+    const dash = getModuleState(queryKeys.dashboard());
+    const tasks = getModuleState(queryKeys.tasks());
+    const goals = getModuleState(queryKeys.goals());
+    const world = getModuleState(queryKeys.world());
+    const learning = getModuleState(queryKeys.learning());
+    const insights = getModuleState(queryKeys.insights());
+    const settings = getModuleState(queryKeys.settings());
+    const assistant = getModuleState(queryKeys.assistant());
+    const conversation = getModuleState(queryKeys.conversation());
+    const diagnostics = getModuleState(queryKeys.diagnostics());
+
+    return {
+      modules: {
+        dashboard: dash.data,
+        tasks: tasks.data,
+        goals: goals.data,
+        world: world.data,
+        learning: learning.data,
+        insights: insights.data,
+        settings: settings.data,
+        assistant: assistant.data,
+        conversation: conversation.data,
+        diagnostics: diagnostics.data,
+      },
+      metadata: {
+        loading: {
+          dashboard: dash.loading,
+          tasks: tasks.loading,
+          goals: goals.loading,
+          world: world.loading,
+          learning: learning.loading,
+          insights: insights.loading,
+          settings: settings.loading,
+          assistant: assistant.loading,
+          conversation: conversation.loading,
+          diagnostics: diagnostics.loading,
+        },
+        errors: {
+          dashboard: dash.error,
+          tasks: tasks.error,
+          goals: goals.error,
+          world: world.error,
+          learning: learning.error,
+          insights: insights.error,
+          settings: settings.error,
+          assistant: assistant.error,
+          conversation: conversation.error,
+          diagnostics: diagnostics.error,
+        },
+        timestamps: {
+          dashboard: dash.timestamp,
+          tasks: tasks.timestamp,
+          goals: goals.timestamp,
+          world: world.timestamp,
+          learning: learning.timestamp,
+          insights: insights.timestamp,
+          settings: settings.timestamp,
+          assistant: assistant.timestamp,
+          conversation: conversation.timestamp,
+          diagnostics: diagnostics.timestamp,
+        },
+      },
+      refreshModule,
+      refreshAll,
+    };
+  }, [getModuleState, refreshModule, refreshAll]);
+
   return (
-    <KernelContext.Provider
-      value={{
-        ...state,
-        refreshModule,
-        refreshAll,
-      }}
-    >
+    <KernelContext.Provider value={contextValue}>
       {children}
     </KernelContext.Provider>
   );

@@ -27,6 +27,21 @@ export default function Homepage() {
   const containerRef = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
+    const isDesktop =
+      typeof window !== "undefined" &&
+      (Boolean((window as any).lifeosDesktop) ||
+        navigator.userAgent.toLowerCase().includes("lifeos-desktop") ||
+        navigator.userAgent.toLowerCase().includes("tauri"));
+
+    if (isDesktop) {
+      if (status === "authenticated" && session?.user) {
+        router.replace("/dashboard");
+      } else if (status === "unauthenticated") {
+        router.replace("/login");
+      }
+      return;
+    }
+
     if (status === "authenticated" && session?.user) {
       router.push("/dashboard");
     }

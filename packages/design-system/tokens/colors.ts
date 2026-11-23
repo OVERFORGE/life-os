@@ -20,9 +20,9 @@ export const palette = {
     900: '#B42129', // Active/Deep Red
     700: '#D62C35', // Hover Red
     500: '#E8414A', // Vibrant brand red (Mobile Match)
-    400: '#F3767D', 
-    300: '#F9A8AC', 
-    100: 'rgba(232, 65, 74, 0.1)', 
+    400: '#F3767D',
+    300: '#F9A8AC',
+    100: 'rgba(232, 65, 74, 0.1)',
   },
   status: {
     error: '#ef4444',

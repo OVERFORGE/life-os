@@ -22,17 +22,36 @@ export default async function DesktopCallbackPage() {
          <div className="w-8 h-8 rounded-full bg-[#E8414A]"></div>
       </div>
       <h1 className="text-2xl font-bold mb-4 tracking-wider uppercase">Authentication Successful</h1>
-      <p className="text-[#ECE7E3]/60 mb-10 max-w-md text-sm">
-        You are now securely logged into LifeOS. You may close this browser window and return to the application.
+      <p id="auth-status" className="text-[#ECE7E3]/60 mb-10 max-w-md text-sm">
+        Handing off session to LifeOS Desktop...
       </p>
       
-      {/* Execute deep link to pass token back to Tauri */}
+      {/* Execute dual-channel deep link / loopback callback to pass token back */}
       <script
         dangerouslySetInnerHTML={{
           __html: `
-            setTimeout(function() {
-              window.location.href = "lifeos://auth?token=${token}";
-            }, 500);
+            (function() {
+              var token = ${JSON.stringify(token)};
+              var statusEl = document.getElementById("auth-status");
+              
+              // 1. Send token directly to Electron local loopback server (bypasses Windows protocol registration issues)
+              fetch("http://127.0.0.1:3457/auth-callback?token=" + encodeURIComponent(token), { mode: "cors" })
+                .then(function(res) { return res.json(); })
+                .then(function() {
+                  if (statusEl) {
+                    statusEl.textContent = "Authenticated! Switched back to LifeOS Desktop. You can close this tab.";
+                  }
+                })
+                .catch(function() {
+                  // 2. If loopback is unreachable, fallback to protocol handler
+                  if (statusEl) {
+                    statusEl.textContent = "Redirecting to LifeOS Desktop via system protocol...";
+                  }
+                  setTimeout(function() {
+                    window.location.href = "lifeos://auth?token=" + encodeURIComponent(token);
+                  }, 300);
+                });
+            })();
           `,
         }}
       />

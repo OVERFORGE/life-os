@@ -166,16 +166,8 @@ export default function ConnectionsPage() {
   };
 
   const openExternalUrl = async (url: string) => {
-    if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
-      try {
-        const { openUrl } = await import("@tauri-apps/plugin-opener");
-        await openUrl(url);
-        return;
-      } catch (e) {
-        console.error("Tauri openUrl error:", e);
-      }
-    }
-    window.open(url, "_blank");
+    const { openExternalUrl: openUrl } = await import("@/lib/desktopBridge");
+    await openUrl(url);
   };
 
   const loadConnections = async () => {

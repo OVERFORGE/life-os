@@ -6,6 +6,7 @@ import { SSEConnectionManager } from "@/server/services/SSEConnectionManager";
 import { UserDeliverySequencer } from "@life-os/execution-kernel";
 
 export const dynamic = "force-dynamic";
+export const maxDuration = 60;
 
 export async function GET(req: NextRequest) {
   try {
@@ -50,6 +51,7 @@ export async function GET(req: NextRequest) {
 
     let heartbeatTimer: NodeJS.Timeout | null = null;
     let streamId: string | null = null;
+    let closeTimer: NodeJS.Timeout | null = null;
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -137,9 +139,18 @@ export async function GET(req: NextRequest) {
             if (heartbeatTimer) clearInterval(heartbeatTimer);
           }
         }, 15000);
+
+        // 7. Graceful Serverless Lifecycle Timeout (55s, safely under maxDuration 60s)
+        closeTimer = setTimeout(() => {
+          try {
+            controller.enqueue(encoder.encode(": closing\n\n"));
+            controller.close();
+          } catch {}
+        }, 55000);
       },
       cancel() {
         if (heartbeatTimer) clearInterval(heartbeatTimer);
+        if (closeTimer) clearTimeout(closeTimer);
         if (streamId) {
           connManager.unregisterConnection(userId, streamId);
         }
@@ -148,6 +159,7 @@ export async function GET(req: NextRequest) {
 
     req.signal.addEventListener("abort", () => {
       if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (closeTimer) clearTimeout(closeTimer);
       if (streamId) {
         connManager.unregisterConnection(userId, streamId);
       }

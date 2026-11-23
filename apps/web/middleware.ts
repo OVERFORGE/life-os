@@ -31,6 +31,17 @@ export async function middleware(req: NextRequest) {
 
   const { pathname } = req.nextUrl;
 
+  const userAgent = req.headers.get("user-agent") || "";
+  const isDesktop = /lifeos-desktop|tauri/i.test(userAgent);
+
+  // Desktop apps never see the marketing/landing page at `/`
+  if (isDesktop && pathname === "/") {
+    if (token) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
+    return NextResponse.redirect(new URL("/login", req.url));
+  }
+
   const isProtected = PROTECTED_PREFIXES.some((prefix) =>
     pathname.startsWith(prefix)
   );

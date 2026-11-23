@@ -109,19 +109,24 @@ export interface SweeperReconciliationResult {
   details: ReconciliationDetail[];
 }
 
+export type OutboxPostCommitHook = (events: IOutboxEventDoc[]) => Promise<void> | void;
+
 export interface OutboxStorageServiceDependencies {
   outboxModel?: any;
   receiptModel?: any;
+  postCommitHook?: OutboxPostCommitHook;
 }
 
 export class OutboxStorageService {
   private static instance: OutboxStorageService;
   private outboxModel: any;
   private receiptModel: any;
+  private postCommitHook?: OutboxPostCommitHook;
 
   constructor(dependencies?: OutboxStorageServiceDependencies) {
     this.outboxModel = dependencies?.outboxModel || OutboxEventModel;
     this.receiptModel = dependencies?.receiptModel || MutationReceiptModel;
+    this.postCommitHook = dependencies?.postCommitHook;
   }
 
   public static getInstance(dependencies?: OutboxStorageServiceDependencies): OutboxStorageService {
@@ -134,6 +139,11 @@ export class OutboxStorageService {
   public setDependencies(dependencies: OutboxStorageServiceDependencies): void {
     if (dependencies.outboxModel) this.outboxModel = dependencies.outboxModel;
     if (dependencies.receiptModel) this.receiptModel = dependencies.receiptModel;
+    if (dependencies.postCommitHook !== undefined) this.postCommitHook = dependencies.postCommitHook;
+  }
+
+  public setPostCommitHook(hook?: OutboxPostCommitHook): void {
+    this.postCommitHook = hook;
   }
 
   /**
@@ -280,6 +290,15 @@ export class OutboxStorageService {
       };
     } finally {
       await session.endSession();
+      if (this.postCommitHook && resultEvents.length > 0) {
+        try {
+          Promise.resolve(this.postCommitHook(resultEvents)).catch((err) => {
+            console.warn("[OutboxStorageService] Post-commit hook async error:", err);
+          });
+        } catch (err) {
+          console.warn("[OutboxStorageService] Post-commit hook execution error:", err);
+        }
+      }
     }
   }
 
@@ -354,13 +373,32 @@ export class OutboxStorageService {
       };
     });
 
-    const createdEvents = await this.outboxModel.create(preparedEvents);
+    // Step 1: Idempotently upsert PENDING_COMMIT Intent to Outbox
+    const createdEvents: any[] = [];
+    for (const evt of preparedEvents) {
+      const doc = await this.outboxModel.findOneAndUpdate(
+        { eventId: evt.eventId },
+        { $set: evt },
+        { upsert: true, new: true, setDefaultsOnInsert: true }
+      );
+      createdEvents.push(doc);
+    }
 
     // Step 2: Atomic Domain Write to Aggregate Root with Monotonic Epoch & Version Guard
-    const filter = {
-      _id: params.aggregateId,
-      version: params.expectedVersion,
-      mutationEpoch: { $lte: params.fencingEpoch },
+    const idMatcher = mongoose.Types.ObjectId.isValid(params.aggregateId)
+      ? { $in: [params.aggregateId, new mongoose.Types.ObjectId(params.aggregateId), String(params.aggregateId)] }
+      : params.aggregateId;
+
+    const versionMatcher = params.expectedVersion === 0
+      ? { $in: [0, null, undefined] }
+      : params.expectedVersion;
+
+    const filter: any = {
+      _id: idMatcher,
+      version: versionMatcher,
+      ...(params.fencingEpoch === 0
+        ? { $or: [{ mutationEpoch: { $lte: 0 } }, { mutationEpoch: { $exists: false } }, { mutationEpoch: null }] }
+        : { mutationEpoch: { $lte: params.fencingEpoch } }),
     };
 
     const inDocReceipt = {
@@ -483,6 +521,16 @@ export class OutboxStorageService {
         );
       } catch {
         // Safe fallback
+      }
+    }
+
+    if (this.postCommitHook && promotedEvents.length > 0) {
+      try {
+        Promise.resolve(this.postCommitHook(promotedEvents)).catch((err) => {
+          console.warn("[OutboxStorageService] Post-commit hook async error:", err);
+        });
+      } catch (err) {
+        console.warn("[OutboxStorageService] Post-commit hook execution error:", err);
       }
     }
 

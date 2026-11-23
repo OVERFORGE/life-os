@@ -128,19 +128,8 @@ export default function ChatMessage({
       e.stopPropagation();
     }
 
-    try {
-      if (typeof window !== "undefined" && (window as any).__TAURI_INTERNALS__) {
-        const { openUrl } = await import("@tauri-apps/plugin-opener");
-        await openUrl(href);
-        return;
-      }
-    } catch (err) {
-      console.warn("[ChatMessage] Failed to open external URL with Tauri opener plugin:", err);
-    }
-
-    if (typeof window !== "undefined") {
-      window.open(href, "_blank", "noopener,noreferrer");
-    }
+    const { openExternalUrl } = await import("@/lib/desktopBridge");
+    await openExternalUrl(href);
   };
 
   const renderToolIcon = (iconName: string, className = "w-4 h-4") => {
