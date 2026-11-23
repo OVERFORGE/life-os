@@ -21,7 +21,7 @@ import {
   Volume2,
 } from "lucide-react";
 import { signOut, useSession } from "next-auth/react";
-import { startWakeWord, stopWakeWord } from "@/lib/desktopBridge";
+import { startWakeWord, stopWakeWord, setHudEnabled, toggleHudWindow } from "@/lib/desktopBridge";
 
 type SettingsCategory =
   | "connections"
@@ -65,6 +65,7 @@ export default function SettingsWorkspace() {
 
   // Ambient Voice Settings (P3-07)
   const [wakeWordEnabled, setWakeWordEnabled] = useState(true);
+  const [hudEnabled, setHudEnabledState] = useState(true);
   const [trayEnabled, setTrayEnabled] = useState(true);
   const [hotkeyEnabled, setHotkeyEnabled] = useState(true);
   const [micStatus, setMicStatus] = useState<"IDLE" | "TESTING" | "PASSED" | "DENIED">("IDLE");
@@ -88,6 +89,12 @@ export default function SettingsWorkspace() {
     try {
       const savedWake = localStorage.getItem("lifeos_ambient_wakeword");
       if (savedWake !== null) setWakeWordEnabled(savedWake === "true");
+      const savedHud = localStorage.getItem("lifeos_ambient_hud");
+      if (savedHud !== null) {
+        const isEnabled = savedHud === "true";
+        setHudEnabledState(isEnabled);
+        setHudEnabled(isEnabled);
+      }
       const savedTray = localStorage.getItem("lifeos_ambient_tray");
       if (savedTray !== null) setTrayEnabled(savedTray === "true");
       const savedHotkey = localStorage.getItem("lifeos_ambient_hotkeys");
@@ -106,6 +113,16 @@ export default function SettingsWorkspace() {
       }
     } catch (err) {
       console.warn("Wake word toggle bridge error:", err);
+    }
+  };
+
+  const handleHudToggle = async (enabled: boolean) => {
+    setHudEnabledState(enabled);
+    try {
+      localStorage.setItem("lifeos_ambient_hud", String(enabled));
+      await setHudEnabled(enabled);
+    } catch (err) {
+      console.warn("HUD toggle bridge error:", err);
     }
   };
 
@@ -477,6 +494,78 @@ export default function SettingsWorkspace() {
         {/* TAB 3: AMBIENT VOICE & SURFACES */}
         {activeTab === "ambient" && (
           <div className="space-y-6 animate-in fade-in duration-200">
+            {/* Aven Dynamic HUD (Dynamic Notch) */}
+            <div className="bg-[#17171A] border border-[#23242A] rounded-2xl p-5 space-y-4">
+              <div className="flex items-center justify-between pb-3 border-b border-[#23242A]">
+                <div className="flex items-start gap-3">
+                  <div className="mt-0.5 p-2 rounded-xl bg-[#D98B2B]/10 border border-[#D98B2B]/20 text-[#D98B2B]">
+                    <Sparkles size={18} />
+                  </div>
+                  <div>
+                    <div className="flex items-center gap-2">
+                      <h2 className="text-sm font-semibold text-[#F7F5F0]">
+                        Aven Dynamic HUD (Dynamic Notch)
+                      </h2>
+                      <span
+                        className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                          hudEnabled
+                            ? "bg-[#6B8E7B]/15 text-[#6B8E7B] border-[#6B8E7B]/30"
+                            : "bg-[#23242A] text-[#85827A] border-[#32343D]"
+                        }`}
+                      >
+                        {hudEnabled ? "Enabled" : "Disabled"}
+                      </span>
+                    </div>
+                    <p className="text-xs text-[#85827A] mt-1">
+                      Top-of-screen dynamic notch overlay with ambient conversational intelligence, cursor hover gesture summoning, and live execution tracker.
+                    </p>
+                  </div>
+                </div>
+
+                <label className="relative inline-flex items-center cursor-pointer shrink-0">
+                  <input
+                    type="checkbox"
+                    checked={hudEnabled}
+                    onChange={(e) => handleHudToggle(e.target.checked)}
+                    className="sr-only peer"
+                  />
+                  <div className="w-11 h-6 bg-[#23242A] rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#D98B2B]"></div>
+                </label>
+              </div>
+
+              {/* Sub-controls when HUD is enabled */}
+              <div className="space-y-3 pt-1">
+                <div className="flex items-center justify-between py-2 border-b border-[#23242A]/60">
+                  <div>
+                    <div className="text-xs font-medium text-[#F7F5F0]">Cursor Top-Edge Summoning</div>
+                    <div className="text-[11px] text-[#85827A]">
+                      Gliding your cursor to the top center of the screen reveals the Aven HUD notch.
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-mono text-[#C5C2BA]/70 bg-[#111113] px-2 py-0.5 rounded border border-[#23242A]">
+                    {hudEnabled ? "Active (Center ±140px)" : "Inactive"}
+                  </span>
+                </div>
+
+                <div className="flex items-center justify-between py-2">
+                  <div>
+                    <div className="text-xs font-medium text-[#F7F5F0]">Test HUD Overlay</div>
+                    <div className="text-[11px] text-[#85827A]">
+                      Trigger the dynamic notch now to inspect appearance and microphone readiness.
+                    </div>
+                  </div>
+                  <button
+                    type="button"
+                    onClick={() => toggleHudWindow(true)}
+                    disabled={!hudEnabled}
+                    className="px-3 py-1.5 rounded-xl bg-[#1E1F24] hover:bg-[#282930] text-xs font-medium text-[#F7F5F0] border border-[#23242A] disabled:opacity-40 transition cursor-pointer"
+                  >
+                    Summon HUD
+                  </button>
+                </div>
+              </div>
+            </div>
+
             <div className="bg-[#17171A] border border-[#23242A] rounded-2xl p-5 space-y-5">
               <div className="flex items-center justify-between pb-3 border-b border-[#23242A]">
                 <div>

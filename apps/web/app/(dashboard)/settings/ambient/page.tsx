@@ -25,6 +25,7 @@ import {
  * - Real local privacy transparency
  */
 export default function AmbientSettingsPage() {
+  const [hudEnabled, setHudEnabledState] = useState(true);
   const [wakeWordEnabled, setWakeWordEnabled] = useState(false);
   const [heyAvenEnabled, setHeyAvenEnabled] = useState(true);
   const [avenEnabled, setAvenEnabled] = useState(false);
@@ -46,6 +47,13 @@ export default function AmbientSettingsPage() {
         import("@/lib/desktopBridge").then(({ stopWakeWord }) => stopWakeWord());
       }
 
+      const savedHud = localStorage.getItem("lifeos_ambient_hud");
+      if (savedHud !== null) {
+        const isEnabled = savedHud === "true";
+        setHudEnabledState(isEnabled);
+        import("@/lib/desktopBridge").then(({ setHudEnabled }) => setHudEnabled(isEnabled));
+      }
+
       const savedNotifs = localStorage.getItem("lifeos_ambient_notifs");
       if (savedNotifs !== null) setNotificationsEnabled(savedNotifs === "true");
 
@@ -62,6 +70,16 @@ export default function AmbientSettingsPage() {
     try {
       localStorage.setItem(key, String(value));
     } catch {}
+  };
+
+  const handleHudToggle = async (enabled: boolean) => {
+    saveSetting("lifeos_ambient_hud", enabled, setHudEnabledState);
+    try {
+      const { setHudEnabled } = await import("@/lib/desktopBridge");
+      await setHudEnabled(enabled);
+    } catch (err) {
+      console.warn("[AmbientSettings] HUD toggle bridge error:", err);
+    }
   };
 
   const handleWakeWordToggle = async (enabled: boolean) => {
@@ -135,6 +153,58 @@ export default function AmbientSettingsPage() {
         <p className="text-sm text-gray-400 mt-1">
           LifeOS stays with you quietly throughout your day. Configure when and how it appears.
         </p>
+      </div>
+
+      {/* Surface 0: Aven Dynamic HUD (Dynamic Notch) */}
+      <div className="bg-[#161618] border border-[#2A2B2F] rounded-2xl p-5 space-y-4">
+        <div className="flex items-center justify-between">
+          <div className="flex items-center space-x-3">
+            <div className="p-2.5 rounded-xl bg-[#1F2023] text-[#E8414A] border border-[#2A2B2F]">
+              <Sparkles className="w-5 h-5" />
+            </div>
+            <div>
+              <div className="flex items-center gap-2">
+                <h2 className="text-sm font-semibold text-white">Aven Dynamic HUD (Dynamic Notch)</h2>
+                <span
+                  className={`text-[10px] font-mono px-2 py-0.5 rounded border ${
+                    hudEnabled
+                      ? "bg-[#6B8E7B]/15 text-[#6B8E7B] border-[#6B8E7B]/30"
+                      : "bg-[#23242A] text-gray-500 border-[#32343D]"
+                  }`}
+                >
+                  {hudEnabled ? "Enabled" : "Disabled"}
+                </span>
+              </div>
+              <p className="text-xs text-gray-400 mt-0.5">
+                Top-of-screen dynamic notch overlay with ambient conversational intelligence, cursor hover summoning, and execution tracker.
+              </p>
+            </div>
+          </div>
+          <label className="relative inline-flex items-center cursor-pointer shrink-0">
+            <input
+              type="checkbox"
+              checked={hudEnabled}
+              onChange={(e) => handleHudToggle(e.target.checked)}
+              className="sr-only peer"
+            />
+            <div className="w-11 h-6 bg-[#2A2B2F] peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-[#E8414A]"></div>
+          </label>
+        </div>
+
+        <div className="flex items-center justify-between pt-2 border-t border-[#2A2B2F]/60 text-xs">
+          <span className="text-gray-400">Glide cursor to top-center of screen to summon</span>
+          <button
+            type="button"
+            onClick={async () => {
+              const { toggleHudWindow } = await import("@/lib/desktopBridge");
+              await toggleHudWindow(true);
+            }}
+            disabled={!hudEnabled}
+            className="px-3 py-1 rounded-lg bg-[#1F2023] hover:bg-[#2A2B2F] text-xs font-medium text-white border border-[#2A2B2F] disabled:opacity-30 transition cursor-pointer"
+          >
+            Summon HUD Now
+          </button>
+        </div>
       </div>
 
       {/* Surface 1: Active Execution Notifications */}

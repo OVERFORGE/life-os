@@ -9,6 +9,7 @@ let tray: Tray | null = null;
 let supervisor: WakeSupervisor | null = null;
 let authServer: http.Server | null = null;
 let isQuitting: boolean = false;
+let isHudEnabled: boolean = true;
 
 const WEB_URL = process.env.LIFEOS_WEB_URL || "http://localhost:3456";
 const START_URL = `${WEB_URL}/login`;
@@ -362,8 +363,9 @@ function createTray(): Tray {
   return t;
 }
 
-function toggleHud(): void {
-  if (!hudWindow) return;
+function toggleHud(force?: boolean): void {
+  if (!hudWindow || hudWindow.isDestroyed()) return;
+  if (!isHudEnabled && force !== true) return;
   if (hudWindow.isVisible()) {
     hudWindow.hide();
   } else {
@@ -402,7 +404,7 @@ app.whenReady().then(() => {
 
   // Dynamic Ledge: Cursor hover trigger at the top-middle of the screen
   setInterval(() => {
-    if (!hudWindow || hudWindow.isDestroyed()) return;
+    if (!isHudEnabled || !hudWindow || hudWindow.isDestroyed()) return;
     try {
       const cursor = screen.getCursorScreenPoint();
       const primaryDisplay = screen.getPrimaryDisplay();
@@ -454,8 +456,20 @@ app.whenReady().then(() => {
     return false;
   });
 
-  ipcMain.handle("desktop:toggle-hud", async () => {
-    toggleHud();
+  ipcMain.handle("desktop:toggle-hud", async (_event, force?: boolean) => {
+    toggleHud(force);
+  });
+
+  ipcMain.handle("desktop:set-hud-enabled", async (_event, enabled: boolean) => {
+    isHudEnabled = Boolean(enabled);
+    if (!isHudEnabled && hudWindow && !hudWindow.isDestroyed() && hudWindow.isVisible()) {
+      hudWindow.hide();
+    }
+    return isHudEnabled;
+  });
+
+  ipcMain.handle("desktop:is-hud-enabled", async () => {
+    return isHudEnabled;
   });
 
   ipcMain.handle(
@@ -505,7 +519,7 @@ app.whenReady().then(() => {
 
   supervisor.on("wake", (payload) => {
     console.log("[Electron] ⚡ Wake detected! Summoning Dynamic Notch HUD:", payload);
-    if (hudWindow) {
+    if (isHudEnabled && hudWindow && !hudWindow.isDestroyed()) {
       hudWindow.show();
       hudWindow.focus();
       hudWindow.webContents.send("desktop:aven-wake", payload);

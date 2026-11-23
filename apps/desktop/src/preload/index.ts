@@ -2,7 +2,9 @@ import { contextBridge, ipcRenderer } from "electron";
 
 export interface DesktopBridge {
   openExternal: (url: string) => Promise<boolean>;
-  toggleHud: () => Promise<void>;
+  toggleHud: (force?: boolean) => Promise<void>;
+  setHudEnabled: (enabled: boolean) => Promise<boolean>;
+  isHudEnabled: () => Promise<boolean>;
   updateTrayStatus: (status: { title: string; tooltip: string }) => Promise<void>;
   onDeepLink: (callback: (url: string) => void) => () => void;
   onAvenWake: (callback: (payload: any) => void) => () => void;
@@ -17,7 +19,9 @@ export interface DesktopBridge {
 
 const desktopBridge: DesktopBridge = {
   openExternal: (url: string) => ipcRenderer.invoke("desktop:open-external", url),
-  toggleHud: () => ipcRenderer.invoke("desktop:toggle-hud"),
+  toggleHud: (force?: boolean) => ipcRenderer.invoke("desktop:toggle-hud", force),
+  setHudEnabled: (enabled: boolean) => ipcRenderer.invoke("desktop:set-hud-enabled", enabled),
+  isHudEnabled: () => ipcRenderer.invoke("desktop:is-hud-enabled"),
   updateTrayStatus: (status: { title: string; tooltip: string }) =>
     ipcRenderer.invoke("desktop:update-tray", status),
   onDeepLink: (callback: (url: string) => void) => {

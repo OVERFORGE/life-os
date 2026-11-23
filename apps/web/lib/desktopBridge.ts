@@ -8,7 +8,9 @@
 
 export interface DesktopBridge {
   openExternal?: (url: string) => Promise<boolean>;
-  toggleHud?: () => Promise<void>;
+  toggleHud?: (force?: boolean) => Promise<void>;
+  setHudEnabled?: (enabled: boolean) => Promise<boolean>;
+  isHudEnabled?: () => Promise<boolean>;
   updateTrayStatus?: (status: { title: string; tooltip: string }) => Promise<void>;
   onDeepLink?: (callback: (url: string) => void) => () => void;
   onAvenWake?: (callback: (payload: any) => void) => () => void;
@@ -50,14 +52,42 @@ export async function openExternalUrl(url: string): Promise<void> {
 /**
  * Toggles the desktop HUD overlay window.
  */
-export async function toggleHudWindow(): Promise<void> {
+export async function toggleHudWindow(force?: boolean): Promise<void> {
   if (typeof window !== "undefined" && window.lifeosDesktop?.toggleHud) {
     try {
-      await window.lifeosDesktop.toggleHud();
+      await window.lifeosDesktop.toggleHud(force);
     } catch (err) {
       console.warn("[desktopBridge] Electron toggleHud error:", err);
     }
   }
+}
+
+/**
+ * Enables or disables the desktop Aven Dynamic HUD overlay.
+ */
+export async function setHudEnabled(enabled: boolean): Promise<boolean> {
+  if (typeof window !== "undefined" && window.lifeosDesktop?.setHudEnabled) {
+    try {
+      return await window.lifeosDesktop.setHudEnabled(enabled);
+    } catch (err) {
+      console.warn("[desktopBridge] Electron setHudEnabled error:", err);
+    }
+  }
+  return enabled;
+}
+
+/**
+ * Checks whether the desktop Aven Dynamic HUD overlay is currently enabled.
+ */
+export async function isHudEnabled(): Promise<boolean> {
+  if (typeof window !== "undefined" && window.lifeosDesktop?.isHudEnabled) {
+    try {
+      return await window.lifeosDesktop.isHudEnabled();
+    } catch (err) {
+      console.warn("[desktopBridge] Electron isHudEnabled error:", err);
+    }
+  }
+  return true;
 }
 
 /**
