@@ -31,6 +31,7 @@ import { useSession } from "next-auth/react";
 import { useTasks } from "@/hooks/useTasks";
 import { useDashboard } from "@/hooks/useDashboard";
 import { useWorld } from "@/hooks/useWorld";
+import { CustomDatePicker, CustomTimePicker } from "@/components/ui/CustomDateTimePicker";
 
 // ─── Interfaces ───
 
@@ -1332,52 +1333,77 @@ export default function TimelinePage() {
               </div>
 
               <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Date</label>
-                  <input
-                    type="date"
-                    required
-                    value={newDate}
-                    onChange={(e) => setNewDate(e.target.value)}
-                    className="w-full bg-[#111113] border border-[#2A2B33] focus:border-[#D98B2B] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                  />
-                </div>
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Start Time</label>
-                  <input
-                    type="time"
-                    required
-                    value={newStartTime}
-                    onChange={(e) => setNewStartTime(e.target.value)}
-                    className="w-full bg-[#111113] border border-[#2A2B33] focus:border-[#D98B2B] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                  />
-                </div>
+                <CustomDatePicker
+                  label="Date"
+                  value={newDate}
+                  onChange={(val) => setNewDate(val)}
+                />
+                <CustomTimePicker
+                  label="Start Time"
+                  value={newStartTime}
+                  onChange={(val) => setNewStartTime(val)}
+                />
               </div>
 
-              <div className="grid grid-cols-2 gap-3">
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Duration (Mins)</label>
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] uppercase font-bold text-stone-400 block">Duration (Mins)</label>
+                <div className="flex items-center gap-2">
+                  {[
+                    { label: "15m", val: "15" },
+                    { label: "30m", val: "30" },
+                    { label: "45m", val: "45" },
+                    { label: "60m", val: "60" },
+                    { label: "90m", val: "90" },
+                  ].map((dp) => (
+                    <button
+                      key={dp.val}
+                      type="button"
+                      onClick={() => setNewDuration(dp.val)}
+                      className={`px-2.5 py-1.5 rounded-lg text-xs font-mono transition-all cursor-pointer border ${
+                        newDuration === dp.val
+                          ? "bg-[#E29D52]/15 border-[#E29D52] text-[#E29D52] font-bold"
+                          : "bg-[#111113] border-[#2A2B33] text-stone-400 hover:text-white"
+                      }`}
+                    >
+                      {dp.label}
+                    </button>
+                  ))}
                   <input
                     type="number"
                     min="15"
                     step="15"
                     value={newDuration}
                     onChange={(e) => setNewDuration(e.target.value)}
-                    className="w-full bg-[#111113] border border-[#2A2B33] focus:border-[#D98B2B] rounded-xl px-3 py-2 text-xs text-white outline-none"
+                    className="w-20 bg-[#111113] border border-[#2A2B33] focus:border-[#D98B2B] rounded-xl px-3 py-1.5 text-xs text-white outline-none ml-auto text-right font-mono"
                   />
                 </div>
-                <div>
-                  <label className="text-[10px] uppercase font-bold text-stone-400 block mb-1">Category</label>
-                  <select
-                    value={newKind}
-                    onChange={(e) => setNewKind(e.target.value)}
-                    className="w-full bg-[#111113] border border-[#2A2B33] focus:border-[#D98B2B] rounded-xl px-3 py-2 text-xs text-white outline-none"
-                  >
-                    <option value="WORK_SESSION">Focus Block (Work)</option>
-                    <option value="MEETING">Sync / Meeting</option>
-                    <option value="ROUTINE_BLOCK">Routine / Habit</option>
-                    <option value="RECOVERY">Rest & Recovery</option>
-                  </select>
+              </div>
+
+              <div className="flex flex-col gap-1.5">
+                <label className="text-[10px] uppercase font-bold text-stone-400 block">Category</label>
+                <div className="grid grid-cols-2 gap-2">
+                  {[
+                    { label: "Focus Block (Work)", val: "WORK_SESSION" },
+                    { label: "Sync / Meeting", val: "MEETING" },
+                    { label: "Routine / Habit", val: "ROUTINE_BLOCK" },
+                    { label: "Rest & Recovery", val: "RECOVERY" },
+                  ].map((cat) => {
+                    const isSelected = newKind === cat.val;
+                    return (
+                      <button
+                        key={cat.val}
+                        type="button"
+                        onClick={() => setNewKind(cat.val)}
+                        className={`py-2 px-3 rounded-xl text-xs font-medium border text-left transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-[#E29D52]/15 border-[#E29D52] text-[#E29D52] font-bold"
+                            : "bg-[#111113] border-[#2A2B33] text-stone-400 hover:text-white hover:bg-[#1E1F24]"
+                        }`}
+                      >
+                        {cat.label}
+                      </button>
+                    );
+                  })}
                 </div>
               </div>
 

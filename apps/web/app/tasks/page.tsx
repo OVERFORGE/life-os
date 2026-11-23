@@ -17,6 +17,7 @@ import {
   Calendar,
   Clock,
 } from "lucide-react";
+import { CustomDatePicker, CustomTimePicker } from "@/components/ui/CustomDateTimePicker";
 
 interface Subtask {
   id?: string;
@@ -1030,24 +1031,14 @@ export default function ExecutePage() {
                   Schedule
                 </label>
                 <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-                  <div className="relative">
-                    <Calendar size={15} className="absolute left-3.5 top-1/2 -translate-y-1/2 text-[#E29D52]" />
-                    <input
-                      type="date"
-                      value={newTaskDueDate}
-                      onChange={(e) => setNewTaskDueDate(e.target.value)}
-                      className="w-full bg-[#18191E] border border-[#262830] rounded-xl pl-10 pr-3.5 py-2.5 text-xs font-semibold text-[#F7F5F0] focus:border-[#E29D52] focus:outline-none transition-colors"
-                    />
-                  </div>
-                  <div className="relative">
-                    <Clock size={15} className={`absolute left-3.5 top-1/2 -translate-y-1/2 ${newTaskDueTime ? "text-[#E29D52]" : "text-[#55534E]"}`} />
-                    <input
-                      type="time"
-                      value={newTaskDueTime}
-                      onChange={(e) => setNewTaskDueTime(e.target.value)}
-                      className="w-full bg-[#18191E] border border-[#262830] rounded-xl pl-10 pr-3.5 py-2.5 text-xs font-semibold text-[#F7F5F0] focus:border-[#E29D52] focus:outline-none transition-colors"
-                    />
-                  </div>
+                  <CustomDatePicker
+                    value={newTaskDueDate}
+                    onChange={(val) => setNewTaskDueDate(val)}
+                  />
+                  <CustomTimePicker
+                    value={newTaskDueTime}
+                    onChange={(val) => setNewTaskDueTime(val)}
+                  />
                 </div>
               </div>
 

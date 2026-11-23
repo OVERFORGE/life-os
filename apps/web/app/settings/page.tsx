@@ -394,33 +394,55 @@ export default function SettingsWorkspace() {
               </div>
 
               {/* Destination & Conflict Rules */}
-              <div className="pt-2 grid grid-cols-2 gap-4">
+              <div className="pt-2 grid grid-cols-1 md:grid-cols-2 gap-4">
                 <div>
-                  <label className="block text-[11px] font-mono uppercase tracking-wider text-[#85827A] mb-1.5">
+                  <label className="block text-[11px] font-mono uppercase tracking-wider text-[#85827A] mb-2">
                     Default Write Destination
                   </label>
-                  <select
-                    value={defaultCalendar}
-                    onChange={(e) => setDefaultCalendar(e.target.value)}
-                    className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3 py-2 text-xs text-[#F7F5F0] focus:outline-none focus:border-[#D98B2B]"
-                  >
-                    <option value="native">LifeOS Native Calendar (Local First)</option>
-                    <option value="google_work">Work / Primary (Google Calendar)</option>
-                  </select>
+                  <div className="grid grid-cols-2 gap-1.5 bg-[#111113] p-1 rounded-xl border border-[#23242A]">
+                    {[
+                      { label: "LifeOS Native", val: "native" },
+                      { label: "Google Calendar", val: "google_work" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.val}
+                        type="button"
+                        onClick={() => setDefaultCalendar(opt.val)}
+                        className={`py-2 px-2.5 rounded-lg text-xs font-mono transition-all text-center cursor-pointer border ${
+                          defaultCalendar === opt.val
+                            ? "bg-[#D98B2B]/20 border-[#D98B2B] text-[#ffb86c] font-bold"
+                            : "bg-transparent border-transparent text-[#85827A] hover:text-[#C5C2BA]"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
 
                 <div>
-                  <label className="block text-[11px] font-mono uppercase tracking-wider text-[#85827A] mb-1.5">
+                  <label className="block text-[11px] font-mono uppercase tracking-wider text-[#85827A] mb-2">
                     Sync Conflict Strategy
                   </label>
-                  <select
-                    value={conflictStrategy}
-                    onChange={(e) => setConflictStrategy(e.target.value)}
-                    className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3 py-2 text-xs text-[#F7F5F0] focus:outline-none focus:border-[#D98B2B]"
-                  >
-                    <option value="non-destructive">Non-destructive (Always ask in drawer)</option>
-                    <option value="native_priority">Prioritize LifeOS Native</option>
-                  </select>
+                  <div className="grid grid-cols-2 gap-1.5 bg-[#111113] p-1 rounded-xl border border-[#23242A]">
+                    {[
+                      { label: "Non-destructive", val: "non-destructive" },
+                      { label: "Prioritize Native", val: "native_priority" },
+                    ].map((opt) => (
+                      <button
+                        key={opt.val}
+                        type="button"
+                        onClick={() => setConflictStrategy(opt.val)}
+                        className={`py-2 px-2.5 rounded-lg text-xs font-mono transition-all text-center cursor-pointer border ${
+                          conflictStrategy === opt.val
+                            ? "bg-[#D98B2B]/20 border-[#D98B2B] text-[#ffb86c] font-bold"
+                            : "bg-transparent border-transparent text-[#85827A] hover:text-[#C5C2BA]"
+                        }`}
+                      >
+                        {opt.label}
+                      </button>
+                    ))}
+                  </div>
                 </div>
               </div>
             </div>
@@ -470,21 +492,32 @@ export default function SettingsWorkspace() {
               </div>
 
               <div className="pt-2">
-                <label className="block text-[11px] font-mono uppercase tracking-wider text-[#85827A] mb-1.5">
+                <label className="block text-[11px] font-mono uppercase tracking-wider text-[#85827A] mb-2">
                   Daily Execution Rollover Hour
                 </label>
-                <select
-                  value={rolloverHour}
-                  onChange={(e) => setRolloverHour(e.target.value)}
-                  className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3 py-2 text-xs text-[#F7F5F0] focus:outline-none focus:border-[#D98B2B]"
-                >
-                  <option value="02:00">02:00 AM</option>
-                  <option value="03:00">03:00 AM</option>
-                  <option value="04:00">04:00 AM (Recommended Default - Preserves late night work)</option>
-                  <option value="05:00">05:00 AM</option>
-                </select>
-                <p className="text-[11px] text-[#85827A] mt-1.5">
-                  Protects late-night momentum from resetting daily tasks prematurely at midnight.
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 bg-[#111113] p-1.5 rounded-xl border border-[#23242A]">
+                  {[
+                    { label: "02:00 AM", val: "02:00" },
+                    { label: "03:00 AM", val: "03:00" },
+                    { label: "04:00 AM", val: "04:00" },
+                    { label: "05:00 AM", val: "05:00" },
+                  ].map((h) => (
+                    <button
+                      key={h.val}
+                      type="button"
+                      onClick={() => setRolloverHour(h.val)}
+                      className={`py-2 px-3 rounded-lg text-xs font-mono transition-all text-center cursor-pointer border ${
+                        rolloverHour === h.val
+                          ? "bg-[#D98B2B]/20 border-[#D98B2B] text-[#ffb86c] font-bold"
+                          : "bg-transparent border-transparent text-[#85827A] hover:text-[#C5C2BA]"
+                      }`}
+                    >
+                      {h.label}
+                    </button>
+                  ))}
+                </div>
+                <p className="text-[11px] text-[#85827A] mt-2">
+                  Protects late-night momentum from resetting daily tasks prematurely at midnight (04:00 AM Recommended).
                 </p>
               </div>
             </div>
