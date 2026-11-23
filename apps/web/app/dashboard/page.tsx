@@ -20,6 +20,7 @@ import { useDashboard } from "@/hooks/useDashboard";
 import { useTasks } from "@/hooks/useTasks";
 import { useWorld } from "@/hooks/useWorld";
 import { useAssistant } from "@/hooks/useAssistant";
+import RealtimeVoiceModal from "@/features/voice/RealtimeVoiceModal";
 
 interface StreamItem {
   id: string;
@@ -45,6 +46,7 @@ export default function CockpitDashboardPage() {
   // Prevent Next.js SSR hydration mismatches with client local time
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
+  const [isVoiceCallOpen, setIsVoiceCallOpen] = useState(false);
 
   useEffect(() => {
     setMounted(true);
@@ -591,9 +593,13 @@ export default function CockpitDashboardPage() {
 
           {/* Centerpiece: Glowing Aven AI Blob (WebGL2 Fluid Glass Orb) */}
           <div className="lg:col-span-6 flex flex-col items-center justify-center">
-            <div className="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center">
+            <div
+              onClick={() => setIsVoiceCallOpen(true)}
+              className="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center cursor-pointer group select-none"
+              title="Click orb to speak with Aven"
+            >
               {/* Diffuse Outer Ambient Glow */}
-              <div className="absolute inset-4 rounded-full bg-[#D98B2B]/20 blur-3xl pointer-events-none -z-10 animate-pulse" />
+              <div className="absolute inset-4 rounded-full bg-[#D98B2B]/20 group-hover:bg-[#D98B2B]/40 blur-3xl pointer-events-none -z-10 transition-all duration-300 animate-pulse" />
               
               {/* Interactive WebGL2 AI Blob */}
               <AvenBlob
@@ -614,16 +620,21 @@ export default function CockpitDashboardPage() {
               />
             </div>
 
-            {/* Aven Subtitle Label */}
-            <div className="flex items-center gap-1.5 mt-3 text-xs font-mono font-semibold tracking-widest text-[#85827A]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D98B2B] shadow-[0_0_6px_rgba(217,139,43,0.8)]" />
-              <span>AVEN</span>
-            </div>
+            {/* Aven Subtitle Label (Interactive Clickable Trigger) */}
+            <button
+              type="button"
+              onClick={() => setIsVoiceCallOpen(true)}
+              className="flex items-center gap-1.5 mt-3 px-3 py-1 rounded-full bg-[#17171A] hover:bg-[#1E1F24] border border-[#23242A] hover:border-[#D98B2B]/50 text-xs font-mono font-semibold tracking-widest text-[#85827A] hover:text-[#ffb86c] transition-all cursor-pointer shadow-sm group"
+              title="Click to start voice session"
+            >
+              <span className="w-1.5 h-1.5 rounded-full bg-[#D98B2B] shadow-[0_0_6px_rgba(217,139,43,0.8)] group-hover:animate-ping" />
+              <span>AVEN · CLICK TO TALK</span>
+            </button>
 
             {/* Command Prompt Pill under Orb */}
             <form
               onSubmit={handlePromptSubmit}
-              className="mt-5 w-full max-w-md bg-[#17171A] border border-[#23242A] hover:border-[#32343D] focus-within:border-[#D98B2B]/60 rounded-full px-4 py-2.5 flex items-center gap-3 shadow-2xl transition-all"
+              className="mt-4 w-full max-w-md bg-[#17171A] border border-[#23242A] hover:border-[#32343D] focus-within:border-[#D98B2B]/60 rounded-full px-4 py-2.5 flex items-center gap-3 shadow-2xl transition-all"
             >
               <Sparkles size={14} className="text-[#D98B2B] shrink-0" />
               <input
@@ -635,8 +646,9 @@ export default function CockpitDashboardPage() {
               />
               <button
                 type="button"
-                className="text-[#85827A] hover:text-[#F7F5F0] transition-colors p-1"
-                title="Voice Dictation"
+                onClick={() => setIsVoiceCallOpen(true)}
+                className="text-[#85827A] hover:text-[#ffb86c] transition-colors p-1 cursor-pointer"
+                title="Start Voice Call with Aven"
               >
                 <Mic size={14} />
               </button>
@@ -886,6 +898,11 @@ export default function CockpitDashboardPage() {
 
       </div>
 
+      {/* Realtime Autonomous Voice Kernel Modal */}
+      <RealtimeVoiceModal
+        isOpen={isVoiceCallOpen}
+        onClose={() => setIsVoiceCallOpen(false)}
+      />
     </div>
   );
 }
