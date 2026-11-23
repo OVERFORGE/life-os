@@ -47,6 +47,15 @@ export default function CockpitDashboardPage() {
   const [mounted, setMounted] = useState(false);
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [isVoiceCallOpen, setIsVoiceCallOpen] = useState(false);
+  const [isExpandingOrb, setIsExpandingOrb] = useState(false);
+
+  const handleOpenVoice = () => {
+    setIsExpandingOrb(true);
+    setIsVoiceCallOpen(true);
+    setTimeout(() => {
+      setIsExpandingOrb(false);
+    }, 700);
+  };
 
   useEffect(() => {
     setMounted(true);
@@ -594,24 +603,39 @@ export default function CockpitDashboardPage() {
           {/* Centerpiece: Glowing Aven AI Blob (WebGL2 Fluid Glass Orb) */}
           <div className="lg:col-span-6 flex flex-col items-center justify-center">
             <div
-              onClick={() => setIsVoiceCallOpen(true)}
-              className="relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center cursor-pointer group select-none"
+              onClick={handleOpenVoice}
+              className={`relative w-64 h-64 sm:w-72 sm:h-72 flex items-center justify-center cursor-pointer group select-none transition-all duration-500 ease-out ${
+                isExpandingOrb
+                  ? "scale-115 brightness-125"
+                  : "hover:scale-[1.03] active:scale-95"
+              }`}
               title="Click orb to speak with Aven"
             >
+              {/* Luminous Expanding Shockwave Aura on Click */}
+              {isExpandingOrb && (
+                <div className="absolute inset-0 rounded-full bg-[#D98B2B]/40 blur-2xl animate-ping pointer-events-none" />
+              )}
+
               {/* Diffuse Outer Ambient Glow */}
-              <div className="absolute inset-4 rounded-full bg-[#D98B2B]/20 group-hover:bg-[#D98B2B]/40 blur-3xl pointer-events-none -z-10 transition-all duration-300 animate-pulse" />
+              <div
+                className={`absolute inset-4 rounded-full blur-3xl pointer-events-none -z-10 transition-all duration-500 ${
+                  isExpandingOrb
+                    ? "bg-[#D98B2B]/60 scale-150"
+                    : "bg-[#D98B2B]/20 group-hover:bg-[#D98B2B]/40 animate-pulse"
+                }`}
+              />
               
               {/* Interactive WebGL2 AI Blob */}
               <AvenBlob
                 colors={["#D98B2B", "#F5E6C8", "#8C5212"]}
                 backgroundColor="#111113"
                 size={1.05}
-                glow={1.2}
+                glow={isExpandingOrb ? 1.8 : 1.2}
                 bleed={1.0}
-                wobble={0.85}
+                wobble={isExpandingOrb ? 1.2 : 0.85}
                 highlight={1.3}
                 trail={1.1}
-                speed={0.9}
+                speed={isExpandingOrb ? 1.8 : 0.9}
                 hoverIntensity={1.25}
                 followCursor={true}
                 clickPulse={true}
@@ -623,7 +647,7 @@ export default function CockpitDashboardPage() {
             {/* Aven Subtitle Label (Interactive Clickable Trigger) */}
             <button
               type="button"
-              onClick={() => setIsVoiceCallOpen(true)}
+              onClick={handleOpenVoice}
               className="flex items-center gap-1.5 mt-3 px-3 py-1 rounded-full bg-[#17171A] hover:bg-[#1E1F24] border border-[#23242A] hover:border-[#D98B2B]/50 text-xs font-mono font-semibold tracking-widest text-[#85827A] hover:text-[#ffb86c] transition-all cursor-pointer shadow-sm group"
               title="Click to start voice session"
             >
@@ -646,7 +670,7 @@ export default function CockpitDashboardPage() {
               />
               <button
                 type="button"
-                onClick={() => setIsVoiceCallOpen(true)}
+                onClick={handleOpenVoice}
                 className="text-[#85827A] hover:text-[#ffb86c] transition-colors p-1 cursor-pointer"
                 title="Start Voice Call with Aven"
               >

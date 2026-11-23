@@ -1,6 +1,6 @@
 "use client";
 
-import React, { useEffect } from "react";
+import React, { useEffect, useState, useRef, useCallback } from "react";
 import {
   Mic,
   MicOff,
@@ -30,6 +30,10 @@ export default function RealtimeVoiceModal({
   conversationId,
   onMessageSent,
 }: RealtimeVoiceModalProps) {
+  const [isVisible, setIsVisible] = useState(false);
+  const [animationPhase, setAnimationPhase] = useState<"idle" | "entering" | "active" | "exiting">("idle");
+  const closeTimerRef = useRef<NodeJS.Timeout | null>(null);
+
   const {
     status,
     audioLevel,
@@ -50,28 +54,55 @@ export default function RealtimeVoiceModal({
     },
   });
 
-  // Automatically start voice session on modal open, stop on close
+  // Gracefully handle close with smooth exit animation
+  const handleClose = useCallback(() => {
+    if (animationPhase === "exiting") return;
+    setAnimationPhase("exiting");
+    if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    closeTimerRef.current = setTimeout(() => {
+      endSession();
+      onClose();
+      setIsVisible(false);
+      setAnimationPhase("idle");
+    }, 320);
+  }, [animationPhase, endSession, onClose]);
+
+  // Synchronize incoming isOpen prop with smooth entrance/exit lifecycle
   useEffect(() => {
     if (isOpen) {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+      setIsVisible(true);
+      setAnimationPhase("entering");
       startSession();
-    } else {
-      endSession();
+      // Next tick triggers active entrance expansion
+      const enterTimer = setTimeout(() => {
+        setAnimationPhase("active");
+      }, 25);
+      return () => clearTimeout(enterTimer);
+    } else if (isVisible && animationPhase !== "exiting") {
+      handleClose();
     }
-  }, [isOpen, startSession, endSession]);
+  }, [isOpen]);
 
-  // Handle escape key to close
+  // Clean up timer on unmount
+  useEffect(() => {
+    return () => {
+      if (closeTimerRef.current) clearTimeout(closeTimerRef.current);
+    };
+  }, []);
+
+  // Handle escape key to close gracefully
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
-      if (e.key === "Escape" && isOpen) {
-        endSession();
-        onClose();
+      if (e.key === "Escape" && isVisible && animationPhase !== "exiting") {
+        handleClose();
       }
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, [isOpen, endSession, onClose]);
+  }, [isVisible, animationPhase, handleClose]);
 
-  if (!isOpen) return null;
+  if (!isVisible) return null;
 
   // Map voice status to AvenBlob WebGL2 state
   const blobState: "idle" | "listening" | "thinking" | "speaking" =
@@ -89,13 +120,36 @@ export default function RealtimeVoiceModal({
     status === "speaking" ? 1.5 : status === "listening" ? 1.0 + audioLevel * 0.6 : 0.9;
   const orbScale = 1 + audioLevel * 0.15;
 
+  const isActive = animationPhase === "active";
+  const isExiting = animationPhase === "exiting";
+
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-[#111113]/98 backdrop-blur-3xl transition-all duration-300 select-none overflow-hidden text-[#F7F5F0]">
-      {/* Ambient Warm Amber Glow Background Mesh */}
-      <div className="absolute -inset-[30%] pointer-events-none transition-all duration-1000 opacity-25 blur-[140px] bg-gradient-to-tr from-[#D98B2B]/30 via-[#ffb86c]/15 to-[#111113]" />
+    <div
+      className={`fixed inset-0 z-50 flex items-center justify-center p-4 select-none overflow-hidden text-[#F7F5F0] transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+        isActive
+          ? "bg-[#111113]/95 backdrop-blur-3xl opacity-100"
+          : "bg-[#111113]/0 backdrop-blur-none opacity-0 pointer-events-none"
+      }`}
+    >
+      {/* Ambient Radial Warm Amber Expansion Bloom */}
+      <div
+        className={`absolute -inset-[30%] pointer-events-none blur-[140px] bg-gradient-to-tr from-[#D98B2B]/35 via-[#ffb86c]/20 to-transparent transition-all duration-700 ease-out ${
+          isActive
+            ? "scale-100 opacity-40 rotate-0"
+            : "scale-50 opacity-0 -rotate-12"
+        }`}
+      />
 
       {/* Top Floating Header Bar */}
-      <div className="absolute top-6 left-6 right-6 flex items-center justify-between pointer-events-auto z-20">
+      <div
+        className={`absolute top-6 left-6 right-6 flex items-center justify-between pointer-events-auto z-20 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isActive
+            ? "translate-y-0 opacity-100 delay-100"
+            : isExiting
+            ? "-translate-y-6 opacity-0"
+            : "-translate-y-8 opacity-0"
+        }`}
+      >
         <div className="flex items-center gap-3">
           <div className="w-10 h-10 rounded-2xl bg-[#17171A] border border-[#23242A] flex items-center justify-center shadow-xl">
             <Radio className="w-4 h-4 text-[#ffb86c] animate-pulse" />
@@ -129,7 +183,7 @@ export default function RealtimeVoiceModal({
             <span
               className={`w-2 h-2 rounded-full ${
                 isMuted
-                  ? "bg-rose-400"
+                  ? "bg-[#85827A]"
                   : status === "speaking" || status === "thinking"
                   ? "bg-[#ffb86c] animate-ping"
                   : "bg-emerald-400 animate-pulse"
@@ -140,11 +194,8 @@ export default function RealtimeVoiceModal({
           {/* Close Button */}
           <button
             type="button"
-            onClick={() => {
-              endSession();
-              onClose();
-            }}
-            className="w-10 h-10 rounded-xl bg-[#17171A] hover:bg-[#1E1F24] text-[#85827A] hover:text-[#F7F5F0] border border-[#23242A] flex items-center justify-center shadow-lg transition-all active:scale-95 cursor-pointer"
+            onClick={handleClose}
+            className="w-10 h-10 rounded-xl bg-[#17171A] hover:bg-[#1E1F24] text-[#85827A] hover:text-[#F7F5F0] border border-[#23242A] hover:border-[#32343D] flex items-center justify-center shadow-lg transition-all active:scale-95 cursor-pointer"
             title="End Call (Esc)"
           >
             <X className="w-5 h-5" />
@@ -153,15 +204,23 @@ export default function RealtimeVoiceModal({
       </div>
 
       {/* Main Center Hologram Stage */}
-      <div className="flex flex-col items-center justify-center max-w-lg w-full text-center px-4 relative z-10">
+      <div
+        className={`flex flex-col items-center justify-center max-w-lg w-full text-center px-4 relative z-10 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isActive
+            ? "scale-100 opacity-100 translate-y-0"
+            : isExiting
+            ? "scale-90 opacity-0 translate-y-4 filter blur-sm"
+            : "scale-[0.6] opacity-0 -translate-y-2 filter blur-sm"
+        }`}
+      >
         {/* Living Aven WebGL2 Orb (Same Orb as Cockpit) */}
         <div className="relative flex items-center justify-center w-72 h-72 sm:w-80 sm:h-80 my-2">
           {/* Outer Breathing Amber Glow Atmosphere */}
           <div
-            className="absolute rounded-full transition-transform duration-150 blur-3xl pointer-events-none opacity-30 bg-gradient-to-tr from-[#D98B2B] via-[#ffb86c] to-transparent"
+            className="absolute rounded-full transition-transform duration-200 blur-3xl pointer-events-none opacity-35 bg-gradient-to-tr from-[#D98B2B] via-[#ffb86c] to-transparent"
             style={{
-              width: "280px",
-              height: "280px",
+              width: "290px",
+              height: "290px",
               transform: `scale(${1 + audioLevel * 0.45})`,
             }}
           />
@@ -181,6 +240,14 @@ export default function RealtimeVoiceModal({
               width: "260px",
               height: "260px",
               transform: `scale(${1 + audioLevel * 0.45})`,
+            }}
+          />
+          <div
+            className="absolute rounded-full border border-[#ffb86c]/5 transition-transform duration-250 ease-out pointer-events-none"
+            style={{
+              width: "300px",
+              height: "300px",
+              transform: `scale(${1 + audioLevel * 0.6})`,
             }}
           />
 
@@ -263,7 +330,7 @@ export default function RealtimeVoiceModal({
             <button
               type="button"
               onClick={finishSpeakingAndSend}
-              className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold font-mono bg-[#ffb86c] hover:bg-[#ffb86c]/90 text-[#1A0F00] transition-all active:scale-95 shadow-lg shadow-[#ffb86c]/20 cursor-pointer"
+              className="flex items-center gap-1.5 px-4 py-1.5 rounded-full text-xs font-semibold font-mono bg-[#ffb86c] hover:bg-[#ffb86c]/90 text-[#111113] transition-all active:scale-95 shadow-lg shadow-[#ffb86c]/20 cursor-pointer"
             >
               <Send size={12} />
               <span>Tap orb to Send Now</span>
@@ -275,14 +342,14 @@ export default function RealtimeVoiceModal({
         <div className="w-full min-h-[90px] max-h-[140px] overflow-y-auto px-5 py-3.5 rounded-2xl bg-[#17171A] border border-[#23242A] backdrop-blur-2xl text-left shadow-2xl custom-h-scrollbar">
           {errorMessage ? (
             <div className="flex flex-col gap-2">
-              <div className="flex items-center gap-2 text-rose-400 text-xs font-mono">
-                <AlertCircle className="w-4 h-4 shrink-0" />
+              <div className="flex items-center gap-2 text-[#ffb86c] text-xs font-mono">
+                <AlertCircle className="w-4 h-4 shrink-0 text-[#ffb86c]" />
                 <span>{errorMessage}</span>
               </div>
               <button
                 type="button"
                 onClick={() => startSession()}
-                className="self-start flex items-center gap-1 text-[11px] font-mono px-3 py-1 rounded-lg bg-rose-500/20 hover:bg-rose-500/30 text-rose-200 border border-rose-500/40 transition cursor-pointer"
+                className="self-start flex items-center gap-1.5 text-[11px] font-mono px-3 py-1 rounded-lg bg-[#1E1F24] hover:bg-[#25262C] text-[#C5C2BA] hover:text-[#F7F5F0] border border-[#23242A] hover:border-[#ffb86c]/40 transition cursor-pointer"
               >
                 <RotateCcw size={12} /> Retry Connection
               </button>
@@ -330,19 +397,27 @@ export default function RealtimeVoiceModal({
       </div>
 
       {/* Bottom Floating Control Dock */}
-      <div className="absolute bottom-8 left-0 right-0 flex items-center justify-center gap-4 pointer-events-auto z-20">
-        {/* Mute Button */}
+      <div
+        className={`absolute bottom-8 left-0 right-0 flex items-center justify-center gap-4 pointer-events-auto z-20 transition-all duration-500 ease-[cubic-bezier(0.16,1,0.3,1)] ${
+          isActive
+            ? "translate-y-0 opacity-100 delay-150"
+            : isExiting
+            ? "translate-y-6 opacity-0"
+            : "translate-y-10 opacity-0"
+        }`}
+      >
+        {/* Mute Button (Standard Studio Graphite styling) */}
         <button
           type="button"
           onClick={toggleMute}
           className={`p-3.5 rounded-2xl border transition-all shadow-xl backdrop-blur-xl active:scale-95 cursor-pointer ${
             isMuted
-              ? "bg-rose-500/20 text-rose-400 border-rose-500/40 hover:bg-rose-500/30"
-              : "bg-[#17171A] text-[#C5C2BA] border-[#23242A] hover:bg-[#1E1F24] hover:text-[#F7F5F0]"
+              ? "bg-[#1E1F24] text-[#85827A] border-[#2E3038] hover:text-[#C5C2BA]"
+              : "bg-[#17171A] text-[#C5C2BA] border-[#23242A] hover:bg-[#1E1F24] hover:text-[#F7F5F0] hover:border-[#32343D]"
           }`}
           title={isMuted ? "Unmute Microphone" : "Mute Microphone"}
         >
-          {isMuted ? <MicOff className="w-5 h-5 text-rose-400" /> : <Mic className="w-5 h-5" />}
+          {isMuted ? <MicOff className="w-5 h-5 text-[#85827A]" /> : <Mic className="w-5 h-5" />}
         </button>
 
         {/* Send / Interrupt Button */}
@@ -355,23 +430,20 @@ export default function RealtimeVoiceModal({
               finishSpeakingAndSend();
             }
           }}
-          className="p-3.5 rounded-2xl bg-[#17171A] hover:bg-[#1E1F24] text-[#ffb86c] border border-[#23242A] shadow-xl backdrop-blur-xl active:scale-95 cursor-pointer"
+          className="p-3.5 rounded-2xl bg-[#17171A] hover:bg-[#1E1F24] text-[#ffb86c] border border-[#23242A] hover:border-[#ffb86c]/40 shadow-xl backdrop-blur-xl active:scale-95 cursor-pointer transition-all"
           title={status === "speaking" ? "Interrupt Aven" : "Send Current Speech"}
         >
           <Sparkles className="w-5 h-5" />
         </button>
 
-        {/* End Call Button */}
+        {/* End Call Button (Standard LifeOS Studio Graphite Design) */}
         <button
           type="button"
-          onClick={() => {
-            endSession();
-            onClose();
-          }}
-          className="p-3.5 px-6 rounded-2xl bg-rose-600 hover:bg-rose-500 text-white shadow-xl shadow-rose-950/40 border border-rose-500/40 active:scale-95 transition-all flex items-center gap-2 font-mono text-xs font-semibold cursor-pointer"
-          title="End Voice Call"
+          onClick={handleClose}
+          className="p-3.5 px-6 rounded-2xl bg-[#17171A] hover:bg-[#1E1F24] text-[#F7F5F0] hover:text-white border border-[#23242A] hover:border-[#3E404D] shadow-xl backdrop-blur-xl active:scale-95 transition-all flex items-center gap-2 font-mono text-xs font-semibold cursor-pointer group"
+          title="End Voice Call (Esc)"
         >
-          <PhoneOff className="w-4 h-4" />
+          <PhoneOff className="w-4 h-4 text-[#85827A] group-hover:text-[#F7F5F0] transition-colors" />
           <span>End Call</span>
         </button>
       </div>
