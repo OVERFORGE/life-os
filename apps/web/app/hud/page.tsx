@@ -32,6 +32,24 @@ export default function AvenHudPage() {
     inputRef.current?.focus();
   }, []);
 
+  // Force 100% transparency on html and body for frameless desktop overlay
+  useEffect(() => {
+    document.documentElement.classList.add("hud-transparent");
+    document.body.classList.add("hud-transparent");
+    document.documentElement.style.setProperty("background", "transparent", "important");
+    document.documentElement.style.setProperty("background-color", "transparent", "important");
+    document.body.style.setProperty("background", "transparent", "important");
+    document.body.style.setProperty("background-color", "transparent", "important");
+    return () => {
+      document.documentElement.classList.remove("hud-transparent");
+      document.body.classList.remove("hud-transparent");
+      document.documentElement.style.removeProperty("background");
+      document.documentElement.style.removeProperty("background-color");
+      document.body.style.removeProperty("background");
+      document.body.style.removeProperty("background-color");
+    };
+  }, []);
+
   // Listen for Escape key to hide HUD window
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
@@ -283,6 +301,13 @@ export default function AvenHudPage() {
       id="aven-hud-root"
       className="w-screen h-screen bg-transparent overflow-hidden select-none p-0 m-0 relative font-sans"
     >
+      <style dangerouslySetInnerHTML={{ __html: `
+        html, body, #__next {
+          background: transparent !important;
+          background-color: transparent !important;
+          overflow: hidden !important;
+        }
+      `}} />
       {/* Floating HUD Pill Notch */}
       <div
         id="aven-hud-pill"

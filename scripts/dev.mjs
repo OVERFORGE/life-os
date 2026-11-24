@@ -9,12 +9,33 @@
 import { spawn } from "node:child_process";
 import http from "node:http";
 import path from "node:path";
+import fs from "node:fs";
 import { fileURLToPath } from "node:url";
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const rootDir = path.resolve(__dirname, "..");
 const isWindows = process.platform === "win32";
 const pnpmCmd = isWindows ? "pnpm.cmd" : "pnpm";
+
+// Load root .env variables so child processes inherit GROQ_API_KEY and other config
+const envPath = path.resolve(rootDir, ".env");
+if (fs.existsSync(envPath)) {
+  try {
+    const envContent = fs.readFileSync(envPath, "utf8");
+    for (const line of envContent.split("\n")) {
+      const trimmed = line.trim();
+      if (!trimmed || trimmed.startsWith("#")) continue;
+      const eqIdx = trimmed.indexOf("=");
+      if (eqIdx > 0) {
+        const key = trimmed.slice(0, eqIdx).trim();
+        const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
+        if (key && !process.env[key]) {
+          process.env[key] = val;
+        }
+      }
+    }
+  } catch {}
+}
 
 console.log("\n=======================================================");
 console.log("             LifeOS Unified Dev Launcher              ");

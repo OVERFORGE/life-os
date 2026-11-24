@@ -2,6 +2,10 @@ import { app, BrowserWindow, Tray, Menu, ipcMain, shell, session, nativeImage, s
 import path from "path";
 import http from "http";
 import { WakeSupervisor } from "./supervisor";
+import { loadRootEnv } from "./env";
+
+// Ensure environment variables from root .env are loaded into process.env
+loadRootEnv();
 
 let mainWindow: BrowserWindow | null = null;
 let hudWindow: BrowserWindow | null = null;
@@ -317,6 +321,13 @@ function createHudWindow(): BrowserWindow {
       clearTimeout(hudRetryTimer);
       hudRetryTimer = null;
     }
+    hud.webContents.insertCSS(`
+      html, body, #__next {
+        background: transparent !important;
+        background-color: transparent !important;
+        overflow: hidden !important;
+      }
+    `);
   });
 
   return hud;

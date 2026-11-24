@@ -2,6 +2,7 @@ import { spawn, ChildProcess } from "child_process";
 import path from "path";
 import fs from "fs";
 import { EventEmitter } from "events";
+import { loadRootEnv } from "./env";
 
 export interface WakeDetectionEvent {
   event: "wake_detected";
@@ -156,10 +157,10 @@ export class WakeSupervisor extends EventEmitter {
     this.isVerifying = true;
 
     try {
-      const apiKey = process.env.GROQ_API_KEY;
+      let apiKey = process.env.GROQ_API_KEY;
       if (!apiKey) {
-        console.warn("[WakeSupervisor] GROQ_API_KEY missing; cannot verify candidate wake audio.");
-        return;
+        loadRootEnv();
+        apiKey = process.env.GROQ_API_KEY;
       }
 
       const wavBuffer = Buffer.from(candidate.audio_wav_base64, "base64");
@@ -171,21 +172,52 @@ export class WakeSupervisor extends EventEmitter {
       formData.append("temperature", "0");
       formData.append("prompt", "Hey Aven, Hey Even, Aven.");
 
-      const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
-        method: "POST",
-        headers: {
-          Authorization: `Bearer ${apiKey}`,
-        },
-        body: formData,
-      });
+      let rawText = "";
 
-      if (!res.ok) {
-        console.warn(`[WakeSupervisor] Verification API returned HTTP ${res.status}`);
+      if (apiKey) {
+        try {
+          const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+            method: "POST",
+            headers: {
+              Authorization: `Bearer ${apiKey}`,
+            },
+            body: formData,
+          });
+
+          if (res.ok) {
+            const data = (await res.json()) as { text?: string };
+            rawText = (data.text || "").trim();
+          }
+        } catch (apiErr) {
+          console.warn("[WakeSupervisor] Direct Groq API note:", apiErr);
+        }
+      }
+
+      // Fallback: If direct Groq API not reached, use local LifeOS backend proxy
+      if (!rawText) {
+        try {
+          const webUrl = process.env.LIFEOS_WEB_URL || "http://localhost:3456";
+          const fallbackFormData = new FormData();
+          fallbackFormData.append("file", blob, "candidate.wav");
+
+          const proxyRes = await fetch(`${webUrl}/api/voice/transcribe`, {
+            method: "POST",
+            body: fallbackFormData,
+          });
+
+          if (proxyRes.ok) {
+            const proxyData = (await proxyRes.json()) as { text?: string };
+            rawText = (proxyData.text || "").trim();
+          }
+        } catch (proxyErr) {
+          console.warn("[WakeSupervisor] Proxy transcription note:", proxyErr);
+        }
+      }
+
+      if (!rawText) {
         return;
       }
 
-      const data = (await res.json()) as { text?: string };
-      const rawText = (data.text || "").trim();
       const normalized = rawText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 
       // Strict keyword regex: "Hey Aven", "Hey Even", "Hey Evan", "Aven", "Even"
