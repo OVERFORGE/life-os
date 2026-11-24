@@ -28,7 +28,11 @@ export class WakeSupervisor extends EventEmitter {
     this.maxRestarts = options?.maxRestarts ?? 5;
     this.initialBackoffMs = options?.initialBackoffMs ?? 1000;
 
-    // Resolve binary path: production resource path or local cargo target
+    // Resolve binary path: release target, production resource path, or debug target
+    const defaultReleasePath = path.resolve(
+      __dirname,
+      "../../../../tools/aven-wake-detector/target/release/aven-wake-detector.exe"
+    );
     const defaultDevPath = path.resolve(
       __dirname,
       "../../../../tools/aven-wake-detector/target/debug/aven-wake-detector.exe"
@@ -40,7 +44,11 @@ export class WakeSupervisor extends EventEmitter {
 
     this.binaryPath =
       options?.binaryPath ||
-      (fs.existsSync(defaultProdPath) ? defaultProdPath : defaultDevPath);
+      (fs.existsSync(defaultReleasePath)
+        ? defaultReleasePath
+        : fs.existsSync(defaultProdPath)
+        ? defaultProdPath
+        : defaultDevPath);
   }
 
   public isRunning(): boolean {

@@ -518,7 +518,12 @@ app.whenReady().then(() => {
   });
 
   supervisor.on("wake", (payload) => {
-    console.log("[Electron] ⚡ Wake detected! Summoning Dynamic Notch HUD:", payload);
+    // Strict keyword and confidence filter: ensure only verified "Hey Aven" activates the HUD
+    if (payload.keyword !== "Hey Aven" || (typeof payload.confidence === "number" && payload.confidence < 0.78)) {
+      console.log("[Electron] Discarded below-threshold wake trigger:", payload);
+      return;
+    }
+    console.log("[Electron] ⚡ Verified 'Hey Aven' wake detected:", payload);
     if (isHudEnabled && hudWindow && !hudWindow.isDestroyed()) {
       hudWindow.show();
       hudWindow.focus();

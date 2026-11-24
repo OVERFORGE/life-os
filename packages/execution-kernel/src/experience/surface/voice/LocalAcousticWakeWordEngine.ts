@@ -119,7 +119,7 @@ export class LocalAcousticWakeWordEngine implements IWakeWordEngine {
       energySum += linearBuffer[i] * linearBuffer[i];
     }
     const rms = Math.sqrt(energySum / windowSamples);
-    if (rms < 0.012) {
+    if (rms < 0.026) {
       return { detected: false, keyword: "", confidence: 0, timestampMs };
     }
 
@@ -166,14 +166,24 @@ export class LocalAcousticWakeWordEngine implements IWakeWordEngine {
       const diffLow = Math.abs(normLow - target.low);
       const diffMid = Math.abs(normMid - target.mid);
       const diffHigh = Math.abs(normHigh - target.high);
-      const sliceScore = Math.max(0, 1.0 - (diffLow * 0.5 + diffMid * 0.35 + diffHigh * 0.35));
+      const dist = diffLow * 0.5 + diffMid * 0.35 + diffHigh * 0.35;
+      let sliceScore = Math.max(0, 1.0 - (dist * 2.2));
+
+      // Specific onset/offset check for "Hey Aven"
+      if (this.config.keyword === "Hey Aven") {
+        if (s === 0 && (normHigh < 0.20 || normLow > 0.45)) {
+          sliceScore = 0.0;
+        }
+        if (s === numSlices - 1 && (normLow < 0.45 || normHigh > 0.20)) {
+          sliceScore = 0.0;
+        }
+      }
 
       patternMatchScore += sliceScore;
     }
 
     const meanConfidence = patternMatchScore / numSlices;
-    const sensitivity = this.config.sensitivity ?? 0.65;
-    const detected = meanConfidence >= (1.0 - sensitivity * 0.55);
+    const detected = meanConfidence >= 0.78;
 
     if (detected) {
       this.lastTriggerTimeMs = timestampMs;

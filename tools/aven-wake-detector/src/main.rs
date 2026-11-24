@@ -9,24 +9,19 @@ const BUFFER_CAP: usize = 24000; // 1.5s @ 16kHz
 
 // =========================================================================
 // CALIBRATION PARAMETERS FOR "HEY AVEN" WAKE DETECTION
-// You can adjust these values manually to tune sensitivity:
+// Tuned for high precision: eliminates false positives from random speech.
 // =========================================================================
 
 // 1. RMS_THRESHOLD: Minimum volume/loudness required before analyzing sound.
-//    - Decrease (e.g. 0.012 - 0.015): Hears softer speech or from further away.
-//    - Increase (e.g. 0.025 - 0.035): Requires speaking louder / closer to microphone.
-//    Default: 0.018
-pub const RMS_THRESHOLD: f32 = 0.018;
+//    Requires clear intentional speech volume, ignoring background ambient speech.
+pub const RMS_THRESHOLD: f32 = 0.026;
 
 // 2. CONFIDENCE_THRESHOLD: Match score required to trigger "Hey Aven" (0.00 to 1.00).
-//    - Decrease (e.g. 0.62 - 0.65): Triggers much more easily, even with relaxed pronunciation.
-//    - Increase (e.g. 0.72 - 0.80): Strict, only triggers on very crisp pronunciation.
-//    Default: 0.68
-pub const CONFIDENCE_THRESHOLD: f32 = 0.68;
+//    Requires strict phonetic pattern match for "Hey Aven".
+pub const CONFIDENCE_THRESHOLD: f32 = 0.78;
 
 // 3. COOLDOWN_DURATION: Delay before another wake trigger can occur.
-//    Default: 2000ms
-pub const COOLDOWN_DURATION: Duration = Duration::from_millis(2000);
+pub const COOLDOWN_DURATION: Duration = Duration::from_millis(2200);
 
 fn emit_json_event(event_name: &str, data: serde_json::Value) {
     let mut msg = serde_json::Map::new();
@@ -221,7 +216,20 @@ fn main() {
                 let n_hi = hi / total;
 
                 let dist = (n_lo - t_lo).abs() * 0.5 + (n_mi - t_mi).abs() * 0.35 + (n_hi - t_hi).abs() * 0.35;
-                score += (1.0 - dist).max(0.0);
+                let mut slice_score = (1.0 - (dist * 2.2)).max(0.0);
+
+                // Specific phonetic onset validation for "Hey Aven":
+                // Slice 0 ("H" in "Hey") must have prominent high-frequency aspiration.
+                // If it is a low-frequency vowel onset, reject slice.
+                if s == 0 && (n_hi < 0.20 || n_lo > 0.45) {
+                    slice_score = 0.0;
+                }
+                // Slice 5 ("N" in "Aven") must have low-frequency nasal resonance.
+                if s == 5 && (n_lo < 0.45 || n_hi > 0.20) {
+                    slice_score = 0.0;
+                }
+
+                score += slice_score;
             }
 
             let confidence = score / num_slices as f32;
