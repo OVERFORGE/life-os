@@ -90,7 +90,7 @@ function applyPhoneticNames(text: string, customPhoneticName?: string, originalN
   return result;
 }
 
-// Supported high-quality British neural voices (Jarvis aesthetic - LifeOS Voice)
+// Supported high-quality British neural voices (Aven Voice - LifeOS Neural Voice)
 const DEFAULT_VOICE = "en-GB-RyanNeural";
 const ALLOWED_VOICES = new Set(["en-GB-RyanNeural"]);
 

@@ -3,6 +3,8 @@ import { contextBridge, ipcRenderer } from "electron";
 export interface DesktopBridge {
   openExternal: (url: string) => Promise<boolean>;
   toggleHud: (force?: boolean) => Promise<void>;
+  hideHud: () => Promise<void>;
+  setConversationActive: (active: boolean) => Promise<void>;
   setHudEnabled: (enabled: boolean) => Promise<boolean>;
   isHudEnabled: () => Promise<boolean>;
   updateTrayStatus: (status: { title: string; tooltip: string }) => Promise<void>;
@@ -21,6 +23,8 @@ export interface DesktopBridge {
 const desktopBridge: DesktopBridge = {
   openExternal: (url: string) => ipcRenderer.invoke("desktop:open-external", url),
   toggleHud: (force?: boolean) => ipcRenderer.invoke("desktop:toggle-hud", force),
+  hideHud: () => ipcRenderer.invoke("desktop:hide-hud"),
+  setConversationActive: (active: boolean) => ipcRenderer.invoke("desktop:set-conversation-active", active),
   setHudEnabled: (enabled: boolean) => ipcRenderer.invoke("desktop:set-hud-enabled", enabled),
   isHudEnabled: () => ipcRenderer.invoke("desktop:is-hud-enabled"),
   updateTrayStatus: (status: { title: string; tooltip: string }) =>

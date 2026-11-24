@@ -20,7 +20,7 @@ export function AssistantCard({ context }: AssistantCardProps) {
     <div className="bg-[#1F2023] border border-[#2A2B2F] rounded-2xl p-6 shadow-sm space-y-6">
       <div className="space-y-1">
         <div className="text-[10px] font-bold uppercase tracking-widest text-gray-500">
-          JARVIS INSIGHT
+          AVEN INSIGHT
         </div>
         <div className="text-xs font-medium text-gray-400">
           Current system intelligence

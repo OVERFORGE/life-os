@@ -27,7 +27,7 @@ export function SystemInsightCard() {
 
   if (loading) {
     return (
-      <Card title="Jarvis Insight" subtitle="System intelligence">
+      <Card title="Aven Insight" subtitle="System intelligence">
         <div className="text-sm text-gray-400">Analyzing system...</div>
       </Card>
     );
@@ -38,7 +38,7 @@ export function SystemInsightCard() {
   return (
     <div onClick={() => router.push("/insights")}>
         <Card
-      title="Jarvis Insight"
+      title="Aven Insight"
       subtitle="Current system intelligence"
       
     >

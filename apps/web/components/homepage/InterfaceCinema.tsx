@@ -165,7 +165,7 @@ export function InterfaceCinema() {
                   <span className="text-[9px] font-mono text-white/40 uppercase tracking-widest">Goal Load</span>
                   <span className="text-lifeos-red-3 text-xs">📈</span>
                 </div>
-                <div className="text-[9px] text-white/30">Jarvis system-wide goal pressure</div>
+                <div className="text-[9px] text-white/30">Aven system-wide goal pressure</div>
                 <div className="flex items-center justify-between mt-1">
                   <span className="text-[10px] text-white/50">Load Score</span>
                   <span className="text-[10px] font-mono font-bold">44%</span>

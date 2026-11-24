@@ -1691,6 +1691,12 @@ export class Supervisor {
         contextProjection += `\n[SITUATIONAL AMBIENT CONTEXT]: The user is currently executing '${req.surfaceContext.activeExecutionTitle}' (Category: ${req.surfaceContext.activeExecutionCategory || "Focus"}). Active Surface: ${req.surfaceContext.sourceSurface || "ambient"}. You are speaking with them while they are in active execution. Keep responses focused, respectful of their flow, and concise.\n`;
       }
 
+      if (req.surfaceContext?.sourceSurface === "DESKTOP_HUD") {
+        contextProjection += `\n[SURFACE CONTEXT: DESKTOP HUD VOICE DUPLEX]: You are speaking in an active full-duplex voice dialogue via the desktop HUD overlay. Keep your replies natural, spoken, and conversational (1 to 3 sentences maximum, suited for voice synthesis).
+CRITICAL CONVERSATION TERMINATION:
+If the user indicates that they are done, says goodbye, dismisses you, thanks you and ends, or semantically concludes the conversation in ANY language or manner (such as 'bye', 'thank you that is all', 'done for now', 'see you later', 'alvida', 'stop'), acknowledge warmly in one natural closing sentence and append '<dialogue_status>concluded</dialogue_status>' at the very end of your response. This semantic marker signals the HUD interface to close smoothly after speaking your sign-off.\n`;
+      }
+
       const systemPrompt =
         buildSupervisorPersonaPrompt(activeUserName) +
         contextProjection +

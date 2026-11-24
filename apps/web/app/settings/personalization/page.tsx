@@ -238,7 +238,7 @@ export default function PersonalizationPage() {
             <div className="bg-[#25262A] border border-[#303136] rounded-xl p-4 flex items-center justify-between">
               <div>
                 <span className="text-[10px] font-bold uppercase tracking-wider text-gray-400">Assistant Voice</span>
-                <p className="text-sm font-bold text-white mt-0.5">Aven (Polished British Jarvis)</p>
+                <p className="text-sm font-bold text-white mt-0.5">Aven (Polished British Voice)</p>
                 <p className="text-xs text-gray-400 mt-0.5">Neural synthesis via Edge TTS</p>
               </div>
               <span className="px-3 py-1 bg-[#E8414A]/10 text-[#E8414A] border border-[#E8414A]/20 rounded-lg text-xs font-mono font-bold">

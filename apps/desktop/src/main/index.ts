@@ -298,16 +298,21 @@ function createHudWindow(): BrowserWindow {
   hud.loadURL(`${WEB_URL}/hud`);
 
   hud.on("blur", () => {
-    hud.hide();
-    supervisor?.setConversationActive(false);
+    // Only auto-hide on blur if summoned by hover and not in an active voice conversation
+    if (hudSummonSource === "hover" && !supervisor?.getConversationActive()) {
+      hud.hide();
+      hasHoveredHud = false;
+    }
   });
 
   hud.on("show", () => {
-    supervisor?.setConversationActive(true);
+    // Kept for tracking
   });
 
   hud.on("hide", () => {
     supervisor?.setConversationActive(false);
+    hasHoveredHud = false;
+    hudSummonSource = "manual";
   });
 
   let hudRetryTimer: NodeJS.Timeout | null = null;
@@ -384,16 +389,22 @@ function createTray(): Tray {
   return t;
 }
 
+let hudSummonSource: "voice" | "hover" | "manual" = "manual";
+let hasHoveredHud = false;
+
 function toggleHud(force?: boolean): void {
   if (!hudWindow || hudWindow.isDestroyed()) return;
   if (!isHudEnabled && force !== true) return;
   if (hudWindow.isVisible()) {
     hudWindow.hide();
     supervisor?.setConversationActive(false);
+    hasHoveredHud = false;
+    hudSummonSource = "manual";
   } else {
+    hudSummonSource = "manual";
+    hasHoveredHud = false;
     hudWindow.show();
     hudWindow.focus();
-    supervisor?.setConversationActive(true);
   }
 }
 
@@ -426,8 +437,7 @@ app.whenReady().then(() => {
   tray = createTray();
 
   // Dynamic Ledge: Cursor hover trigger at the top-middle of the screen
-  // Auto-dismiss: When cursor moves away from the HUD, seamlessly close
-  let hasHoveredHud = false;
+  // Auto-dismiss: When cursor moves away from the HUD, seamlessly close (for hover summons only)
   setInterval(() => {
     if (!isHudEnabled || !hudWindow || hudWindow.isDestroyed()) return;
     try {
@@ -440,13 +450,15 @@ app.whenReady().then(() => {
       // 1. Summon trigger: cursor touches top edge at screen center notch zone (±140px)
       if (cursor.y <= 3 && Math.abs(cursor.x - centerX) < 140) {
         if (!hudWindow.isVisible()) {
-          hudWindow.show();
+          hudSummonSource = "hover";
           hasHoveredHud = false;
+          hudWindow.show();
         }
       }
 
-      // 2. Auto-close trigger: when HUD is open, as user takes mouse away from HUD bounds
-      if (hudWindow.isVisible()) {
+      // 2. Auto-close trigger: ONLY for hover summons when user moves away after hovering
+      // Voice summons or manual summons MUST NOT auto-close based on cursor position!
+      if (hudWindow.isVisible() && hudSummonSource === "hover") {
         const isNearHud =
           cursor.x >= hudBounds.x - 30 &&
           cursor.x <= hudBounds.x + hudBounds.width + 30 &&
@@ -455,10 +467,11 @@ app.whenReady().then(() => {
 
         if (isNearHud) {
           hasHoveredHud = true;
-        } else if (hasHoveredHud || cursor.y > 180) {
+        } else if (hasHoveredHud && !supervisor?.getConversationActive()) {
           hudWindow.hide();
           supervisor?.setConversationActive(false);
           hasHoveredHud = false;
+          hudSummonSource = "manual";
         }
       }
     } catch {}
@@ -502,6 +515,19 @@ app.whenReady().then(() => {
 
   ipcMain.handle("desktop:toggle-hud", async (_event, force?: boolean) => {
     toggleHud(force);
+  });
+
+  ipcMain.handle("desktop:hide-hud", async () => {
+    if (hudWindow && !hudWindow.isDestroyed() && hudWindow.isVisible()) {
+      hudWindow.hide();
+      supervisor?.setConversationActive(false);
+      hasHoveredHud = false;
+      hudSummonSource = "manual";
+    }
+  });
+
+  ipcMain.handle("desktop:set-conversation-active", async (_event, active: boolean) => {
+    supervisor?.setConversationActive(Boolean(active));
   });
 
   ipcMain.handle("desktop:set-hud-enabled", async (_event, enabled: boolean) => {
@@ -569,6 +595,8 @@ app.whenReady().then(() => {
     }
     console.log("[Electron] ⚡ Verified 'Hey Aven' wake detected:", payload);
     if (isHudEnabled && hudWindow && !hudWindow.isDestroyed()) {
+      hudSummonSource = "voice";
+      hasHoveredHud = false;
       hudWindow.show();
       hudWindow.focus();
       supervisor?.setConversationActive(true);

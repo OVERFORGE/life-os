@@ -9,6 +9,8 @@
 export interface DesktopBridge {
   openExternal?: (url: string) => Promise<boolean>;
   toggleHud?: (force?: boolean) => Promise<void>;
+  hideHud?: () => Promise<void>;
+  setConversationActive?: (active: boolean) => Promise<void>;
   setHudEnabled?: (enabled: boolean) => Promise<boolean>;
   isHudEnabled?: () => Promise<boolean>;
   updateTrayStatus?: (status: { title: string; tooltip: string }) => Promise<void>;
@@ -59,6 +61,38 @@ export async function toggleHudWindow(force?: boolean): Promise<void> {
       await window.lifeosDesktop.toggleHud(force);
     } catch (err) {
       console.warn("[desktopBridge] Electron toggleHud error:", err);
+    }
+  }
+}
+
+/**
+ * Explicitly hides the desktop HUD overlay window.
+ */
+export async function hideHudWindow(): Promise<void> {
+  if (typeof window !== "undefined" && window.lifeosDesktop?.hideHud) {
+    try {
+      await window.lifeosDesktop.hideHud();
+    } catch (err) {
+      console.warn("[desktopBridge] Electron hideHud error:", err);
+    }
+  } else if (typeof window !== "undefined" && window.lifeosDesktop?.toggleHud) {
+    try {
+      await window.lifeosDesktop.toggleHud(false);
+    } catch (err) {
+      console.warn("[desktopBridge] Electron toggleHud error:", err);
+    }
+  }
+}
+
+/**
+ * Sets the active conversation mode state on the native supervisor.
+ */
+export async function setConversationActive(active: boolean): Promise<void> {
+  if (typeof window !== "undefined" && window.lifeosDesktop?.setConversationActive) {
+    try {
+      await window.lifeosDesktop.setConversationActive(active);
+    } catch (err) {
+      console.warn("[desktopBridge] Electron setConversationActive error:", err);
     }
   }
 }

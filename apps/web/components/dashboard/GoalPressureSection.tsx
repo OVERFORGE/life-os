@@ -39,7 +39,7 @@ export function GoalPressureSection({
             GOAL LOAD
           </div>
           <div className="text-xs font-medium text-gray-400">
-            Jarvis system-wide goal pressure
+            Aven system-wide goal pressure
           </div>
         </div>
         <Link

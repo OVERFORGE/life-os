@@ -93,7 +93,7 @@ export function GoalInspector({ goalId }: { goalId: string }) {
         <div className="p-5 rounded-xl bg-[#E8414A]/10 border border-[#E8414A]/20 space-y-3">
           <div className="flex items-center gap-2 text-[#E8414A]">
             <Sparkles size={16} />
-            <h4 className="text-sm font-bold">Jarvis Adaptation</h4>
+            <h4 className="text-sm font-bold">Aven Adaptation</h4>
           </div>
           <p className="text-sm text-gray-300 leading-relaxed">
             {adaptation.reasoning}

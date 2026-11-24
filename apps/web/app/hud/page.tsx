@@ -1,19 +1,19 @@
 "use client";
 
-import React, { useState, useEffect, useRef } from "react";
-import { Mic, ArrowUp, Sparkles, Check, Copy, Loader2 } from "lucide-react";
+import React, { useState, useEffect, useRef, useCallback } from "react";
+import { Mic, ArrowUp, Sparkles, Check, Copy, Loader2, X, Volume2 } from "lucide-react";
 import { useInteractionSurface } from "@/hooks/useInteractionSurface";
 import { AvenBlob } from "@/components/ai/AvenBlob";
 
 /**
- * Aven Minimal HUD with Interactive WebGL2 Assistant Orb
+ * Aven Minimal HUD with Full-Duplex Voice & Interactive WebGL2 Assistant Orb
  * 
- * Clean, lightweight, studio-grade ambient interaction surface.
- * Features:
+ * Studio-grade, ambient interaction surface:
  * 1. Full-duplex conversational voice interaction via native acoustic supervisor.
- * 2. Interactive WebGL2 Aven Orb with responsive states (idle, listening, thinking, speaking).
- * 3. 100% transparent frameless desktop backdrop with zero black box.
- * 4. Auto-summon on top-center hover, auto-dismiss on mouse leave.
+ * 2. Authentic British male neural voice synthesis (en-GB-RyanNeural).
+ * 3. 100% semantic conversation conclusion (zero regex on user speech).
+ * 4. Interactive WebGL2 Aven Orb with responsive states (idle, listening, thinking, speaking).
+ * 5. Transparent frameless desktop overlay with zero glitching or accidental auto-dismiss.
  */
 export default function AvenHudPage() {
   const { projection, completeTask } = useInteractionSurface();
@@ -21,11 +21,14 @@ export default function AvenHudPage() {
   const [response, setResponse] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isListening, setIsListening] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
+  const audioRef = useRef<HTMLAudioElement | null>(null);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-focus input on mount
   useEffect(() => {
@@ -50,7 +53,42 @@ export default function AvenHudPage() {
     };
   }, []);
 
-  // Listen for Escape key to hide HUD window
+  // Reset silence timer: auto-closes HUD gracefully after 25s of complete silence
+  const resetSilenceTimer = useCallback(() => {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    silenceTimerRef.current = setTimeout(() => {
+      console.log("[AvenHUD] Inactivity timeout reached (25s silence). Closing HUD.");
+      hideHud();
+    }, 25000);
+  }, []);
+
+  const hideHud = useCallback(async () => {
+    stopBrowserRecording();
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+    setIsListening(false);
+    setIsSpeaking(false);
+    setIsSubmitting(false);
+
+    try {
+      const { hideHudWindow, setConversationActive } = await import("@/lib/desktopBridge");
+      await setConversationActive(false);
+      await hideHudWindow();
+    } catch (err) {
+      console.warn("[AvenHUD] hideHud bridge call error:", err);
+    }
+  }, []);
+
+  // Listen for Escape key to dismiss HUD
   useEffect(() => {
     const handleKeyDown = (e: KeyboardEvent) => {
       if (e.key === "Escape") {
@@ -59,7 +97,135 @@ export default function AvenHudPage() {
     };
     window.addEventListener("keydown", handleKeyDown);
     return () => window.removeEventListener("keydown", handleKeyDown);
-  }, []);
+  }, [hideHud]);
+
+  // Synthesize and play British neural voice response
+  const playTtsAudio = useCallback((text: string, isConcluded: boolean) => {
+    if (!text || typeof window === "undefined") return;
+
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    setIsSpeaking(true);
+    setIsListening(false);
+
+    try {
+      const ttsUrl = `/api/voice/tts?text=${encodeURIComponent(text)}&voice=en-GB-RyanNeural`;
+      const audio = new Audio(ttsUrl);
+      audioRef.current = audio;
+
+      audio.onended = () => {
+        setIsSpeaking(false);
+        audioRef.current = null;
+        if (isConcluded) {
+          console.log("[AvenHUD] Conversation semantically concluded. Dismissing HUD.");
+          setTimeout(() => {
+            hideHud();
+          }, 450);
+        } else {
+          // Full-duplex: resume listening for user's next spoken turn
+          setIsListening(true);
+          resetSilenceTimer();
+        }
+      };
+
+      audio.onerror = (err) => {
+        console.warn("[AvenHUD] TTS audio error:", err);
+        setIsSpeaking(false);
+        audioRef.current = null;
+        if (isConcluded) {
+          hideHud();
+        } else {
+          setIsListening(true);
+          resetSilenceTimer();
+        }
+      };
+
+      audio.play().catch((playErr) => {
+        console.warn("[AvenHUD] Audio play policy blocked:", playErr);
+        setIsSpeaking(false);
+        if (isConcluded) {
+          hideHud();
+        } else {
+          setIsListening(true);
+          resetSilenceTimer();
+        }
+      });
+    } catch (err) {
+      console.warn("[AvenHUD] Audio setup failed:", err);
+      setIsSpeaking(false);
+      if (isConcluded) {
+        hideHud();
+      } else {
+        setIsListening(true);
+        resetSilenceTimer();
+      }
+    }
+  }, [hideHud, resetSilenceTimer]);
+
+  const handleSendWithText = useCallback(async (textToSend: string) => {
+    if (!textToSend.trim() || isSubmitting) return;
+
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (audioRef.current) {
+      audioRef.current.pause();
+      audioRef.current = null;
+    }
+
+    setIsSubmitting(true);
+    setIsListening(false);
+    setIsSpeaking(false);
+    setResponse(null);
+
+    try {
+      const res = await fetch("/api/conversation", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          message: textToSend,
+          model: "llama-3.3-70b-versatile",
+          mode: "general",
+          surfaceContext: {
+            activeExecutionTitle: projection?.activeExecution?.title,
+            activeExecutionCategory: projection?.activeExecution?.category,
+            currentInteractionMode: projection?.interactionMode,
+            sourceSurface: "DESKTOP_HUD",
+          },
+        }),
+      });
+
+      if (res.ok) {
+        const rawText = await res.text();
+        const isConcluded = /<dialogue_status>\s*concluded\s*<\/dialogue_status>/i.test(rawText);
+        const clean = rawText
+          .replace(/<think>[\s\S]*?<\/think>\n?/gi, "")
+          .replace(/<planning>[\s\S]*?<\/planning>\n?/gi, "")
+          .replace(/<dialogue_status>[\s\S]*?<\/dialogue_status>\n?/gi, "")
+          .trim();
+
+        setResponse(clean);
+        setIsSubmitting(false);
+
+        // Synthesize and speak Aven's response in British accent
+        playTtsAudio(clean, isConcluded);
+      } else {
+        const fallback = "Couldn't process this right now. Please try again.";
+        setResponse(fallback);
+        setIsSubmitting(false);
+        playTtsAudio(fallback, false);
+      }
+    } catch {
+      const errorMsg = "Network error connecting to Aven.";
+      setResponse(errorMsg);
+      setIsSubmitting(false);
+      playTtsAudio(errorMsg, false);
+    }
+  }, [isSubmitting, playTtsAudio, projection]);
 
   // Listen for wake word triggers from Electron supervisor ("Hey Aven")
   useEffect(() => {
@@ -67,6 +233,8 @@ export default function AvenHudPage() {
       const unsub = window.lifeosDesktop.onAvenWake((payload: any) => {
         if (payload?.keyword === "Hey Aven") {
           setResponse(null);
+          resetSilenceTimer();
+
           if (payload?.command && typeof payload.command === "string" && payload.command.trim().length > 0) {
             // User uttered wake word and command together ("Hey Aven what are my tasks")
             const cmd = payload.command.trim();
@@ -75,6 +243,7 @@ export default function AvenHudPage() {
           } else {
             // User called "Hey Aven" - activate listening state for their conversational turn
             setIsListening(true);
+            setIsSpeaking(false);
             inputRef.current?.focus();
           }
         }
@@ -83,7 +252,7 @@ export default function AvenHudPage() {
         if (typeof unsub === "function") unsub();
       };
     }
-  }, []);
+  }, [handleSendWithText, resetSilenceTimer]);
 
   // Listen for active conversational speech turns from Electron supervisor (duplex communication)
   useEffect(() => {
@@ -92,6 +261,7 @@ export default function AvenHudPage() {
         const text = payload?.transcribed?.trim();
         if (text) {
           console.log("[AvenHUD] 🗣️ Received user speech turn:", text);
+          resetSilenceTimer();
           setIsListening(false);
           setInput(text);
           handleSendWithText(text);
@@ -101,14 +271,7 @@ export default function AvenHudPage() {
         if (typeof unsub === "function") unsub();
       };
     }
-  }, []);
-
-  const hideHud = async () => {
-    stopBrowserRecording();
-    setIsListening(false);
-    const { toggleHudWindow } = await import("@/lib/desktopBridge");
-    await toggleHudWindow();
-  };
+  }, [handleSendWithText, resetSilenceTimer]);
 
   /**
    * Browser microphone fallback for when running outside Electron desktop shell
@@ -137,6 +300,7 @@ export default function AvenHudPage() {
       mediaRecorderRef.current = mediaRecorder;
       mediaRecorder.start();
       setIsListening(true);
+      resetSilenceTimer();
     } catch (err) {
       console.warn("[AvenHUD] Browser microphone error:", err);
       setIsListening(false);
@@ -185,7 +349,7 @@ export default function AvenHudPage() {
       stopBrowserRecording();
     } else {
       setIsListening(true);
-      // In browser mode, start recording; in desktop mode, native supervisor is already active
+      resetSilenceTimer();
       if (!window.lifeosDesktop) {
         startBrowserRecording();
       }
@@ -196,44 +360,6 @@ export default function AvenHudPage() {
     handleSendWithText(input);
   };
 
-  const handleSendWithText = async (textToSend: string) => {
-    if (!textToSend.trim() || isSubmitting) return;
-
-    setIsSubmitting(true);
-    setIsListening(false);
-    setResponse(null);
-
-    try {
-      const res = await fetch("/api/conversation", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          message: textToSend,
-          model: "llama-3.3-70b-versatile",
-          mode: "general",
-          surfaceContext: {
-            activeExecutionTitle: projection?.activeExecution?.title,
-            activeExecutionCategory: projection?.activeExecution?.category,
-            currentInteractionMode: projection?.interactionMode,
-            sourceSurface: "DESKTOP_HUD",
-          },
-        }),
-      });
-
-      if (res.ok) {
-        const text = await res.text();
-        const clean = text.replace(/<think>[\s\S]*?<\/think>\n?/g, "").trim();
-        setResponse(clean);
-      } else {
-        setResponse("Couldn't process this right now. Please try again.");
-      }
-    } catch {
-      setResponse("Network error connecting to Aven.");
-    } finally {
-      setIsSubmitting(false);
-    }
-  };
-
   const copyResponse = () => {
     if (!response) return;
     navigator.clipboard.writeText(response);
@@ -242,7 +368,13 @@ export default function AvenHudPage() {
   };
 
   const active = projection?.activeExecution;
-  const currentBlobState = isSubmitting ? "thinking" : isListening ? "listening" : response ? "speaking" : "idle";
+  const currentBlobState = isSubmitting
+    ? "thinking"
+    : isSpeaking
+    ? "speaking"
+    : isListening
+    ? "listening"
+    : "idle";
 
   return (
     <div
@@ -261,12 +393,6 @@ export default function AvenHudPage() {
       {/* Floating HUD Pill Notch */}
       <div
         id="aven-hud-pill"
-        onMouseLeave={() => {
-          // Auto-close HUD when user moves cursor away, unless actively waiting for response
-          if (!isSubmitting) {
-            hideHud();
-          }
-        }}
         className="fixed top-2 left-1/2 -translate-x-1/2 w-[540px] max-w-[92vw] bg-[#111113]/95 backdrop-blur-2xl border border-[#23242A] rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.85)] p-3.5 text-[#F7F5F0] z-50 transition-all duration-200"
       >
         {/* Subtle top amber glow line */}
@@ -292,22 +418,43 @@ export default function AvenHudPage() {
                 Thinking
               </span>
             )}
+
+            {isSpeaking && (
+              <span className="text-[11px] text-amber-400 font-mono flex items-center gap-1.5 ml-1">
+                <Volume2 size={11} className="animate-pulse text-amber-400" />
+                Speaking
+              </span>
+            )}
           </div>
 
-          {/* Right: Active Task (if executing) */}
-          {active && active.status === "ACTIVE" && (
-            <div className="flex items-center gap-2 bg-[#17171A] border border-[#23242A] px-2.5 py-0.5 rounded-full text-[10px]">
-              <span className="w-1.5 h-1.5 rounded-full bg-[#D98B2B]" />
-              <span className="font-medium text-[#F7F5F0] truncate max-w-[160px]">{active.title}</span>
-              <span className="text-[#85827A] font-mono">{Math.round(active.remainingSeconds / 60)}m</span>
-              <button
-                onClick={() => completeTask(active.taskId || active.occurrenceId || "active")}
-                className="text-[9px] px-1.5 py-0.5 rounded bg-[#23242A] hover:bg-[#32343D] text-[#D98B2B] font-semibold transition cursor-pointer"
-              >
-                Done
-              </button>
-            </div>
-          )}
+          {/* Right: Active Task + Dismiss Controls */}
+          <div className="flex items-center gap-2.5">
+            {active && active.status === "ACTIVE" && (
+              <div className="flex items-center gap-2 bg-[#17171A] border border-[#23242A] px-2.5 py-0.5 rounded-full text-[10px]">
+                <span className="w-1.5 h-1.5 rounded-full bg-[#D98B2B]" />
+                <span className="font-medium text-[#F7F5F0] truncate max-w-[140px]">{active.title}</span>
+                <span className="text-[#85827A] font-mono">{Math.round(active.remainingSeconds / 60)}m</span>
+                <button
+                  onClick={() => completeTask(active.taskId || active.occurrenceId || "active")}
+                  className="text-[9px] px-1.5 py-0.5 rounded bg-[#23242A] hover:bg-[#32343D] text-[#D98B2B] font-semibold transition cursor-pointer"
+                >
+                  Done
+                </button>
+              </div>
+            )}
+
+            <span className="text-[10px] text-[#85827A] font-mono hidden sm:inline-flex items-center gap-1">
+              <kbd className="bg-[#17171A] border border-[#23242A] px-1 py-0.5 rounded text-[9px] text-[#A5A29A]">esc</kbd> to dismiss
+            </span>
+
+            <button
+              onClick={hideHud}
+              className="p-1 rounded-md text-[#85827A] hover:text-[#F7F5F0] hover:bg-[#23242A] transition-colors cursor-pointer"
+              title="Close HUD"
+            >
+              <X size={13} />
+            </button>
+          </div>
         </div>
 
         {/* Central Aven Orb - Interactive WebGL2 Assistant Orb */}
@@ -317,6 +464,8 @@ export default function AvenHudPage() {
             className={`absolute w-28 h-28 rounded-full blur-2xl pointer-events-none transition-all duration-500 ${
               isSubmitting
                 ? "bg-[#D98B2B]/40 scale-125"
+                : isSpeaking
+                ? "bg-[#D98B2B]/45 scale-120 animate-pulse"
                 : isListening
                 ? "bg-[#D98B2B]/35 scale-110 animate-pulse"
                 : "bg-[#D98B2B]/15"
@@ -332,10 +481,10 @@ export default function AvenHudPage() {
               colors={["#D98B2B", "#F5E6C8", "#8C5212"]}
               backgroundColor="#111113"
               size={1.05}
-              glow={isListening ? 1.45 : isSubmitting ? 1.6 : 1.15}
+              glow={isSpeaking ? 1.7 : isListening ? 1.45 : isSubmitting ? 1.6 : 1.15}
               bleed={1.0}
-              wobble={isListening ? 1.2 : isSubmitting ? 1.45 : 0.85}
-              speed={isSubmitting ? 1.8 : isListening ? 1.35 : 0.9}
+              wobble={isSpeaking ? 1.5 : isListening ? 1.2 : isSubmitting ? 1.45 : 0.85}
+              speed={isSpeaking ? 1.9 : isSubmitting ? 1.8 : isListening ? 1.35 : 0.9}
               state={currentBlobState}
               followCursor={true}
               clickPulse={true}
@@ -346,6 +495,8 @@ export default function AvenHudPage() {
           <p className="text-[11px] font-mono text-[#85827A] mt-1 tracking-tight">
             {isSubmitting
               ? "Aven is reasoning across your context..."
+              : isSpeaking
+              ? "Aven is speaking..."
               : isListening
               ? "Listening... speak naturally"
               : "Ask Aven anything or speak your command"}
@@ -410,20 +561,26 @@ export default function AvenHudPage() {
                 <div className="whitespace-pre-wrap leading-relaxed text-[#F7F5F0] text-xs">
                   {response}
                 </div>
-                <div className="flex items-center justify-end gap-3 pt-2 border-t border-[#23242A]/60 text-[10px] text-[#85827A]">
-                  <button
-                    onClick={copyResponse}
-                    className="flex items-center gap-1 hover:text-[#F7F5F0] transition-colors cursor-pointer"
-                  >
-                    {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
-                    <span>{copied ? "Copied" : "Copy"}</span>
-                  </button>
-                  <button
-                    onClick={() => setResponse(null)}
-                    className="hover:text-[#F7F5F0] transition-colors cursor-pointer"
-                  >
-                    Clear
-                  </button>
+                <div className="flex items-center justify-between pt-2 border-t border-[#23242A]/60 text-[10px] text-[#85827A]">
+                  <div className="flex items-center gap-1.5 text-amber-500/80 font-mono text-[10px]">
+                    <Volume2 size={11} />
+                    <span>British Neural Voice</span>
+                  </div>
+                  <div className="flex items-center gap-3">
+                    <button
+                      onClick={copyResponse}
+                      className="flex items-center gap-1 hover:text-[#F7F5F0] transition-colors cursor-pointer"
+                    >
+                      {copied ? <Check size={11} className="text-emerald-400" /> : <Copy size={11} />}
+                      <span>{copied ? "Copied" : "Copy"}</span>
+                    </button>
+                    <button
+                      onClick={() => setResponse(null)}
+                      className="hover:text-[#F7F5F0] transition-colors cursor-pointer"
+                    >
+                      Clear
+                    </button>
+                  </div>
                 </div>
               </div>
             )}
