@@ -87,9 +87,14 @@ textarea {
   scrollbar-color: rgba(255,255,255,0.08) transparent;
 }
 
-/* Dynamic Ledge Notch Transparency */
+/* Dynamic Ledge Notch & Aven HUD Transparency */
 html:has(#dynamic-ledge-notch),
-body:has(#dynamic-ledge-notch) {
+body:has(#dynamic-ledge-notch),
+html:has(#aven-hud-pill),
+body:has(#aven-hud-pill),
+html:has([data-hud-root]),
+body:has([data-hud-root]) {
   background: transparent !important;
+  background-color: transparent !important;
   overflow: hidden !important;
 }

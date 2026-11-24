@@ -1,14 +1,15 @@
 "use client";
 
 import React, { useState, useEffect, useRef } from "react";
-import { Mic, ArrowUp, X, Sparkles, Check, Copy, Loader2 } from "lucide-react";
+import { Mic, ArrowUp, Sparkles, Check, Copy, Loader2 } from "lucide-react";
 import { useInteractionSurface } from "@/hooks/useInteractionSurface";
 
 /**
  * Aven Minimal HUD
  * 
- * Clean, lightweight, zero-jargon ambient interaction surface.
- * Sits flush at the top of the display with studio styling.
+ * Clean, lightweight, studio-grade ambient interaction surface.
+ * Floats seamlessly at the top center of the display with transparent backdrop.
+ * Features live speech-to-text, real-time silence endpointing, and auto-dismiss on mouse leave.
  */
 export default function AvenHudPage() {
   const { projection, completeTask } = useInteractionSurface();
@@ -18,11 +19,13 @@ export default function AvenHudPage() {
   const [isListening, setIsListening] = useState(false);
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [copied, setCopied] = useState(false);
-  
+
   const inputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const recordingTimeoutRef = useRef<NodeJS.Timeout | null>(null);
+  const speechRecognitionRef = useRef<any>(null);
+  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const latestTranscriptRef = useRef<string>("");
 
   // Auto-focus input on mount
   useEffect(() => {
@@ -44,7 +47,6 @@ export default function AvenHudPage() {
   useEffect(() => {
     if (typeof window !== "undefined" && window.lifeosDesktop?.onAvenWake) {
       const unsub = window.lifeosDesktop.onAvenWake((payload: any) => {
-        // Only trigger if verified "Hey Aven"
         if (payload?.keyword === "Hey Aven") {
           if (payload?.command && typeof payload.command === "string" && payload.command.trim().length > 0) {
             // User uttered wake word and command together ("Hey Aven what are my tasks")
@@ -52,7 +54,7 @@ export default function AvenHudPage() {
             setInput(cmd);
             handleSendWithText(cmd);
           } else {
-            // User just called "Hey Aven" - start listening for conversational speech
+            // User called "Hey Aven" - start listening with live streaming speech-to-text
             startVoiceRecording();
           }
         }
@@ -69,13 +71,20 @@ export default function AvenHudPage() {
     await toggleHudWindow();
   };
 
+  /**
+   * Live streaming speech capture with real-time word projection and silence endpointing.
+   */
   const startVoiceRecording = async () => {
     if (isListening || isTranscribing) return;
+    setInput("");
+    latestTranscriptRef.current = "";
+
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
-      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
 
+      // 1. MediaRecorder backup stream for Whisper fallback
+      const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
@@ -85,7 +94,8 @@ export default function AvenHudPage() {
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        if (audioBlob.size > 2000) {
+        // If SpeechRecognition didn't yield text, transcribe via Groq Whisper
+        if (!latestTranscriptRef.current.trim() && audioBlob.size > 1500) {
           await transcribeAudioBlob(audioBlob);
         }
       };
@@ -94,24 +104,90 @@ export default function AvenHudPage() {
       mediaRecorder.start();
       setIsListening(true);
 
-      // 4.5s automatic capture window for conversational speech
-      if (recordingTimeoutRef.current) clearTimeout(recordingTimeoutRef.current);
-      recordingTimeoutRef.current = setTimeout(() => {
-        stopVoiceRecording();
-      }, 4500);
+      // 2. Browser SpeechRecognition for live real-time character-by-character display
+      const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
+      if (SpeechRec) {
+        try {
+          const recognition = new SpeechRec();
+          recognition.continuous = true;
+          recognition.interimResults = true;
+          recognition.lang = "en-US";
+
+          recognition.onresult = (event: any) => {
+            let fullText = "";
+            for (let i = 0; i < event.results.length; i++) {
+              fullText += event.results[i][0].transcript;
+            }
+            const trimmed = fullText.trim();
+            if (trimmed) {
+              latestTranscriptRef.current = trimmed;
+              setInput(trimmed);
+
+              // Silence endpointing: 750ms of silence after speaking finalizes utterance
+              if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+              silenceTimerRef.current = setTimeout(() => {
+                finalizeSpeechTurn(trimmed);
+              }, 750);
+            }
+          };
+
+          recognition.onerror = (e: any) => {
+            console.warn("[AvenHUD] SpeechRecognition warning:", e.error);
+          };
+
+          recognition.onend = () => {
+            if (latestTranscriptRef.current.trim()) {
+              finalizeSpeechTurn(latestTranscriptRef.current.trim());
+            }
+          };
+
+          recognition.start();
+          speechRecognitionRef.current = recognition;
+        } catch (recErr) {
+          console.warn("[AvenHUD] Live speech recognition setup fallback:", recErr);
+        }
+      }
+
+      // Max safety window: 6.0s
+      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = setTimeout(() => {
+        if (latestTranscriptRef.current.trim()) {
+          finalizeSpeechTurn(latestTranscriptRef.current.trim());
+        } else {
+          stopVoiceRecording();
+        }
+      }, 6000);
     } catch (err) {
-      console.warn("[AvenHUD] Microphone capture error:", err);
+      console.warn("[AvenHUD] Microphone access error:", err);
       setIsListening(false);
     }
   };
 
+  const finalizeSpeechTurn = (finalText: string) => {
+    stopVoiceRecording();
+    if (finalText.trim()) {
+      handleSendWithText(finalText.trim());
+    }
+  };
+
   const stopVoiceRecording = () => {
-    if (recordingTimeoutRef.current) {
-      clearTimeout(recordingTimeoutRef.current);
-      recordingTimeoutRef.current = null;
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    if (speechRecognitionRef.current) {
+      try {
+        speechRecognitionRef.current.onresult = null;
+        speechRecognitionRef.current.onerror = null;
+        speechRecognitionRef.current.onend = null;
+        speechRecognitionRef.current.stop();
+      } catch {}
+      speechRecognitionRef.current = null;
     }
     if (mediaRecorderRef.current && isListening) {
-      mediaRecorderRef.current.stop();
+      try {
+        mediaRecorderRef.current.stop();
+      } catch {}
       mediaRecorderRef.current = null;
       setIsListening(false);
     }
@@ -137,7 +213,7 @@ export default function AvenHudPage() {
         }
       }
     } catch (err) {
-      console.warn("[AvenHUD] Transcription failed:", err);
+      console.warn("[AvenHUD] Whisper transcription fallback failed:", err);
     } finally {
       setIsTranscribing(false);
     }
@@ -149,6 +225,10 @@ export default function AvenHudPage() {
     } else {
       startVoiceRecording();
     }
+  };
+
+  const handleSend = () => {
+    handleSendWithText(input);
   };
 
   const handleSendWithText = async (textToSend: string) => {
@@ -188,13 +268,6 @@ export default function AvenHudPage() {
     }
   };
 
-  const handleSend = () => {
-    const text = input.trim();
-    if (!text) return;
-    setInput("");
-    handleSendWithText(text);
-  };
-
   const copyResponse = () => {
     if (!response) return;
     navigator.clipboard.writeText(response);
@@ -205,20 +278,28 @@ export default function AvenHudPage() {
   const active = projection?.activeExecution;
 
   return (
-    <div className="w-screen h-screen bg-transparent overflow-hidden select-none p-0 m-0 relative font-sans">
-      
-      {/* Floating HUD Container */}
+    <div
+      data-hud-root
+      id="aven-hud-root"
+      className="w-screen h-screen bg-transparent overflow-hidden select-none p-0 m-0 relative font-sans"
+    >
+      {/* Floating HUD Pill Notch */}
       <div
         id="aven-hud-pill"
+        onMouseLeave={() => {
+          // Auto-close HUD when user moves cursor away, unless actively listening or waiting for response
+          if (!isListening && !isSubmitting && !isTranscribing) {
+            hideHud();
+          }
+        }}
         className="fixed top-2 left-1/2 -translate-x-1/2 w-[540px] max-w-[92vw] bg-[#111113]/95 backdrop-blur-2xl border border-[#23242A] rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.85)] p-3 text-[#F7F5F0] z-50 transition-all duration-200"
       >
         {/* Subtle top amber glow line */}
         <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D98B2B]/40 to-transparent rounded-t-2xl pointer-events-none" />
 
-        {/* Minimal Header Bar */}
+        {/* Minimal Header Bar (Zero Clutter, No Close Cross, No Esc Badge) */}
         <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#23242A]/60">
-          
-          {/* Left: Brand + State */}
+          {/* Left: Brand + Realtime State Indicator */}
           <div className="flex items-center gap-2">
             <span className="w-2 h-2 rounded-full bg-[#D98B2B] shadow-[0_0_6px_#D98B2B]" />
             <span className="text-xs font-bold tracking-tight text-[#F7F5F0]">Aven</span>
@@ -238,11 +319,11 @@ export default function AvenHudPage() {
             )}
           </div>
 
-          {/* Center: Active Task (if executing) */}
-          {active && active.status === "ACTIVE" ? (
+          {/* Right: Active Task (if executing) */}
+          {active && active.status === "ACTIVE" && (
             <div className="flex items-center gap-2 bg-[#17171A] border border-[#23242A] px-2.5 py-0.5 rounded-full text-[10px]">
               <span className="w-1.5 h-1.5 rounded-full bg-[#D98B2B]" />
-              <span className="font-medium text-[#F7F5F0] truncate max-w-[130px]">{active.title}</span>
+              <span className="font-medium text-[#F7F5F0] truncate max-w-[160px]">{active.title}</span>
               <span className="text-[#85827A] font-mono">{Math.round(active.remainingSeconds / 60)}m</span>
               <button
                 onClick={() => completeTask(active.taskId || active.occurrenceId || "active")}
@@ -251,21 +332,7 @@ export default function AvenHudPage() {
                 Done
               </button>
             </div>
-          ) : (
-            <div className="flex items-center gap-1.5 text-[10px] text-[#66635B] font-mono">
-              <kbd className="px-1.5 py-0.5 rounded bg-[#17171A] border border-[#23242A] text-[#85827A]">esc</kbd>
-              <span>to dismiss</span>
-            </div>
           )}
-
-          {/* Right: Close Action */}
-          <button
-            onClick={hideHud}
-            className="p-1 rounded-lg text-[#85827A] hover:text-[#F7F5F0] hover:bg-[#23242A] transition-colors cursor-pointer"
-            title="Dismiss"
-          >
-            <X size={13} />
-          </button>
         </div>
 
         {/* Input Capsule Row */}
@@ -345,7 +412,6 @@ export default function AvenHudPage() {
             )}
           </div>
         )}
-
       </div>
     </div>
   );

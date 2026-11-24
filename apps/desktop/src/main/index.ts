@@ -269,6 +269,7 @@ function createHudWindow(): BrowserWindow {
     y: 0,
     frame: false,
     transparent: true,
+    backgroundColor: "#00000000",
     alwaysOnTop: true,
     skipTaskbar: true,
     show: false,
@@ -401,6 +402,44 @@ app.whenReady().then(() => {
   mainWindow = createMainWindow();
   hudWindow = createHudWindow();
   tray = createTray();
+
+  // Dynamic Ledge: Cursor hover trigger at the top-middle of the screen
+  // Auto-dismiss: When cursor moves away from the HUD, seamlessly close
+  let hasHoveredHud = false;
+  setInterval(() => {
+    if (!isHudEnabled || !hudWindow || hudWindow.isDestroyed()) return;
+    try {
+      const cursor = screen.getCursorScreenPoint();
+      const primaryDisplay = screen.getPrimaryDisplay();
+      const screenWidth = primaryDisplay.bounds.width;
+      const centerX = screenWidth / 2;
+      const hudBounds = hudWindow.getBounds();
+
+      // 1. Summon trigger: cursor touches top edge at screen center notch zone (±140px)
+      if (cursor.y <= 3 && Math.abs(cursor.x - centerX) < 140) {
+        if (!hudWindow.isVisible()) {
+          hudWindow.show();
+          hasHoveredHud = false;
+        }
+      }
+
+      // 2. Auto-close trigger: when HUD is open, as user takes mouse away from HUD bounds
+      if (hudWindow.isVisible()) {
+        const isNearHud =
+          cursor.x >= hudBounds.x - 30 &&
+          cursor.x <= hudBounds.x + hudBounds.width + 30 &&
+          cursor.y >= 0 &&
+          cursor.y <= hudBounds.y + hudBounds.height + 40;
+
+        if (isNearHud) {
+          hasHoveredHud = true;
+        } else if (hasHoveredHud || cursor.y > 180) {
+          hudWindow.hide();
+          hasHoveredHud = false;
+        }
+      }
+    } catch {}
+  }, 150);
 
   // Window Controls
   ipcMain.handle("desktop:minimize", () => {
