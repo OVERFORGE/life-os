@@ -3,6 +3,7 @@
 import React, { useState, useRef, useEffect } from "react";
 import {
   ArrowDown,
+  ArrowLeft,
   History,
   Plus,
   Radio,
@@ -21,7 +22,17 @@ import RealtimeVoiceModal from "../voice/RealtimeVoiceModal";
 import { useConversations } from "./useConversations";
 import { useChat } from "./useChat";
 
-export default function ChatContainer() {
+interface ChatContainerProps {
+  onBackToCockpit?: () => void;
+  initialMessage?: string;
+  autoFocusInput?: boolean;
+}
+
+export default function ChatContainer({
+  onBackToCockpit,
+  initialMessage,
+  autoFocusInput,
+}: ChatContainerProps = {}) {
   const {
     conversations,
     activeConversationId,
@@ -38,6 +49,14 @@ export default function ChatContainer() {
     conversationId: activeConversationId,
     onMessageSent: refreshConversations,
   });
+
+  const initialSendTriggeredRef = useRef(false);
+  useEffect(() => {
+    if (initialMessage && !initialSendTriggeredRef.current) {
+      initialSendTriggeredRef.current = true;
+      sendMessage(initialMessage);
+    }
+  }, [initialMessage, sendMessage]);
 
   const GROQ_MODELS = [
     { id: "openai/gpt-oss-120b", name: "GPT OSS 120B (Aven Flagship)" },
@@ -108,7 +127,19 @@ export default function ChatContainer() {
       {/* ========================================================================= */}
       <header className="px-5 py-3 border-b border-[#23242A]/80 flex items-center justify-between flex-shrink-0 relative z-30 bg-[#111113]">
         {/* Left: Fluid Torus Identity & Name */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2.5">
+          {onBackToCockpit && (
+            <button
+              type="button"
+              onClick={onBackToCockpit}
+              className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-[#17171A] hover:bg-[#1E1F24] border border-[#23242A] hover:border-[#ffb86c]/40 text-xs font-mono text-[#85827A] hover:text-[#F7F5F0] transition-all cursor-pointer mr-1 group shadow-sm"
+              title="Return to Cockpit overview"
+            >
+              <ArrowLeft size={13} className="text-[#85827A] group-hover:text-[#ffb86c] transition-colors" />
+              <span className="hidden sm:inline">Cockpit</span>
+            </button>
+          )}
+
           <div className="relative w-7 h-7 rounded-full flex items-center justify-center">
             <div className="absolute inset-0 rounded-full bg-[#ffb86c]/20 blur-sm" />
             <div className="relative w-6 h-6 rounded-full border-2 border-[#ffb86c]/80 bg-gradient-to-tr from-[#D98B2B]/40 via-[#ffb86c]/20 to-transparent shadow-[inset_0_0_8px_rgba(255,184,108,0.4)] flex items-center justify-center">
@@ -419,6 +450,9 @@ export default function ChatContainer() {
         onSend={sendMessage}
         loading={loading}
         onVoiceClick={() => setIsVoiceOpen(true)}
+        layoutId="aven-command-box-shell"
+        initialText={initialSendTriggeredRef.current ? "" : initialMessage}
+        autoFocus={autoFocusInput}
       />
 
       {/* Full-Duplex Realtime Voice Call Overlay Modal */}

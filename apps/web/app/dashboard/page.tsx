@@ -21,6 +21,8 @@ import { useTasks } from "@/hooks/useTasks";
 import { useWorld } from "@/hooks/useWorld";
 import { useAssistant } from "@/hooks/useAssistant";
 import RealtimeVoiceModal from "@/features/voice/RealtimeVoiceModal";
+import ChatContainer from "@/features/chat/ChatContainer";
+import { motion, AnimatePresence, LayoutGroup } from "framer-motion";
 
 interface StreamItem {
   id: string;
@@ -48,13 +50,23 @@ export default function CockpitDashboardPage() {
   const [currentTime, setCurrentTime] = useState<Date>(new Date());
   const [isVoiceCallOpen, setIsVoiceCallOpen] = useState(false);
   const [isExpandingOrb, setIsExpandingOrb] = useState(false);
+  const [viewMode, setViewMode] = useState<"cockpit" | "chat">("cockpit");
+  const [pendingChatMessage, setPendingChatMessage] = useState<string>("");
 
   const handleOpenVoice = () => {
     setIsExpandingOrb(true);
     setIsVoiceCallOpen(true);
     setTimeout(() => {
       setIsExpandingOrb(false);
-    }, 700);
+    }, 500);
+  };
+
+  const openChatMode = (initialText?: string) => {
+    if (initialText) {
+      setPendingChatMessage(initialText);
+      setPromptInput("");
+    }
+    setViewMode("chat");
   };
 
   useEffect(() => {
@@ -431,9 +443,33 @@ export default function CockpitDashboardPage() {
     "Cognitive reserve remains uncompromised. Mental bandwidth will comfortably sustain deep execution until planned evening shutdown at 18:00.";
 
   return (
-    <div className="relative w-full min-h-full bg-[#111113] text-[#F7F5F0] p-6 lg:p-8 flex flex-col justify-between overflow-x-hidden select-none font-sans">
-      
-      {/* Background Precise Coordinate Grid Lines (Very Dim, Radial Fade-out to Edges) */}
+    <LayoutGroup id="cockpit-aven-group">
+      <AnimatePresence mode="wait">
+        {viewMode === "chat" ? (
+          <motion.div
+            key="aven-chat-mode"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="relative w-full h-[calc(100vh-60px)] flex flex-col bg-[#111113]"
+          >
+            <ChatContainer
+              onBackToCockpit={() => setViewMode("cockpit")}
+              initialMessage={pendingChatMessage}
+              autoFocusInput={true}
+            />
+          </motion.div>
+        ) : (
+          <motion.div
+            key="cockpit-dashboard-mode"
+            initial={{ opacity: 0 }}
+            animate={{ opacity: 1 }}
+            exit={{ opacity: 0 }}
+            transition={{ duration: 0.25, ease: "easeOut" }}
+            className="relative w-full min-h-full bg-[#111113] text-[#F7F5F0] p-6 lg:p-8 flex flex-col justify-between overflow-x-hidden select-none font-sans"
+          >
+            {/* Background Precise Coordinate Grid Lines (Very Dim, Radial Fade-out to Edges) */}
       <div
         className="absolute inset-0 pointer-events-none z-0"
         style={{
@@ -640,6 +676,7 @@ export default function CockpitDashboardPage() {
                 followCursor={true}
                 clickPulse={true}
                 intro={true}
+                paused={isVoiceCallOpen}
                 className="w-full h-full cursor-pointer"
               />
             </div>
@@ -652,25 +689,39 @@ export default function CockpitDashboardPage() {
               title="Click to start voice session"
             >
               <span className="w-1.5 h-1.5 rounded-full bg-[#D98B2B] shadow-[0_0_6px_rgba(217,139,43,0.8)] group-hover:animate-ping" />
-              <span>AVEN · CLICK TO TALK</span>
+              <span>AVEN</span>
             </button>
 
-            {/* Command Prompt Pill under Orb */}
-            <form
-              onSubmit={handlePromptSubmit}
-              className="mt-4 w-full max-w-md bg-[#17171A] border border-[#23242A] hover:border-[#32343D] focus-within:border-[#D98B2B]/60 rounded-full px-4 py-2.5 flex items-center gap-3 shadow-2xl transition-all"
+            {/* Command Prompt Pill under Orb (Seamless Shared Morph to Aven Chat) */}
+            <motion.form
+              layoutId="aven-command-box-shell"
+              transition={{ type: "spring", stiffness: 350, damping: 30 }}
+              onSubmit={(e) => {
+                e.preventDefault();
+                openChatMode(promptInput.trim());
+              }}
+              onClick={() => {
+                openChatMode(promptInput.trim());
+              }}
+              className="mt-4 w-full max-w-md bg-[#17171A] border border-[#23242A] hover:border-[#32343D] focus-within:border-[#D98B2B]/60 rounded-full px-4 py-2.5 flex items-center gap-3 shadow-2xl transition-all cursor-text"
             >
               <Sparkles size={14} className="text-[#D98B2B] shrink-0" />
               <input
                 type="text"
                 value={promptInput}
                 onChange={(e) => setPromptInput(e.target.value)}
+                onFocus={() => {
+                  openChatMode(promptInput.trim());
+                }}
                 placeholder="Ask Aven or log a boundary note..."
-                className="bg-transparent text-xs text-[#F7F5F0] placeholder-[#66635B] outline-none flex-1 min-w-0"
+                className="bg-transparent text-xs text-[#F7F5F0] placeholder-[#66635B] outline-none flex-1 min-w-0 cursor-text"
               />
               <button
                 type="button"
-                onClick={handleOpenVoice}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  handleOpenVoice();
+                }}
                 className="text-[#85827A] hover:text-[#ffb86c] transition-colors p-1 cursor-pointer"
                 title="Start Voice Call with Aven"
               >
@@ -678,17 +729,12 @@ export default function CockpitDashboardPage() {
               </button>
               <button
                 type="submit"
-                disabled={isSubmittingPrompt || !promptInput.trim()}
-                className={`p-1.5 rounded-full text-[#111113] transition-all cursor-pointer ${
-                  promptInput.trim()
-                    ? "bg-[#D98B2B] hover:bg-[#EAA13F] shadow-md"
-                    : "bg-[#23242A] text-[#85827A] cursor-not-allowed"
-                }`}
-                title="Submit Command"
+                className="p-1.5 rounded-full bg-[#D98B2B] hover:bg-[#EAA13F] text-[#111113] transition-all cursor-pointer shadow-md"
+                title="Open Aven Chat"
               >
-                <ArrowUp size={13} strokeWidth={2.5} />
+                <ArrowUp size={12} className="stroke-[2.5]" />
               </button>
-            </form>
+            </motion.form>
           </div>
 
           {/* Right: Contextual Decision Card */}
@@ -921,12 +967,15 @@ export default function CockpitDashboardPage() {
         </div>
 
       </div>
+    </motion.div>
+  )}
+</AnimatePresence>
 
-      {/* Realtime Autonomous Voice Kernel Modal */}
-      <RealtimeVoiceModal
-        isOpen={isVoiceCallOpen}
-        onClose={() => setIsVoiceCallOpen(false)}
-      />
-    </div>
+{/* Realtime Autonomous Voice Kernel Modal */}
+<RealtimeVoiceModal
+  isOpen={isVoiceCallOpen}
+  onClose={() => setIsVoiceCallOpen(false)}
+/>
+</LayoutGroup>
   );
 }

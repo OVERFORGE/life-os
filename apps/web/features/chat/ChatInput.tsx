@@ -1,17 +1,47 @@
 "use client";
 
-import React, { useState, useRef } from "react";
+import React, { useState, useRef, useEffect } from "react";
 import { ArrowUp, Mic, Loader2 } from "lucide-react";
+import { motion } from "framer-motion";
 
 type Props = {
   onSend: (text: string) => void;
   loading: boolean;
   onVoiceClick?: () => void;
+  layoutId?: string;
+  initialText?: string;
+  autoFocus?: boolean;
 };
 
-export default function ChatInput({ onSend, loading, onVoiceClick }: Props) {
-  const [text, setText] = useState("");
+export default function ChatInput({
+  onSend,
+  loading,
+  onVoiceClick,
+  layoutId,
+  initialText,
+  autoFocus,
+}: Props) {
+  const [text, setText] = useState(initialText || "");
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    if (initialText) {
+      setText(initialText);
+      if (textareaRef.current) {
+        textareaRef.current.style.height = "auto";
+        textareaRef.current.style.height = `${Math.min(
+          textareaRef.current.scrollHeight,
+          140
+        )}px`;
+      }
+    }
+  }, [initialText]);
+
+  useEffect(() => {
+    if (autoFocus && textareaRef.current) {
+      textareaRef.current.focus();
+    }
+  }, [autoFocus]);
 
   function handleSend() {
     if (!text.trim() || loading) return;
@@ -32,14 +62,21 @@ export default function ChatInput({ onSend, loading, onVoiceClick }: Props) {
   return (
     <div className="w-full px-4 sm:px-6 pb-5 pt-2 flex-shrink-0 z-10">
       <div className="max-w-3xl mx-auto">
-        <div className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#1b1b1d] border border-[#26262a] focus-within:border-[#ffb86c]/60 transition-all shadow-xl">
+        <motion.div
+          layoutId={layoutId || "aven-command-box-shell"}
+          transition={{ type: "spring", stiffness: 350, damping: 30 }}
+          className="flex items-center gap-2 px-4 py-2.5 rounded-2xl bg-[#1b1b1d] border border-[#26262a] focus-within:border-[#ffb86c]/60 transition-all shadow-xl"
+        >
           <textarea
             ref={textareaRef}
             value={text}
             onChange={(e) => {
               setText(e.target.value);
               e.target.style.height = "auto";
-              e.target.style.height = `${Math.min(e.target.scrollHeight, 140)}px`;
+              e.target.style.height = `${Math.min(
+                e.target.scrollHeight,
+                140
+              )}px`;
             }}
             onKeyDown={handleKeyDown}
             placeholder="Ask Aven anything..."
@@ -79,7 +116,7 @@ export default function ChatInput({ onSend, loading, onVoiceClick }: Props) {
               )}
             </button>
           </div>
-        </div>
+        </motion.div>
       </div>
     </div>
   );
