@@ -187,7 +187,7 @@ function NutritionScanInner() {
         ) : (
           <div className="max-w-2xl mx-auto w-full">
             <div className="relative rounded-3xl overflow-hidden h-[300px] md:h-[400px] border border-[#2A2B2F] bg-[#161618]">
-              <Image src={imageUri} alt="Food Scan" fill className="object-cover" />
+              <img src={imageUri} alt="Food Scan" className="w-full h-full object-cover" />
               {!results && (
                 <button 
                   onClick={() => setImageUri(null)}

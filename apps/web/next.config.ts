@@ -3,6 +3,19 @@ import type { NextConfig } from "next";
 const nextConfig: NextConfig = {
   serverExternalPackages: ["@life-os/execution-kernel", "mongoose"],
   transpilePackages: ["@life-os/design-system"],
+  images: {
+    unoptimized: true,
+    remotePatterns: [
+      {
+        protocol: "https",
+        hostname: "**",
+      },
+      {
+        protocol: "http",
+        hostname: "**",
+      },
+    ],
+  },
   async headers() {
     return [
       {
@@ -19,8 +32,3 @@ const nextConfig: NextConfig = {
 };
 
 export default nextConfig;
-
-
-
-
-
