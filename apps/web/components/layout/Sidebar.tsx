@@ -66,13 +66,14 @@ const PRIMARY_WORKSPACES: WorkspaceItem[] = [
   },
   {
     id: "vitals",
-    href: "/checkin",
+    href: "/vitals",
     label: "Vitals",
     shortcut: "6",
     icon: Activity,
     matches: (p) =>
       p === "/checkin" ||
       p === "/vitals" ||
+      p.startsWith("/vitals/") ||
       p.startsWith("/checkin/") ||
       p === "/gym" ||
       p === "/nutrition",

@@ -1,21 +1,38 @@
 "use client";
 
-import React, { useState, useCallback, useEffect } from 'react';
-import { useRouter } from 'next/navigation';
-import { 
-  Camera, Activity, ChevronRight, BookOpen, Layers, X, Plus, Minus, Check, ArrowLeft, CalendarDays 
-} from 'lucide-react';
+import React, { useState, useCallback, useEffect } from "react";
+import { useRouter } from "next/navigation";
+import {
+  Camera,
+  Activity,
+  ChevronRight,
+  BookOpen,
+  Layers,
+  X,
+  Plus,
+  Minus,
+  Check,
+  ArrowLeft,
+  CalendarDays,
+  Sparkles,
+  Search,
+} from "lucide-react";
 
 function getLocalDateString() {
   const d = new Date();
   const year = d.getFullYear();
-  const month = String(d.getMonth() + 1).padStart(2, '0');
-  const day = String(d.getDate()).padStart(2, '0');
+  const month = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
   return `${year}-${month}-${day}`;
 }
 
-interface DayIntake { calories: number; protein: number; carbs: number; fats: number; }
-type SheetMode = null | 'library' | 'template';
+interface DayIntake {
+  calories: number;
+  protein: number;
+  carbs: number;
+  fats: number;
+}
+type SheetMode = null | "library" | "template";
 
 function scaledMacros(macros: any, baseWeight: number, amount: number) {
   if (!macros || !baseWeight) return { calories: 0, protein: 0, carbs: 0, fats: 0 };
@@ -38,7 +55,7 @@ export default function NutritionDashboard() {
 
   const [sheetMode, setSheetMode] = useState<SheetMode>(null);
   const [selectedFood, setSelectedFood] = useState<any | null>(null);
-  const [logAmount, setLogAmount] = useState('100');
+  const [logAmount, setLogAmount] = useState("100");
   const [logQuantity, setLogQuantity] = useState(1);
   const [isLogging, setIsLogging] = useState(false);
 
@@ -47,20 +64,20 @@ export default function NutritionDashboard() {
     try {
       const [logRes, libRes, tplRes] = await Promise.allSettled([
         fetch(`/api/nutrition/log?date=${today}`),
-        fetch('/api/nutrition/library'),
-        fetch('/api/nutrition/templates'),
+        fetch("/api/nutrition/library"),
+        fetch("/api/nutrition/templates"),
       ]);
 
-      if (logRes.status === 'fulfilled' && logRes.value.ok) {
+      if (logRes.status === "fulfilled" && logRes.value.ok) {
         const d = await logRes.value.json();
         const t = d.log?.dailyTotals || { calories: 0, protein: 0, carbs: 0, fats: 0 };
         setIntake(t);
       }
-      if (libRes.status === 'fulfilled' && libRes.value.ok) {
+      if (libRes.status === "fulfilled" && libRes.value.ok) {
         const d = await libRes.value.json();
         setLibrary(d.foods || []);
       }
-      if (tplRes.status === 'fulfilled' && tplRes.value.ok) {
+      if (tplRes.status === "fulfilled" && tplRes.value.ok) {
         const d = await tplRes.value.json();
         setTemplates(d.templates || []);
       }
@@ -73,32 +90,38 @@ export default function NutritionDashboard() {
     fetchAll().finally(() => setInitialLoading(false));
   }, [fetchAll]);
 
-  const logFoodItem = async (food: any, amount: number, mealType = 'snack', quantity: number = 1) => {
+  const logFoodItem = async (food: any, amount: number, mealType = "snack", quantity: number = 1) => {
     const today = getLocalDateString();
     const m = scaledMacros(food.macros, food.baseWeight, amount);
     const getRes = await fetch(`/api/nutrition/log?date=${today}`);
     const existing = getRes.ok ? (await getRes.json()).log : null;
     const existingMeals: any[] = (existing?.meals || []).map((ml: any) => ({
-      mealType: ml.mealType || 'snack',
-      foodItemId: typeof ml.foodItemId === 'object' ? ml.foodItemId._id || ml.foodItemId : ml.foodItemId,
+      mealType: ml.mealType || "snack",
+      foodItemId: typeof ml.foodItemId === "object" ? ml.foodItemId._id || ml.foodItemId : ml.foodItemId,
       amount: ml.amount || 100,
       macros: ml.macros,
     }));
     const newMeals = Array.from({ length: quantity }, () => ({ mealType, foodItemId: food._id, amount, macros: m }));
     const meals = [...existingMeals, ...newMeals];
-    const dailyTotals = meals.reduce((acc: any, ml: any) => ({
-      calories: acc.calories + (ml.macros?.calories || 0),
-      protein: acc.protein + (ml.macros?.protein || 0),
-      carbs: acc.carbs + (ml.macros?.carbs || 0),
-      fats: acc.fats + (ml.macros?.fats || 0),
-    }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
-    
-    const res = await fetch('/api/nutrition/log', {
-      method: 'POST', 
-      headers: { 'Content-Type': 'application/json' },
+    const dailyTotals = meals.reduce(
+      (acc: any, ml: any) => ({
+        calories: acc.calories + (ml.macros?.calories || 0),
+        protein: acc.protein + (ml.macros?.protein || 0),
+        carbs: acc.carbs + (ml.macros?.carbs || 0),
+        fats: acc.fats + (ml.macros?.fats || 0),
+      }),
+      { calories: 0, protein: 0, carbs: 0, fats: 0 }
+    );
+
+    const res = await fetch("/api/nutrition/log", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ date: today, meals, dailyTotals }),
     });
-    if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed to log food'); }
+    if (!res.ok) {
+      const e = await res.json();
+      throw new Error(e.error || "Failed to log food");
+    }
   };
 
   const confirmLogFood = async () => {
@@ -106,15 +129,15 @@ export default function NutritionDashboard() {
     const amt = parseInt(logAmount) || 100;
     setIsLogging(true);
     try {
-      await logFoodItem(selectedFood, amt, 'snack', logQuantity);
-      setSheetMode(null); 
-      setSelectedFood(null); 
+      await logFoodItem(selectedFood, amt, "snack", logQuantity);
+      setSheetMode(null);
+      setSelectedFood(null);
       setLogQuantity(1);
       await fetchAll();
-    } catch (e: any) { 
-      console.error('Log Failed', e.message); 
-    } finally { 
-      setIsLogging(false); 
+    } catch (e: any) {
+      console.error("Log Failed", e.message);
+    } finally {
+      setIsLogging(false);
     }
   };
 
@@ -125,396 +148,279 @@ export default function NutritionDashboard() {
       const getRes = await fetch(`/api/nutrition/log?date=${today}`);
       const existing = getRes.ok ? (await getRes.json()).log : null;
       let meals: any[] = (existing?.meals || []).map((ml: any) => ({
-        mealType: ml.mealType || 'snack',
-        foodItemId: typeof ml.foodItemId === 'object' ? ml.foodItemId._id || ml.foodItemId : ml.foodItemId,
+        mealType: ml.mealType || "snack",
+        foodItemId: typeof ml.foodItemId === "object" ? ml.foodItemId._id || ml.foodItemId : ml.foodItemId,
         amount: ml.amount || 100,
         macros: ml.macros,
       }));
 
       for (const m of template.meals || []) {
-        const food = typeof m.foodItemId === 'object' ? m.foodItemId : null;
-        const id   = food?._id || m.foodItemId;
+        const food = typeof m.foodItemId === "object" ? m.foodItemId : null;
+        const id = food?._id || m.foodItemId;
         if (!id) continue;
 
-        const resolved = food && food.macros ? food : library.find(f => String(f._id) === String(id));
+        const resolved = food && food.macros ? food : library.find((f) => String(f._id) === String(id));
         if (!resolved?.macros) continue;
 
         const scaled = scaledMacros(resolved.macros, resolved.baseWeight, m.customAmount || resolved.baseWeight);
-        meals.push({ mealType: m.mealType || 'snack', foodItemId: id, amount: m.customAmount || resolved.baseWeight, macros: scaled });
+        meals.push({
+          mealType: m.mealType || "snack",
+          foodItemId: id,
+          amount: m.customAmount || resolved.baseWeight,
+          macros: scaled,
+        });
       }
 
-      const dailyTotals = meals.reduce((acc: any, ml: any) => ({
-        calories: acc.calories + (ml.macros?.calories || 0),
-        protein: acc.protein + (ml.macros?.protein || 0),
-        carbs: acc.carbs + (ml.macros?.carbs || 0),
-        fats: acc.fats + (ml.macros?.fats || 0),
-      }), { calories: 0, protein: 0, carbs: 0, fats: 0 });
+      const dailyTotals = meals.reduce(
+        (acc: any, ml: any) => ({
+          calories: acc.calories + (ml.macros?.calories || 0),
+          protein: acc.protein + (ml.macros?.protein || 0),
+          carbs: acc.carbs + (ml.macros?.carbs || 0),
+          fats: acc.fats + (ml.macros?.fats || 0),
+        }),
+        { calories: 0, protein: 0, carbs: 0, fats: 0 }
+      );
 
-      const res = await fetch('/api/nutrition/log', {
-        method: 'POST', 
-        headers: { 'Content-Type': 'application/json' },
+      const res = await fetch("/api/nutrition/log", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ date: today, meals, dailyTotals }),
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.error || 'Failed'); }
+      if (!res.ok) {
+        const e = await res.json();
+        throw new Error(e.error || "Failed");
+      }
 
       setSheetMode(null);
       await fetchAll();
-    } catch (e: any) { 
-      console.error('Log Failed', e.message); 
-    } finally { 
-      setIsLogging(false); 
+    } catch (e: any) {
+      console.error("Log Failed", e.message);
+    } finally {
+      setIsLogging(false);
     }
   };
 
-  const closeSheet = () => { setSheetMode(null); setSelectedFood(null); };
+  const closeSheet = () => {
+    setSheetMode(null);
+    setSelectedFood(null);
+  };
 
   if (initialLoading) {
     return (
-      <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh]">
-        <div className="w-8 h-8 rounded-full border-2 border-[#E8414A] border-t-transparent animate-spin mb-4" />
-        <p className="text-gray-400 text-sm font-bold">Loading telemetry...</p>
+      <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh] bg-[#111113] text-[#F7F5F0]">
+        <div className="w-8 h-8 rounded-full border-2 border-[#D98B2B] border-t-transparent animate-spin mb-4" />
+        <p className="text-[#85827A] text-xs font-mono font-semibold">Loading metabolic telemetry...</p>
       </div>
     );
   }
 
   return (
-    <div className="h-full flex flex-col animate-in fade-in duration-300 max-w-7xl mx-auto w-full">
+    <div className="h-full flex flex-col bg-[#111113] text-[#F7F5F0] max-w-7xl mx-auto w-full font-sans select-none">
       {/* Header */}
-      <div className="flex items-center gap-4 px-6 md:px-12 pt-8 pb-6 border-b border-[#2A2B2F]">
+      <div className="flex items-center gap-4 px-6 md:px-12 pt-8 pb-6 border-b border-[#23242A]">
         <button
-          onClick={() => router.push('/dashboard')}
-          className="w-10 h-10 rounded-full bg-[#1F2023] border border-[#2A2B2F] flex items-center justify-center hover:bg-[#2A2B2F] transition-colors"
+          onClick={() => router.push("/vitals")}
+          className="w-9 h-9 rounded-full bg-[#17171A] border border-[#23242A] flex items-center justify-center text-[#85827A] hover:text-[#F7F5F0] hover:bg-[#23242A] transition-colors"
         >
-          <ArrowLeft className="text-gray-400" size={18} />
+          <ArrowLeft size={16} />
         </button>
         <div>
-          <h1 className="text-3xl font-black text-gray-100 tracking-tight">Nutrition</h1>
-          <p className="text-[10px] font-bold text-gray-400 tracking-[0.2em] uppercase mt-1">
-            Metabolic Telemetry
+          <div className="flex items-center gap-2">
+            <span className="w-2 h-2 rounded-full bg-[#D98B2B]" />
+            <h1 className="text-2xl font-bold tracking-tight text-[#F7F5F0]">Nutrition Hub</h1>
+          </div>
+          <p className="text-[10px] font-mono font-bold text-[#85827A] uppercase tracking-widest mt-1">
+            Metabolic Telemetry &amp; Macro Calibration
           </p>
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto px-6 md:px-12 py-8 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent pb-8">
-        
+      <div className="flex-1 overflow-y-auto px-6 md:px-12 py-8 custom-h-scrollbar pb-8">
         {/* Today's Intake Widget */}
         <button
-          onClick={() => router.push('/nutrition/daily-log')}
-          className="w-full bg-[#1F2023] rounded-3xl border border-[#2A2B2F] p-6 md:p-8 mb-8 text-left hover:border-[#3A3C42] transition-colors group"
+          onClick={() => router.push("/nutrition/daily-log")}
+          className="w-full bg-[#17171A] rounded-2xl border border-[#23242A] p-6 md:p-8 mb-8 text-left hover:border-[#32343D] transition-colors group cursor-pointer shadow-lg"
         >
           <div className="flex items-center mb-6">
-            <Activity className="text-[#E8414A]" size={16} />
-            <span className="text-[10px] font-bold text-gray-300 tracking-[0.2em] uppercase ml-3">
-              Today's Intake
+            <Activity className="text-[#D98B2B]" size={16} />
+            <span className="text-[10px] font-bold text-[#85827A] tracking-[0.2em] uppercase ml-3 font-mono">
+              Today&apos;s Intake
             </span>
             <div className="flex-1" />
-            <ChevronRight className="text-gray-500 group-hover:text-gray-300 transition-colors" size={18} />
+            <ChevronRight className="text-[#85827A] group-hover:text-[#F7F5F0] transition-colors" size={18} />
           </div>
-          
-          <div className="flex items-baseline mb-8">
-            <span className="text-5xl md:text-6xl font-black text-gray-100 tracking-tighter">
+
+          <div className="flex items-baseline mb-6">
+            <span className="text-5xl md:text-6xl font-black text-[#F7F5F0] tracking-tight">
               {Math.round(intake.calories || 0)}
             </span>
-            <span className="text-sm font-bold text-[#E8414A] ml-2">KCAL</span>
+            <span className="text-xs font-mono font-bold text-[#D98B2B] ml-2">KCAL</span>
           </div>
-          
-          <div className="grid grid-cols-3 gap-4 pt-6 border-t border-[#2A2B2F]">
+
+          <div className="grid grid-cols-3 gap-4 pt-6 border-t border-[#23242A]">
             {[
-              { label: 'Protein', value: Math.round(intake.protein || 0) },
-              { label: 'Carbs', value: Math.round(intake.carbs || 0) },
-              { label: 'Fats', value: Math.round(intake.fats || 0) },
-            ].map(item => (
+              { label: "Protein", value: Math.round(intake.protein || 0), color: "text-emerald-400" },
+              { label: "Carbs", value: Math.round(intake.carbs || 0), color: "text-sky-400" },
+              { label: "Fats", value: Math.round(intake.fats || 0), color: "text-amber-400" },
+            ].map((item) => (
               <div key={item.label}>
-                <div className="text-2xl font-black text-gray-100">{item.value}g</div>
-                <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-1">{item.label}</div>
+                <div className={`text-2xl font-bold ${item.color}`}>{item.value}g</div>
+                <div className="text-[10px] font-mono font-bold text-[#85827A] uppercase tracking-widest mt-1">
+                  {item.label}
+                </div>
               </div>
             ))}
           </div>
         </button>
 
         {/* Log Food Section */}
-        <div className="text-[10px] font-bold text-gray-500 tracking-[0.2em] uppercase mb-4 ml-1">
-          Log Food
+        <div className="text-[10px] font-mono font-bold text-[#85827A] tracking-[0.2em] uppercase mb-4 ml-1">
+          Quick Log Options
         </div>
 
-        <button
-          onClick={() => router.push('/nutrition/scan')}
-          className="w-full flex items-center bg-gray-100 p-4 rounded-2xl mb-3 hover:bg-white transition-colors group"
-        >
-          <div className="w-12 h-12 rounded-xl bg-[#161618] flex items-center justify-center mr-4">
-            <Camera className="text-gray-100" size={20} />
-          </div>
-          <div className="flex-1 text-left">
-            <div className="text-base font-bold text-[#161618] mb-1">AI Meal Scan</div>
-            <div className="text-xs font-semibold text-[#161618]/60">Analyze food macros via camera/image</div>
-          </div>
-          <ChevronRight className="text-[#161618]/30 group-hover:text-[#161618]/60 transition-colors" size={20} />
-        </button>
-
-        <button
-          onClick={() => setSheetMode('library')}
-          className="w-full flex items-center bg-[#1F2023] border border-[#2A2B2F] p-4 rounded-2xl mb-3 hover:bg-[#2A2B2F] transition-colors group"
-        >
-          <div className="w-12 h-12 rounded-xl bg-[#2A2B2F] flex items-center justify-center mr-4 group-hover:bg-[#3A3C42] transition-colors">
-            <BookOpen className="text-gray-300" size={18} />
-          </div>
-          <div className="flex-1 text-left">
-            <div className="text-base font-bold text-gray-100 mb-1">From Library</div>
-            <div className="text-xs font-semibold text-gray-500">
-              {library.length > 0 ? `${library.length} foods saved` : 'Pick a saved food & log it'}
+        <div className="grid grid-cols-1 md:grid-cols-3 gap-4 mb-8">
+          <button
+            onClick={() => router.push("/nutrition/scan")}
+            className="flex items-center bg-[#17171A] border border-[#23242A] p-4 rounded-2xl hover:border-[#32343D] transition-colors group cursor-pointer text-left"
+          >
+            <div className="w-10 h-10 rounded-xl bg-[#23242A] flex items-center justify-center mr-3 text-[#D98B2B]">
+              <Camera size={18} />
             </div>
-          </div>
-          <ChevronRight className="text-gray-600 group-hover:text-gray-400 transition-colors" size={20} />
-        </button>
-
-        <button
-          onClick={() => setSheetMode('template')}
-          className="w-full flex items-center bg-[#1F2023] border border-[#2A2B2F] p-4 rounded-2xl mb-8 hover:bg-[#2A2B2F] transition-colors group"
-        >
-          <div className="w-12 h-12 rounded-xl bg-[#E8414A]/10 border border-[#E8414A]/20 flex items-center justify-center mr-4">
-            <Layers className="text-[#E8414A]" size={18} />
-          </div>
-          <div className="flex-1 text-left">
-            <div className="text-base font-bold text-gray-100 mb-1">Use Day Template</div>
-            <div className="text-xs font-semibold text-gray-500">
-              {templates.length > 0 ? `${templates.length} template${templates.length > 1 ? 's' : ''} available` : 'Log an entire day in one tap'}
+            <div className="flex-1">
+              <div className="text-sm font-bold text-[#F7F5F0]">AI Meal Scan</div>
+              <div className="text-[11px] text-[#85827A]">Analyze macros via image</div>
             </div>
-          </div>
-          <ChevronRight className="text-gray-600 group-hover:text-gray-400 transition-colors" size={20} />
-        </button>
+            <ChevronRight className="text-[#85827A]" size={16} />
+          </button>
 
-        <div className="h-px bg-[#2A2B2F] mb-8" />
+          <button
+            onClick={() => setSheetMode("library")}
+            className="flex items-center bg-[#17171A] border border-[#23242A] p-4 rounded-2xl hover:border-[#32343D] transition-colors group cursor-pointer text-left"
+          >
+            <div className="w-10 h-10 rounded-xl bg-[#23242A] flex items-center justify-center mr-3 text-[#D98B2B]">
+              <BookOpen size={18} />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-bold text-[#F7F5F0]">Food Library</div>
+              <div className="text-[11px] text-[#85827A]">Browse &amp; log custom items</div>
+            </div>
+            <ChevronRight className="text-[#85827A]" size={16} />
+          </button>
 
-        {/* Manage Section */}
-        <div className="text-[10px] font-bold text-gray-500 tracking-[0.2em] uppercase mb-4 ml-1">
-          Manage
+          <button
+            onClick={() => setSheetMode("template")}
+            className="flex items-center bg-[#17171A] border border-[#23242A] p-4 rounded-2xl hover:border-[#32343D] transition-colors group cursor-pointer text-left"
+          >
+            <div className="w-10 h-10 rounded-xl bg-[#23242A] flex items-center justify-center mr-3 text-[#D98B2B]">
+              <Layers size={18} />
+            </div>
+            <div className="flex-1">
+              <div className="text-sm font-bold text-[#F7F5F0]">Meal Templates</div>
+              <div className="text-[11px] text-[#85827A]">1-click logged meal sets</div>
+            </div>
+            <ChevronRight className="text-[#85827A]" size={16} />
+          </button>
         </div>
-
-        <button
-          onClick={() => router.push('/nutrition/library')}
-          className="w-full flex items-center bg-[#1F2023] border border-[#2A2B2F] p-4 rounded-2xl mb-3 hover:bg-[#2A2B2F] transition-colors group"
-        >
-          <div className="w-12 h-12 rounded-xl bg-[#2A2B2F] flex items-center justify-center mr-4 group-hover:bg-[#3A3C42] transition-colors">
-            <BookOpen className="text-gray-300" size={18} />
-          </div>
-          <div className="flex-1 text-left">
-            <div className="text-base font-bold text-gray-100 mb-1">Food Library</div>
-            <div className="text-xs font-semibold text-gray-500">Custom foods & day templates</div>
-          </div>
-          <ChevronRight className="text-gray-600 group-hover:text-gray-400 transition-colors" size={20} />
-        </button>
-
-        <button
-          onClick={() => router.push('/nutrition/history')}
-          className="w-full flex items-center bg-[#1F2023] border border-[#2A2B2F] p-4 rounded-2xl mb-12 hover:bg-[#2A2B2F] transition-colors group"
-        >
-          <div className="w-12 h-12 rounded-xl bg-[#2A2B2F] flex items-center justify-center mr-4 group-hover:bg-[#3A3C42] transition-colors">
-            <CalendarDays className="text-gray-300" size={18} />
-          </div>
-          <div className="flex-1 text-left">
-            <div className="text-base font-bold text-gray-100 mb-1">History</div>
-            <div className="text-xs font-semibold text-gray-500">View past logs and weekly data</div>
-          </div>
-          <ChevronRight className="text-gray-600 group-hover:text-gray-400 transition-colors" size={20} />
-        </button>
-
       </div>
 
-      {/* ═══════════════ BOTTOM SHEET OVERLAYS ═══════════════ */}
-      {sheetMode !== null && (
-        <div className="fixed inset-0 z-50 flex flex-col justify-end">
-          {/* Backdrop */}
-          <div 
-            className="absolute inset-0 bg-black/80 backdrop-blur-sm transition-opacity"
-            onClick={closeSheet}
-          />
-          
-          {/* Sheet */}
-          <div className="relative w-full max-w-2xl mx-auto bg-[#1F2023] border-t border-[#2A2B2F] rounded-t-3xl max-h-[85vh] flex flex-col animate-in slide-in-from-bottom-8 duration-300">
-            
-            <div className="flex items-center justify-between p-6 border-b border-[#2A2B2F]">
-              <h2 className="text-xl font-black text-gray-100">
-                {sheetMode === 'library' ? 'Log from Library' : 'Use Day Template'}
-              </h2>
-              <button 
-                onClick={closeSheet}
-                className="w-8 h-8 rounded-full bg-[#2A2B2F] flex items-center justify-center hover:bg-[#3A3C42] transition-colors"
-              >
-                <X className="text-gray-400" size={16} />
+      {/* Slide-over / Modal for Library or Templates */}
+      {sheetMode && (
+        <div className="fixed inset-0 z-50 bg-black/70 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-[#17171A] border border-[#23242A] rounded-3xl w-full max-w-xl max-h-[85vh] overflow-y-auto p-6 flex flex-col gap-5 shadow-2xl custom-h-scrollbar">
+            <div className="flex items-center justify-between pb-3 border-b border-[#23242A]">
+              <h3 className="text-base font-bold text-[#F7F5F0]">
+                {sheetMode === "library" ? "Select Food from Library" : "Select Meal Template"}
+              </h3>
+              <button onClick={closeSheet} className="p-1 rounded-full text-[#85827A] hover:text-[#F7F5F0]">
+                <X size={16} />
               </button>
             </div>
 
-            <div className="flex-1 overflow-y-auto p-6 scrollbar-thin scrollbar-thumb-white/10 scrollbar-track-transparent">
-              
-              {/* Library: food list */}
-              {sheetMode === 'library' && !selectedFood && (
-                <div className="space-y-3">
-                  {library.length === 0 ? (
-                    <div className="text-center py-12">
-                      <BookOpen className="text-gray-600 mx-auto mb-4" size={40} />
-                      <p className="text-gray-400 font-semibold">Your library is empty. Scan some meals first!</p>
-                    </div>
-                  ) : (
-                    library.map(food => (
-                      <button
-                        key={food._id}
-                        onClick={() => { setSelectedFood(food); setLogAmount(String(food.baseWeight || 100)); setLogQuantity(1); }}
-                        className="w-full flex items-center bg-[#161618] p-4 rounded-2xl border border-[#2A2B2F] hover:border-[#3A3C42] transition-colors text-left group"
-                      >
-                        <div className="flex-1">
-                          <div className="text-base font-bold text-gray-100 mb-1">{food.name}</div>
-                          <div className="text-xs font-semibold text-gray-500">
-                            {food.macros?.calories} kcal · {food.macros?.protein}g P · base {food.baseWeight}g
-                          </div>
+            {sheetMode === "library" && !selectedFood && (
+              <div className="flex flex-col gap-2">
+                {library.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-[#85827A]">No foods saved in library yet.</div>
+                ) : (
+                  library.map((f) => (
+                    <div
+                      key={f._id}
+                      onClick={() => setSelectedFood(f)}
+                      className="p-3 bg-[#111113] border border-[#23242A] hover:border-[#D98B2B]/40 rounded-xl flex items-center justify-between cursor-pointer transition-all"
+                    >
+                      <div>
+                        <div className="text-xs font-bold text-[#F7F5F0]">{f.name}</div>
+                        <div className="text-[10px] text-[#85827A] font-mono">
+                          {f.macros?.calories || 0} kcal per {f.baseWeight}g
                         </div>
-                        <ChevronRight className="text-gray-600 group-hover:text-gray-400 transition-colors" size={18} />
-                      </button>
-                    ))
-                  )}
-                </div>
-              )}
+                      </div>
+                      <ChevronRight size={14} className="text-[#85827A]" />
+                    </div>
+                  ))
+                )}
+              </div>
+            )}
 
-              {/* Library: gram selector */}
-              {sheetMode === 'library' && selectedFood && (
-                <div className="space-y-6">
-                  <button onClick={() => setSelectedFood(null)} className="flex items-center text-sm font-bold text-[#E8414A] hover:text-[#D62C35] transition-colors">
-                    ← Back
-                  </button>
-                  
-                  <div>
-                    <h3 className="text-2xl font-black text-gray-100 mb-1">{selectedFood.name}</h3>
-                    <p className="text-sm font-semibold text-gray-500">Set the amount to log</p>
+            {sheetMode === "library" && selectedFood && (
+              <div className="flex flex-col gap-4">
+                <div className="p-4 bg-[#111113] rounded-xl border border-[#23242A]">
+                  <div className="text-sm font-bold text-[#F7F5F0]">{selectedFood.name}</div>
+                  <div className="text-xs text-[#85827A] mt-1 font-mono">
+                    Base: {selectedFood.baseWeight}g · {selectedFood.macros?.calories || 0} kcal
                   </div>
+                </div>
 
-                  {(() => {
-                    const m = scaledMacros(selectedFood.macros, selectedFood.baseWeight, parseInt(logAmount) || 100);
-                    const totalM = {
-                      calories: m.calories * logQuantity,
-                      protein: Math.round(m.protein * logQuantity * 10) / 10,
-                      carbs: Math.round(m.carbs * logQuantity * 10) / 10,
-                      fats: Math.round(m.fats * logQuantity * 10) / 10,
-                    };
-                    return (
-                      <div className="flex justify-between bg-[#161618] rounded-2xl p-6 border border-[#2A2B2F]">
-                        {[{ v: totalM.calories, l: 'KCAL' }, { v: totalM.protein, l: 'P' }, { v: totalM.carbs, l: 'C' }, { v: totalM.fats, l: 'F' }].map(({ v, l }) => (
-                          <div key={l} className="text-center">
-                            <div className="text-2xl font-black text-gray-100">{v}{l !== 'KCAL' ? 'g' : ''}</div>
-                            <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mt-1">{l}</div>
-                          </div>
-                        ))}
-                      </div>
-                    );
-                  })()}
-
-                  <div className="flex gap-4">
-                    {/* Grams */}
-                    <div className="flex-1">
-                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest text-center mb-3">Grams</div>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => setLogAmount(String(Math.max(10, parseInt(logAmount) - 10)))}
-                          className="w-10 h-10 rounded-full bg-[#161618] border border-[#2A2B2F] flex items-center justify-center hover:bg-[#2A2B2F] transition-colors"
-                        >
-                          <Minus className="text-gray-400" size={16} />
-                        </button>
-                        <div className="flex-1 bg-[#161618] rounded-xl border border-[#2A2B2F] py-2">
-                          <input
-                            type="number"
-                            value={logAmount}
-                            onChange={(e) => setLogAmount(e.target.value)}
-                            className="w-full bg-transparent text-center text-xl font-black text-gray-100 focus:outline-none"
-                          />
-                        </div>
-                        <button 
-                          onClick={() => setLogAmount(String((parseInt(logAmount) || 0) + 10))}
-                          className="w-10 h-10 rounded-full bg-[#161618] border border-[#2A2B2F] flex items-center justify-center hover:bg-[#2A2B2F] transition-colors"
-                        >
-                          <Plus className="text-gray-400" size={16} />
-                        </button>
-                      </div>
-                    </div>
-
-                    {/* Quantity */}
-                    <div className="flex-1">
-                      <div className="text-[10px] font-bold text-gray-500 uppercase tracking-widest text-center mb-3">Quantity</div>
-                      <div className="flex items-center gap-2">
-                        <button 
-                          onClick={() => setLogQuantity(q => Math.max(1, q - 1))}
-                          className="w-10 h-10 rounded-full bg-[#161618] border border-[#2A2B2F] flex items-center justify-center hover:bg-[#2A2B2F] transition-colors"
-                        >
-                          <Minus className="text-gray-400" size={16} />
-                        </button>
-                        <div className="flex-1 bg-[#161618] rounded-xl border border-[#2A2B2F] py-2.5 text-center">
-                          <span className="text-xl font-black text-gray-100">{logQuantity}</span>
-                        </div>
-                        <button 
-                          onClick={() => setLogQuantity(q => q + 1)}
-                          className="w-10 h-10 rounded-full bg-[#161618] border border-[#2A2B2F] flex items-center justify-center hover:bg-[#2A2B2F] transition-colors"
-                        >
-                          <Plus className="text-gray-400" size={16} />
-                        </button>
-                      </div>
-                    </div>
+                <div className="flex items-center gap-3">
+                  <div className="flex-1">
+                    <label className="text-xs text-[#85827A] block mb-1">Grams</label>
+                    <input
+                      type="number"
+                      value={logAmount}
+                      onChange={(e) => setLogAmount(e.target.value)}
+                      className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3 py-2 text-xs text-[#F7F5F0] outline-none"
+                    />
                   </div>
-
-                  <button
-                    onClick={confirmLogFood}
-                    disabled={isLogging}
-                    className="w-full py-4 rounded-xl bg-[#E8414A] hover:bg-[#D62C35] disabled:opacity-50 transition-colors mt-4 text-white font-black text-lg flex justify-center items-center"
-                  >
-                    {isLogging ? <div className="w-6 h-6 border-2 border-white border-t-transparent rounded-full animate-spin" /> : "Log to Today"}
-                  </button>
+                  <div className="w-24">
+                    <label className="text-xs text-[#85827A] block mb-1">Qty</label>
+                    <input
+                      type="number"
+                      value={logQuantity}
+                      onChange={(e) => setLogQuantity(parseInt(e.target.value) || 1)}
+                      className="w-full bg-[#111113] border border-[#23242A] rounded-xl px-3 py-2 text-xs text-[#F7F5F0] outline-none"
+                    />
+                  </div>
                 </div>
-              )}
 
-              {/* Template list */}
-              {sheetMode === 'template' && (
-                <div className="space-y-3">
-                  {templates.length === 0 ? (
-                    <div className="text-center py-12">
-                      <Layers className="text-gray-600 mx-auto mb-4" size={40} />
-                      <p className="text-gray-400 font-semibold mb-6">No templates yet.</p>
-                      <button
-                        onClick={() => { closeSheet(); router.push('/nutrition/library'); }}
-                        className="px-6 py-3 rounded-xl bg-[#E8414A] hover:bg-[#D62C35] text-white font-bold transition-colors"
-                      >
-                        Go Create One
-                      </button>
+                <button
+                  onClick={confirmLogFood}
+                  disabled={isLogging}
+                  className="w-full py-2.5 bg-[#D98B2B] hover:bg-[#EAA13F] text-[#111113] rounded-xl text-xs font-bold transition-all"
+                >
+                  {isLogging ? "Logging..." : "Confirm & Log"}
+                </button>
+              </div>
+            )}
+
+            {sheetMode === "template" && (
+              <div className="flex flex-col gap-2">
+                {templates.length === 0 ? (
+                  <div className="text-center py-8 text-xs text-[#85827A]">No meal templates available.</div>
+                ) : (
+                  templates.map((t) => (
+                    <div
+                      key={t._id}
+                      onClick={() => logWholeTemplate(t)}
+                      className="p-3 bg-[#111113] border border-[#23242A] hover:border-[#D98B2B]/40 rounded-xl flex items-center justify-between cursor-pointer transition-all"
+                    >
+                      <div>
+                        <div className="text-xs font-bold text-[#F7F5F0]">{t.name}</div>
+                        <div className="text-[10px] text-[#85827A] font-mono">{t.meals?.length || 0} items</div>
+                      </div>
+                      <Plus size={14} className="text-[#D98B2B]" />
                     </div>
-                  ) : (
-                    templates.map(t => {
-                      const tplCals = (t.meals || []).reduce((sum: number, m: any) => {
-                        const food = typeof m.foodItemId === 'object' ? m.foodItemId : library.find(f => String(f._id) === String(m.foodItemId));
-                        if (!food?.macros) return sum;
-                        const r = (m.customAmount || food.baseWeight) / food.baseWeight;
-                        return sum + Math.round(food.macros.calories * r);
-                      }, 0);
-                      
-                      return (
-                        <button
-                          key={t._id}
-                          onClick={() => logWholeTemplate(t)}
-                          disabled={isLogging}
-                          className="w-full flex items-center bg-[#161618] p-5 rounded-2xl border border-[#2A2B2F] hover:border-[#3A3C42] transition-colors text-left group"
-                        >
-                          <div className="flex-1">
-                            <div className="text-lg font-bold text-gray-100 mb-1">{t.name}</div>
-                            <div className="text-xs font-semibold text-gray-500">
-                              {t.meals?.length || 0} meals{tplCals > 0 ? ` · ${tplCals} kcal` : ''}
-                            </div>
-                          </div>
-                          {isLogging ? (
-                            <div className="w-5 h-5 border-2 border-[#E8414A] border-t-transparent rounded-full animate-spin" />
-                          ) : (
-                            <Check className="text-[#E8414A] opacity-0 group-hover:opacity-100 transition-opacity" size={20} />
-                          )}
-                        </button>
-                      );
-                    })
-                  )}
-                </div>
-              )}
-            </div>
+                  ))
+                )}
+              </div>
+            )}
           </div>
         </div>
       )}
