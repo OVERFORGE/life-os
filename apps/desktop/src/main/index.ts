@@ -402,24 +402,6 @@ app.whenReady().then(() => {
   hudWindow = createHudWindow();
   tray = createTray();
 
-  // Dynamic Ledge: Cursor hover trigger at the top-middle of the screen
-  setInterval(() => {
-    if (!isHudEnabled || !hudWindow || hudWindow.isDestroyed()) return;
-    try {
-      const cursor = screen.getCursorScreenPoint();
-      const primaryDisplay = screen.getPrimaryDisplay();
-      const screenWidth = primaryDisplay.bounds.width;
-      const centerX = screenWidth / 2;
-
-      // When cursor hovers at the top edge within center notch trigger zone (±140px)
-      if (cursor.y <= 3 && Math.abs(cursor.x - centerX) < 140) {
-        if (!hudWindow.isVisible()) {
-          hudWindow.show();
-        }
-      }
-    } catch {}
-  }, 200);
-
   // Window Controls
   ipcMain.handle("desktop:minimize", () => {
     if (mainWindow && !mainWindow.isDestroyed()) {

@@ -46,7 +46,15 @@ export default function AvenHudPage() {
       const unsub = window.lifeosDesktop.onAvenWake((payload: any) => {
         // Only trigger if verified "Hey Aven"
         if (payload?.keyword === "Hey Aven") {
-          startVoiceRecording();
+          if (payload?.command && typeof payload.command === "string" && payload.command.trim().length > 0) {
+            // User uttered wake word and command together ("Hey Aven what are my tasks")
+            const cmd = payload.command.trim();
+            setInput(cmd);
+            handleSendWithText(cmd);
+          } else {
+            // User just called "Hey Aven" - start listening for conversational speech
+            startVoiceRecording();
+          }
         }
       });
       return () => {

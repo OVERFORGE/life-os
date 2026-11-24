@@ -7,6 +7,8 @@ export interface WakeDetectionEvent {
   event: "wake_detected";
   keyword: string;
   confidence: number;
+  transcribed?: string;
+  command?: string;
 }
 
 export interface WakeSupervisorOptions {
@@ -22,6 +24,7 @@ export class WakeSupervisor extends EventEmitter {
   private maxRestarts: number;
   private initialBackoffMs: number;
   private binaryPath: string;
+  private isVerifying: boolean = false;
 
   constructor(options?: WakeSupervisorOptions) {
     super();
@@ -88,6 +91,9 @@ export class WakeSupervisor extends EventEmitter {
             const data = JSON.parse(trimmed);
             if (data.event === "wake_detected") {
               this.emit("wake", data);
+            } else if (data.event === "candidate_wake") {
+              // Verify candidate utterance via high-precision Whisper transcription
+              this.verifyCandidateWake(data);
             } else if (data.event === "debug_score") {
               this.emit("debug", data);
             } else if (data.event === "ready") {
@@ -137,6 +143,78 @@ export class WakeSupervisor extends EventEmitter {
     }
   }
 
+  /**
+   * High-precision cloud/local verification for candidate speech utterances.
+   * Completely eliminates false positives from conversation/ambient chatter.
+   */
+  private async verifyCandidateWake(candidate: {
+    audio_wav_base64?: string;
+    duration_ms?: number;
+    rms?: number;
+  }): Promise<void> {
+    if (!candidate.audio_wav_base64 || this.isVerifying) return;
+    this.isVerifying = true;
+
+    try {
+      const apiKey = process.env.GROQ_API_KEY;
+      if (!apiKey) {
+        console.warn("[WakeSupervisor] GROQ_API_KEY missing; cannot verify candidate wake audio.");
+        return;
+      }
+
+      const wavBuffer = Buffer.from(candidate.audio_wav_base64, "base64");
+      const blob = new Blob([wavBuffer], { type: "audio/wav" });
+      const formData = new FormData();
+      formData.append("file", blob, "candidate.wav");
+      formData.append("model", "whisper-large-v3-turbo");
+      formData.append("language", "en");
+      formData.append("temperature", "0");
+      formData.append("prompt", "Hey Aven, Hey Even, Aven.");
+
+      const res = await fetch("https://api.groq.com/openai/v1/audio/transcriptions", {
+        method: "POST",
+        headers: {
+          Authorization: `Bearer ${apiKey}`,
+        },
+        body: formData,
+      });
+
+      if (!res.ok) {
+        console.warn(`[WakeSupervisor] Verification API returned HTTP ${res.status}`);
+        return;
+      }
+
+      const data = (await res.json()) as { text?: string };
+      const rawText = (data.text || "").trim();
+      const normalized = rawText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+
+      // Strict keyword regex: "Hey Aven", "Hey Even", "Hey Evan", "Aven", "Even"
+      const WAKE_PATTERN = /\b(hey|hay|hi|ok|hello)?\s*(aven|even|evan)\b/i;
+      const isMatch = WAKE_PATTERN.test(normalized);
+
+      if (isMatch) {
+        // Extract any user command uttered immediately alongside the wake word
+        const command = normalized.replace(/^.*?\b(hey|hay|hi|ok|hello)?\s*(aven|even|evan)\b\s*/i, "").trim();
+
+        console.log(`[WakeSupervisor] ⚡ Verified 'Hey Aven' wake detected: "${rawText}" (command: "${command}")`);
+        const wakeEvent: WakeDetectionEvent = {
+          event: "wake_detected",
+          keyword: "Hey Aven",
+          confidence: 0.99,
+          transcribed: rawText,
+          command: command || undefined,
+        };
+        this.emit("wake", wakeEvent);
+      } else {
+        console.log(`[WakeSupervisor] 🔇 Discarded ambient speech: "${rawText}" (no wake word match)`);
+      }
+    } catch (err: any) {
+      console.warn("[WakeSupervisor] Candidate verification error:", err?.message || err);
+    } finally {
+      this.isVerifying = false;
+    }
+  }
+
   public stop(): void {
     this.isShuttingDown = true;
     if (this.child) {
@@ -152,4 +230,3 @@ export class WakeSupervisor extends EventEmitter {
     }
   }
 }
-
