@@ -7,6 +7,9 @@ import { loadRootEnv } from "./env";
 // Ensure environment variables from root .env are loaded into process.env
 loadRootEnv();
 
+// Permit automatic audio playback in HUD without requiring prior mouse click/gesture
+app.commandLine.appendSwitch("autoplay-policy", "no-user-gesture-required");
+
 let mainWindow: BrowserWindow | null = null;
 let hudWindow: BrowserWindow | null = null;
 let tray: Tray | null = null;
@@ -209,6 +212,7 @@ function createMainWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      autoplayPolicy: "no-user-gesture-required",
     },
   });
 
@@ -286,6 +290,7 @@ function createHudWindow(): BrowserWindow {
       contextIsolation: true,
       nodeIntegration: false,
       sandbox: true,
+      autoplayPolicy: "no-user-gesture-required",
     },
   });
 

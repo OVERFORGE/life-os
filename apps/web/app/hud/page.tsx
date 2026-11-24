@@ -132,7 +132,9 @@ export default function AvenHudPage() {
 
       const audioBlob = await res.blob();
       objectUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(objectUrl);
+      const audio = new Audio();
+      audio.src = objectUrl;
+      audio.volume = 1.0;
       audioRef.current = audio;
 
       const cleanup = () => {
@@ -169,6 +171,7 @@ export default function AvenHudPage() {
         }
       };
 
+      audio.load();
       await audio.play();
     } catch (err: any) {
       console.warn("[AvenHUD] TTS audio synthesis/playback error:", err?.message || err);

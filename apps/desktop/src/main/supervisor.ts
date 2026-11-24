@@ -221,13 +221,22 @@ export class WakeSupervisor extends EventEmitter {
 
       const normalized = rawText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
 
-      // Strict keyword regex: "Hey Aven", "Hey Even", "Hey Evan", "Aven", "Even"
-      const WAKE_PATTERN = /\b(hey|hay|hi|ok|hello)?\s*(aven|even|evan)\b/i;
-      const isMatch = WAKE_PATTERN.test(normalized);
+      // Precision Wake Pattern:
+      // 1. Explicit salutation followed by name: "Hey Aven", "Hey Even", "Hey Evan", "OK Aven", "Hi Aven", "Hello Aven"
+      // 2. Direct address starting with "Aven" (e.g. "Aven, ...")
+      // NEVER match standalone English adverb "even" inside normal sentences!
+      const WAKE_SALUTATION_PATTERN = /\b(hey|hay|hi|hello|ok|okay)\s+(aven|even|evan|aaven|avian|eaven)\b/i;
+      const DIRECT_ADDRESS_PATTERN = /^\s*(aven|aaven|avian)\b/i;
+
+      const isMatch = WAKE_SALUTATION_PATTERN.test(normalized) || DIRECT_ADDRESS_PATTERN.test(normalized);
 
       if (isMatch) {
-        // Extract any user command uttered immediately alongside the wake word
-        const command = normalized.replace(/^.*?\b(hey|hay|hi|ok|hello)?\s*(aven|even|evan)\b\s*/i, "").trim();
+        let command = "";
+        if (WAKE_SALUTATION_PATTERN.test(normalized)) {
+          command = normalized.replace(/^.*?\b(hey|hay|hi|hello|ok|okay)\s+(aven|even|evan|aaven|avian|eaven)\b\s*/i, "").trim();
+        } else if (DIRECT_ADDRESS_PATTERN.test(normalized)) {
+          command = normalized.replace(/^\s*(aven|aaven|avian)\b\s*/i, "").trim();
+        }
 
         console.log(`[WakeSupervisor] ⚡ Verified 'Hey Aven' wake detected: "${rawText}" (command: "${command}")`);
         const wakeEvent: WakeDetectionEvent = {
@@ -239,12 +248,17 @@ export class WakeSupervisor extends EventEmitter {
         };
         this.emit("wake", wakeEvent);
       } else if (this.isConversationActive) {
-        // When HUD is open and active, user speech is their query/command in the conversation!
-        console.log(`[WakeSupervisor] 🗣️ User query captured in active conversation: "${rawText}"`);
-        this.emit("speech", {
-          event: "user_speech",
-          transcribed: rawText,
-        });
+        // Discard brief filler sounds (<3 chars or just "um", "uh", "huh")
+        const isFiller = /^(um|uh|er|ah|huh|hmm|so)$/i.test(normalized) || normalized.length < 3;
+        if (!isFiller) {
+          console.log(`[WakeSupervisor] 🗣️ User query captured in active conversation: "${rawText}"`);
+          this.emit("speech", {
+            event: "user_speech",
+            transcribed: rawText,
+          });
+        } else {
+          console.log(`[WakeSupervisor] 🔇 Ignored conversational filler sound: "${rawText}"`);
+        }
       } else {
         console.log(`[WakeSupervisor] 🔇 Discarded ambient speech: "${rawText}" (no wake word match)`);
       }
