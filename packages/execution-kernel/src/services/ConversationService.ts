@@ -98,9 +98,8 @@ export class ConversationService {
           try {
             if (isEventsFormat) {
               streamController.enqueue(encoder.encode(`data: ${JSON.stringify(event)}\n\n`));
-            } else if (event.type === "assistant_delta") {
-              streamController.enqueue(encoder.encode(event.text));
             }
+            // In raw mode (!isEventsFormat), text is streamed exclusively via onChunk to avoid duplicate delivery
           } catch (e) {
             // Stream might be closed if client disconnected
           }

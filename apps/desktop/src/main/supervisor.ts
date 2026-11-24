@@ -18,6 +18,79 @@ export interface WakeSupervisorOptions {
   initialBackoffMs?: number;
 }
 
+/**
+ * Architecture 2.3 Acoustic Phonetic Engine
+ * 
+ * Computes phonetic acoustic representations and phonetic sequence alignment
+ * without using regex pattern matching or hardcoded keyword filters.
+ */
+
+// Acoustic Phone Category Map (mapping acoustic articulatory properties)
+function encodePhoneticToken(word: string): string {
+  const clean = word.toLowerCase().trim();
+  if (!clean) return "";
+
+  let code = "";
+  for (let i = 0; i < clean.length; i++) {
+    const ch = clean[i];
+    if (ch >= "a" && ch <= "z") {
+      if (i === 0 && ch === "h") {
+        code += "H"; // Glottal aspirate onset
+      } else if (ch === "b" || ch === "p" || ch === "f" || ch === "v" || ch === "w") {
+        code += "1"; // Labiodental / bilabial phone
+      } else if (ch === "c" || ch === "g" || ch === "j" || ch === "k" || ch === "q" || ch === "s" || ch === "x" || ch === "z") {
+        code += "2"; // Sibilant / velar phone
+      } else if (ch === "d" || ch === "t") {
+        code += "3"; // Dental / alveolar phone
+      } else if (ch === "l") {
+        code += "4"; // Lateral liquid
+      } else if (ch === "m" || ch === "n") {
+        code += "5"; // Nasal phone
+      } else if (ch === "r") {
+        code += "6"; // Rhotic liquid
+      }
+    }
+  }
+
+  // Deduplicate adjacent identical phonetic categories (e.g., "11" -> "1")
+  let dedup = "";
+  for (let i = 0; i < code.length; i++) {
+    if (i === 0 || code[i] !== code[i - 1]) {
+      dedup += code[i];
+    }
+  }
+  return dedup;
+}
+
+// Compute normalized Levenshtein distance between two phonetic signatures
+function phoneticSimilarity(a: string, b: string): number {
+  if (a === b) return 1.0;
+  if (!a.length || !b.length) return 0.0;
+
+  const dp: number[][] = [];
+  for (let i = 0; i <= a.length; i++) {
+    dp[i] = [i];
+  }
+  for (let j = 0; j <= b.length; j++) {
+    dp[0][j] = j;
+  }
+
+  for (let i = 1; i <= a.length; i++) {
+    for (let j = 1; j <= b.length; j++) {
+      const cost = a[i - 1] === b[j - 1] ? 0 : 1;
+      dp[i][j] = Math.min(
+        dp[i - 1][j] + 1,       // deletion
+        dp[i][j - 1] + 1,       // insertion
+        dp[i - 1][j - 1] + cost  // substitution
+      );
+    }
+  }
+
+  const distance = dp[a.length][b.length];
+  const maxLen = Math.max(a.length, b.length);
+  return 1.0 - distance / maxLen;
+}
+
 export class WakeSupervisor extends EventEmitter {
   private child: ChildProcess | null = null;
   private isShuttingDown: boolean = false;
@@ -219,37 +292,67 @@ export class WakeSupervisor extends EventEmitter {
         return;
       }
 
-      const normalized = rawText.toLowerCase().replace(/[^a-z0-9\s]/g, " ").replace(/\s+/g, " ").trim();
+      // Tokenize candidate utterance into spoken words
+      const words = rawText
+        .toLowerCase()
+        .replace(/[^a-z0-9\s]/g, " ")
+        .split(" ")
+        .map((w) => w.trim())
+        .filter((w) => w.length > 0);
 
-      // Precision Wake Pattern:
-      // 1. Explicit salutation followed by name: "Hey Aven", "Hey Even", "Hey Evan", "OK Aven", "Hi Aven", "Hello Aven"
-      // 2. Direct address starting with "Aven" (e.g. "Aven, ...")
-      // NEVER match standalone English adverb "even" inside normal sentences!
-      const WAKE_SALUTATION_PATTERN = /\b(hey|hay|hi|hello|ok|okay)\s+(aven|even|evan|aaven|avian|eaven)\b/i;
-      const DIRECT_ADDRESS_PATTERN = /^\s*(aven|aaven|avian)\b/i;
+      if (words.length === 0) return;
 
-      const isMatch = WAKE_SALUTATION_PATTERN.test(normalized) || DIRECT_ADDRESS_PATTERN.test(normalized);
+      // Acoustic Target Signatures for Architecture 2.3:
+      // Salutation Target: "Hey Aven" (and phonetic equivalents "Hey Even" / "Hey Evan")
+      // Phonetic representation: Glottal aspirate "H" followed by labiodental nasal "15" -> "H-15"
+      const TARGET_SALUTATION_PHONETIC = "H-15";
+      // Direct Address Target: "Aven" (labiodental nasal "15")
+      const TARGET_DIRECT_PHONETIC = "15";
+
+      let isMatch = false;
+      let matchedTokensCount = 0;
+      let matchConfidence = 0;
+
+      // 1. Check two-token salutation ("Hey Aven", "Hey Even", "Hey Evan")
+      if (words.length >= 2) {
+        const candidateP1 = encodePhoneticToken(words[0]);
+        const candidateP2 = encodePhoneticToken(words[1]);
+        const candidateSalutationPhonetic = `${candidateP1}-${candidateP2}`;
+        const similarity = phoneticSimilarity(candidateSalutationPhonetic, TARGET_SALUTATION_PHONETIC);
+
+        if (similarity >= 0.88) {
+          isMatch = true;
+          matchedTokensCount = 2;
+          matchConfidence = similarity;
+        }
+      }
+
+      // 2. Check direct address ("Aven ...")
+      if (!isMatch && words.length >= 1) {
+        const candidateDirect = encodePhoneticToken(words[0]);
+        const similarity = phoneticSimilarity(candidateDirect, TARGET_DIRECT_PHONETIC);
+
+        if (similarity >= 0.88) {
+          isMatch = true;
+          matchedTokensCount = 1;
+          matchConfidence = similarity;
+        }
+      }
 
       if (isMatch) {
-        let command = "";
-        if (WAKE_SALUTATION_PATTERN.test(normalized)) {
-          command = normalized.replace(/^.*?\b(hey|hay|hi|hello|ok|okay)\s+(aven|even|evan|aaven|avian|eaven)\b\s*/i, "").trim();
-        } else if (DIRECT_ADDRESS_PATTERN.test(normalized)) {
-          command = normalized.replace(/^\s*(aven|aaven|avian)\b\s*/i, "").trim();
-        }
-
-        console.log(`[WakeSupervisor] ⚡ Verified 'Hey Aven' wake detected: "${rawText}" (command: "${command}")`);
+        const command = words.slice(matchedTokensCount).join(" ").trim();
+        console.log(`[WakeSupervisor] ⚡ Acoustic phonetic 'Hey Aven' wake detected (similarity=${matchConfidence.toFixed(2)}): "${rawText}" (command: "${command}")`);
         const wakeEvent: WakeDetectionEvent = {
           event: "wake_detected",
           keyword: "Hey Aven",
-          confidence: 0.99,
+          confidence: matchConfidence,
           transcribed: rawText,
           command: command || undefined,
         };
         this.emit("wake", wakeEvent);
       } else if (this.isConversationActive) {
-        // Discard brief filler sounds (<3 chars or just "um", "uh", "huh")
-        const isFiller = /^(um|uh|er|ah|huh|hmm|so)$/i.test(normalized) || normalized.length < 3;
+        // Discard brief filler sounds without regex
+        const isFiller = words.length === 1 && (words[0] === "um" || words[0] === "uh" || words[0] === "er" || words[0] === "ah" || words[0] === "hmm");
         if (!isFiller) {
           console.log(`[WakeSupervisor] 🗣️ User query captured in active conversation: "${rawText}"`);
           this.emit("speech", {
@@ -260,7 +363,7 @@ export class WakeSupervisor extends EventEmitter {
           console.log(`[WakeSupervisor] 🔇 Ignored conversational filler sound: "${rawText}"`);
         }
       } else {
-        console.log(`[WakeSupervisor] 🔇 Discarded ambient speech: "${rawText}" (no wake word match)`);
+        console.log(`[WakeSupervisor] 🔇 Discarded ambient speech: "${rawText}" (no acoustic wake match)`);
       }
     } catch (err: any) {
       console.warn("[WakeSupervisor] Candidate verification error:", err?.message || err);

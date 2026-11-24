@@ -57,6 +57,18 @@ body {
   overflow-x: hidden;
 }
 
+/* Frameless Desktop HUD Overlay Transparency */
+html:has([data-hud-root]),
+body:has([data-hud-root]),
+html:has(#aven-hud-root),
+body:has(#aven-hud-root),
+html.hud-transparent,
+body.hud-transparent {
+  background: transparent !important;
+  background-color: transparent !important;
+  overflow: hidden !important;
+}
+
 ::selection {
   background: rgba(217, 139, 43, 0.25);
   color: #F7F5F0;

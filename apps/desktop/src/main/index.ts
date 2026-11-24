@@ -277,13 +277,13 @@ function createHudWindow(): BrowserWindow {
     y: 0,
     frame: false,
     transparent: true,
-    backgroundColor: "#00000000",
     alwaysOnTop: true,
     skipTaskbar: true,
     show: false,
     resizable: false,
     movable: false,
     hasShadow: false,
+    roundedCorners: false,
     autoHideMenuBar: true,
     webPreferences: {
       preload: path.join(__dirname, "../preload/index.js"),
@@ -339,18 +339,24 @@ function createHudWindow(): BrowserWindow {
     }
   });
 
+  const injectTransparentStyles = () => {
+    hud.webContents.insertCSS(`
+      html, body, #__next, [data-hud-root], #aven-hud-root {
+        background: transparent !important;
+        background-color: transparent !important;
+        overflow: hidden !important;
+      }
+    `).catch(() => {});
+  };
+
+  hud.webContents.on("dom-ready", injectTransparentStyles);
+
   hud.webContents.on("did-finish-load", () => {
     if (hudRetryTimer) {
       clearTimeout(hudRetryTimer);
       hudRetryTimer = null;
     }
-    hud.webContents.insertCSS(`
-      html, body, #__next {
-        background: transparent !important;
-        background-color: transparent !important;
-        overflow: hidden !important;
-      }
-    `);
+    injectTransparentStyles();
   });
 
   return hud;

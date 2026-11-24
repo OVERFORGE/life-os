@@ -28,6 +28,8 @@ export default function AvenHudPage() {
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
   const audioRef = useRef<HTMLAudioElement | null>(null);
+  const activeAudioContextRef = useRef<AudioContext | null>(null);
+  const activeSourceNodeRef = useRef<AudioBufferSourceNode | null>(null);
   const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
 
   // Auto-focus input on mount
@@ -71,8 +73,18 @@ export default function AvenHudPage() {
       clearTimeout(silenceTimerRef.current);
       silenceTimerRef.current = null;
     }
+    if (activeSourceNodeRef.current) {
+      try {
+        activeSourceNodeRef.current.stop();
+        activeSourceNodeRef.current.disconnect();
+      } catch (_) {}
+      activeSourceNodeRef.current = null;
+    }
     if (audioRef.current) {
-      audioRef.current.pause();
+      try {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute("src");
+      } catch (_) {}
       audioRef.current = null;
     }
     setIsListening(false);
@@ -99,10 +111,17 @@ export default function AvenHudPage() {
     return () => window.removeEventListener("keydown", handleKeyDown);
   }, [hideHud]);
 
-  // Synthesize and play British neural voice response
+  // Synthesize and play British neural voice response via Web Audio API (zero gesture required in Electron)
   const playTtsAudio = useCallback(async (text: string, isConcluded: boolean) => {
     if (!text || typeof window === "undefined") return;
 
+    if (activeSourceNodeRef.current) {
+      try {
+        activeSourceNodeRef.current.stop();
+        activeSourceNodeRef.current.disconnect();
+      } catch (_) {}
+      activeSourceNodeRef.current = null;
+    }
     if (audioRef.current) {
       try {
         audioRef.current.pause();
@@ -113,8 +132,6 @@ export default function AvenHudPage() {
 
     setIsSpeaking(true);
     setIsListening(false);
-
-    let objectUrl: string | null = null;
 
     try {
       console.log(`[AvenHUD] 🔊 Requesting British TTS synthesis for: "${text.slice(0, 60)}..."`);
@@ -134,27 +151,29 @@ export default function AvenHudPage() {
         throw new Error(errJson.error || `TTS returned status ${res.status}`);
       }
 
-      const audioBlob = await res.blob();
-      console.log(`[AvenHUD] 🔊 Received audio blob (${audioBlob.size} bytes). Initiating playback...`);
-      objectUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio(objectUrl);
-      audio.volume = 1.0;
-      audioRef.current = audio;
+      const arrayBuffer = await res.arrayBuffer();
+      console.log(`[AvenHUD] 🔊 Received audio buffer (${arrayBuffer.byteLength} bytes). Decoding via Web Audio API...`);
 
-      const cleanup = () => {
+      const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+      if (!activeAudioContextRef.current || activeAudioContextRef.current.state === "closed") {
+        activeAudioContextRef.current = new AudioContextClass();
+      }
+      const audioCtx = activeAudioContextRef.current;
+      if (audioCtx.state === "suspended") {
+        await audioCtx.resume();
+      }
+
+      // Decode audio frames directly to PCM memory buffer
+      const audioBuffer = await audioCtx.decodeAudioData(arrayBuffer.slice(0));
+      const sourceNode = audioCtx.createBufferSource();
+      sourceNode.buffer = audioBuffer;
+      sourceNode.connect(audioCtx.destination);
+      activeSourceNodeRef.current = sourceNode;
+
+      sourceNode.onended = () => {
+        console.log("[AvenHUD] 🔊 Web Audio playback ended cleanly.");
         setIsSpeaking(false);
-        audioRef.current = null;
-        if (objectUrl) {
-          try {
-            URL.revokeObjectURL(objectUrl);
-          } catch (_) {}
-          objectUrl = null;
-        }
-      };
-
-      audio.onended = () => {
-        console.log("[AvenHUD] 🔊 Audio playback ended cleanly.");
-        cleanup();
+        activeSourceNodeRef.current = null;
         if (isConcluded) {
           console.log("[AvenHUD] Conversation semantically concluded. Dismissing HUD.");
           setTimeout(() => {
@@ -167,28 +186,56 @@ export default function AvenHudPage() {
         }
       };
 
-      audio.onerror = (err) => {
-        console.warn("[AvenHUD] ❌ Audio playback error:", err);
-        cleanup();
-        if (isConcluded) {
-          hideHud();
-        } else {
-          setIsListening(true);
-          resetSilenceTimer();
-        }
-      };
-
-      await audio.play();
-      console.log("[AvenHUD] 🔊 audio.play() started successfully!");
+      sourceNode.start(0);
+      console.log("[AvenHUD] 🔊 Web Audio API playback started successfully!");
     } catch (err: any) {
-      console.warn("[AvenHUD] ❌ TTS audio synthesis/playback error:", err?.message || err);
-      if (objectUrl) {
-        try {
-          URL.revokeObjectURL(objectUrl);
-        } catch (_) {}
+      console.warn("[AvenHUD] ❌ Web Audio API error, attempting HTML5 Audio fallback:", err?.message || err);
+      try {
+        const blobRes = await fetch("/api/voice/tts", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ text, voice: "en-GB-RyanNeural", rate: "+6%", pitch: "+0Hz" }),
+        });
+        if (blobRes.ok) {
+          const rawBlob = await blobRes.blob();
+          const audioBlob = new Blob([rawBlob], { type: "audio/mpeg" });
+          const objectUrl = URL.createObjectURL(audioBlob);
+          const fallbackAudio = new Audio(objectUrl);
+          fallbackAudio.volume = 1.0;
+          audioRef.current = fallbackAudio;
+
+          fallbackAudio.onended = () => {
+            setIsSpeaking(false);
+            audioRef.current = null;
+            URL.revokeObjectURL(objectUrl);
+            if (isConcluded) hideHud();
+            else {
+              setIsListening(true);
+              resetSilenceTimer();
+            }
+          };
+
+          fallbackAudio.onerror = (e) => {
+            console.warn("[AvenHUD] ❌ Fallback audio error:", e);
+            setIsSpeaking(false);
+            audioRef.current = null;
+            URL.revokeObjectURL(objectUrl);
+            if (isConcluded) hideHud();
+            else {
+              setIsListening(true);
+              resetSilenceTimer();
+            }
+          };
+
+          await fallbackAudio.play();
+          return;
+        }
+      } catch (fallbackErr) {
+        console.warn("[AvenHUD] ❌ Fallback also failed:", fallbackErr);
       }
+
       setIsSpeaking(false);
-      audioRef.current = null;
+      activeSourceNodeRef.current = null;
       if (isConcluded) {
         hideHud();
       } else {
@@ -490,14 +537,6 @@ export default function AvenHudPage() {
             <span className="text-[10px] text-[#85827A] font-mono hidden sm:inline-flex items-center gap-1">
               <kbd className="bg-[#17171A] border border-[#23242A] px-1 py-0.5 rounded text-[9px] text-[#A5A29A]">esc</kbd> to dismiss
             </span>
-
-            <button
-              onClick={hideHud}
-              className="p-1 rounded-md text-[#85827A] hover:text-[#F7F5F0] hover:bg-[#23242A] transition-colors cursor-pointer"
-              title="Close HUD"
-            >
-              <X size={13} />
-            </button>
           </div>
         </div>
 
