@@ -100,7 +100,7 @@ export default function AvenHudPage() {
   }, [hideHud]);
 
   // Synthesize and play British neural voice response
-  const playTtsAudio = useCallback((text: string, isConcluded: boolean) => {
+  const playTtsAudio = useCallback(async (text: string, isConcluded: boolean) => {
     if (!text || typeof window === "undefined") return;
 
     if (audioRef.current) {
@@ -111,14 +111,41 @@ export default function AvenHudPage() {
     setIsSpeaking(true);
     setIsListening(false);
 
+    let objectUrl: string | null = null;
+
     try {
-      const ttsUrl = `/api/voice/tts?text=${encodeURIComponent(text)}&voice=en-GB-RyanNeural`;
-      const audio = new Audio(ttsUrl);
+      const res = await fetch("/api/voice/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          text,
+          voice: "en-GB-RyanNeural",
+          rate: "+6%",
+          pitch: "+0Hz",
+        }),
+      });
+
+      if (!res.ok) {
+        const errJson = await res.json().catch(() => ({}));
+        throw new Error(errJson.error || `TTS returned status ${res.status}`);
+      }
+
+      const audioBlob = await res.blob();
+      objectUrl = URL.createObjectURL(audioBlob);
+      const audio = new Audio(objectUrl);
       audioRef.current = audio;
 
-      audio.onended = () => {
+      const cleanup = () => {
         setIsSpeaking(false);
         audioRef.current = null;
+        if (objectUrl) {
+          URL.revokeObjectURL(objectUrl);
+          objectUrl = null;
+        }
+      };
+
+      audio.onended = () => {
+        cleanup();
         if (isConcluded) {
           console.log("[AvenHUD] Conversation semantically concluded. Dismissing HUD.");
           setTimeout(() => {
@@ -132,9 +159,8 @@ export default function AvenHudPage() {
       };
 
       audio.onerror = (err) => {
-        console.warn("[AvenHUD] TTS audio error:", err);
-        setIsSpeaking(false);
-        audioRef.current = null;
+        console.warn("[AvenHUD] Audio playback error:", err);
+        cleanup();
         if (isConcluded) {
           hideHud();
         } else {
@@ -143,19 +169,14 @@ export default function AvenHudPage() {
         }
       };
 
-      audio.play().catch((playErr) => {
-        console.warn("[AvenHUD] Audio play policy blocked:", playErr);
-        setIsSpeaking(false);
-        if (isConcluded) {
-          hideHud();
-        } else {
-          setIsListening(true);
-          resetSilenceTimer();
-        }
-      });
-    } catch (err) {
-      console.warn("[AvenHUD] Audio setup failed:", err);
+      await audio.play();
+    } catch (err: any) {
+      console.warn("[AvenHUD] TTS audio synthesis/playback error:", err?.message || err);
+      if (objectUrl) {
+        URL.revokeObjectURL(objectUrl);
+      }
       setIsSpeaking(false);
+      audioRef.current = null;
       if (isConcluded) {
         hideHud();
       } else {

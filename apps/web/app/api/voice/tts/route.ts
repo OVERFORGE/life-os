@@ -145,38 +145,33 @@ async function handleSynthesize(
       pitch: pitch || "+0Hz",
     });
 
-    const webStream = new ReadableStream({
-      start(controller) {
-        audioStream.on("data", (chunk: Buffer) => {
-          controller.enqueue(new Uint8Array(chunk));
-        });
-
-        audioStream.on("end", () => {
-          try {
-            tts.close();
-          } catch (_) {}
-          controller.close();
-        });
-
-        audioStream.on("error", (err: any) => {
-          try {
-            tts.close();
-          } catch (_) {}
-          controller.error(err);
-        });
-      },
-      cancel() {
+    const chunks: Buffer[] = [];
+    await new Promise<void>((resolve, reject) => {
+      audioStream.on("data", (chunk: Buffer) => {
+        chunks.push(chunk);
+      });
+      audioStream.on("end", () => {
         try {
           tts.close();
         } catch (_) {}
-      },
+        resolve();
+      });
+      audioStream.on("error", (err: any) => {
+        try {
+          tts.close();
+        } catch (_) {}
+        reject(err);
+      });
     });
 
-    return new Response(webStream, {
+    const audioBuffer = Buffer.concat(chunks);
+
+    return new Response(audioBuffer, {
       status: 200,
       headers: {
         "Content-Type": "audio/mpeg",
-        "Transfer-Encoding": "chunked",
+        "Content-Length": String(audioBuffer.length),
+        "Accept-Ranges": "bytes",
         "Cache-Control": "public, max-age=3600, s-maxage=3600",
         "x-lifeos-voice": selectedVoice,
       },
