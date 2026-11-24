@@ -19,13 +19,15 @@ function getGroqClient(): Groq | null {
     return cachedClient;
 }
 
-const DEFAULT_MODEL = process.env.GROQ_MODEL || "qwen/qwen3.8-27b";
+const DEFAULT_MODEL = process.env.GROQ_MODEL || "llama-3.3-70b-versatile";
 const RESILIENT_FALLBACK_MODELS = [
+    "llama-3.3-70b-versatile",
+    "llama-3.1-8b-instant",
     "qwen/qwen3.8-27b",
     "openai/gpt-oss-120b",
     "openai/gpt-oss-20b",
 ];
-const RESILIENT_FALLBACK_MODEL = "qwen/qwen3.8-27b";
+const RESILIENT_FALLBACK_MODEL = "llama-3.3-70b-versatile";
 
 export async function groqChat({
     messages,
@@ -98,7 +100,7 @@ export async function groqChat({
             const ai = new GoogleGenAI({ apiKey: process.env.GEMINI_API_KEY });
             const prompt = messages.map((m) => `${m.role.toUpperCase()}: ${m.content}`).join("\n\n");
             const geminiPromise = ai.models.generateContent({
-                model: "gemini-2.5-flash",
+                model: "gemini-2.0-flash",
                 contents: prompt,
             });
             const timeoutPromise = new Promise((_, reject) =>

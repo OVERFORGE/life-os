@@ -302,6 +302,10 @@ function createHudWindow(): BrowserWindow {
 
   hud.loadURL(`${WEB_URL}/hud`);
 
+  hud.webContents.on("console-message", (_event, level, message, line, sourceId) => {
+    console.log(`[HUD WebContents] (${level}) ${message} [${sourceId}:${line}]`);
+  });
+
   hud.on("blur", () => {
     // Only auto-hide on blur if summoned by hover and not in an active voice conversation
     if (hudSummonSource === "hover" && !supervisor?.getConversationActive()) {

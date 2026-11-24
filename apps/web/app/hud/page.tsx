@@ -104,7 +104,10 @@ export default function AvenHudPage() {
     if (!text || typeof window === "undefined") return;
 
     if (audioRef.current) {
-      audioRef.current.pause();
+      try {
+        audioRef.current.pause();
+        audioRef.current.removeAttribute("src");
+      } catch (_) {}
       audioRef.current = null;
     }
 
@@ -114,6 +117,7 @@ export default function AvenHudPage() {
     let objectUrl: string | null = null;
 
     try {
+      console.log(`[AvenHUD] 🔊 Requesting British TTS synthesis for: "${text.slice(0, 60)}..."`);
       const res = await fetch("/api/voice/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -131,9 +135,9 @@ export default function AvenHudPage() {
       }
 
       const audioBlob = await res.blob();
+      console.log(`[AvenHUD] 🔊 Received audio blob (${audioBlob.size} bytes). Initiating playback...`);
       objectUrl = URL.createObjectURL(audioBlob);
-      const audio = new Audio();
-      audio.src = objectUrl;
+      const audio = new Audio(objectUrl);
       audio.volume = 1.0;
       audioRef.current = audio;
 
@@ -141,12 +145,15 @@ export default function AvenHudPage() {
         setIsSpeaking(false);
         audioRef.current = null;
         if (objectUrl) {
-          URL.revokeObjectURL(objectUrl);
+          try {
+            URL.revokeObjectURL(objectUrl);
+          } catch (_) {}
           objectUrl = null;
         }
       };
 
       audio.onended = () => {
+        console.log("[AvenHUD] 🔊 Audio playback ended cleanly.");
         cleanup();
         if (isConcluded) {
           console.log("[AvenHUD] Conversation semantically concluded. Dismissing HUD.");
@@ -161,7 +168,7 @@ export default function AvenHudPage() {
       };
 
       audio.onerror = (err) => {
-        console.warn("[AvenHUD] Audio playback error:", err);
+        console.warn("[AvenHUD] ❌ Audio playback error:", err);
         cleanup();
         if (isConcluded) {
           hideHud();
@@ -171,12 +178,14 @@ export default function AvenHudPage() {
         }
       };
 
-      audio.load();
       await audio.play();
+      console.log("[AvenHUD] 🔊 audio.play() started successfully!");
     } catch (err: any) {
-      console.warn("[AvenHUD] TTS audio synthesis/playback error:", err?.message || err);
+      console.warn("[AvenHUD] ❌ TTS audio synthesis/playback error:", err?.message || err);
       if (objectUrl) {
-        URL.revokeObjectURL(objectUrl);
+        try {
+          URL.revokeObjectURL(objectUrl);
+        } catch (_) {}
       }
       setIsSpeaking(false);
       audioRef.current = null;
@@ -258,6 +267,17 @@ export default function AvenHudPage() {
         if (payload?.keyword === "Hey Aven") {
           setResponse(null);
           resetSilenceTimer();
+
+          // Unlock audio context proactively on wake detection
+          try {
+            const AudioCtx = window.AudioContext || (window as any).webkitAudioContext;
+            if (AudioCtx) {
+              const ctx = new AudioCtx();
+              if (ctx.state === "suspended") {
+                ctx.resume().catch(() => {});
+              }
+            }
+          } catch (_) {}
 
           if (payload?.command && typeof payload.command === "string" && payload.command.trim().length > 0) {
             // User uttered wake word and command together ("Hey Aven what are my tasks")
