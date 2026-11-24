@@ -26,6 +26,7 @@ export class WakeSupervisor extends EventEmitter {
   private initialBackoffMs: number;
   private binaryPath: string;
   private isVerifying: boolean = false;
+  private isConversationActive: boolean = false;
 
   constructor(options?: WakeSupervisorOptions) {
     super();
@@ -237,6 +238,13 @@ export class WakeSupervisor extends EventEmitter {
           command: command || undefined,
         };
         this.emit("wake", wakeEvent);
+      } else if (this.isConversationActive) {
+        // When HUD is open and active, user speech is their query/command in the conversation!
+        console.log(`[WakeSupervisor] 🗣️ User query captured in active conversation: "${rawText}"`);
+        this.emit("speech", {
+          event: "user_speech",
+          transcribed: rawText,
+        });
       } else {
         console.log(`[WakeSupervisor] 🔇 Discarded ambient speech: "${rawText}" (no wake word match)`);
       }
@@ -245,6 +253,19 @@ export class WakeSupervisor extends EventEmitter {
     } finally {
       this.isVerifying = false;
     }
+  }
+
+  public setConversationActive(active: boolean): void {
+    this.isConversationActive = active;
+    console.log(
+      `[WakeSupervisor] Conversation mode set to: ${
+        active ? "ACTIVE (listening for user queries)" : "IDLE (wake word only)"
+      }`
+    );
+  }
+
+  public getConversationActive(): boolean {
+    return this.isConversationActive;
   }
 
   public stop(): void {

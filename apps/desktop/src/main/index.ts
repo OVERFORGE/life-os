@@ -263,7 +263,7 @@ function createHudWindow(): BrowserWindow {
   const primaryDisplay = screen.getPrimaryDisplay();
   const { width: screenWidth } = primaryDisplay.workAreaSize;
   const NOTCH_WIDTH = 640;
-  const NOTCH_HEIGHT = 380;
+  const NOTCH_HEIGHT = 460;
   const x = Math.round((screenWidth - NOTCH_WIDTH) / 2);
 
   const hud = new BrowserWindow({
@@ -299,6 +299,15 @@ function createHudWindow(): BrowserWindow {
 
   hud.on("blur", () => {
     hud.hide();
+    supervisor?.setConversationActive(false);
+  });
+
+  hud.on("show", () => {
+    supervisor?.setConversationActive(true);
+  });
+
+  hud.on("hide", () => {
+    supervisor?.setConversationActive(false);
   });
 
   let hudRetryTimer: NodeJS.Timeout | null = null;
@@ -380,9 +389,11 @@ function toggleHud(force?: boolean): void {
   if (!isHudEnabled && force !== true) return;
   if (hudWindow.isVisible()) {
     hudWindow.hide();
+    supervisor?.setConversationActive(false);
   } else {
     hudWindow.show();
     hudWindow.focus();
+    supervisor?.setConversationActive(true);
   }
 }
 
@@ -446,6 +457,7 @@ app.whenReady().then(() => {
           hasHoveredHud = true;
         } else if (hasHoveredHud || cursor.y > 180) {
           hudWindow.hide();
+          supervisor?.setConversationActive(false);
           hasHoveredHud = false;
         }
       }
@@ -559,9 +571,17 @@ app.whenReady().then(() => {
     if (isHudEnabled && hudWindow && !hudWindow.isDestroyed()) {
       hudWindow.show();
       hudWindow.focus();
+      supervisor?.setConversationActive(true);
       hudWindow.webContents.send("desktop:aven-wake", payload);
     }
     mainWindow?.webContents.send("desktop:aven-wake", payload);
+  });
+
+  supervisor.on("speech", (payload: any) => {
+    console.log(`[Electron] 🗣️ Forwarding user speech to HUD: "${payload.transcribed}"`);
+    if (isHudEnabled && hudWindow && !hudWindow.isDestroyed() && hudWindow.isVisible()) {
+      hudWindow.webContents.send("desktop:aven-speech", payload);
+    }
   });
 
   supervisor.on("debug", (data) => {

@@ -14,6 +14,7 @@ export interface DesktopBridge {
   updateTrayStatus?: (status: { title: string; tooltip: string }) => Promise<void>;
   onDeepLink?: (callback: (url: string) => void) => () => void;
   onAvenWake?: (callback: (payload: any) => void) => () => void;
+  onAvenSpeech?: (callback: (payload: { transcribed: string }) => void) => () => void;
   startWakeWord?: () => Promise<boolean>;
   stopWakeWord?: () => Promise<boolean>;
   isWakeWordRunning?: () => Promise<boolean>;

@@ -3,13 +3,17 @@
 import React, { useState, useEffect, useRef } from "react";
 import { Mic, ArrowUp, Sparkles, Check, Copy, Loader2 } from "lucide-react";
 import { useInteractionSurface } from "@/hooks/useInteractionSurface";
+import { AvenBlob } from "@/components/ai/AvenBlob";
 
 /**
- * Aven Minimal HUD
+ * Aven Minimal HUD with Interactive WebGL2 Assistant Orb
  * 
  * Clean, lightweight, studio-grade ambient interaction surface.
- * Floats seamlessly at the top center of the display with transparent backdrop.
- * Features live speech-to-text, real-time silence endpointing, and auto-dismiss on mouse leave.
+ * Features:
+ * 1. Full-duplex conversational voice interaction via native acoustic supervisor.
+ * 2. Interactive WebGL2 Aven Orb with responsive states (idle, listening, thinking, speaking).
+ * 3. 100% transparent frameless desktop backdrop with zero black box.
+ * 4. Auto-summon on top-center hover, auto-dismiss on mouse leave.
  */
 export default function AvenHudPage() {
   const { projection, completeTask } = useInteractionSurface();
@@ -17,15 +21,11 @@ export default function AvenHudPage() {
   const [response, setResponse] = useState<string | null>(null);
   const [isSubmitting, setIsSubmitting] = useState(false);
   const [isListening, setIsListening] = useState(false);
-  const [isTranscribing, setIsTranscribing] = useState(false);
   const [copied, setCopied] = useState(false);
 
   const inputRef = useRef<HTMLInputElement>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const audioChunksRef = useRef<Blob[]>([]);
-  const speechRecognitionRef = useRef<any>(null);
-  const silenceTimerRef = useRef<NodeJS.Timeout | null>(null);
-  const latestTranscriptRef = useRef<string>("");
 
   // Auto-focus input on mount
   useEffect(() => {
@@ -66,14 +66,16 @@ export default function AvenHudPage() {
     if (typeof window !== "undefined" && window.lifeosDesktop?.onAvenWake) {
       const unsub = window.lifeosDesktop.onAvenWake((payload: any) => {
         if (payload?.keyword === "Hey Aven") {
+          setResponse(null);
           if (payload?.command && typeof payload.command === "string" && payload.command.trim().length > 0) {
             // User uttered wake word and command together ("Hey Aven what are my tasks")
             const cmd = payload.command.trim();
             setInput(cmd);
             handleSendWithText(cmd);
           } else {
-            // User called "Hey Aven" - start listening with live streaming speech-to-text
-            startVoiceRecording();
+            // User called "Hey Aven" - activate listening state for their conversational turn
+            setIsListening(true);
+            inputRef.current?.focus();
           }
         }
       });
@@ -83,26 +85,41 @@ export default function AvenHudPage() {
     }
   }, []);
 
+  // Listen for active conversational speech turns from Electron supervisor (duplex communication)
+  useEffect(() => {
+    if (typeof window !== "undefined" && (window.lifeosDesktop as any)?.onAvenSpeech) {
+      const unsub = (window.lifeosDesktop as any).onAvenSpeech((payload: { transcribed: string }) => {
+        const text = payload?.transcribed?.trim();
+        if (text) {
+          console.log("[AvenHUD] 🗣️ Received user speech turn:", text);
+          setIsListening(false);
+          setInput(text);
+          handleSendWithText(text);
+        }
+      });
+      return () => {
+        if (typeof unsub === "function") unsub();
+      };
+    }
+  }, []);
+
   const hideHud = async () => {
-    stopVoiceRecording();
+    stopBrowserRecording();
+    setIsListening(false);
     const { toggleHudWindow } = await import("@/lib/desktopBridge");
     await toggleHudWindow();
   };
 
   /**
-   * Live streaming speech capture with real-time word projection and silence endpointing.
+   * Browser microphone fallback for when running outside Electron desktop shell
    */
-  const startVoiceRecording = async () => {
-    if (isListening || isTranscribing) return;
-    setInput("");
-    latestTranscriptRef.current = "";
-
+  const startBrowserRecording = async () => {
+    if (isListening || isSubmitting) return;
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       audioChunksRef.current = [];
-
-      // 1. MediaRecorder backup stream for Whisper fallback
       const mediaRecorder = new MediaRecorder(stream, { mimeType: "audio/webm" });
+
       mediaRecorder.ondataavailable = (event) => {
         if (event.data.size > 0) {
           audioChunksRef.current.push(event.data);
@@ -112,96 +129,21 @@ export default function AvenHudPage() {
       mediaRecorder.onstop = async () => {
         stream.getTracks().forEach((track) => track.stop());
         const audioBlob = new Blob(audioChunksRef.current, { type: "audio/webm" });
-        // If SpeechRecognition didn't yield text, transcribe via Groq Whisper
-        if (!latestTranscriptRef.current.trim() && audioBlob.size > 1500) {
-          await transcribeAudioBlob(audioBlob);
+        if (audioBlob.size > 1500) {
+          await transcribeBrowserAudio(audioBlob);
         }
       };
 
       mediaRecorderRef.current = mediaRecorder;
       mediaRecorder.start();
       setIsListening(true);
-
-      // 2. Browser SpeechRecognition for live real-time character-by-character display
-      const SpeechRec = (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition;
-      if (SpeechRec) {
-        try {
-          const recognition = new SpeechRec();
-          recognition.continuous = true;
-          recognition.interimResults = true;
-          recognition.lang = "en-US";
-
-          recognition.onresult = (event: any) => {
-            let fullText = "";
-            for (let i = 0; i < event.results.length; i++) {
-              fullText += event.results[i][0].transcript;
-            }
-            const trimmed = fullText.trim();
-            if (trimmed) {
-              latestTranscriptRef.current = trimmed;
-              setInput(trimmed);
-
-              // Silence endpointing: 750ms of silence after speaking finalizes utterance
-              if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-              silenceTimerRef.current = setTimeout(() => {
-                finalizeSpeechTurn(trimmed);
-              }, 750);
-            }
-          };
-
-          recognition.onerror = (e: any) => {
-            console.warn("[AvenHUD] SpeechRecognition warning:", e.error);
-          };
-
-          recognition.onend = () => {
-            if (latestTranscriptRef.current.trim()) {
-              finalizeSpeechTurn(latestTranscriptRef.current.trim());
-            }
-          };
-
-          recognition.start();
-          speechRecognitionRef.current = recognition;
-        } catch (recErr) {
-          console.warn("[AvenHUD] Live speech recognition setup fallback:", recErr);
-        }
-      }
-
-      // Max safety window: 6.0s
-      if (silenceTimerRef.current) clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = setTimeout(() => {
-        if (latestTranscriptRef.current.trim()) {
-          finalizeSpeechTurn(latestTranscriptRef.current.trim());
-        } else {
-          stopVoiceRecording();
-        }
-      }, 6000);
     } catch (err) {
-      console.warn("[AvenHUD] Microphone access error:", err);
+      console.warn("[AvenHUD] Browser microphone error:", err);
       setIsListening(false);
     }
   };
 
-  const finalizeSpeechTurn = (finalText: string) => {
-    stopVoiceRecording();
-    if (finalText.trim()) {
-      handleSendWithText(finalText.trim());
-    }
-  };
-
-  const stopVoiceRecording = () => {
-    if (silenceTimerRef.current) {
-      clearTimeout(silenceTimerRef.current);
-      silenceTimerRef.current = null;
-    }
-    if (speechRecognitionRef.current) {
-      try {
-        speechRecognitionRef.current.onresult = null;
-        speechRecognitionRef.current.onerror = null;
-        speechRecognitionRef.current.onend = null;
-        speechRecognitionRef.current.stop();
-      } catch {}
-      speechRecognitionRef.current = null;
-    }
+  const stopBrowserRecording = () => {
     if (mediaRecorderRef.current && isListening) {
       try {
         mediaRecorderRef.current.stop();
@@ -211,8 +153,8 @@ export default function AvenHudPage() {
     }
   };
 
-  const transcribeAudioBlob = async (blob: Blob) => {
-    setIsTranscribing(true);
+  const transcribeBrowserAudio = async (blob: Blob) => {
+    setIsSubmitting(true);
     try {
       const formData = new FormData();
       formData.append("file", blob, "voice-command.webm");
@@ -233,15 +175,20 @@ export default function AvenHudPage() {
     } catch (err) {
       console.warn("[AvenHUD] Whisper transcription fallback failed:", err);
     } finally {
-      setIsTranscribing(false);
+      setIsSubmitting(false);
     }
   };
 
   const toggleVoiceMode = () => {
     if (isListening) {
-      stopVoiceRecording();
+      setIsListening(false);
+      stopBrowserRecording();
     } else {
-      startVoiceRecording();
+      setIsListening(true);
+      // In browser mode, start recording; in desktop mode, native supervisor is already active
+      if (!window.lifeosDesktop) {
+        startBrowserRecording();
+      }
     }
   };
 
@@ -253,6 +200,7 @@ export default function AvenHudPage() {
     if (!textToSend.trim() || isSubmitting) return;
 
     setIsSubmitting(true);
+    setIsListening(false);
     setResponse(null);
 
     try {
@@ -294,6 +242,7 @@ export default function AvenHudPage() {
   };
 
   const active = projection?.activeExecution;
+  const currentBlobState = isSubmitting ? "thinking" : isListening ? "listening" : response ? "speaking" : "idle";
 
   return (
     <div
@@ -308,21 +257,22 @@ export default function AvenHudPage() {
           overflow: hidden !important;
         }
       `}} />
+
       {/* Floating HUD Pill Notch */}
       <div
         id="aven-hud-pill"
         onMouseLeave={() => {
-          // Auto-close HUD when user moves cursor away, unless actively listening or waiting for response
-          if (!isListening && !isSubmitting && !isTranscribing) {
+          // Auto-close HUD when user moves cursor away, unless actively waiting for response
+          if (!isSubmitting) {
             hideHud();
           }
         }}
-        className="fixed top-2 left-1/2 -translate-x-1/2 w-[540px] max-w-[92vw] bg-[#111113]/95 backdrop-blur-2xl border border-[#23242A] rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.85)] p-3 text-[#F7F5F0] z-50 transition-all duration-200"
+        className="fixed top-2 left-1/2 -translate-x-1/2 w-[540px] max-w-[92vw] bg-[#111113]/95 backdrop-blur-2xl border border-[#23242A] rounded-2xl shadow-[0_20px_60px_rgba(0,0,0,0.85)] p-3.5 text-[#F7F5F0] z-50 transition-all duration-200"
       >
         {/* Subtle top amber glow line */}
         <div className="absolute top-0 left-0 right-0 h-[1px] bg-gradient-to-r from-transparent via-[#D98B2B]/40 to-transparent rounded-t-2xl pointer-events-none" />
 
-        {/* Minimal Header Bar (Zero Clutter, No Close Cross, No Esc Badge) */}
+        {/* Minimal Header Bar */}
         <div className="flex items-center justify-between pb-2 mb-2 border-b border-[#23242A]/60">
           {/* Left: Brand + Realtime State Indicator */}
           <div className="flex items-center gap-2">
@@ -336,10 +286,10 @@ export default function AvenHudPage() {
               </span>
             )}
 
-            {isTranscribing && (
-              <span className="text-[11px] text-[#85827A] font-mono flex items-center gap-1.5 ml-1">
+            {isSubmitting && (
+              <span className="text-[11px] text-[#D98B2B] font-mono flex items-center gap-1.5 ml-1">
                 <Loader2 size={11} className="animate-spin text-[#D98B2B]" />
-                Processing
+                Thinking
               </span>
             )}
           </div>
@@ -360,8 +310,50 @@ export default function AvenHudPage() {
           )}
         </div>
 
+        {/* Central Aven Orb - Interactive WebGL2 Assistant Orb */}
+        <div className="flex flex-col items-center justify-center py-1.5 relative">
+          {/* Ambient Radial Golden Aura */}
+          <div
+            className={`absolute w-28 h-28 rounded-full blur-2xl pointer-events-none transition-all duration-500 ${
+              isSubmitting
+                ? "bg-[#D98B2B]/40 scale-125"
+                : isListening
+                ? "bg-[#D98B2B]/35 scale-110 animate-pulse"
+                : "bg-[#D98B2B]/15"
+            }`}
+          />
+
+          <div
+            onClick={toggleVoiceMode}
+            className="w-24 h-24 relative flex items-center justify-center cursor-pointer transition-transform hover:scale-105 active:scale-95"
+            title={isListening ? "Listening... click to pause" : "Click to speak with Aven"}
+          >
+            <AvenBlob
+              colors={["#D98B2B", "#F5E6C8", "#8C5212"]}
+              backgroundColor="#111113"
+              size={1.05}
+              glow={isListening ? 1.45 : isSubmitting ? 1.6 : 1.15}
+              bleed={1.0}
+              wobble={isListening ? 1.2 : isSubmitting ? 1.45 : 0.85}
+              speed={isSubmitting ? 1.8 : isListening ? 1.35 : 0.9}
+              state={currentBlobState}
+              followCursor={true}
+              clickPulse={true}
+              className="w-full h-full"
+            />
+          </div>
+
+          <p className="text-[11px] font-mono text-[#85827A] mt-1 tracking-tight">
+            {isSubmitting
+              ? "Aven is reasoning across your context..."
+              : isListening
+              ? "Listening... speak naturally"
+              : "Ask Aven anything or speak your command"}
+          </p>
+        </div>
+
         {/* Input Capsule Row */}
-        <div className="flex items-center gap-2 bg-[#17171A] border border-[#23242A] focus-within:border-[#D98B2B]/60 rounded-xl px-3 py-2 transition-all shadow-inner">
+        <div className="flex items-center gap-2 bg-[#17171A] border border-[#23242A] focus-within:border-[#D98B2B]/60 rounded-xl px-3 py-2 mt-1.5 transition-all shadow-inner">
           <Sparkles size={14} className="text-[#D98B2B] shrink-0" />
           <input
             ref={inputRef}
@@ -371,7 +363,7 @@ export default function AvenHudPage() {
             onKeyDown={(e) => {
               if (e.key === "Enter") handleSend();
             }}
-            placeholder="Ask Aven or log a note..."
+            placeholder="Type a command or speak naturally..."
             className="flex-1 bg-transparent text-[#F7F5F0] text-xs placeholder-[#66635B] focus:outline-none min-w-0"
           />
 
@@ -384,9 +376,9 @@ export default function AvenHudPage() {
                 ? "bg-[#D98B2B] text-[#111113] shadow-md animate-pulse"
                 : "text-[#85827A] hover:text-[#ffb86c] hover:bg-[#23242A]"
             }`}
-            title={isListening ? "Stop listening" : "Speak to Aven"}
+            title={isListening ? "Pause microphone" : "Speak to Aven"}
           >
-            {isTranscribing ? <Loader2 size={13} className="animate-spin text-[#D98B2B]" /> : <Mic size={13} />}
+            {isSubmitting ? <Loader2 size={13} className="animate-spin text-[#D98B2B]" /> : <Mic size={13} />}
           </button>
 
           {/* Submit Action */}

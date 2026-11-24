@@ -8,6 +8,7 @@ export interface DesktopBridge {
   updateTrayStatus: (status: { title: string; tooltip: string }) => Promise<void>;
   onDeepLink: (callback: (url: string) => void) => () => void;
   onAvenWake: (callback: (payload: any) => void) => () => void;
+  onAvenSpeech: (callback: (payload: { transcribed: string }) => void) => () => void;
   startWakeWord: () => Promise<boolean>;
   stopWakeWord: () => Promise<boolean>;
   isWakeWordRunning: () => Promise<boolean>;
@@ -33,6 +34,11 @@ const desktopBridge: DesktopBridge = {
     const handler = (_: any, payload: any) => callback(payload);
     ipcRenderer.on("desktop:aven-wake", handler);
     return () => ipcRenderer.removeListener("desktop:aven-wake", handler);
+  },
+  onAvenSpeech: (callback: (payload: { transcribed: string }) => void) => {
+    const handler = (_: any, payload: any) => callback(payload);
+    ipcRenderer.on("desktop:aven-speech", handler);
+    return () => ipcRenderer.removeListener("desktop:aven-speech", handler);
   },
   startWakeWord: () => ipcRenderer.invoke("desktop:start-wake-word"),
   stopWakeWord: () => ipcRenderer.invoke("desktop:stop-wake-word"),
