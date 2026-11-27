@@ -1,17 +1,11 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
-import * as dotenv from "dotenv";
-import * as path from "path";
-
-dotenv.config({ path: path.resolve(process.cwd(), "apps/web/.env") });
-
+import { connectIsolatedTestDB } from "./helpers/testDbIsolation";
 import { Supervisor } from "../orchestration/supervisor/Supervisor";
 import { AuthoritativeEntityResolver } from "../orchestration/context/AuthoritativeEntityResolver";
 import { KernelCapabilityService } from "../orchestration/kernel/KernelCapabilityService";
 import { ActionProposal } from "../orchestration/contracts/ActionProposalContracts";
-
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://overforge:overforgedatabase@cluster0.s8cvx.mongodb.net/life-os";
 
 async function ensureUser(uId: string) {
   const { User } = await import("@/server/db/models/User");
@@ -32,9 +26,7 @@ describe("Semantic Entity Resolution & Goal Governance Suite (TC-G01 through TC-
   const conversationId = `conv_goals_test_${Date.now()}`;
 
   before(async () => {
-    if (mongoose.connection.readyState !== 1) {
-      await mongoose.connect(MONGODB_URI, { bufferCommands: false });
-    }
+    await connectIsolatedTestDB();
     await ensureUser(userId);
   });
 

@@ -26,6 +26,7 @@ export const outboxSweeperFunction = inngest.createFunction(
         name: "lifeos/outbox.dispatched" as const,
         data: {
           eventId: event.eventId,
+          userId: event.userId,
           category: event.category,
           type: event.type,
           aggregateId: event.aggregateId,

@@ -11,6 +11,7 @@ import { ContextProjectionSerializer } from '../worldv2/ContextProjectionSeriali
 import { ILifeContextProjection } from '../worldv2/contracts/LifeContextProjectionContracts';
 import { Supervisor } from '../orchestration/supervisor/Supervisor';
 import { SemanticIntentInterpreter } from '../orchestration/semantic/SemanticIntentInterpreter';
+import { setMockGroqChat } from '../shared/groq';
 
 test('PHASE 1: Canonical Unified World Model & Context Bridge Suite', async (suite) => {
   SemanticIntentInterpreter.getInstance().setMockChat(async () =>
@@ -132,15 +133,42 @@ test('PHASE 1: Canonical Unified World Model & Context Bridge Suite', async (sui
   });
 
   await suite.test('SUPERVISOR-01: Supervisor processRequest integrates LifeContextProjection into conversational flow', async () => {
-    const supervisor = Supervisor.createDefault();
-    const response = await supervisor.processRequest({
-      userId: testUserId,
-      message: 'Hello Aven, how does my schedule look today?',
+    const capturedPrompts: string[] = [];
+    const interpreter = SemanticIntentInterpreter.getInstance();
+    interpreter.setMockChat(async ({ messages }) => {
+      capturedPrompts.push(messages.map((m: any) => m.content).join('\n'));
+      return JSON.stringify({
+        primaryClassification: 'CASUAL_DIALOGUE',
+        ambiguityStatus: 'UNAMBIGUOUS',
+        conversationalSummary: 'Checking schedule.',
+        operations: [],
+      });
+    });
+    setMockGroqChat(async ({ messages }) => {
+      capturedPrompts.push(messages.map((m: any) => m.content).join('\n'));
+      return 'Your schedule today is clear with no overdue tasks.';
     });
 
-    assert.ok(response, 'Supervisor must return response');
-    assert.ok(response.response.length > 0, 'Must produce non-empty verbal response');
-    console.log(`[Phase 1] Supervisor response duration: ${response.durationMs}ms`);
-    console.log(`[Phase 1] Supervisor route: ${response.routingDecision.strategy}`);
+    try {
+      const supervisor = Supervisor.createDefault();
+      const response = await supervisor.processRequest({
+        userId: testUserId,
+        message: 'Hello Aven, how does my schedule look today?',
+      });
+
+      assert.ok(response, 'Supervisor must return response');
+      assert.ok(response.response.length > 0, 'Must produce non-empty verbal response');
+      assert.ok(!response.response.includes('All LLM models failed'), 'Must not silently fall back to LLM error message');
+      assert.ok(capturedPrompts.length >= 2, 'Both interpreter and conversational LLM must be invoked');
+      assert.ok(
+        capturedPrompts[1].includes('LIFEOS WORLD CONTEXT:'),
+        'Conversational LLM prompt must receive tailored LIFEOS WORLD CONTEXT projection'
+      );
+      console.log(`[Phase 1] Supervisor response duration: ${response.durationMs}ms`);
+      console.log(`[Phase 1] Supervisor route: ${response.routingDecision.strategy}`);
+    } finally {
+      interpreter.setMockChat(undefined);
+      setMockGroqChat(undefined);
+    }
   });
 });

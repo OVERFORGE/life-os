@@ -15,12 +15,12 @@ const C = {
 // --- Date Utils ---
 function getMonday(d: Date) {
   d = new Date(d);
-  var day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1); 
+  const day = d.getDay(), diff = d.getDate() - day + (day == 0 ? -6 : 1); 
   return new Date(d.setDate(diff));
 }
 
 function addDays(d: Date, days: number) {
-  var copy = new Date(Number(d));
+  const copy = new Date(Number(d));
   copy.setDate(d.getDate() + days);
   return copy;
 }

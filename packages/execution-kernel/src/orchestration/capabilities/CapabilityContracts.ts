@@ -5,6 +5,8 @@
  * four-tier provider error classification, and resource declarations.
  */
 
+import type { IntentRelevanceDomain } from "../../worldv2/ContextProjectionSerializer";
+
 export type CapabilitySource = "INTERNAL_ADAPTER" | "MODULAR_PROVIDER" | "MCP_GATEWAY";
 
 export type CapabilityAccessMode = "EXCLUSIVE_LOCK" | "SHARED_READ";
@@ -42,6 +44,7 @@ export interface CapabilityDescriptor {
     | "COMPENSATE";
   reversibility?: "atomic_single_doc" | "reversible_with_compensation" | "irreversible_external" | "irreversible_local";
   domain?: string;
+  contextDomain?: IntentRelevanceDomain;
   targetEntityType?: string;
   verbalization?: { entityNoun?: string; actionVerb?: string };
   parametersSchema: Record<string, any>;
@@ -80,9 +83,27 @@ export interface ProviderErrorClassification {
 export interface CapabilityQueryFilter {
   category?: string;
   source?: CapabilitySource;
+  operationKind?: CapabilityDescriptor["operationKind"];
   tags?: string[];
   supportsIdempotency?: boolean;
   query?: string;
+}
+
+export interface CapabilityDiscoverySummary {
+  capabilityURN: string;
+  displayName: string;
+  description: string;
+  category: string;
+  source: CapabilitySource;
+  operationKind?: CapabilityDescriptor["operationKind"];
+  contextDomain?: IntentRelevanceDomain;
+  parameterHints?: string[];
+  outputFields?: string[];
+  parametersSchema: Record<string, any>;
+  outputSchema?: Record<string, any>;
+  requiresApproval: boolean;
+  isIdempotent: boolean;
+  tags?: string[];
 }
 
 export interface CapabilityValidationResult {

@@ -20,6 +20,8 @@ import {
 } from "../packages/execution-kernel/src/autonomous/AutonomousExecutionDaemon";
 import { DWCPRecoveryService } from "../packages/execution-kernel/src/autonomous/DWCPRecoveryService";
 import { TemporalScheduleSweeper } from "../packages/execution-kernel/src/temporal/sweeper/TemporalScheduleSweeper";
+import { KernelCapabilityService } from "../packages/execution-kernel/src/orchestration/kernel/KernelCapabilityService";
+import { ContextProjectionEngine } from "../packages/execution-kernel/src/orchestration/context/ContextProjectionEngine";
 
 export interface AutonomousWorkerDaemonOptions {
   workerId?: string;
@@ -119,9 +121,14 @@ export class AutonomousWorkerDaemonRunner {
               }
             },
             categoryB: async (context: UserLifecycleContext, _token) => {
-              // Category B: User-Local Date Daily Lifecycle & Proactive Policies
+              // Category B: User-Local Date Daily Lifecycle & Grounded Projections
+              const kernelState = await KernelCapabilityService.getInstance().readAuthoritativeState(
+                context.userId
+              );
+              const projectionEngine = new ContextProjectionEngine();
+              const wellnessProjection = projectionEngine.projectWellness(kernelState);
               console.log(
-                `[AUTONOMOUS::DAEMON] User ${context.userId} executed Category B under local date ${context.userLocalDate} (${context.userTimezone})`
+                `[AUTONOMOUS::DAEMON] User ${context.userId} executed Category B under local date ${context.userLocalDate} (${context.userTimezone}) [dataStatus=${wellnessProjection.dataStatus}]`
               );
             },
           },

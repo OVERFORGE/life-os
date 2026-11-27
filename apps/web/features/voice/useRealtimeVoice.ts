@@ -1,6 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
+import { SseStreamParser } from "../chat/sseStreamParser";
 
 export type VoiceStatus =
   | "idle"
@@ -163,6 +164,7 @@ export function useRealtimeVoice({
 
   // Turn State Machine & Locks
   const activeStatusRef = useRef<VoiceStatus>("idle");
+  const lastPlaybackEndedAtRef = useRef<number>(0);
   const isProcessingTurnRef = useRef<boolean>(false);
   const turnStartTimeRef = useRef<number>(0);
 
@@ -403,6 +405,7 @@ export function useRealtimeVoice({
     audio.src = nextAudioUrl;
 
     audio.onended = () => {
+      lastPlaybackEndedAtRef.current = performance.now();
       try {
         URL.revokeObjectURL(nextAudioUrl);
       } catch (_) {}
@@ -410,6 +413,7 @@ export function useRealtimeVoice({
     };
 
     audio.onerror = (e) => {
+      lastPlaybackEndedAtRef.current = performance.now();
       console.warn("[VOICE] Audio playback error for segment:", e);
       try {
         URL.revokeObjectURL(nextAudioUrl);
@@ -524,15 +528,24 @@ export function useRealtimeVoice({
           : `/api/conversation`;
 
         const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
+        const clientRequestId =
+          typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+            ? `req_${crypto.randomUUID()}`
+            : `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
         const response = await fetch(endpoint, {
           method: "POST",
           headers: {
             "Content-Type": "application/json",
+            Accept: "text/event-stream",
             "x-timezone": localTz,
+            "x-request-id": clientRequestId,
           },
           body: JSON.stringify({
+            requestId: clientRequestId,
             message: cleanTranscript,
             mode: "general",
+            streamFormat: "events",
             timezone: localTz,
           }),
           signal: abortController.signal,
@@ -555,29 +568,45 @@ export function useRealtimeVoice({
 
         const reader = response.body.getReader();
         const decoder = new TextDecoder();
+        const parser = new SseStreamParser();
         let fullReply = "";
         let sentenceBuffer = "";
         const currentVoice = selectedVoiceRef.current;
         let sentenceIndex = 0;
+
+        const handleParsedEvents = (events: any[]) => {
+          for (const ev of events) {
+            if (!ev || typeof ev !== "object") continue;
+            if (ev.type === "assistant_delta" && ev.text) {
+              fullReply += ev.text;
+              sentenceBuffer += ev.text;
+              setAssistantTranscript((prev) => prev + ev.text);
+
+              const { sentences, remainder } = extractNextSpokenSentences(sentenceBuffer);
+              for (const s of sentences) {
+                const idx = sentenceIndex++;
+                totalSentencesRef.current = sentenceIndex;
+                fetchAndQueueSentenceTTS(s, idx, currentVoice, abortController.signal);
+              }
+              sentenceBuffer = remainder;
+            } else if (ev.type === "assistant_final" && typeof ev.text === "string" && ev.text) {
+              fullReply = ev.text;
+              setAssistantTranscript(ev.text);
+            } else if (ev.type === "error") {
+              throw new Error(ev.message || "Voice stream failed");
+            }
+          }
+        };
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           const chunkText = decoder.decode(value, { stream: true });
-          fullReply += chunkText;
-          sentenceBuffer += chunkText;
-          setAssistantTranscript((prev) => prev + chunkText);
-
-          // Extract completed spoken sentences cleanly
-          const { sentences, remainder } = extractNextSpokenSentences(sentenceBuffer);
-          for (const s of sentences) {
-            const idx = sentenceIndex++;
-            totalSentencesRef.current = sentenceIndex;
-            fetchAndQueueSentenceTTS(s, idx, currentVoice, abortController.signal);
-          }
-          sentenceBuffer = remainder;
+          handleParsedEvents(parser.push(chunkText));
         }
+
+        handleParsedEvents(parser.flush());
 
         // Finalize any remaining text fragment safely in bite-sized spoken chunks
         if (sentenceBuffer.trim().length > 0) {
@@ -1007,10 +1036,12 @@ export function useRealtimeVoice({
             const trimmed = interim.trim();
             if (!trimmed) return;
 
-            // If assistant is speaking or playing audio, user speech triggers immediate full-duplex barge-in!
-            if (activeStatusRef.current === "speaking" || isPlayingQueueRef.current) {
-              console.log("[VOICE] SpeechRecognition barge-in triggered by user speech:", trimmed);
-              handleBargeInRef.current(trimmed);
+            // Suppress acoustic self-echo while Web TTS playback is active or within 350ms decay window
+            if (
+              activeStatusRef.current === "speaking" ||
+              isPlayingQueueRef.current ||
+              performance.now() - lastPlaybackEndedAtRef.current < 350
+            ) {
               return;
             }
 

@@ -222,6 +222,45 @@ export const AutonomousActionExecutedPayloadSchema = z.object({
   timestamp: z.number().int().min(0),
 });
 
+export const DailyLogUpdatedPayloadSchema = z.object({
+  logId: z.string().min(1),
+  userId: z.string().min(1),
+  date: z.string().min(1),
+  updatedSections: z.array(z.string()).optional(),
+  sleepHours: z.number().optional(),
+  sleepQuality: z.number().optional(),
+  mentalMood: z.number().optional(),
+  mentalEnergy: z.number().optional(),
+  mentalStress: z.number().optional(),
+  mentalFocus: z.number().optional(),
+  deepWorkHours: z.number().optional(),
+  calories: z.number().optional(),
+  updatedAt: z.string().min(1),
+});
+
+export const NutritionLoggedPayloadSchema = z.object({
+  logId: z.string().min(1),
+  userId: z.string().min(1),
+  date: z.string().min(1),
+  mealsCount: z.number().int().min(0),
+  dailyTotals: z.object({
+    calories: z.number(),
+    protein: z.number(),
+    carbs: z.number(),
+    fats: z.number(),
+  }),
+  loggedAt: z.string().min(1),
+});
+
+export const WeightLoggedPayloadSchema = z.object({
+  weightLogId: z.string().min(1),
+  userId: z.string().min(1),
+  date: z.string().min(1),
+  weight: z.number().nullable(),
+  deleted: z.boolean().optional(),
+  loggedAt: z.string().min(1),
+});
+
 export const CanonicalPayloadSchemaMap: Record<string, z.ZodTypeAny> = {
   "domain.task.completed": TaskCompletedPayloadSchema,
   "domain.task.created": TaskCreatedPayloadSchema,
@@ -236,6 +275,9 @@ export const CanonicalPayloadSchemaMap: Record<string, z.ZodTypeAny> = {
   "domain.temporal.rescheduled": OccurrenceRescheduledPayloadSchema,
   "domain.temporal.deleted": OccurrenceDeletedPayloadSchema,
   "domain.health.workout_logged": WorkoutLoggedPayloadSchema,
+  "domain.daily_log.updated": DailyLogUpdatedPayloadSchema,
+  "domain.nutrition.logged": NutritionLoggedPayloadSchema,
+  "domain.weight.logged": WeightLoggedPayloadSchema,
   "telemetry.wearables.ingested": TelemetryIngestedPayloadSchema,
   "analytical.schedule.conflict_detected": ScheduleConflictDetectedPayloadSchema,
   "autonomous.cycle_evaluated": AutonomousCycleEvaluatedPayloadSchema,

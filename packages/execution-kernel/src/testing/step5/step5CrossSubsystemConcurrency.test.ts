@@ -36,7 +36,8 @@ import { TemporalPartitionRevisionService } from "../../temporal/sweeper/Tempora
 import { ExecutionGraphProjectionService } from "../../events/projections/ExecutionGraphProjectionService";
 import { AutonomousExecutionDaemon } from "../../autonomous/AutonomousExecutionDaemon";
 import { AutonomousLeaseManager } from "../../autonomous/AutonomousLeaseManager";
-import { IKernelActionAdapter, ActionProposal, CompensationResult } from "../../orchestration/contracts/ActionProposalContracts";
+import { ActionProposal } from "../../orchestration/contracts/ActionProposalContracts";
+import { IKernelActionAdapter, CompensationResult } from "../../orchestration/kernel/ActionAdapters";
 
 class MockCollection<T extends Record<string, any>> {
   public docs: Map<string, T> = new Map();
@@ -332,7 +333,6 @@ describe("Step 5: Full-System Integration Testing — Phase 3: Cross-Subsystem C
     kernelService = new KernelCapabilityService(adapterRegistry, {
       auditModel: mockAuditColl,
       receiptModel: mockReceiptColl,
-      outboxService,
     });
 
     graphProjectionService = new ExecutionGraphProjectionService({
@@ -622,7 +622,7 @@ describe("Step 5: Full-System Integration Testing — Phase 3: Cross-Subsystem C
     adapterRegistry.register("batch_task", testAdapter);
 
     const idempotencyKey = "idem_multi_tab_123";
-    const proposal: ActionProposal = {
+    const proposal: any = {
       id: "act_tab_1",
       idempotencyKey,
       actionType: "batch_task",

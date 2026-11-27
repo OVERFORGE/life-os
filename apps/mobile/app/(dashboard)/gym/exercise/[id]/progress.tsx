@@ -53,7 +53,13 @@ export default function ExerciseProgressScreen() {
     }
   };
 
-  useEffect(() => { if (equipmentName) loadData(); }, [equipmentName]);
+  useEffect(() => {
+    if (equipmentName) {
+      queueMicrotask(() => {
+        void loadData();
+      });
+    }
+  }, [equipmentName]);
 
   // ── Chart: date vs average weight of that session's sets ────────
   const buildChart = () => {

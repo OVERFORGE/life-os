@@ -1,8 +1,7 @@
 import { NextResponse } from "next/server";
 import { Kernel } from "@life-os/execution-kernel";
 import { connectDB } from "@/server/db/connect";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getAuthSession } from "@/lib/auth";
 
 /**
  * POST /api/automation/run
@@ -13,12 +12,12 @@ export async function POST(req: Request) {
         await connectDB();
         
         // 1. Authenticate (optional fallback for CRON if secret is passed, but usually requires session)
-        const session = await getServerSession(authOptions);
-        let userId = session?.user?.id;
+        const session = await getAuthSession();
+        let userId = (session?.user as any)?.id;
 
         // CRON Bypass
         const body = await req.clone().json().catch(() => ({}));
-        if (!userId && body?.cronSecret === process.env.CRON_SECRET && body?.userId) {
+        if (!userId && process.env.CRON_SECRET && body?.cronSecret === process.env.CRON_SECRET && body?.userId) {
             userId = body.userId;
         }
 

@@ -5,7 +5,6 @@ import { KernelCapabilityService } from "../orchestration/kernel/KernelCapabilit
 import { ExecutionWorkspace } from "../orchestration/workspace/ExecutionWorkspace";
 import { ExecutionEventLedger } from "../orchestration/workspace/ExecutionEventLedger";
 import { DynamicRouter } from "../orchestration/supervisor/DynamicRouter";
-import { FastPathExecutor } from "../orchestration/supervisor/FastPathExecutor";
 import { ReActOrchestrator } from "../orchestration/react/ReActOrchestrator";
 import { ContextProjectionEngine } from "../orchestration/context/ContextProjectionEngine";
 import { ProductivityAgent } from "../orchestration/specialists/ProductivityAgent";
@@ -66,16 +65,22 @@ test("V3 Real-World User Journey Reality Verification", async (suite) => {
 
   // Journey 2: Follow-up conversational modification
   await suite.test("Journey 2: Follow-up conversational task modification", async () => {
-    const fastPath = new FastPathExecutor(kernel);
-    const context = {
-      executionId: "exec_j2",
-      knownTasks: [{ id: "task_deck_1", title: "Finish investor deck" }],
+    const proposal = {
+      id: "prop_j2",
+      domain: "productivity" as const,
+      actionType: "complete_task" as const,
+      reversibility: "atomic_single_doc" as const,
+      state: "APPROVED" as const,
+      title: "Complete investor deck",
+      rationale: "Direct atomic task completion",
+      idempotencyKey: "j2_key",
+      targetEntityId: "task_deck_1",
+      payload: { taskId: "task_deck_1" },
     };
-
-    // User refers to existing task
-    const res = await fastPath.execute("Mark task task_deck_1 complete", "user_j2", context);
-    assert.equal(res.handled, true);
-    assert.equal(res.proposal?.targetEntityId, "task_deck_1");
+    const val = await kernel.validateActionProposals("user_j2", [proposal]);
+    assert.equal(val.valid, true);
+    const res = await kernel.executeAction("user_j2", proposal);
+    assert.equal(res.success, true);
   });
 
   // Journey 3: Health domain workout logging
@@ -176,7 +181,7 @@ test("V3 Real-World User Journey Reality Verification", async (suite) => {
       }]
     ]));
 
-    const router = new DynamicRouter(new FastPathExecutor(kernel));
+    const router = new DynamicRouter();
     const prompt = "I'm exhausted, behind on project deadlines, and haven't trained in 4 days.";
     const route = router.route(prompt);
     assert.equal(route.strategy, "MULTI_AGENT");
@@ -234,9 +239,9 @@ test("V3 Real-World User Journey Reality Verification", async (suite) => {
 
   // Journey 7: Ambiguous request does not cause unintended mutations
   await suite.test("Journey 7: Ambiguous request produces safe response without false mutations", async () => {
-    const fastPath = new FastPathExecutor(kernel);
-    const res = await fastPath.execute("Could you maybe look at the thing sometime?", "user_j7");
-    assert.equal(res.handled, false); // Rejected by Fast Path -> falls to conversational supervisor
+    const router = new DynamicRouter();
+    const decision = router.route("Could you maybe look at the thing sometime?");
+    assert.notEqual(decision.strategy, "FAST_PATH");
   });
 
   // Journey 8: Injection defense in task title

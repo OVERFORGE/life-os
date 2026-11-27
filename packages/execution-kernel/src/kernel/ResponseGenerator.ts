@@ -1,4 +1,5 @@
 import { groqChatStream } from "../shared/groq";
+import { resolveGroqModel } from "../shared/modelRegistry";
 import { PromptPayload } from "./ContextBuilder";
 
 /**
@@ -18,7 +19,7 @@ export class ResponseGenerator {
         { role: "system", content: payload.systemPrompt },
         { role: "user", content: payload.userMessage },
       ],
-      model: payload.model || process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+      model: resolveGroqModel(payload.model),
     });
   }
 }

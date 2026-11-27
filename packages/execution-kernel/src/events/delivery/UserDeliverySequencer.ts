@@ -81,6 +81,7 @@ export class UserDeliverySequencer {
     options?: {
       maxBatchSize?: number;
       leaseDurationMs?: number;
+      minOccurredAt?: Date;
       onEmitFrame?: (frame: IWireDeliveryFrame) => Promise<void>;
     }
   ): Promise<SequenceBatchReport> {
@@ -136,17 +137,29 @@ export class UserDeliverySequencer {
             { _id: jDoc._id },
             { $set: { status: "PUBLISHED", publishedAt: new Date() } }
           );
+          await this.outboxModel.updateOne(
+            {
+              userId,
+              eventId: jDoc.eventId,
+              $or: [{ deliverySeq: null }, { deliverySeq: { $exists: false } }],
+            },
+            { $set: { deliverySeq: jDoc.deliverySeq } }
+          );
           recoveredCount++;
         }
       }
 
       // 3. Fetch unsequenced converged events for this user
+      const outboxFilter: Record<string, any> = {
+        userId,
+        deliveryStatus: "DELIVERED",
+        $or: [{ deliverySeq: null }, { deliverySeq: { $exists: false } }],
+      };
+      if (options?.minOccurredAt) {
+        outboxFilter.occurredAt = { $gte: options.minOccurredAt };
+      }
       const unsequencedQuery = this.outboxModel
-        .find({
-          userId,
-          deliveryStatus: "DELIVERED",
-          $or: [{ deliverySeq: null }, { deliverySeq: { $exists: false } }],
-        })
+        .find(outboxFilter)
         .limit(maxBatch);
       const candidates: any[] = (await resolveQuery(unsequencedQuery)) || [];
 
@@ -174,9 +187,29 @@ export class UserDeliverySequencer {
         return (a.causalSequence ?? 0) - (b.causalSequence ?? 0);
       });
 
-      // 4. Validate Publication Eligibility Gate for each candidate
+      // 4. Deduplicate against already-journaled events (crash-after-journal-write recovery)
+      // and validate Publication Eligibility Gate for remaining candidates
+      const candidateEventIds = candidates.map((c) => c.eventId).filter(Boolean);
+      const existingJournals: any[] =
+        candidateEventIds.length > 0
+          ? (await resolveQuery(
+              this.journalModel.find({ userId, eventId: { $in: candidateEventIds } })
+            )) || []
+          : [];
+      const existingByEventId = new Map<string, any>(
+        existingJournals.map((j) => [j.eventId, j])
+      );
+
       const eligibleEvents: any[] = [];
       for (const cand of candidates) {
+        const existingJournal = existingByEventId.get(cand.eventId);
+        if (existingJournal && typeof existingJournal.deliverySeq === "number") {
+          await this.outboxModel.updateOne(
+            { _id: cand._id },
+            { $set: { deliverySeq: existingJournal.deliverySeq } }
+          );
+          continue;
+        }
         const evalRes = await this.gate.evaluateEligibility(cand);
         if (evalRes.eligible) {
           eligibleEvents.push(cand);

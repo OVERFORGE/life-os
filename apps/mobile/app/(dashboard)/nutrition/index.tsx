@@ -80,7 +80,9 @@ export default function NutritionDashboard() {
 
   // Pre-fetch on first mount
   useEffect(() => {
-    fetchAll().finally(() => setInitialLoading(false));
+    queueMicrotask(() => {
+      void fetchAll().finally(() => setInitialLoading(false));
+    });
   }, [fetchAll]);
 
   // Re-fetch every time the screen comes into focus
@@ -231,7 +233,7 @@ export default function NutritionDashboard() {
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', marginBottom: 20 }}>
             <Activity color={C.primary} size={14} />
-            <Text style={{ fontSize: 10, fontWeight: '800', color: C.subtext, letterSpacing: 2, marginLeft: 8, textTransform: 'uppercase' }}>Today's Intake</Text>
+            <Text style={{ fontSize: 10, fontWeight: '800', color: C.subtext, letterSpacing: 2, marginLeft: 8, textTransform: 'uppercase' }}>Today&apos;s Intake</Text>
             <View style={{ flex: 1 }} />
             <ChevronRight color={C.muted} size={16} />
           </View>

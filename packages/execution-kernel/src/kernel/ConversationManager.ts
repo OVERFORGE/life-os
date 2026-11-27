@@ -1,3 +1,4 @@
+import mongoose from "mongoose";
 import { Conversation, IConversation } from "@/server/db/models/Conversation";
 import { ConversationMessage, IConversationMessage } from "@/server/db/models/ConversationMessage";
 import { ConversationShortTermMemory, IConversationShortTermMemory } from "@/server/db/models/ConversationShortTermMemory";
@@ -14,6 +15,9 @@ export interface PersistOptions {
   userId: string;
   userMessage: string;
   assistantResponse: string;
+  requestId?: string;
+  executionId?: string;
+  status?: "completed" | "cancelled" | "failed" | "waiting_for_confirmation";
   stmUpdates?: Record<string, any>;
   toolActivities?: any[];
   missingConnection?: any;
@@ -47,12 +51,15 @@ export class ConversationManager {
    * Loads conversation metadata, STM state, and recent message history from DB.
    */
   async load(conversationId: string, userId: string): Promise<LoadedConversationState> {
+    if (mongoose.connection.readyState !== 1) {
+      return { conversation: null, stm: null, recentMessages: [] };
+    }
     const [conversation, stm, rawMessages] = await Promise.all([
       Conversation.findOne({ conversationId, userId }).lean(),
       ConversationShortTermMemory.findOne({ conversationId, userId }).lean(),
       ConversationMessage.find({ conversationId, userId })
         .sort({ createdAt: 1, _id: 1 })
-        .select("role content createdAt toolActivities missingConnection confirmation")
+        .select("role content createdAt requestId executionId status toolActivities missingConnection confirmation")
         .lean(),
     ]);
 
@@ -60,6 +67,9 @@ export class ConversationManager {
       role: m.role as "user" | "assistant" | "system",
       content: m.content,
       createdAt: m.createdAt,
+      requestId: m.requestId,
+      executionId: m.executionId,
+      status: m.status,
       toolActivities: m.toolActivities,
       missingConnection: m.missingConnection,
       confirmation: m.confirmation,
@@ -72,12 +82,51 @@ export class ConversationManager {
     };
   }
 
+  async findPersistedAssistantByRequestId(
+    userId: string,
+    conversationId: string,
+    requestId: string
+  ): Promise<IConversationMessage | null> {
+    if (!requestId || mongoose.connection.readyState !== 1) {
+      return null;
+    }
+    return (await ConversationMessage.findOne({
+      userId,
+      conversationId,
+      requestId,
+      role: "assistant",
+    }).lean()) as IConversationMessage | null;
+  }
+
   /**
    * Persists user and assistant messages, updates conversation metadata,
    * persists updated Short-Term Memory state, and triggers async rolling summarization.
    */
   async persist(options: PersistOptions): Promise<void> {
-    const { conversationId, userId, userMessage, assistantResponse, stmUpdates, toolActivities, missingConnection, confirmation } = options;
+    if (mongoose.connection.readyState !== 1) {
+      return;
+    }
+    const {
+      conversationId,
+      userId,
+      userMessage,
+      assistantResponse,
+      requestId,
+      executionId,
+      status,
+      stmUpdates,
+      toolActivities,
+      missingConnection,
+      confirmation,
+    } = options;
+
+    if (requestId) {
+      const existing = await this.findPersistedAssistantByRequestId(userId, conversationId, requestId);
+      if (existing) {
+        return;
+      }
+    }
+
     const now = new Date();
 
     const userTokens = estimateTokens(userMessage);
@@ -94,6 +143,7 @@ export class ConversationManager {
       userId,
       role: "user",
       content: userMessage,
+      requestId,
       tokenEstimate: userTokens,
       createdAt: userCreatedAt,
       updatedAt: userCreatedAt,
@@ -104,6 +154,9 @@ export class ConversationManager {
       userId,
       role: "assistant",
       content: assistantResponse,
+      requestId,
+      executionId,
+      status: status || "completed",
       tokenEstimate: assistantTokens,
       toolActivities,
       missingConnection,

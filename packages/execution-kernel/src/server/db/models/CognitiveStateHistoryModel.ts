@@ -30,6 +30,7 @@ export interface ICognitiveStateHistoryDoc extends Document {
     freshnessTimestamp: number;
   };
   disclaimer: string;
+  lastEventId?: string | null;
   createdAt: Date;
   updatedAt: Date;
 }
@@ -86,6 +87,10 @@ const CognitiveStateHistorySchema = new Schema<ICognitiveStateHistoryDoc>(
       type: String,
       default: "Operational readiness estimate only; not a medical assessment.",
     },
+    lastEventId: {
+      type: String,
+      default: null,
+    },
   },
   {
     collection: "cognitive_state_history",
@@ -95,6 +100,9 @@ const CognitiveStateHistorySchema = new Schema<ICognitiveStateHistoryDoc>(
 
 // Compound index for user query
 CognitiveStateHistorySchema.index({ userId: 1, timestamp: -1 });
+
+// Idempotent consumer upsert guard
+CognitiveStateHistorySchema.index({ userId: 1, lastEventId: 1 }, { unique: true, sparse: true });
 
 // TTL index: 30 days (2,592,000 seconds)
 CognitiveStateHistorySchema.index({ createdAt: 1 }, { expireAfterSeconds: 2592000 });

@@ -14,16 +14,29 @@ import { Supervisor } from "../orchestration/supervisor/Supervisor";
 import { KernelCapabilityService } from "../orchestration/kernel/KernelCapabilityService";
 
 test("LifeOS: Zero-Cost Local Embedding Migration & Vector Compatibility Suite", async (t) => {
+  const originalRuntimeMode = process.env.LIFEOS_RUNTIME_MODE;
+  process.env.LIFEOS_RUNTIME_MODE = "test";
+  EmbeddingProviderRegistry.reset();
+
   const userA = "user_mig_alpha";
   const userB = "user_mig_beta";
 
   const memoryRepo = MemoryRepository.getInstance();
   const memoryPipeline = MemoryFormationPipeline.getInstance();
   const jobQueue = DurableMemoryJobQueue.getInstance();
-  const kernelService = KernelCapabilityService.getInstance();
 
   memoryRepo.clearInMemoryStore();
   jobQueue.clear();
+
+  t.after(() => {
+    memoryPipeline.setSemanticExtractor(undefined);
+    if (originalRuntimeMode !== undefined) {
+      process.env.LIFEOS_RUNTIME_MODE = originalRuntimeMode;
+    } else {
+      delete process.env.LIFEOS_RUNTIME_MODE;
+    }
+    EmbeddingProviderRegistry.reset();
+  });
 
   // =========================================================================
   // 1. Model Initialization, Dimensions, and Inference
@@ -33,7 +46,7 @@ test("LifeOS: Zero-Cost Local Embedding Migration & Vector Compatibility Suite",
     assert.strictEqual(provider.modelName, "sentence-transformers/all-MiniLM-L6-v2");
     assert.strictEqual(provider.dimension, 384);
     assert.strictEqual(provider.modelVersion, 1);
-    assert.strictEqual(provider.providerName, "sentence-transformers");
+    assert.strictEqual(provider.providerName, "sentence-transformers-wasm");
     assert.strictEqual(provider.similarityMetric, "cosine");
 
     // Warm embedding generation
@@ -413,30 +426,48 @@ test("LifeOS: Zero-Cost Local Embedding Migration & Vector Compatibility Suite",
   // 11. Durable Memory Job Recovery Across Worker Restart
   // =========================================================================
   await t.test("MIG-11: Durable memory queue recovers processing jobs on simulated restart", async () => {
-    const job = await jobQueue.enqueueTurn(
-      {
-        userId: userA,
-        conversationId: "conv_mig_11",
-        userMessage: "Log a workout: 45 min strength session",
-        assistantResponse: "Logged your 45 min strength session.",
-      },
-      { immediateProcess: false }
-    );
+    memoryPipeline.setSemanticExtractor({
+      extract: async (turn) => [
+        {
+          userId: turn.userId,
+          content: turn.userMessage,
+          summary: "Logged 45 min strength session",
+          memoryType: "episodic_event",
+          domain: "health",
+          source: "explicit_user_statement",
+          confidence: 0.9,
+          importance: 0.75,
+        },
+      ],
+    });
+    try {
+      const job = await jobQueue.enqueueTurn(
+        {
+          userId: userA,
+          conversationId: "conv_mig_11",
+          userMessage: "Log a workout: 45 min strength session",
+          assistantResponse: "Logged your 45 min strength session.",
+        },
+        { immediateProcess: false }
+      );
 
-    assert.strictEqual(job.status, "PENDING");
+      assert.strictEqual(job.status, "PENDING");
 
-    // Simulate worker acquiring lease and crashing
-    job.status = "PROCESSING";
-    job.heartbeatAt = Date.now() - 45000; // 45s ago (lease expired)
-    job.attempts = 1;
+      // Simulate worker acquiring lease and crashing
+      job.status = "PROCESSING";
+      job.heartbeatAt = Date.now() - 45000; // 45s ago (lease expired)
+      job.attempts = 1;
 
-    // Reaper runs
-    const recovered = jobQueue.reapStaleWorkers(30000);
-    assert.ok(recovered >= 1, "Must recover stalled worker job");
-    assert.strictEqual(job.status, "PENDING", "Job status must be reset to PENDING");
+      // Reaper runs
+      const recovered = jobQueue.reapStaleWorkers(30000);
+      assert.ok(recovered >= 1, "Must recover stalled worker job");
+      assert.strictEqual(job.status, "PENDING", "Job status must be reset to PENDING");
 
-    // Next worker successfully processes job
-    const completed = await jobQueue.processJob(job.jobId);
-    assert.strictEqual(completed.status, "COMPLETED");
+      // Next worker successfully processes job
+      const completed = await jobQueue.processJob(job.jobId);
+      assert.strictEqual(completed.status, "COMPLETED");
+    } finally {
+      memoryPipeline.setSemanticExtractor(undefined);
+    }
   });
 });

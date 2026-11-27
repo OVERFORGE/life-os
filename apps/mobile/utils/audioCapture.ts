@@ -78,7 +78,8 @@ export class VoiceRecorder {
       });
 
       console.log('[VoiceRecorder] Creating AudioRecorder with options:', JSON.stringify(VOICE_RECORDING_OPTIONS));
-      const recorder = new AudioModule.AudioRecorder(VOICE_RECORDING_OPTIONS);
+      const AudioRecorderCtor = (AudioModule as unknown as { AudioRecorder: new (opts: RecordingOptions) => AudioRecorder }).AudioRecorder;
+      const recorder = new AudioRecorderCtor(VOICE_RECORDING_OPTIONS);
       console.log('[VoiceRecorder] Preparing to record...');
       await recorder.prepareToRecordAsync(VOICE_RECORDING_OPTIONS);
       console.log('[VoiceRecorder] Starting recording...');

@@ -38,11 +38,26 @@ export abstract class BaseSpecialistAgent implements ISpecialistAgent {
   abstract buildSystemPrompt(task: AgentTask, contextProjection: any): string;
 
   /**
+   * Formats epistemic grounding guidance when projection fields are null / "unknown".
+   */
+  protected buildEpistemicGroundingNote(contextProjection: any): string {
+    if (!contextProjection || typeof contextProjection !== "object") return "";
+    const status = contextProjection.dataStatus;
+    const missing = Array.isArray(contextProjection.missingDomains)
+      ? contextProjection.missingDomains
+      : [];
+    if (status === "grounded" && missing.length === 0) {
+      return "";
+    }
+    return `\nEpistemic Grounding Rule: Context dataStatus is "${status || "unknown"}". Missing domains: ${JSON.stringify(missing)}. Any field with value null or "unknown" is genuinely unobserved — NEVER invent, guess, or assume numeric values for missing metrics. Explicitly acknowledge missing data if relevant.`;
+  }
+
+  /**
    * Main domain reasoning loop over an immutable projected context slice.
    * Never mutates authoritative state.
    */
   async analyze(task: AgentTask, contextProjection: any): Promise<SpecialistOutput> {
-    const systemPrompt = this.buildSystemPrompt(task, contextProjection);
+    const systemPrompt = `${this.buildSystemPrompt(task, contextProjection)}${this.buildEpistemicGroundingNote(contextProjection)}`;
     const userPrompt = task.semanticOperation
       ? `Structured Semantic Operation (validated by Aven):\n${JSON.stringify(task.semanticOperation, null, 2)}\nSomatic Evidence:\n${JSON.stringify(task.somaticEvidence || null, null, 2)}\nDomain Constraints: ${JSON.stringify(task.constraints || [])}\nContext Slice: ${JSON.stringify(contextProjection)}`
       : `Task: ${task.instruction}\nFocus Entities: ${JSON.stringify(task.focusEntities || [])}\nConstraints: ${JSON.stringify(task.constraints || [])}\nContext: ${JSON.stringify(contextProjection)}`;

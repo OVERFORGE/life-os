@@ -169,9 +169,12 @@ export class ObservationPipeline {
     userId: string,
     startTimestamp: number,
     endTimestamp: number,
-    types?: ObservationType[]
+    types?: ObservationType[],
+    options?: { limit?: number; maxTimeMS?: number }
   ): Promise<Observation[]> {
     const isDbConnected = mongoose.connection.readyState === 1;
+    const boundedLimit = Math.min(100, Math.max(1, options?.limit ?? 100));
+    const boundedTimeoutMs = Math.min(2500, Math.max(10, options?.maxTimeMS ?? 75));
 
     if (isDbConnected) {
       const query: any = {
@@ -184,6 +187,8 @@ export class ObservationPipeline {
 
       const docs = await ObservationModel.find(query)
         .sort({ timestamp: -1 })
+        .limit(boundedLimit)
+        .maxTimeMS(boundedTimeoutMs)
         .lean()
         .exec();
 

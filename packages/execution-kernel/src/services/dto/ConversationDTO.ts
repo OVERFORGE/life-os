@@ -3,6 +3,10 @@ export interface ConversationMessageDTO {
   role: "user" | "assistant" | "system";
   content: string;
   timestamp: number;
+  requestId?: string;
+  executionId?: string;
+  status?: "completed" | "cancelled" | "failed" | "waiting_for_confirmation";
+  toolActivities?: any[];
 }
 
 export interface ConversationDTO {

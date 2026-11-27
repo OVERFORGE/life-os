@@ -1,3 +1,5 @@
+import * as crypto from "node:crypto";
+import { z } from "zod";
 import {
   PersonalMemoryRecord,
   MemoryDomain,
@@ -13,17 +15,80 @@ import {
 import {
   ContradictionResolver,
   ContradictionResolution,
+  ContradictionDecision,
 } from "./ContradictionResolver";
 import { MemoryRepository } from "./MemoryRepository";
 import { EmbeddingProviderRegistry, IEmbeddingProvider } from "./EmbeddingProvider";
-import { generateId } from "../shared/ids";
+import { groqChat, cleanLLMResponse } from "../shared/groq";
+import { resolveGroqModel } from "../shared/modelRegistry";
 
 export interface ConversationTurnInput {
   userId: string;
   userMessage: string;
   assistantResponse?: string;
   conversationId?: string;
+  turnId?: string;
+  requestId?: string;
+  sourceJobId?: string;
   domainHint?: MemoryDomain;
+  semanticTurnMeta?: {
+    primaryClassification?: string;
+    operationsCount?: number;
+    hasOperations?: boolean;
+  };
+  explicitMemory?: {
+    content: string;
+    summary?: string;
+    domain?: MemoryDomain;
+    memoryType?: MemoryType;
+  };
+}
+
+export interface IMemorySemanticExtractor {
+  extract(turn: ConversationTurnInput): Promise<CandidateMemory[]>;
+  classifyContradiction?(
+    candidate: CandidateMemory,
+    existing: PersonalMemoryRecord
+  ): Promise<ContradictionDecision>;
+}
+
+const ExtractedCandidateSchema = z.object({
+  content: z.string().min(5).max(800),
+  summary: z.string().min(3).max(200),
+  memoryType: z.enum([
+    "semantic_fact",
+    "episodic_event",
+    "behavioral_pattern",
+    "goal_intelligence",
+    "incident",
+    "intervention",
+  ]),
+  domain: z.enum(["productivity", "health", "wellness", "identity", "general"]),
+  source: z
+    .enum([
+      "explicit_user_statement",
+      "behavioral_telemetry",
+      "system_inference",
+      "user_reflection",
+    ])
+    .default("explicit_user_statement"),
+  confidence: z.number().min(0).max(1).optional(),
+  importance: z.number().min(0).max(1).optional(),
+  slotKey: z.string().min(2).max(80).optional(),
+  validFrom: z.string().optional(),
+  validTo: z.string().nullable().optional(),
+  isTransient: z.boolean().optional(),
+});
+
+const ExtractedMemoryBatchSchema = z.object({
+  candidates: z.array(ExtractedCandidateSchema).max(10),
+});
+
+function sha256Content(text: string): string {
+  return crypto
+    .createHash("sha256")
+    .update((text || "").trim().toLowerCase())
+    .digest("hex");
 }
 
 export interface MemoryFormationResult {
@@ -91,6 +156,7 @@ export class MemoryFormationPipeline {
   private contradictionResolver: ContradictionResolver;
   private repository: MemoryRepository;
   private embeddingProvider: IEmbeddingProvider;
+  private semanticExtractor?: IMemorySemanticExtractor;
 
   // Snapshot cache for deterministic replay
   private pinnedSnapshots: Map<string, MemoryRetrievalSnapshot> = new Map();
@@ -99,13 +165,15 @@ export class MemoryFormationPipeline {
     repository?: MemoryRepository,
     embeddingProvider?: IEmbeddingProvider,
     verificationEngine?: EpistemicVerificationEngine,
-    contradictionResolver?: ContradictionResolver
+    contradictionResolver?: ContradictionResolver,
+    semanticExtractor?: IMemorySemanticExtractor
   ) {
     this.repository = repository || MemoryRepository.getInstance();
     this.embeddingProvider =
       embeddingProvider || EmbeddingProviderRegistry.getInstance().getProvider();
     this.verificationEngine = verificationEngine || EpistemicVerificationEngine.getInstance();
     this.contradictionResolver = contradictionResolver || ContradictionResolver.getInstance();
+    this.semanticExtractor = semanticExtractor;
   }
 
   static getInstance(): MemoryFormationPipeline {
@@ -115,13 +183,26 @@ export class MemoryFormationPipeline {
     return MemoryFormationPipeline.instance;
   }
 
+  setSemanticExtractor(extractor?: IMemorySemanticExtractor): void {
+    this.semanticExtractor = extractor;
+  }
+
+  private evictUserWorldCache(userId: string): void {
+    try {
+      const { WorldModelBridge } = require("../worldv2/WorldModelBridge");
+      WorldModelBridge.getInstance().evictUserCache(userId);
+    } catch {
+      // Non-blocking if WorldModelBridge is not initialized
+    }
+  }
+
   /**
-   * Processes a complete conversation turn, extracting candidates and forming memories.
+   * Processes a complete conversation turn, extracting candidates semantically
+   * and forming/reinforcing/superseding memories.
    */
   async processConversationTurn(turn: ConversationTurnInput): Promise<MemoryFormationResult> {
-    const candidates = this.extractCandidates(turn);
     const result: MemoryFormationResult = {
-      candidateCount: candidates.length,
+      candidateCount: 0,
       storedCount: 0,
       reinforcedCount: 0,
       supersededCount: 0,
@@ -129,7 +210,33 @@ export class MemoryFormationPipeline {
       auditTrail: [],
     };
 
+    // Structured SemanticTurn metadata gating (zero regexes / keyword lists)
+    if (
+      !turn.explicitMemory &&
+      turn.semanticTurnMeta?.primaryClassification === "CASUAL_DIALOGUE" &&
+      (turn.semanticTurnMeta.operationsCount ?? 0) === 0
+    ) {
+      return result;
+    }
+
+    const candidates = await this.extractCandidates(turn);
+    result.candidateCount = candidates.length;
+    if (candidates.length === 0) {
+      return result;
+    }
+
+    const observedAt = Date.now();
+    let mutatedAny = false;
+
     for (const candidate of candidates) {
+      candidate.provenance = {
+        ...(candidate.provenance || {}),
+        conversationId: turn.conversationId,
+        ...(turn.turnId ? { turnId: turn.turnId } : {}),
+        ...(turn.requestId ? { requestId: turn.requestId } : {}),
+        observedAt,
+      };
+
       // 1. Epistemic Verification
       const assessment = this.verificationEngine.verifyCandidate(candidate);
 
@@ -142,25 +249,52 @@ export class MemoryFormationPipeline {
         continue;
       }
 
-      // 2. Generate Embedding
-      const embedding = await this.embeddingProvider.generateEmbedding(candidate.content);
+      // 2. Generate Embedding non-blockingly (degrades cleanly to lexical matching if unavailable)
+      let embedding: number[] | undefined = undefined;
+      if (process.env.LIFEOS_DISABLE_EMBEDDINGS !== "true") {
+        try {
+          embedding = await this.embeddingProvider.generateEmbedding(candidate.content);
+        } catch (embedErr: any) {
+          console.warn("[MEMORY_PIPELINE] Embedding generation degraded to lexical search:", embedErr?.message || embedErr);
+          embedding = undefined;
+        }
+      }
 
-      // 3. Query existing related memories for contradiction/duplicate check
-      const nearest = await this.repository.findVectorNearest(
-        candidate.userId,
-        embedding,
-        5,
-        0.20
-      );
+      // 3. Query existing related memories (vector + lexical hybrid fallback) for contradiction/duplicate check
+      const nearest = embedding
+        ? await this.repository.findVectorNearest(candidate.userId, embedding, 8, 0.20)
+        : (
+          await this.repository.search({
+            userId: candidate.userId,
+            queryText: candidate.content,
+            limit: 8,
+          })
+        ).map((r) => ({ memory: r.memory, similarityScore: r.similarityScore }));
 
-      // 4. Resolve Contradictions & Duplicates
-      const resolution = this.contradictionResolver.resolve(
+      // Evaluate semantic contradiction verdicts before resolver runs
+      const verdictMap = new Map<string, ContradictionDecision>();
+      if (this.semanticExtractor?.classifyContradiction) {
+        for (const n of nearest) {
+          const verdict = await this.semanticExtractor.classifyContradiction(candidate, n.memory);
+          verdictMap.set(n.memory.id, verdict);
+        }
+      }
+
+      const resolver = new ContradictionResolver();
+      if (verdictMap.size > 0) {
+        resolver.setClassifier((_cand, existing) => verdictMap.get(existing.id) ?? "UNRELATED");
+      }
+
+      // 4. Resolve Contradictions, Disputes & Duplicates
+      const resolution = resolver.resolve(
         candidate,
         nearest.map((n: { memory: PersonalMemoryRecord; similarityScore: number }) => ({
           memory: n.memory,
           score: n.similarityScore,
         }))
       );
+
+      const contentHash = sha256Content(candidate.content);
 
       switch (resolution.action) {
         case "REINFORCED": {
@@ -170,6 +304,7 @@ export class MemoryFormationPipeline {
               resolution.targetMemoryId,
               resolution.updatedConfidence
             );
+            mutatedAny = true;
             result.reinforcedCount++;
             result.auditTrail.push({
               candidate,
@@ -182,13 +317,6 @@ export class MemoryFormationPipeline {
         }
 
         case "SUPERSEDED": {
-          // Invalidate superseded memories by archiving and setting validTo
-          if (resolution.supersededMemoryIds) {
-            for (const supId of resolution.supersededMemoryIds) {
-              await this.repository.archiveMemory(candidate.userId, supId);
-            }
-          }
-          // Store new memory
           const created = await this.repository.createMemory({
             userId: candidate.userId,
             content: candidate.content,
@@ -196,15 +324,64 @@ export class MemoryFormationPipeline {
             memoryType: candidate.memoryType,
             domain: candidate.domain,
             source: candidate.source,
-            confidence: assessment.confidence,
-            importance: assessment.importance,
+            confidence: candidate.confidence ?? assessment.confidence,
+            importance: candidate.importance ?? assessment.importance,
             relatedEntityIds: candidate.relatedEntityIds,
             provenance: candidate.provenance,
             embedding,
             embeddingModel: this.embeddingProvider.modelName,
             embeddingVersion: this.embeddingProvider.modelVersion,
+            validFrom: candidate.validFrom,
+            validTo: candidate.validTo,
+            sourceJobId: turn.sourceJobId,
+            contentHash,
+            slotKey: candidate.slotKey,
           });
+          if (resolution.supersededMemoryIds) {
+            for (const supId of resolution.supersededMemoryIds) {
+              await this.repository.supersedeMemory(candidate.userId, supId, created.id, observedAt);
+            }
+          }
+          mutatedAny = true;
           result.supersededCount++;
+          result.storedCount++;
+          result.auditTrail.push({
+            candidate,
+            assessment,
+            resolution,
+            storedId: created.id,
+          });
+          break;
+        }
+
+        case "DISPUTED": {
+          const conflictIds = resolution.disputedMemoryIds || [];
+          const created = await this.repository.createMemory({
+            userId: candidate.userId,
+            content: candidate.content,
+            summary: candidate.summary,
+            memoryType: candidate.memoryType,
+            domain: candidate.domain,
+            source: candidate.source,
+            confidence: candidate.confidence ?? assessment.confidence,
+            importance: candidate.importance ?? assessment.importance,
+            relatedEntityIds: candidate.relatedEntityIds,
+            provenance: candidate.provenance,
+            embedding,
+            embeddingModel: this.embeddingProvider.modelName,
+            embeddingVersion: this.embeddingProvider.modelVersion,
+            validFrom: candidate.validFrom,
+            validTo: candidate.validTo,
+            lifecycleStatus: "disputed",
+            sourceJobId: turn.sourceJobId,
+            contentHash,
+            slotKey: candidate.slotKey,
+            disputedWithMemoryIds: conflictIds,
+          });
+          for (const cid of conflictIds) {
+            await this.repository.markDisputed(candidate.userId, cid, [created.id]);
+          }
+          mutatedAny = true;
           result.storedCount++;
           result.auditTrail.push({
             candidate,
@@ -234,14 +411,20 @@ export class MemoryFormationPipeline {
             memoryType: candidate.memoryType,
             domain: candidate.domain,
             source: candidate.source,
-            confidence: assessment.confidence,
-            importance: assessment.importance,
+            confidence: candidate.confidence ?? assessment.confidence,
+            importance: candidate.importance ?? assessment.importance,
             relatedEntityIds: candidate.relatedEntityIds,
             provenance: candidate.provenance,
             embedding,
             embeddingModel: this.embeddingProvider.modelName,
             embeddingVersion: this.embeddingProvider.modelVersion,
+            validFrom: candidate.validFrom,
+            validTo: candidate.validTo,
+            sourceJobId: turn.sourceJobId,
+            contentHash,
+            slotKey: candidate.slotKey,
           });
+          mutatedAny = true;
           result.storedCount++;
           result.auditTrail.push({
             candidate,
@@ -254,102 +437,99 @@ export class MemoryFormationPipeline {
       }
     }
 
+    if (mutatedAny) {
+      this.evictUserWorldCache(turn.userId);
+    }
+
     return result;
   }
 
   /**
-   * Deterministically extracts candidate statements from user input.
+   * Extracts structured personal memory candidates semantically via configured LLM extractor
+   * or explicit structured API input. Zero English regexes.
    */
-  private extractCandidates(turn: ConversationTurnInput): CandidateMemory[] {
-    const candidates: CandidateMemory[] = [];
-    const text = turn.userMessage.trim();
-
-    // Pattern 1: Explicit preference or habit
-    const preferenceRegex = /\b(i prefer|i like|i dislike|i love|i always|i never|i usually|i work (best|better) at|routine|schedule)\b\s*([^\.\!\?]+)/i;
-    const prefMatch = text.match(preferenceRegex);
-    if (prefMatch) {
-      const statement = prefMatch[0].trim();
-      const domain = this.inferDomain(statement, turn.domainHint);
-      candidates.push({
-        userId: turn.userId,
-        content: statement,
-        summary: `User preference: ${statement}`,
-        source: "explicit_user_statement",
-        domain,
-        memoryType: "semantic_fact",
-        provenance: { conversationId: turn.conversationId },
-      });
+  private async extractCandidates(turn: ConversationTurnInput): Promise<CandidateMemory[]> {
+    if (turn.explicitMemory && turn.explicitMemory.content.trim().length > 0) {
+      const em = turn.explicitMemory;
+      const content = em.content.trim();
+      return [
+        {
+          userId: turn.userId,
+          content,
+          summary: em.summary?.trim() || (content.length > 80 ? `${content.slice(0, 77)}...` : content),
+          source: "explicit_user_statement",
+          domain: em.domain || turn.domainHint || "general",
+          memoryType: em.memoryType || "semantic_fact",
+          provenance: { conversationId: turn.conversationId },
+        },
+      ];
     }
 
-    // Pattern 2: Explicit physical / health / medical condition
-    const healthRegex = /\b(diagnosed with|allergic to|allergy to|injury|injured|asthma|diabetes|illness|sick)\b\s*([^\.\!\?]+)/i;
-    const healthMatch = text.match(healthRegex);
-    if (healthMatch) {
-      const statement = healthMatch[0].trim();
-      candidates.push({
-        userId: turn.userId,
-        content: statement,
-        summary: `Health condition: ${statement}`,
-        source: "explicit_user_statement",
-        domain: "health",
-        memoryType: "semantic_fact",
-        provenance: { conversationId: turn.conversationId },
-      });
+    if (this.semanticExtractor) {
+      return await this.semanticExtractor.extract(turn);
     }
 
-    // Pattern 3: Explicit Goal or Milestone
-    const goalRegex = /\b(my goal is|i want to achieve|training for|preparing for)\b\s*([^\.\!\?]+)/i;
-    const goalMatch = text.match(goalRegex);
-    if (goalMatch) {
-      const statement = goalMatch[0].trim();
-      candidates.push({
-        userId: turn.userId,
-        content: statement,
-        summary: `Personal goal: ${statement}`,
-        source: "explicit_user_statement",
-        domain: "productivity",
-        memoryType: "goal_intelligence",
-        provenance: { conversationId: turn.conversationId },
-      });
+    const hasGroqKey =
+      Boolean(process.env.GROQ_API_KEY) && process.env.GROQ_API_KEY !== "mock_key_for_dev";
+    if (!hasGroqKey) {
+      // Offline / no-key unit mode without an injected extractor: return no fabricated memories
+      return [];
     }
 
-    // Fallback: If turn itself looks like an explicit concise fact and not caught by patterns
-    if (
-      candidates.length === 0 &&
-      text.length >= 10 &&
-      text.length <= 150 &&
-      /\b(i|my|we)\b/i.test(text)
-    ) {
-      candidates.push({
-        userId: turn.userId,
-        content: text,
-        summary: text.length > 50 ? `${text.slice(0, 47)}...` : text,
-        source: "explicit_user_statement",
-        domain: this.inferDomain(text, turn.domainHint),
-        memoryType: "semantic_fact",
-        provenance: { conversationId: turn.conversationId },
-      });
+    const prompt = `Extract durable, non-transient personal memory facts, preferences, constraints, corrections, or goals from this conversation turn.
+Works in ANY language. If the turn is a trivial acknowledgment, greeting, or contains no lasting user-specific facts, return {"candidates": []}.
+For multiple facts in one turn, return separate candidate items with distinct semantic slotKey values (snake_case, e.g. "dietary_restriction", "workout_schedule", "allergy_shellfish").
+
+User Message: ${JSON.stringify(turn.userMessage)}
+Assistant Response: ${JSON.stringify(turn.assistantResponse || "")}
+Domain Hint: ${JSON.stringify(turn.domainHint || "none")}
+
+Return STRICT JSON ONLY:
+{
+  "candidates": [
+    {
+      "content": "Concise canonical statement of the enduring user fact/preference/constraint",
+      "summary": "Short label (3-12 words)",
+      "memoryType": "semantic_fact" | "episodic_event" | "behavioral_pattern" | "goal_intelligence" | "incident" | "intervention",
+      "domain": "productivity" | "health" | "wellness" | "identity" | "general",
+      "source": "explicit_user_statement" | "user_reflection" | "behavioral_telemetry" | "system_inference",
+      "confidence": 0.0-1.0,
+      "importance": 0.0-1.0,
+      "slotKey": "stable_semantic_slot_key",
+      "isTransient": false
+    }
+  ]
+}`;
+
+    const raw = await (await import("../shared/langchain/LifeOSChatModel")).invokeLifeOSChat({
+      messages: [{ role: "user", content: prompt }],
+      model: resolveGroqModel(),
+      temperature: 0.1,
+      maxTokens: 900,
+    });
+
+    const cleaned = cleanLLMResponse(raw);
+    const jsonMatch = cleaned.match(/\{[\s\S]*\}/);
+    if (!jsonMatch) {
+      throw new Error(`[MEMORY_EXTRACTION_PARSE_ERROR]: Extractor response did not contain JSON`);
     }
 
-    return candidates;
-  }
-
-  /**
-   * Classifies domain based on keywords.
-   */
-  private inferDomain(text: string, hint?: MemoryDomain): MemoryDomain {
-    if (hint) return hint;
-    const lower = text.toLowerCase();
-    if (/\b(sleep|stress|meditat|relax|burnout|mental|anxiety|energy)\b/.test(lower)) {
-      return "wellness";
-    }
-    if (/\b(workout|gym|run|heart|diet|nutrition|calorie|protein|injury|sick|health)\b/.test(lower)) {
-      return "health";
-    }
-    if (/\b(task|project|work|deep work|focus|code|deadline|study|meeting)\b/.test(lower)) {
-      return "productivity";
-    }
-    return "general";
+    const parsed = ExtractedMemoryBatchSchema.parse(JSON.parse(jsonMatch[0]));
+    return parsed.candidates.map((c) => ({
+      userId: turn.userId,
+      content: c.content.trim(),
+      summary: c.summary.trim(),
+      memoryType: c.memoryType,
+      domain: turn.domainHint || c.domain,
+      source: c.source,
+      confidence: c.confidence,
+      importance: c.importance,
+      slotKey: c.slotKey,
+      validFrom: c.validFrom ? Date.parse(c.validFrom) || undefined : undefined,
+      validTo: c.validTo ? Date.parse(c.validTo) || null : null,
+      isTransient: c.isTransient ?? false,
+      provenance: { conversationId: turn.conversationId },
+    }));
   }
 
   /**

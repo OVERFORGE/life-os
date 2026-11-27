@@ -3,6 +3,7 @@ import { connectDB } from "@/server/db/connect";
 import { getAuthSession } from "@/lib/auth";
 import { Gym } from "@/server/db/models/Gym";
 import { PRE_SEEDED_EQUIPMENT, EQUIPMENT_BY_CATEGORY } from "@/server/constants/gymEquipment";
+import { createCatalogDocWithOutbox } from "@/features/catalog/services/catalogMutationEngine";
 
 export async function GET(req: Request) {
   try {
@@ -24,14 +25,22 @@ export async function POST(req: Request) {
     if (!session) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body: any = await req.json();
-    const gym = await Gym.create({
+    const res = await createCatalogDocWithOutbox({
       userId: session.user.id,
-      name: body.name,
-      customEquipment: body.customEquipment || [],
-      selectedPreSeeded: body.selectedPreSeeded || []
+      model: Gym,
+      aggregateType: "gym",
+      eventType: "domain.catalog.updated",
+      domain: "gym",
+      docFields: {
+        userId: session.user.id,
+        name: body.name,
+        customEquipment: body.customEquipment || [],
+        selectedPreSeeded: body.selectedPreSeeded || [],
+      },
+      options: { source: "web.gym.inventory.create" },
     });
 
-    return NextResponse.json(gym);
+    return NextResponse.json(res.doc);
   } catch (e: any) {
     return NextResponse.json({ error: e.message }, { status: 500 });
   }

@@ -34,6 +34,10 @@ const FoodItemSchema = new Schema(
     },
 
     imageUrl: { type: String }, // Reference to Cloudinary
+    deletedAt: { type: Date, default: null },
+    version: { type: Number, default: 0 },
+    mutationEpoch: { type: Number, default: 0 },
+    recentMutationReceipts: { type: [Schema.Types.Mixed], default: [] },
   },
   { timestamps: true }
 );

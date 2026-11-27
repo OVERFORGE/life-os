@@ -2,7 +2,7 @@
  * AvenStreamContracts.ts
  *
  * Canonical Real-Time Execution Stream Event Model.
- * Serves Web, Mobile, Desktop, and Voice runtimes identically.
+ * Serves Web and post-activation client runtimes identically.
  * Exposes clean human execution progress without leaking private chain-of-thought or raw JSON.
  */
 
@@ -12,20 +12,48 @@ export type AvenExecutionStatusPhase =
   | "understanding"
   | "checking_context"
   | "planning"
+  | "reasoning"
   | "executing"
+  | "executing_step"
+  | "adapting"
   | "waiting_for_confirmation"
   | "verifying"
-  | "completed";
+  | "synthesizing"
+  | "completed"
+  | "cancelled"
+  | "failed";
 
-export type AvenStreamEvent =
+export interface AvenStreamEnvelopeMeta {
+  requestId?: string;
+  executionId?: string;
+  seq?: number;
+  timestamp?: number;
+}
+
+export type AvenStreamEventPayload =
   | {
       type: "assistant_delta";
       text: string;
     }
   | {
+      type: "assistant_final";
+      text: string;
+      truncated?: boolean;
+      persisted: boolean;
+    }
+  | {
       type: "status";
       status: AvenExecutionStatusPhase;
       message: string;
+      stepIndex?: number;
+      totalSteps?: number;
+    }
+  | {
+      type: "step_progress";
+      stepId: string;
+      capabilityURN: CapabilityURN | string;
+      phase: "started" | "completed" | "failed" | "replanning";
+      humanMessage: string;
     }
   | {
       type: "tool_activity";
@@ -58,7 +86,25 @@ export type AvenStreamEvent =
       connectUrl: string;
     }
   | {
+      type: "cancelled";
+      reason: "user_aborted" | "client_disconnected" | "superseded";
+      partialText?: string;
+      persisted: boolean;
+    }
+  | {
       type: "error";
       message: string;
       code?: string;
+      recoverable?: boolean;
+      persisted?: boolean;
+      partialText?: string;
     };
+
+export type AvenStreamEvent = AvenStreamEventPayload & AvenStreamEnvelopeMeta;
+
+export {
+  StreamingThinkSanitizer,
+  createStreamTerminalGuard,
+  type StreamTerminalOutcome,
+  type StreamTerminalGuard,
+} from "./StreamLifecycleUtils";

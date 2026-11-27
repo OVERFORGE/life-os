@@ -1,11 +1,16 @@
 import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { authOptions } from "@/lib/authOptions";
 import { headers } from "next/headers";
 import jwt from "jsonwebtoken";
 
 export async function getAuthSession() {
-  const session = await getServerSession(authOptions);
-  
+  let session: any = null;
+  try {
+    session = await getServerSession(authOptions);
+  } catch {
+    // Allow fallback when invoked outside Next.js request AsyncLocalStorage (e.g., direct route unit tests)
+  }
+
   if (session?.user && (session.user as any).id) {
     return session;
   }
@@ -17,19 +22,19 @@ export async function getAuthSession() {
     if (authHeader && authHeader.startsWith("Bearer ")) {
       const token = authHeader.split(" ")[1];
       const decoded = jwt.verify(token, process.env.NEXTAUTH_SECRET || "fallback-secret-key-12345") as any;
-      
+
       if (decoded && decoded.id) {
         if (decoded.sessionId) {
-          const { connectDB } = require("@/server/db/connect");
-          const { Session } = require("@/server/db/models/Session");
+          const { connectDB } = await import("@/server/db/connect");
+          const { Session } = await import("@/server/db/models/Session");
           await connectDB();
           const sessionRecord = await Session.findOne({ sessionToken: decoded.sessionId, isRevoked: true }).lean();
           if (sessionRecord) {
             return null; // Session revoked
           }
-          
+
           // Optionally update lastActive
-          Session.updateOne({ sessionToken: decoded.sessionId }, { $set: { lastActive: new Date() } }).catch(() => {});
+          Session.updateOne({ sessionToken: decoded.sessionId }, { $set: { lastActive: new Date() } }).catch(() => { });
         }
 
         // Resolve user name from token or database, rejecting generic device names
@@ -37,14 +42,14 @@ export async function getAuthSession() {
         const isGenericName = !userName || /^(mobile|mobile user|user|client|guest)$/i.test(userName.trim());
         if (isGenericName && decoded.id) {
           try {
-            const { connectDB } = require("@/server/db/connect");
-            const { User } = require("@/server/db/models/User");
+            const { connectDB } = await import("@/server/db/connect");
+            const { User } = await import("@/server/db/models/User");
             await connectDB();
             const dbUser = await User.findById(decoded.id).select("name").lean();
             if (dbUser && (dbUser as any).name) {
               userName = (dbUser as any).name;
             }
-          } catch (_) {}
+          } catch (_) { }
         }
 
         const finalName = (!userName || /^(mobile|mobile user|user|client|guest)$/i.test(userName.trim()))

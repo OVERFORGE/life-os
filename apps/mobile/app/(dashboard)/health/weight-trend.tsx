@@ -215,7 +215,7 @@ export default function WeightTrendScreen() {
             {weightChartData.length === 0 ? (
               <View style={{ alignItems: 'center', padding: 32 }}>
                 <Text style={{ color: C.muted, fontSize: 13, textAlign: 'center', lineHeight: 20 }}>
-                  No weight data yet.{'\n'}Tell the Health AI "I weigh 85kg" to start tracking.
+                  No weight data yet.{'\n'}Tell the Health AI &quot;I weigh 85kg&quot; to start tracking.
                 </Text>
               </View>
             ) : (

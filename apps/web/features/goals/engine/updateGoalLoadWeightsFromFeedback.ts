@@ -149,7 +149,7 @@ export function updateGoalLoadWeightsFromFeedback({
   /* 3️⃣ Target Weight Shift                                */
   /* ===================================================== */
 
-  let target: GoalPressureWeights = { ...currentWeights };
+  const target: GoalPressureWeights = { ...currentWeights };
 
   if (outcome === "overloaded") {
     // Overload → become more sensitive to cadence + stress

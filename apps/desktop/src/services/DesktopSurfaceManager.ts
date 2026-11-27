@@ -19,7 +19,7 @@ export interface DesktopProjectionState {
 export class DesktopSurfaceManager {
   private static instance: DesktopSurfaceManager;
   private eventSource: EventSource | null = null;
-  private baseUrl: string = "http://localhost:3000";
+  private baseUrl: string = "http://localhost:3456";
 
   private constructor() {}
 

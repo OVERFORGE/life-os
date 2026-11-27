@@ -1,6 +1,9 @@
+import { requireAdminSession } from "@/lib/adminAuth";
 import { NextResponse } from "next/server";
 
 export async function GET() {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   return NextResponse.json(
     {
       status: 501,
@@ -12,6 +15,8 @@ export async function GET() {
 }
 
 export async function POST() {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   return NextResponse.json(
     {
       status: 501,

@@ -1,14 +1,17 @@
+import { requireAdminSession } from "@/lib/adminAuth";
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { SimulationRun, mapDocToSnapshot, mapSnapshotToDoc } from "@/server/db/models/SimulationRun";
 import { SimulationRuntimeEngine } from "@/simulation/engine/runtime";
-import { serializeRun } from "../../route";
+import { serializeRun } from "../../serializeRun";
 import mongoose from "mongoose";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 // POST /api/admin/simulation/[id]/advance
 export async function POST(req: NextRequest, props: RouteParams) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     const { id } = await props.params;
     await connectDB();

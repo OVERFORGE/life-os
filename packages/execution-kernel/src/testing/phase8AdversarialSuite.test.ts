@@ -1,13 +1,9 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
-import * as dotenv from "dotenv";
-import * as path from "path";
-
-dotenv.config({ path: path.resolve(process.cwd(), "apps/web/.env") });
-
 import { Supervisor } from "../orchestration/supervisor/Supervisor";
 import { SemanticIntentInterpreter } from "../orchestration/semantic/SemanticIntentInterpreter";
+import { connectIsolatedTestDB } from "./helpers/testDbIsolation";
 
 describe("PHASE 8: Natural-Language End-to-End & Adversarial Suite", () => {
   const userId = new mongoose.Types.ObjectId().toString();
@@ -16,9 +12,7 @@ describe("PHASE 8: Natural-Language End-to-End & Adversarial Suite", () => {
   let NutritionLogModel: any;
 
   before(async () => {
-    if (process.env.MONGODB_URI && mongoose.connection.readyState !== 1) {
-      await mongoose.connect(process.env.MONGODB_URI);
-    }
+    await connectIsolatedTestDB();
     const taskModule = await import("@/server/db/models/Task");
     TaskModel = taskModule.Task;
     const dailyModule = await import("@/server/db/models/DailyLog");

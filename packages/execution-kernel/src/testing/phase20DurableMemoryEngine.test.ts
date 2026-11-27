@@ -29,6 +29,7 @@ import {
   ExecutionPersistenceService,
   MockExecutionPersistenceStore,
 } from "../orchestration/workspace/ExecutionPersistenceService";
+import { createMockAuditModel } from "./helpers/mockAuditModel";
 import {
   IStepOutputSnapshot,
   StaleWorkspaceMutationError,
@@ -298,7 +299,7 @@ test("TC-09 (Group B: Restoration): Resumed execution skips completed steps and 
     },
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   // Persist Step 1 as already completed
@@ -1295,7 +1296,7 @@ test("TC-38 (Group J: Regression): Stage 1 agency loop operates cleanly with Sta
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const result = await dispatcher.executeWorkflow({

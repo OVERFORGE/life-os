@@ -12,6 +12,11 @@ export interface CandidateMemory {
   source: EpistemicSource;
   domain: MemoryDomain;
   memoryType: MemoryType;
+  slotKey?: string;
+  validFrom?: number;
+  validTo?: number | null;
+  confidence?: number;
+  importance?: number;
   relatedEntityIds?: string[];
   provenance?: Record<string, any>;
   isTransient?: boolean;

@@ -3,6 +3,7 @@ import {
   IKernelCapabilityService,
   ActionValidationResult,
   AuthoritativeKernelState,
+  AuthoritativeDomainSnapshot,
   VerificationOutcome,
 } from "./IKernelCapabilityService";
 import {
@@ -14,12 +15,15 @@ import {
 import { ActionAdapterRegistry } from "./ActionAdapters";
 import { registerDefaultActionAdapters } from "./DefaultActionAdapters";
 import { OutcomeVerifier } from "./OutcomeVerifier";
+import { CapabilityRegistry } from "../capabilities/CapabilityRegistry";
+import { buildSanitizedReadAuditSummary } from "../../repositories/readQueryUtils";
 import { ExecutionGraph } from "../../kernel/ExecutionGraph";
 import { WorldModelV2 } from "../../worldv2/WorldModelV2";
 import { IncidentService } from "../../incidents/IncidentService";
 import { MemoryRepository } from "../../memory/MemoryRepository";
 import mongoose from "mongoose";
 import { ActionAuditRecordModel } from "../../../../../apps/web/server/db/models/ActionAuditRecordModel";
+import { linkTraceAction, recordTraceStep } from "../observability/TraceContext";
 import { MutationReceiptModel } from "../../../../../apps/web/server/db/models/MutationReceiptModel";
 
 export type { ActionProposal } from "../contracts/ActionProposalContracts";
@@ -113,7 +117,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
   private receiptModel: any;
   private workerId: string;
   private aggregateModelResolver?: (type: string) => any;
-  
+
   // In-Memory idempotency cache (mirrors durable ActionAuditRecord collection)
   private auditStore: Map<string, StoredActionAudit> = new Map();
   // In-flight concurrency lock to deduplicate concurrent requests sharing the same idempotencyKey
@@ -166,6 +170,26 @@ export class KernelCapabilityService implements IKernelCapabilityService {
   clearAuditStore(): void {
     this.auditStore.clear();
     this.inFlightExecutions.clear();
+  }
+
+  private isRealMongooseModel(model: any): boolean {
+    return (
+      model === ActionAuditRecordModel ||
+      model === MutationReceiptModel ||
+      typeof model?.db?.readyState === "number"
+    );
+  }
+
+  private shouldUseDurableModel(model: any): boolean {
+    if (!model) return false;
+    if (!this.isRealMongooseModel(model)) return true;
+    if (mongoose.connection.readyState === 1) return true;
+    if (process.env.LIFEOS_ALLOW_TEST_MOCKS === "true") {
+      return false;
+    }
+    throw new Error(
+      "[KERNEL_DATABASE_DISCONNECTED] Authoritative kernel persistence requires an active MongoDB connection (readyState === 1)."
+    );
   }
 
   async validateActionProposals(
@@ -409,6 +433,19 @@ export class KernelCapabilityService implements IKernelCapabilityService {
       }
     }
 
+    for (const res of results) {
+      linkTraceAction(res.actionId);
+      recordTraceStep({
+        layer: "kernel",
+        component: "KernelCapabilityService",
+        operation: res.actionType,
+        status: res.success ? "COMPLETED" : "FAILED",
+        startedAtMs: res.timestamp || Date.now(),
+        durationMs: 0,
+        outputs: { actionId: res.actionId, status: res.status, success: res.success },
+        error: res.error,
+      });
+    }
     return results;
   }
 
@@ -457,9 +494,10 @@ export class KernelCapabilityService implements IKernelCapabilityService {
     }
 
     const executionPromise = (async (): Promise<KernelExecutionResult> => {
+      const useAuditModel = this.shouldUseDurableModel(this.auditModel);
       // 3. Durable Store Check (L2 ActionAuditRecordModel)
       let dbRecord: any = null;
-      if (this.auditModel) {
+      if (useAuditModel) {
         try {
           dbRecord = await this.auditModel.findOne({ userId, idempotencyKey });
         } catch (dbErr) {
@@ -509,7 +547,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
             return reconciled;
           }
         }
-      } else if (this.auditModel) {
+      } else if (useAuditModel) {
         // Claim new execution lease in DB
         try {
           await this.auditModel.create({
@@ -552,13 +590,13 @@ export class KernelCapabilityService implements IKernelCapabilityService {
       const validation = await this.validateActionProposals(userId, [proposal]);
       if (!validation.valid || validation.validDecisions.length === 0) {
         const failReason = validation.rejectedProposals[0]?.reason || "Validation rejected";
-        if (this.auditModel) {
+        if (useAuditModel) {
           try {
             await this.auditModel.updateOne(
               { userId, idempotencyKey },
               { $set: { status: "FAILED", error: failReason, completedAt: new Date() } }
             );
-          } catch {}
+          } catch { }
         }
         return {
           actionId: proposal.id,
@@ -575,15 +613,20 @@ export class KernelCapabilityService implements IKernelCapabilityService {
       const mainResult = results[0];
 
       // Update durable store with terminal state
-      if (this.auditModel && mainResult) {
+      if (useAuditModel && mainResult) {
         try {
           if (mainResult.success) {
+            const capDescriptor = CapabilityRegistry.getCapability(proposal.actionType);
+            const persistedResult =
+              capDescriptor?.operationKind === "READ"
+                ? buildSanitizedReadAuditSummary(proposal.actionType, mainResult.data || {})
+                : mainResult.data;
             await this.auditModel.updateOne(
               { userId, idempotencyKey },
               {
                 $set: {
                   status: "SUCCEEDED",
-                  result: mainResult.data,
+                  result: persistedResult,
                   completedAt: new Date(),
                 },
               }
@@ -600,7 +643,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
               }
             );
           }
-        } catch {}
+        } catch { }
       }
 
       return mainResult;
@@ -636,7 +679,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
     if (this.receiptModel) {
       try {
         receipt = await this.receiptModel.findOne({ userId, clientMutationId: actionId });
-      } catch {}
+      } catch { }
     }
 
     if (receipt && receipt.status === "COMMITTED") {
@@ -654,7 +697,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
               },
             }
           );
-        } catch {}
+        } catch { }
       }
 
       this.auditStore.set(cacheKey, {
@@ -694,7 +737,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
               },
             }
           );
-        } catch {}
+        } catch { }
       }
       this.auditStore.set(cacheKey, {
         idempotencyKey: proposal.idempotencyKey,
@@ -759,7 +802,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
             $inc: { fencingEpoch: 1 },
           }
         );
-      } catch {}
+      } catch { }
     }
 
     return null; // Signals caller to proceed with re-execution
@@ -792,7 +835,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
       if (doc && typeof doc.version === "number") {
         return doc.version;
       }
-    } catch {}
+    } catch { }
     return null;
   }
 
@@ -867,12 +910,145 @@ export class KernelCapabilityService implements IKernelCapabilityService {
     let historicalMemories: any[] = [];
     try {
       activeIncidents = await IncidentService.getInstance().getActiveIncidents(userId);
-    } catch (e) {}
+    } catch (e) { }
     try {
       historicalMemories = await MemoryRepository.getInstance().getActiveMemories(userId);
-    } catch (e) {}
+    } catch (e) { }
+
+    const domainSnapshot: AuthoritativeDomainSnapshot = {
+      dailyLog: null,
+      nutrition: null,
+      recentWorkouts: [],
+      cognitiveState: null,
+      missingDomains: [],
+    };
 
     if (mongoose.connection && mongoose.connection.readyState === 1) {
+      await Promise.all([
+        (async () => {
+          try {
+            const { DailyLog } = await import("../../../../../apps/web/server/db/models/DailyLog");
+            const doc: any = await DailyLog.findOne({ userId }).sort({ date: -1 }).lean();
+            if (doc) {
+              domainSnapshot.dailyLog = {
+                date: doc.date,
+                sleepHours: typeof doc.sleep?.hours === "number" ? doc.sleep.hours : null,
+                sleepQuality: typeof doc.sleep?.quality === "number" ? doc.sleep.quality : null,
+                moodScore: typeof doc.mental?.mood === "number" ? doc.mental.mood : null,
+                energyLevel: typeof doc.mental?.energy === "number" ? doc.mental.energy : null,
+                stressLevel: typeof doc.mental?.stress === "number" ? doc.mental.stress : null,
+                hydrationMl:
+                  typeof doc.signals?.hydrationMl === "number"
+                    ? doc.signals.hydrationMl
+                    : typeof doc.signals?.waterGlasses === "number"
+                      ? doc.signals.waterGlasses * 250
+                      : null,
+                caloriesEstimate: typeof doc.physical?.calories === "number" ? doc.physical.calories : null,
+              };
+            } else {
+              domainSnapshot.missingDomains.push("dailyLog");
+            }
+          } catch {
+            domainSnapshot.missingDomains.push("dailyLog");
+          }
+        })(),
+        (async () => {
+          try {
+            const { NutritionLog } = await import("../../../../../apps/web/server/db/models/NutritionLog");
+            const doc: any = await NutritionLog.findOne({ userId }).sort({ date: -1 }).lean();
+            if (doc) {
+              domainSnapshot.nutrition = {
+                date: doc.date,
+                totalCalories:
+                  typeof doc.dailyTotals?.calories === "number" ? doc.dailyTotals.calories : null,
+                hydrationMl: typeof doc.hydrationMl === "number" ? doc.hydrationMl : null,
+              };
+            } else {
+              domainSnapshot.missingDomains.push("nutrition");
+            }
+          } catch {
+            domainSnapshot.missingDomains.push("nutrition");
+          }
+        })(),
+        (async () => {
+          try {
+            const { WorkoutSession } = await import("../../../../../apps/web/server/db/models/WorkoutSession");
+            const docs: any[] = await WorkoutSession.find({ userId })
+              .sort({ startedAt: -1, createdAt: -1 })
+              .limit(5)
+              .lean();
+            if (docs && docs.length > 0) {
+              domainSnapshot.recentWorkouts = docs.map((w) => ({
+                id: String(w._id),
+                type: w.workoutType || w.type || w.routineName || "workout",
+                intensity: w.intensity || "moderate",
+                durationMinutes:
+                  typeof w.durationMinutes === "number"
+                    ? w.durationMinutes
+                    : typeof w.durationSeconds === "number"
+                      ? Math.round(w.durationSeconds / 60)
+                      : 0,
+              }));
+            } else {
+              domainSnapshot.missingDomains.push("workouts");
+            }
+          } catch {
+            domainSnapshot.missingDomains.push("workouts");
+          }
+        })(),
+        (async () => {
+          try {
+            const { CognitiveStateHistoryModel } = await import(
+              "../../server/db/models/CognitiveStateHistoryModel"
+            );
+            const doc: any = await CognitiveStateHistoryModel.findOne({ userId })
+              .sort({ timestamp: -1, createdAt: -1 })
+              .lean();
+            if (doc) {
+              const focusEst =
+                typeof doc.focusReadiness?.estimate === "number"
+                  ? doc.focusReadiness.estimate
+                  : typeof doc.focusIndex === "number"
+                    ? doc.focusIndex
+                    : null;
+              const stressEst =
+                typeof doc.stress?.estimate === "number"
+                  ? doc.stress.estimate
+                  : typeof doc.stressLevel === "number"
+                    ? doc.stressLevel
+                    : null;
+              const energyEst =
+                typeof doc.energy?.estimate === "number"
+                  ? doc.energy.estimate
+                  : typeof doc.energyLevel === "number"
+                    ? doc.energyLevel
+                    : null;
+              const recoveryEst =
+                typeof doc.recoveryCapacity === "number" ? doc.recoveryCapacity : energyEst;
+              domainSnapshot.cognitiveState = {
+                focusIndex: focusEst,
+                stressLevel: stressEst,
+                energyLevel: energyEst,
+                recoveryCapacity: recoveryEst,
+                sleepDebtHours: typeof doc.sleepDebtHours === "number" ? doc.sleepDebtHours : null,
+                physiologicalScore:
+                  typeof recoveryEst === "number" ? Math.round(recoveryEst * 100) : null,
+                confidence:
+                  typeof doc.focusReadiness?.confidence === "number"
+                    ? doc.focusReadiness.confidence
+                    : typeof doc.confidence === "number"
+                      ? doc.confidence
+                      : null,
+              };
+            } else {
+              domainSnapshot.missingDomains.push("cognitiveState");
+            }
+          } catch {
+            domainSnapshot.missingDomains.push("cognitiveState");
+          }
+        })(),
+      ]);
+
       try {
         const graph = await ExecutionGraph.buildFromDatabase(userId);
         const graphSnapshot = graph.createSnapshot();
@@ -888,10 +1064,13 @@ export class KernelCapabilityService implements IKernelCapabilityService {
           timestamp: Date.now(),
           graphSnapshot,
           worldSnapshot,
+          domainSnapshot,
         };
       } catch (err) {
-        // Fall back to empty in-memory graph if database read fails
+        domainSnapshot.missingDomains.push("executionGraph");
       }
+    } else {
+      domainSnapshot.missingDomains.push("dailyLog", "nutrition", "workouts", "cognitiveState");
     }
 
     const emptyGraph = new ExecutionGraph();
@@ -908,6 +1087,7 @@ export class KernelCapabilityService implements IKernelCapabilityService {
       timestamp: Date.now(),
       graphSnapshot,
       worldSnapshot,
+      domainSnapshot,
     };
   }
 

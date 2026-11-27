@@ -1253,7 +1253,7 @@ export default function TimelinePage() {
                         <span className="text-[#D98B2B] font-bold">Aven Suggestion</span>
                       </div>
                       <p className="text-[11px] text-stone-300">
-                        Shift {activeConflict.blockB.title} asynchronously to next open cognitive slot.
+                        Move {activeConflict.blockB.title} to the next open time slot.
                       </p>
 
                       <div className="grid grid-cols-2 gap-2 mt-1">
@@ -1325,7 +1325,7 @@ export default function TimelinePage() {
                 <input
                   type="text"
                   required
-                  placeholder="e.g. Systems Architecture Deep Dive"
+                  placeholder="e.g. Deep Focus Session"
                   value={newTitle}
                   onChange={(e) => setNewTitle(e.target.value)}
                   className="w-full bg-[#111113] border border-[#2A2B33] focus:border-[#D98B2B] rounded-xl px-3 py-2 text-xs text-white outline-none"

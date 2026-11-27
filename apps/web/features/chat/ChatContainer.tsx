@@ -45,7 +45,16 @@ export default function ChatContainer({
     refreshConversations,
   } = useConversations();
 
-  const { messages, sendMessage, loading, selectedModel, setSelectedModel, reload } = useChat({
+  const {
+    messages,
+    sendMessage,
+    stopGeneration,
+    loading,
+    isStreaming,
+    selectedModel,
+    setSelectedModel,
+    reload,
+  } = useChat({
     conversationId: activeConversationId,
     onMessageSent: refreshConversations,
   });
@@ -180,7 +189,7 @@ export default function ChatContainer({
             {isModelDropdownOpen && (
               <div className="absolute right-0 top-10 w-64 rounded-2xl bg-[#17171A] border border-[#23242A] shadow-2xl p-1.5 z-50 animate-in fade-in zoom-in-95 duration-150">
                 <div className="px-2.5 py-1 text-[10px] font-mono uppercase tracking-wider text-[#85827A]">
-                  Neural Inference Model
+                  Assistant Model
                 </div>
                 {GROQ_MODELS.map((model) => (
                   <button
@@ -409,10 +418,12 @@ export default function ChatContainer({
           ) : (
             messages.map((m, i) => (
               <ChatMessage
-                key={i}
+                key={m.id || m.requestId || `msg_${i}`}
                 role={m.role}
                 content={m.content}
                 statusPhase={m.statusPhase}
+                turnStatus={m.turnStatus}
+                errorMessage={m.errorMessage}
                 toolActivities={m.toolActivities}
                 confirmation={m.confirmation}
                 missingConnection={m.missingConnection}
@@ -449,9 +460,11 @@ export default function ChatContainer({
       <ChatInput
         onSend={sendMessage}
         loading={loading}
+        isStreaming={isStreaming}
+        onStopGeneration={stopGeneration}
         onVoiceClick={() => setIsVoiceOpen(true)}
         layoutId="aven-command-box-shell"
-        initialText={initialSendTriggeredRef.current ? "" : initialMessage}
+        initialText=""
         autoFocus={autoFocusInput}
       />
 

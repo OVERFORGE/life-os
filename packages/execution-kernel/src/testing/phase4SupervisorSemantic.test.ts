@@ -2,13 +2,11 @@ import { test } from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
 import { Supervisor } from "../orchestration/supervisor/Supervisor";
-
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://overforge:overforgedatabase@cluster0.s8cvx.mongodb.net/life-os";
+import { connectIsolatedTestDB } from "./helpers/testDbIsolation";
 
 test("Phase 4: Supervisor Semantic Orchestration & End-to-End Persistence", async () => {
-  // Connect to live MongoDB Atlas
-  await mongoose.connect(MONGODB_URI, { bufferCommands: false });
-  assert.equal(mongoose.connection.readyState, 1, "MongoDB must be actively connected");
+  await connectIsolatedTestDB();
+  assert.equal(mongoose.connection.readyState, 1, "Isolated test MongoDB must be actively connected");
 
   const { User } = await import("@/server/db/models/User");
   const { Task } = await import("@/server/db/models/Task");

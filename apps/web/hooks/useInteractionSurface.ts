@@ -80,7 +80,9 @@ export function useInteractionSurface() {
 
   // 2. Connect to SSE Stream for live cross-device updates
   useEffect(() => {
-    hydrate();
+    queueMicrotask(() => {
+      void hydrate();
+    });
 
     const es = new EventSource("/api/surface/events");
     eventSourceRef.current = es;

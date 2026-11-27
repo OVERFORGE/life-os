@@ -124,21 +124,43 @@ export class AutonomousActionReverser {
       };
     }
 
-    // 3. Build Compensation Proposal
+    // 3. Build Compensation Proposal (preserving canonical ActionProposal fields for KernelCapabilityService)
+    const capUrn = record.compensationAction.capabilityURN;
+    const rawParams = record.compensationAction.parameters || {};
+    const inferredActionType =
+      capUrn === "lifeos.tasks.delete"
+        ? "delete_task"
+        : capUrn === "lifeos.tasks.update"
+        ? "update_task"
+        : capUrn === "lifeos.calendar.cancel" || capUrn === "lifeos.calendar.delete"
+        ? "cancel_occurrence"
+        : capUrn;
+
     const compProposal: ActionProposal = {
+      id: generateId("comp_prop"),
       proposalId: generateId("comp_prop"),
-      capabilityURN: record.compensationAction.capabilityURN,
+      domain: "productivity",
+      actionType: inferredActionType as any,
+      capabilityURN: capUrn,
       intentCategory: "MODIFY_SCHEDULE",
-      parameters: record.compensationAction.parameters,
-      confidence: 1.0,
-      provenance: "AutonomousActionReverser:Compensation",
+      payload: { ...rawParams },
+      parameters: rawParams,
+      rationale: "AutonomousActionReverser:Compensation",
+      reversibility: "reversible_with_compensation",
+      idempotencyKey: `comp_idem_${executionId}`,
       requiresConfirmation: false,
-      estimatedImpactScore: 0.5,
     } as unknown as ActionProposal;
 
     // 4. Execute via Kernel Boundary
     try {
-      await kernelService.executeAction(userId, compProposal);
+      const execResult: any = await kernelService.executeAction(userId, compProposal);
+      if (execResult && execResult.success === false) {
+        return {
+          success: false,
+          lifecycleState: "EXTERNAL_REJECTED",
+          error: execResult.error || "Kernel compensation execution failed",
+        };
+      }
 
       record.undoneAt = now;
       record.userFeedback = "REVERSED";

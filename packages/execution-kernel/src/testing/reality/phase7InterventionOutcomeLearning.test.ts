@@ -146,7 +146,7 @@ test("PHASE 7: Closed-Loop Intervention & Outcome Learning Suite", async (suite)
   });
 
   await suite.test("INTV-05: MongoDB Persistence in InterventionRecordModel", async () => {
-    if (mongoose.connection.readyState !== 1) return;
+    assert.equal(mongoose.connection.readyState, 1, "Isolated test MongoDB must be connected for INTV-05");
 
     const count = await InterventionRecordModel.countDocuments({ userId: testUserId });
     assert.ok(count >= 3, `Expected at least 3 records in DB, found ${count}`);

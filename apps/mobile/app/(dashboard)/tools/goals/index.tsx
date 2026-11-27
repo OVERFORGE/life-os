@@ -80,7 +80,7 @@ export default function GoalsListScreen() {
         {goals.length === 0 ? (
           <View style={{ backgroundColor: '#1F2023', borderWidth: 1, borderColor: '#2A2B2F', borderRadius: 16, padding: 30, alignItems: 'center', marginTop: 40 }}>
             <Text style={{ color: 'rgba(236,231,227,0.6)', textAlign: 'center', marginBottom: 24, fontSize: 14 }}>
-              You don't have any goals yet.
+              You don&apos;t have any goals yet.
             </Text>
             <TouchableOpacity 
               onPress={bootstrap} 

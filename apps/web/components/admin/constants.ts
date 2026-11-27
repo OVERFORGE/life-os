@@ -14,6 +14,7 @@ export interface NavSection {
 
 export const ADMIN_ROUTES = {
   DASHBOARD: "/admin",
+  OBSERVABILITY: "/admin/observability",
   KERNEL_LAB: {
     ROOT: "/admin/kernel-lab",
     SIMULATION: "/admin/kernel-lab/simulation",
@@ -37,6 +38,12 @@ export const ADMIN_NAVIGATION: NavSection[] = [
         title: "Dashboard",
         href: ADMIN_ROUTES.DASHBOARD,
         icon: "LayoutDashboard",
+        isActivePage: true,
+      },
+      {
+        title: "Observability",
+        href: ADMIN_ROUTES.OBSERVABILITY,
+        icon: "Activity",
         isActivePage: true,
       },
     ],

@@ -1,3 +1,4 @@
+import { requireAdminSession } from "@/lib/adminAuth";
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { SimulationRun, mapDocToSnapshot, mapSnapshotToDoc } from "@/server/db/models/SimulationRun";
@@ -7,13 +8,15 @@ import { SimulationStepEngine } from "@/simulation/orchestrators/simulationStepE
 import { ExecutionRecorder } from "@/simulation/execution/services/executionRecorder";
 import { SnapshotRepository } from "@/simulation/execution/repositories/snapshotRepository";
 import { ArtifactRepository } from "@/simulation/execution/repositories/artifactRepository";
-import { serializeRun } from "../../route";
+import { serializeRun } from "../../serializeRun";
 import mongoose from "mongoose";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 // POST /api/admin/simulation/[id]/step — Pure step orchestration API route
 export async function POST(req: NextRequest, props: RouteParams) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     const { id } = await props.params;
     console.log("[STEP API] Entered POST for run:", id);
@@ -60,9 +63,10 @@ export async function POST(req: NextRequest, props: RouteParams) {
     // 3. Execute pure simulation step (Decision Engine -> Kernel Adapter -> Kernel.handle())
     const useMockProvider = body.useMockProvider ?? false;
     console.log("[STEP API] executeStep starting (useMockProvider:", useMockProvider, ")");
-    const stepEngine = new SimulationStepEngine(
-      useMockProvider ? new (require("@/simulation/decision/providers/llmProvider").MockLLMProvider)() : undefined
-    );
+    const mockProvider = useMockProvider
+      ? new (await import("@/simulation/decision/providers/llmProvider")).MockLLMProvider()
+      : undefined;
+    const stepEngine = new SimulationStepEngine(mockProvider);
 
     const stepResult = await stepEngine.executeStep({
       snapshot,

@@ -1,4 +1,5 @@
 import mongoose from "mongoose";
+import { bootstrapInngestHooks } from "@/server/inngest/bootstrapHooks";
 
 let cached = (global as any).mongoose;
 
@@ -12,7 +13,10 @@ export async function connectDB() {
   if (!MONGODB_URI) {
     throw new Error("Please define the MONGODB_URI environment variable");
   }
-  if (cached.conn) return cached.conn;
+  if (cached.conn) {
+    bootstrapInngestHooks();
+    return cached.conn;
+  }
 
   if (!cached.promise) {
     cached.promise = mongoose.connect(MONGODB_URI, {
@@ -21,5 +25,6 @@ export async function connectDB() {
   }
 
   cached.conn = await cached.promise;
+  bootstrapInngestHooks();
   return cached.conn;
 }

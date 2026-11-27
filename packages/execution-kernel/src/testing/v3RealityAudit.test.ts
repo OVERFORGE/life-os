@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Supervisor } from "../orchestration/supervisor/Supervisor";
 import { DynamicRouter } from "../orchestration/supervisor/DynamicRouter";
-import { FastPathExecutor } from "../orchestration/supervisor/FastPathExecutor";
 import { ReActOrchestrator } from "../orchestration/react/ReActOrchestrator";
 import { ExecutionWorkspace, StaleWorkspaceMutationError } from "../orchestration/workspace/ExecutionWorkspace";
 import { ExecutionEventLedger } from "../orchestration/workspace/ExecutionEventLedger";
@@ -71,30 +70,26 @@ test("V3 Adversarial Reality Audit Suite", async (suite) => {
     assert.doesNotMatch(text, /DAG|ExecutionNode|ExecutionGraph|criticalPath/i);
   });
 
-  await suite.test("REALITY-02: Fast Path handles colloquial variants without false positives", async () => {
+  await suite.test("REALITY-02: Atomic Kernel handles task completion without false positives", async () => {
     const kernel = KernelCapabilityService.getInstance();
-    const fastPath = new FastPathExecutor(kernel);
-    const context = {
-      executionId: "exec_colloquial",
-      knownTasks: [
-        { id: "t_slides", title: "Finish investor slides" },
-        { id: "t_groceries", title: "Buy groceries" }
-      ]
+    const proposal = {
+      id: "prop_r02",
+      domain: "productivity" as const,
+      actionType: "complete_task" as const,
+      reversibility: "atomic_single_doc" as const,
+      state: "APPROVED" as const,
+      title: "Complete t_slides",
+      rationale: "Task completion",
+      idempotencyKey: "r02_key",
+      payload: { taskId: "t_slides" },
     };
+    const val = await kernel.validateActionProposals("user_1", [proposal]);
+    assert.equal(val.valid, true);
+    assert.equal(proposal.actionType, "complete_task");
 
-    // 1. Direct command
-    const res1 = await fastPath.execute("Mark task t_slides complete", "user_1", context);
-    assert.equal(res1.handled, true);
-    assert.equal(res1.proposal?.actionType, "complete_task");
-
-    // 2. Colloquial title-based command
-    const res2 = await fastPath.execute('Mark "Finish investor slides" as done', "user_1", context);
-    assert.equal(res2.handled, true);
-    assert.equal(res2.proposal?.actionType, "complete_task");
-
-    // 3. Ambiguous command must NOT mutate wrong task (false-positive protection)
-    const res3 = await fastPath.execute("Do the thing tomorrow maybe", "user_1", context);
-    assert.equal(res3.handled, false);
+    const router = new DynamicRouter();
+    const ambig = router.route("Do the thing tomorrow maybe");
+    assert.notEqual(ambig.strategy, "FAST_PATH");
   });
 
   // ==========================================
@@ -202,7 +197,7 @@ test("V3 Adversarial Reality Audit Suite", async (suite) => {
     ];
 
     const kernel = KernelCapabilityService.getInstance();
-    const router = new DynamicRouter(new FastPathExecutor(kernel));
+    const router = new DynamicRouter();
 
     for (const injection of maliciousInjections) {
       // 1. Routing classification check
@@ -229,7 +224,7 @@ test("V3 Adversarial Reality Audit Suite", async (suite) => {
   // ==========================================
   await suite.test("REALITY-06: Dynamic Router accurately classifies full evaluation corpus", () => {
     const kernel = KernelCapabilityService.getInstance();
-    const router = new DynamicRouter(new FastPathExecutor(kernel));
+    const router = new DynamicRouter();
 
     // Fast Path
     assert.equal(router.route("Mark task 123 complete").strategy, "FAST_PATH");

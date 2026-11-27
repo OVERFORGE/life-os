@@ -234,7 +234,7 @@ test("PHASE 3: Passive Cognitive & Mental State Estimation Suite", async (suite)
   });
 
   await suite.test("COG-08: MongoDB Persistence in CognitiveStateHistoryModel", async () => {
-    if (mongoose.connection.readyState !== 1) return;
+    assert.equal(mongoose.connection.readyState, 1, "Isolated test MongoDB must be connected for COG-08");
 
     const now = Date.now();
     const estimate = engine.evaluate({ userId: testUserId, observations: [], currentTime: now });

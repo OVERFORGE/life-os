@@ -70,6 +70,12 @@ const KNOWN_CAPABILITY_URNS = new Set([
   "log_workout",
   "external_capability_action",
   "synthesis",
+  // Internal LifeOS Read Capabilities (Stage 1)
+  "lifeos.tasks.query",
+  "lifeos.goals.query",
+  "lifeos.schedule.query_occurrences",
+  "lifeos.daily_logs.query_range",
+  "lifeos.telemetry.query_state_history",
 ]);
 
 /**

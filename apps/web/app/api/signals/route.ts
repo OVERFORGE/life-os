@@ -3,6 +3,10 @@
 import { connectDB } from "@/server/db/connect";
 import { getAuthSession } from "@/lib/auth";
 import { LifeSignal } from "@/features/signals/models/LifeSignal";
+import {
+  createCatalogDocWithOutbox,
+  deleteCatalogDocWithOutbox,
+} from "@/features/catalog/services/catalogMutationEngine";
 
 /* ======================= */
 /* GET Signals             */
@@ -50,34 +54,33 @@ export async function POST(req: Request) {
     );
   }
 
-  const created = await LifeSignal.create({
+  const res = await createCatalogDocWithOutbox({
     userId: session.user.id,
-
-    key: body.key,
-    label: body.label,
-
-    // ✅ FIX: Store correct categoryKey
-    categoryKey: body.categoryKey,
-
-    inputType: body.inputType ?? "number",
-
-    unit: body.unit ?? "",
-    target: body.target ?? null,
-
-    min: body.min ?? null,
-    max: body.max ?? null,
-    step: body.step ?? null,
-
-    direction: body.direction ?? "higher_better",
-    weight: body.weight ?? 1,
-
-    enabled: true,
-
-    dependsOn: body.dependsOn ?? null,
-    showIf: body.showIf ?? null,
+    model: LifeSignal,
+    aggregateType: "life_signal",
+    eventType: "domain.catalog.updated",
+    domain: "signals",
+    docFields: {
+      userId: session.user.id,
+      key: body.key,
+      label: body.label,
+      categoryKey: body.categoryKey,
+      inputType: body.inputType ?? "number",
+      unit: body.unit ?? "",
+      target: body.target ?? null,
+      min: body.min ?? null,
+      max: body.max ?? null,
+      step: body.step ?? null,
+      direction: body.direction ?? "higher_better",
+      weight: body.weight ?? 1,
+      enabled: true,
+      dependsOn: body.dependsOn ?? null,
+      showIf: body.showIf ?? null,
+    },
+    options: { source: "web.signals.create" },
   });
 
-  return Response.json({ ok: true, signal: created });
+  return Response.json({ ok: true, signal: res.doc });
 }
 
 /* ======================= */
@@ -110,9 +113,14 @@ export async function DELETE(req: Request) {
     );
   }
 
-  await LifeSignal.deleteOne({
+  await deleteCatalogDocWithOutbox({
     userId: session.user.id,
-    key,
+    model: LifeSignal,
+    filter: { userId: session.user.id, key },
+    aggregateType: "life_signal",
+    eventType: "domain.catalog.updated",
+    domain: "signals",
+    options: { source: "web.signals.delete" },
   });
 
   return Response.json({ ok: true });

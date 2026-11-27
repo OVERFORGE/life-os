@@ -42,8 +42,8 @@ export function getBaseUrl(): string {
     return 'http://10.0.2.2:3000/api';
   }
 
-  // Current active LAN IP fallback
-  return 'http://192.168.1.67:3000/api'; 
+  // Localhost fallback (override via EXPO_PUBLIC_API_URL for physical devices)
+  return 'http://localhost:3456/api';
 }
 
 export const API_URL = getBaseUrl();

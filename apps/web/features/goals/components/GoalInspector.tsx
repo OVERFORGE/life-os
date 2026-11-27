@@ -7,10 +7,6 @@ export function GoalInspector({ goalId }: { goalId: string }) {
   const [data, setData] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetchGoal();
-  }, [goalId]);
-
   const fetchGoal = async () => {
     setLoading(true);
     try {
@@ -22,6 +18,12 @@ export function GoalInspector({ goalId }: { goalId: string }) {
     }
     setLoading(false);
   };
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void fetchGoal();
+    });
+  }, [goalId]);
 
   if (loading) return <div className="text-sm text-[#9ca3af] animate-pulse">Loading goal context...</div>;
   if (!data || !data.goal) return <div className="text-sm text-[#ef4444]">Goal not found</div>;

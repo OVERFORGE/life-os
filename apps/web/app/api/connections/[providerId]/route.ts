@@ -10,21 +10,13 @@ type RouteParams = { params: Promise<{ providerId: string }> };
 export async function DELETE(req: NextRequest, props: RouteParams) {
   try {
     const session = await getAuthSession();
-    let userId = (session?.user as any)?.id;
-
-    await connectDB();
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-      }
-    }
+    const userId = (session?.user as any)?.id;
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
     }
+
+    await connectDB();
 
     const { providerId } = await props.params;
 
@@ -45,21 +37,13 @@ export async function DELETE(req: NextRequest, props: RouteParams) {
 export async function PATCH(req: NextRequest, props: RouteParams) {
   try {
     const session = await getAuthSession();
-    let userId = (session?.user as any)?.id;
-
-    await connectDB();
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-      }
-    }
+    const userId = (session?.user as any)?.id;
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
     }
+
+    await connectDB();
 
     const { providerId } = await props.params;
     const body = await req.json().catch(() => ({}));

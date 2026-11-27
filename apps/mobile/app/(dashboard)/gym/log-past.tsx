@@ -29,12 +29,6 @@ export default function LogPastWorkout() {
   type ExerciseLog = { equipmentName: string; sets: SetLog[] };
   const [exercises, setExercises] = useState<ExerciseLog[]>([]);
 
-  useSafeFocusEffect(
-    useCallback(() => {
-      loadRoutines();
-    }, [])
-  );
-
   const loadRoutines = async () => {
     try {
       const res = await fetchWithAuth('/gym/routines');
@@ -47,6 +41,12 @@ export default function LogPastWorkout() {
       setFetchingRoutines(false);
     }
   };
+
+  useSafeFocusEffect(
+    useCallback(() => {
+      void loadRoutines();
+    }, [])
+  );
 
   const extractSplits = () => {
     const splits = ['Freestyle']; // Default fallback

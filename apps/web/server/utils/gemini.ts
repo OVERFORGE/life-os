@@ -51,7 +51,7 @@ export const analyzeFoodWithGemini = async (base64Image: string, userDescription
     }
 
     const response = await ai.models.generateContent({
-      model: "gemini-2.5-flash",
+      model: process.env.GEMINI_MODEL || "gemini-2.5-flash",
       contents: [
         {
           role: "user",

@@ -22,6 +22,7 @@ export type ResolutionAction =
   | "NEW"
   | "REINFORCED"
   | "SUPERSEDED"
+  | "DISPUTED"
   | "REJECTED_CONTRADICTION";
 
 export interface ContradictionResolution {
@@ -29,13 +30,16 @@ export interface ContradictionResolution {
   targetMemoryId?: string;
   reason: string;
   supersededMemoryIds?: string[];
+  disputedMemoryIds?: string[];
   updatedConfidence?: number;
 }
+
+export type ContradictionDecision = boolean | "CONTRADICTS" | "DISPUTED" | "CORROBORATES" | "UNRELATED";
 
 export type SemanticContradictionClassifier = (
   candidate: CandidateMemory,
   existing: PersonalMemoryRecord
-) => boolean;
+) => ContradictionDecision;
 
 export class ContradictionResolver {
   private static instance: ContradictionResolver;
@@ -75,15 +79,28 @@ export class ContradictionResolver {
       const existing = match.memory;
       const similarity = match.score;
 
-      // Skip already archived or expired memories
-      if (existing.isArchived || (existing.validTo && existing.validTo <= Date.now())) {
+      // Skip already archived, superseded, or expired memories
+      if (
+        existing.isArchived ||
+        existing.lifecycleStatus === "superseded" ||
+        (existing.validTo && existing.validTo <= Date.now())
+      ) {
         continue;
       }
 
-      // 1. Check for Contradiction via structured semantic resolution
-      const isContradiction = this.detectContradiction(candidate, existing);
+      // 1. Check for Contradiction / Dispute via structured semantic resolution
+      const decision = this.classifyPair(candidate, existing);
 
-      if (isContradiction) {
+      if (decision === "DISPUTED") {
+        return {
+          action: "DISPUTED",
+          targetMemoryId: existing.id,
+          disputedMemoryIds: [existing.id],
+          reason: `Ambiguous conflict with existing memory (${existing.id}); marked disputed rather than guessing.`,
+        };
+      }
+
+      if (decision === "CONTRADICTS") {
         // Case A: Candidate is explicit user statement superseding older fact
         if (candidate.source === "explicit_user_statement") {
           return {
@@ -117,7 +134,7 @@ export class ContradictionResolver {
       // 2. Check for Duplicate / Reinforcement (High similarity, non-contradictory)
       const duplicateThreshold = DEFAULT_MEMORY_POLICY.duplicateSimilarityThreshold;
       const isDuplicateText = candidate.content.trim().toLowerCase() === existing.content.trim().toLowerCase();
-      const isHighSimilarity = similarity >= duplicateThreshold;
+      const isHighSimilarity = decision === "CORROBORATES" || (decision === "UNRELATED" && similarity >= duplicateThreshold);
 
       if (isDuplicateText || isHighSimilarity) {
         const boostedConfidence = Math.min(1.0, existing.confidence + 0.05);
@@ -138,38 +155,53 @@ export class ContradictionResolver {
   }
 
   /**
-   * Evaluates contradiction without using ANY regular expressions.
-   * Leverages structured semantic slots, attribute-value conflict analysis,
-   * or a custom/model-driven classifier.
+   * Evaluates contradiction/dispute without using ANY regular expressions.
+   * Leverages model-driven classifier, semantic slotKey comparison, or colon slot analysis.
    */
-  private detectContradiction(candidate: CandidateMemory, existing: PersonalMemoryRecord): boolean {
+  private classifyPair(
+    candidate: CandidateMemory,
+    existing: PersonalMemoryRecord
+  ): "CONTRADICTS" | "DISPUTED" | "CORROBORATES" | "UNRELATED" {
     // 1. Delegate to custom/model classifier if registered
     if (this.customClassifier) {
-      return this.customClassifier(candidate, existing);
+      const verdict = this.customClassifier(candidate, existing);
+      if (verdict === true || verdict === "CONTRADICTS") return "CONTRADICTS";
+      if (verdict === "DISPUTED") return "DISPUTED";
+      if (verdict === "CORROBORATES") return "CORROBORATES";
+      if (verdict === false || verdict === "UNRELATED") return "UNRELATED";
     }
 
-    // 2. Structured attribute comparison via summary parsing (e.g. "Dietary preference: vegetarian" vs "Dietary hypothesis: omnivore")
+    // 2. Structured semantic slotKey match
+    if (candidate.slotKey && existing.slotKey) {
+      if (candidate.slotKey.trim().toLowerCase() === existing.slotKey.trim().toLowerCase()) {
+        const normA = candidate.content.trim().toLowerCase();
+        const normB = existing.content.trim().toLowerCase();
+        return normA === normB ? "CORROBORATES" : "CONTRADICTS";
+      }
+    }
+
+    // 3. Structured attribute comparison via summary parsing (e.g. "Dietary preference: vegetarian")
     const candidateSlot = this.extractStructuredSlot(candidate.summary || candidate.content);
     const existingSlot = this.extractStructuredSlot(existing.summary || existing.content);
 
     if (candidateSlot && existingSlot) {
       if (candidateSlot.attribute === existingSlot.attribute && candidateSlot.value !== existingSlot.value) {
-        return true;
+        return "CONTRADICTS";
       }
     }
 
-    // 3. Domain-specific semantic dimension comparison
+    // 4. Domain-specific semantic dimension comparison
     if (candidate.domain === existing.domain) {
       const isConflicting = this.checkSemanticDimensionConflict(
         candidate.content.toLowerCase(),
         existing.content.toLowerCase()
       );
       if (isConflicting) {
-        return true;
+        return "CONTRADICTS";
       }
     }
 
-    return false;
+    return "UNRELATED";
   }
 
   /**

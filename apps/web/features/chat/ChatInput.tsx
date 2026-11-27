@@ -1,12 +1,14 @@
 "use client";
 
 import React, { useState, useRef, useEffect } from "react";
-import { ArrowUp, Mic, Loader2 } from "lucide-react";
+import { ArrowUp, Mic, Square } from "lucide-react";
 import { motion } from "framer-motion";
 
 type Props = {
   onSend: (text: string) => void;
   loading: boolean;
+  isStreaming?: boolean;
+  onStopGeneration?: () => void;
   onVoiceClick?: () => void;
   layoutId?: string;
   initialText?: string;
@@ -16,24 +18,31 @@ type Props = {
 export default function ChatInput({
   onSend,
   loading,
+  isStreaming,
+  onStopGeneration,
   onVoiceClick,
   layoutId,
   initialText,
   autoFocus,
 }: Props) {
   const [text, setText] = useState(initialText || "");
+  const [prevInitialText, setPrevInitialText] = useState(initialText);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
-  useEffect(() => {
+  if (initialText !== prevInitialText) {
+    setPrevInitialText(initialText);
     if (initialText) {
       setText(initialText);
-      if (textareaRef.current) {
-        textareaRef.current.style.height = "auto";
-        textareaRef.current.style.height = `${Math.min(
-          textareaRef.current.scrollHeight,
-          140
-        )}px`;
-      }
+    }
+  }
+
+  useEffect(() => {
+    if (initialText && textareaRef.current) {
+      textareaRef.current.style.height = "auto";
+      textareaRef.current.style.height = `${Math.min(
+        textareaRef.current.scrollHeight,
+        140
+      )}px`;
     }
   }, [initialText]);
 
@@ -101,20 +110,28 @@ export default function ChatInput({
               />
             </button>
 
-            {/* Upward Arrow Send Button */}
-            <button
-              type="button"
-              onClick={handleSend}
-              disabled={loading || !text.trim()}
-              className="w-8 h-8 rounded-xl bg-[#ffb86c] hover:bg-[#ffb86c]/90 disabled:opacity-40 text-[#1A0F00] flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-md"
-              title="Send message"
-            >
-              {loading ? (
-                <Loader2 size={16} className="animate-spin text-[#1A0F00]" />
-              ) : (
+            {/* Stop or Upward Arrow Send Button */}
+            {isStreaming && onStopGeneration ? (
+              <button
+                type="button"
+                onClick={onStopGeneration}
+                className="w-8 h-8 rounded-xl bg-[#26262a] hover:bg-[#323238] border border-[#ffb86c]/50 text-[#ffb86c] flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-md"
+                title="Stop generation"
+                aria-label="Stop generation"
+              >
+                <Square size={14} className="fill-current" />
+              </button>
+            ) : (
+              <button
+                type="button"
+                onClick={handleSend}
+                disabled={loading || !text.trim()}
+                className="w-8 h-8 rounded-xl bg-[#ffb86c] hover:bg-[#ffb86c]/90 disabled:opacity-40 text-[#1A0F00] flex items-center justify-center transition-all active:scale-95 cursor-pointer shadow-md"
+                title="Send message"
+              >
                 <ArrowUp size={16} className="stroke-[2.5]" />
-              )}
-            </button>
+              </button>
+            )}
           </div>
         </motion.div>
       </div>

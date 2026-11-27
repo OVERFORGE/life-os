@@ -16,10 +16,13 @@ async function main() {
   const daemon = new OutboxWorkerDaemon({ pollIntervalMs: 1000, batchSize: 25 });
   console.log(`[DAEMON] Started with worker ID: ${daemon.getHealth().workerId}`);
 
+  let isShuttingDown = false;
   // Graceful shutdown handling
   const shutdown = async (signal: string) => {
+    if (isShuttingDown) return;
+    isShuttingDown = true;
     console.log(`[DAEMON] Received ${signal}. Draining active tasks and stopping...`);
-    daemon.stop();
+    await daemon.stopAndDrain(5000);
     await mongoose.disconnect();
     console.log("[DAEMON] Shutdown complete.");
     process.exit(0);

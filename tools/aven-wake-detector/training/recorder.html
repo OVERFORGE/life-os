@@ -1,0 +1,766 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>LifeOS — Aven Neural Wake-Word Studio</title>
+  <style>
+    :root {
+      --bg: #111113;
+      --card: #17171a;
+      --elevated: #1e1f24;
+      --border: #282930;
+      --text: #f7f5f0;
+      --muted: #9a978f;
+      --amber: #d98b2b;
+      --sage: #6b8e7b;
+      --red: #de4343;
+    }
+    * { box-sizing: border-box; }
+    body {
+      margin: 0;
+      background: var(--bg);
+      color: var(--text);
+      font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      padding: 20px;
+    }
+    .container { max-width: 1120px; margin: 0 auto; display: grid; gap: 18px; }
+    .header {
+      display: flex; align-items: center; justify-content: space-between; flex-wrap: wrap; gap: 12px;
+      border-bottom: 1px solid var(--border); padding-bottom: 14px;
+    }
+    .brand { display: flex; align-items: center; gap: 10px; }
+    .dot { width: 10px; height: 10px; border-radius: 50%; background: var(--amber); box-shadow: 0 0 10px var(--amber); }
+    h1 { margin: 0; font-size: 18px; }
+    .sub { color: var(--muted); font-size: 13px; margin-top: 2px; }
+    .share-bar {
+      background: rgba(217, 139, 43, 0.08);
+      border: 1px solid rgba(217, 139, 43, 0.35);
+      border-radius: 12px;
+      padding: 12px 16px;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      flex-wrap: wrap;
+      gap: 10px;
+    }
+    .grid { display: grid; grid-template-columns: 360px 1fr; gap: 18px; }
+    @media (max-width: 900px) { .grid { grid-template-columns: 1fr; } }
+    .card {
+      background: var(--card); border: 1px solid var(--border); border-radius: 14px; padding: 18px;
+    }
+    label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 5px; margin-top: 10px; }
+    input, select {
+      width: 100%; background: var(--elevated); border: 1px solid var(--border);
+      color: var(--text); border-radius: 8px; padding: 9px 11px; font-size: 13px;
+    }
+    .row2 { display: grid; grid-template-columns: 1fr 1fr; gap: 10px; }
+    .cat-list { display: grid; gap: 7px; margin-top: 10px; max-height: 440px; overflow-y: auto; }
+    .cat-btn {
+      width: 100%; text-align: left; background: var(--elevated); border: 1px solid var(--border);
+      color: var(--text); border-radius: 10px; padding: 9px 12px; cursor: pointer;
+      display: flex; justify-content: space-between; align-items: center; font-size: 12.5px; gap: 8px;
+    }
+    .cat-btn.active { border-color: var(--amber); background: rgba(217, 139, 43, 0.14); }
+    .cat-badge {
+      font-size: 10px; font-family: monospace; padding: 1px 6px; border-radius: 999px;
+      background: rgba(255,255,255,0.06); color: var(--muted);
+    }
+    .cat-badge.pos { color: #f5c26b; background: rgba(217,139,43,0.14); }
+    .cat-badge.neg { color: #a7b6ff; background: rgba(99,102,241,0.15); }
+    .cat-count { font-family: monospace; font-size: 12px; color: var(--amber); white-space: nowrap; }
+    .cat-count.done { color: var(--sage); }
+    .prompt-box {
+      background: var(--elevated); border: 1px solid var(--border); border-radius: 12px;
+      padding: 20px; text-align: center; margin-bottom: 14px;
+    }
+    .prompt-tag {
+      display: inline-block; font-size: 11px; text-transform: uppercase; letter-spacing: 0.08em;
+      color: var(--amber); margin-bottom: 8px; font-family: monospace;
+    }
+    .prompt-text { font-size: 22px; font-weight: 600; margin: 4px 0 8px; line-height: 1.35; }
+    .prompt-hint { font-size: 13px; color: var(--muted); line-height: 1.45; }
+    .meter-wrap {
+      height: 10px; background: #0b0b0d; border-radius: 999px; overflow: hidden;
+      border: 1px solid var(--border); margin: 14px 0;
+    }
+    .meter-bar { height: 100%; width: 0%; background: var(--sage); transition: width 40ms linear; }
+    .controls { display: flex; gap: 10px; justify-content: center; flex-wrap: wrap; }
+    button.primary {
+      background: var(--amber); color: #111113; border: none; border-radius: 10px;
+      padding: 13px 22px; font-size: 14px; font-weight: 600; cursor: pointer;
+    }
+    button.primary.recording { background: var(--red); color: #fff; }
+    button.secondary {
+      background: var(--elevated); color: var(--text); border: 1px solid var(--border);
+      border-radius: 10px; padding: 12px 16px; font-size: 13px; cursor: pointer;
+    }
+    button:disabled { opacity: 0.45; cursor: not-allowed; }
+    .status-line {
+      text-align: center; font-size: 12px; font-family: monospace; color: var(--muted);
+      margin-top: 10px; min-height: 18px;
+    }
+    .status-line.warn { color: #f59e0b; }
+    .status-line.err { color: var(--red); }
+    .status-line.ok { color: var(--sage); }
+    .clips-list { display: grid; gap: 8px; max-height: 260px; overflow-y: auto; margin-top: 12px; }
+    .clip-row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      background: var(--elevated); border: 1px solid var(--border); border-radius: 8px; padding: 8px 10px;
+      font-size: 12px;
+    }
+    .clip-meta { color: var(--muted); font-family: monospace; font-size: 11px; }
+    .mini-btn {
+      background: var(--elevated); border: 1px solid var(--border); color: var(--text);
+      border-radius: 6px; padding: 5px 10px; font-size: 11.5px; cursor: pointer;
+    }
+    .mini-btn.amber { border-color: rgba(217,139,43,0.4); color: #f5c26b; }
+    .mini-btn.del { color: var(--red); border-color: rgba(222, 67, 67, 0.3); }
+    kbd { background: #111; border: 1px solid var(--border); padding: 2px 6px; border-radius: 4px; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <div class="container">
+    <div class="header">
+      <div class="brand">
+        <div class="dot"></div>
+        <div>
+          <h1 id="pageTitle">Aven Neural Wake-Word Studio (16kHz PCM Mono)</h1>
+          <div class="sub" id="pageSub">Tap Record (or hold <kbd>Space</kbd>) to capture diverse real-world voice samples</div>
+        </div>
+      </div>
+      <div id="totalCounter" style="font-family: monospace; font-size: 13px; color: var(--amber);">0 clips saved</div>
+    </div>
+
+    <!-- Host Share Bar (Shown only on Host localhost when Cloudflare HTTPS tunnel is active) -->
+    <div class="share-bar" id="shareBar" style="display:none;">
+      <div>
+        <strong style="font-size:13px; color:#f5c26b;">Live Friend Invite Links (Free HTTPS Cloudflare Tunnel)</strong>
+        <div style="font-size:12px; color:var(--muted);" id="shareUrlText"></div>
+      </div>
+      <div style="display:flex; gap:8px; flex-wrap:wrap;">
+        <button class="mini-btn amber" id="copyTrainBtn">Copy Friend Link (Train Pool)</button>
+        <button class="mini-btn amber" id="copyBlindBtn">Copy Friend Link (Blind Test Pool)</button>
+      </div>
+    </div>
+
+    <div class="grid">
+      <!-- Left sidebar: Contributor Profile & Rich Category Quotas -->
+      <div class="card">
+        <strong style="font-size: 14px;">1. Contributor Profile</strong>
+        <label for="speakerInput">Your Name / Speaker ID (unique per person)</label>
+        <input id="speakerInput" value="owner" placeholder="e.g. rohan, priya, alex..." />
+
+        <div id="splitRow">
+          <label for="splitSelect">Dataset Split Assignment</label>
+          <select id="splitSelect">
+            <option value="train_real">train_real (Training Calibration Pool)</option>
+            <option value="val_blind">val_blind (Unseen Blind Test Pool)</option>
+          </select>
+        </div>
+
+        <div class="row2">
+          <div>
+            <label for="accentSelect">Accent / Region</label>
+            <select id="accentSelect">
+              <option value="indian_en">Indian English</option>
+              <option value="us_en">US English</option>
+              <option value="uk_en">British English</option>
+              <option value="other_en">Other / Mixed</option>
+            </select>
+          </div>
+          <div>
+            <label for="deviceSelect">Microphone Type</label>
+            <select id="deviceSelect">
+              <option value="laptop">Laptop Mic</option>
+              <option value="phone">Phone Mic</option>
+              <option value="headset">Headset / Earphones</option>
+              <option value="external">USB / Desk Mic</option>
+            </select>
+          </div>
+        </div>
+
+        <label for="genderSelect">Voice Pitch Group (for SaaS balance)</label>
+        <select id="genderSelect">
+          <option value="unspecified">Prefer not to specify</option>
+          <option value="male">Lower / Male Voice</option>
+          <option value="female">Higher / Female Voice</option>
+        </select>
+
+        <strong style="display:block; font-size: 14px; margin-top: 16px;">2. Diverse Recording Categories</strong>
+        <div class="cat-list" id="catList"></div>
+      </div>
+
+      <!-- Right main panel: Prompt, VU Meter & Clips -->
+      <div style="display: grid; gap: 16px;">
+        <div class="card">
+          <div class="prompt-box">
+            <div class="prompt-tag" id="promptTag">POSITIVE SEATED</div>
+            <div class="prompt-text" id="promptText">Hey Aven</div>
+            <div class="prompt-hint" id="promptHint">Natural seated mic distance (~50cm).</div>
+          </div>
+
+          <div class="meter-wrap"><div class="meter-bar" id="meterBar"></div></div>
+
+          <div class="controls">
+            <button class="primary" id="recordBtn">Tap to Start Recording (or Hold Space)</button>
+            <button class="secondary" id="nextPromptBtn">Skip / Next Prompt</button>
+            <button class="secondary" id="enableMicBtn">Test Mic</button>
+          </div>
+
+          <div class="status-line" id="statusLine">Tap "Test Mic" or Start Recording to enable 16kHz microphone capture.</div>
+        </div>
+
+        <div class="card">
+          <div style="display:flex; justify-content: space-between; align-items: center;">
+            <strong style="font-size: 14px;">Saved Clips in Current Category</strong>
+            <button class="mini-btn" id="refreshBtn">Refresh</button>
+          </div>
+          <div class="clips-list" id="clipsList"></div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <script>
+    const CATEGORIES = [
+      {
+        id: "pos_seated",
+        group: "pos",
+        label: "1. Seated Casual",
+        target: 20,
+        prompts: [
+          { text: "Hey Aven", hint: "Normal seated posture (~50cm), casual everyday tone" },
+          { text: "Hey Aven", hint: "Relaxed conversational speed — like calling someone across a desk" },
+          { text: "Hey Aven", hint: "Crisp clear diction with slight emphasis on 'Aven'" },
+          { text: "Hey Aven?", hint: "Questioning rising tone at the end" },
+          { text: "Hey Aven!", hint: "Friendly energetic greeting" },
+          { text: "Hey Aven", hint: "Soft relaxed morning tone before fully awake" },
+          { text: "Hey Aven", hint: "Warm natural pronunciation (even if closer to 'Hey Even' for you)" },
+          { text: "Hey Aven...", hint: "Thoughtful / hesitant tone as you think of what to ask" },
+        ],
+      },
+      {
+        id: "pos_connected",
+        group: "pos",
+        label: "2. One-Breath Commands",
+        target: 20,
+        prompts: [
+          { text: "Hey Aven, what are my tasks today?", hint: "Speak straight through in one breath without pausing" },
+          { text: "Hey Aven, schedule a workout for 6 PM", hint: "Co-articulated casual speech" },
+          { text: "Hey Aven, remind me to call Mom in 20 minutes", hint: "Natural pace straight into command" },
+          { text: "Hey Aven, start a 25 minute focus session", hint: "Everyday tone" },
+          { text: "Hey Aven, did I get any important emails?", hint: "Rising question cadence" },
+          { text: "Hey Aven, mark my morning task complete", hint: "Clear mid-speed" },
+          { text: "Hey Aven, summarize what's left on my calendar", hint: "Fast conversational flow" },
+          { text: "Hey Aven, push everything back by thirty minutes", hint: "Slightly distracted desk tone" },
+          { text: "Hey Aven, log that I ran five kilometers today", hint: "Natural voice" },
+          { text: "Hey Aven, add buy groceries to my inbox", hint: "Brisk command" },
+          { text: "Hey Aven, set a wake alarm for 7 AM tomorrow", hint: "Relaxed late-night tone" },
+          { text: "Hey Aven, cancel the 4 o'clock standup", hint: "Assertive clear voice" },
+          { text: "Hey Aven, how much focus time do I have left?", hint: "Curious quick question" },
+          { text: "Hey Aven, switch on quiet mode for two hours", hint: "Calm voice" },
+          { text: "Hey Aven, read back my notes from yesterday", hint: "Casual speed" },
+        ],
+      },
+      {
+        id: "pos_farfield",
+        group: "pos",
+        label: "3. Distance, Angles & Whisper",
+        target: 15,
+        prompts: [
+          { text: "Hey Aven", hint: "Lean back 1.5m from the mic (far-field)" },
+          { text: "Hey Aven", hint: "Stand ~2 meters away across the room and project clearly" },
+          { text: "Hey Aven", hint: "Turn your head 90 degrees left away from the mic" },
+          { text: "Hey Aven", hint: "Turn your head 90 degrees right away from the mic" },
+          { text: "Hey Aven", hint: "Quiet late-night murmur / semi-whisper (~30cm)" },
+          { text: "Hey Aven", hint: "Looking down at phone/notebook (~70cm)" },
+        ],
+      },
+      {
+        id: "pos_prosody",
+        group: "pos",
+        label: "4. Accent, Timing & Fillers",
+        target: 15,
+        prompts: [
+          { text: "Hey... Aven", hint: "Tiny natural pause (~150ms) between Hey and Aven" },
+          { text: "HeyAven", hint: "Very fast slurred single-beat delivery" },
+          { text: "Hey Ay-ven", hint: "Distinct open 'Ay' vowel sound (/eɪ/)" },
+          { text: "Hey Eh-ven", hint: "Short 'Eh' vowel sound (/ɛ/) — common natural accent" },
+          { text: "Hey Ee-ven", hint: "Natural soft 'Ee' vowel sound (/iː/)" },
+          { text: "Hey Aven, um...", hint: "Pause to think right after the wake phrase" },
+          { text: "Hey Aven, wait a second", hint: "Natural conversational interruption" },
+          { text: "Hey Aven, yeah listen...", hint: "Warm casual lead-in" },
+        ],
+      },
+      {
+        id: "pos_noisy",
+        group: "pos",
+        label: "5. Over Keyboard / Music",
+        target: 12,
+        prompts: [
+          { text: "Hey Aven", hint: "Say this WHILE actively typing rapidly on your keyboard" },
+          { text: "Hey Aven", hint: "Play a YouTube video/music softly on speaker (~30%) and say Hey Aven" },
+          { text: "Hey Aven, pause timer", hint: "Speak while clapping once or tapping your desk" },
+          { text: "Hey Aven", hint: "Speak while walking/moving slightly past the desk" },
+        ],
+      },
+      {
+        id: "neg_hey_names",
+        group: "neg",
+        label: "6. Trap: 'Hey <Other Words>'",
+        target: 20,
+        prompts: [
+          { text: "Hey everyone, welcome back to the call", hint: "HARD TRAP: Similar onset 'Hey e...'" },
+          { text: "Hey man, did you finish that build?", hint: "HARD TRAP: Casual 'Hey man'" },
+          { text: "Hey Kevin, send me the link when free", hint: "HARD TRAP: Closest acoustic rhyme 'Hey Kevin'" },
+          { text: "Hey Steven, can we push the meeting?", hint: "HARD TRAP: 'Hey Steven'" },
+          { text: "Hey Devin, check the console output", hint: "HARD TRAP: 'Hey Devin'" },
+          { text: "Hey Ethan, what time are we leaving?", hint: "HARD TRAP: 'Hey Ethan'" },
+          { text: "Hey Aaron, look at this screenshot", hint: "HARD TRAP: 'Hey Aaron'" },
+          { text: "Hey guys, let's get started right now", hint: "HARD TRAP: 'Hey guys'" },
+          { text: "Hey Nathan, I fixed the API route", hint: "HARD TRAP: 'Hey Nathan'" },
+          { text: "Hey Siri, ignore this test sentence", hint: "HARD TRAP: Competing assistant wake word" },
+          { text: "Hey Google, what's the weather today?", hint: "HARD TRAP: Competing assistant wake word" },
+          { text: "Hey again, just checking in quickly", hint: "HARD TRAP: 'Hey a...' sound onset" },
+        ],
+      },
+      {
+        id: "neg_hard",
+        group: "neg",
+        label: "7. Trap: 'When / Even / Been / Fine'",
+        target: 40,
+        prompts: [
+          { text: "When I'm speaking normally, it stays asleep", hint: "TRAP: Sentence-initial 'When'" },
+          { text: "Even after I finished testing everything", hint: "TRAP: Sentence-initial 'Even'" },
+          { text: "I didn't even say the keyword once", hint: "TRAP: Mid-sentence 'even'" },
+          { text: "Okay, even if that happens tomorrow", hint: "TRAP: 'Okay, even'" },
+          { text: "He won the tournament yesterday afternoon", hint: "TRAP: Phonetic neighbor 'he won'" },
+          { text: "He went downstairs to grab coffee", hint: "TRAP: Phonetic neighbor 'he went'" },
+          { text: "He even forgot to push his changes", hint: "TRAP: 'He even'" },
+          { text: "Been working on this feature all day", hint: "TRAP: Starts with 'Been'" },
+          { text: "Fine by me, let's ship it tonight", hint: "TRAP: Starts with 'Fine'" },
+          { text: "Open the browser tab and check localhost", hint: "TRAP: Starts with 'Open'" },
+          { text: "Seven minutes remaining on the clock", hint: "TRAP: Starts with 'Seven'" },
+          { text: "Eleven people joined the demo meeting", hint: "TRAP: Starts with 'Eleven'" },
+          { text: "Heaven knows why the server crashed", hint: "TRAP: Glottal H + v + n ('Heaven')" },
+          { text: "Walking down Haven Avenue at night", hint: "TRAP: 'Haven Avenue'" },
+          { text: "Fun fact, we didn't even notice it", hint: "TRAP: 'Fun' + 'even'" },
+          { text: "Have one more look at the error trace", hint: "TRAP: 'Have one'" },
+          { text: "Whenever it listens, I wasn't calling it", hint: "TRAP: 'Whenever'" },
+          { text: "Given how fast the tests are running", hint: "TRAP: 'Given'" },
+        ],
+      },
+      {
+        id: "neg_free_speech",
+        group: "neg",
+        label: "8. Long Free Speech / Dictation (10-15s)",
+        target: 8,
+        prompts: [
+          { text: "Dictate what you plan to build or work on today for 12 seconds naturally.", hint: "Talk freely like Wispr Flow dictation — zero 'Aven' mentions" },
+          { text: "Read aloud any paragraph from a webpage, article, or chat message for 12 seconds.", hint: "Natural reading cadence (~12s)" },
+          { text: "Speak naturally in Hinglish or mixed bilingual casual speech with a friend for 12 seconds.", hint: "Real bilingual conversational cadence" },
+          { text: "Describe your favorite movie, meal, or weekend plan in fast relaxed speech for 12 seconds.", hint: "Fast conversational variation" },
+        ],
+      },
+      {
+        id: "neg_ambient",
+        group: "neg",
+        label: "9. Room Noise & Non-Speech (30-60s)",
+        target: 4,
+        prompts: [
+          { text: "[45s Heavy Keyboard Typing + Mouse Clicks]", hint: "Do NOT talk — just type rapidly and click around" },
+          { text: "[60s YouTube / Podcast / Movie Audio Across Room]", hint: "Play English speakers/dialogue from speakers across the room" },
+          { text: "[30s Room Silence / Fan / AC Floor]", hint: "Stay silent so the model learns your room background" },
+          { text: "[20s Coughing, Clearing Throat, Laughing, Desk Taps]", hint: "Short non-speech vocal & desk impulses" },
+        ],
+      },
+    ];
+
+    const urlParams = new URLSearchParams(window.location.search);
+    const isFriendMode = urlParams.get("mode") === "friend";
+    const forcedSplit = urlParams.get("split");
+    const inviteKey = urlParams.get("k") || "";
+
+    let activeCatId = "pos_seated";
+    let promptIdx = 0;
+    let allClips = [];
+
+    let audioCtx = null;
+    let mediaStream = null;
+    let processorNode = null;
+    let sourceNode = null;
+    let isRecording = false;
+    let recordedBlocks = [];
+    let currentMaxPeak = 0;
+
+    const speakerEl = document.getElementById("speakerInput");
+    const splitEl = document.getElementById("splitSelect");
+    const splitRowEl = document.getElementById("splitRow");
+    const accentEl = document.getElementById("accentSelect");
+    const deviceEl = document.getElementById("deviceSelect");
+    const genderEl = document.getElementById("genderSelect");
+    const catListEl = document.getElementById("catList");
+    const promptTagEl = document.getElementById("promptTag");
+    const promptTextEl = document.getElementById("promptText");
+    const promptHintEl = document.getElementById("promptHint");
+    const meterBarEl = document.getElementById("meterBar");
+    const recordBtn = document.getElementById("recordBtn");
+    const nextPromptBtn = document.getElementById("nextPromptBtn");
+    const enableMicBtn = document.getElementById("enableMicBtn");
+    const statusLine = document.getElementById("statusLine");
+    const clipsListEl = document.getElementById("clipsList");
+    const totalCounterEl = document.getElementById("totalCounter");
+    const shareBarEl = document.getElementById("shareBar");
+    const shareUrlTextEl = document.getElementById("shareUrlText");
+
+    // Configure Friend Contributor Mode when opened via invite link
+    if (isFriendMode) {
+      document.getElementById("pageTitle").textContent = "Help Train Aven Voice Wake-Word";
+      document.getElementById("pageSub").textContent =
+        "Enter your first name, tap Record, speak clearly, then tap again to save. Takes ~3–5 minutes!";
+      const savedName = localStorage.getItem("aven_contrib_name");
+      speakerEl.value = savedName || ("friend_" + Math.random().toString(36).slice(2, 6));
+      if (forcedSplit === "val_blind" || forcedSplit === "train_real") {
+        splitEl.value = forcedSplit;
+      }
+      splitRowEl.style.display = "none";
+      if (/Mobi|Android|iPhone/i.test(navigator.userAgent)) {
+        deviceEl.value = "phone";
+      }
+    }
+
+    function setStatus(msg, cls = "") {
+      statusLine.textContent = msg;
+      statusLine.className = "status-line " + cls;
+    }
+
+    function authHeaders(extra = {}) {
+      const h = { ...extra };
+      if (inviteKey) h["x-invite-token"] = inviteKey;
+      return h;
+    }
+
+    function downsampleTo16k(float32Buf, inputRate) {
+      if (inputRate === 16000) return float32Buf;
+      const ratio = inputRate / 16000;
+      const outLen = Math.floor(float32Buf.length / ratio);
+      const out = new Float32Array(outLen);
+      for (let i = 0; i < outLen; i++) {
+        const pos = i * ratio;
+        const idx = Math.floor(pos);
+        const frac = pos - idx;
+        const a = float32Buf[idx] || 0;
+        const b = float32Buf[Math.min(idx + 1, float32Buf.length - 1)] || a;
+        out[i] = a + (b - a) * frac;
+      }
+      return out;
+    }
+
+    function encodeWav16k(samples) {
+      const len = samples.length;
+      const buffer = new ArrayBuffer(44 + len * 2);
+      const view = new DataView(buffer);
+      const writeStr = (offset, s) => { for (let i = 0; i < s.length; i++) view.setUint8(offset + i, s.charCodeAt(i)); };
+
+      writeStr(0, "RIFF");
+      view.setUint32(4, 36 + len * 2, true);
+      writeStr(8, "WAVE");
+      writeStr(12, "fmt ");
+      view.setUint32(16, 16, true);
+      view.setUint16(20, 1, true);
+      view.setUint16(22, 1, true);
+      view.setUint32(24, 16000, true);
+      view.setUint32(28, 16000 * 2, true);
+      view.setUint16(32, 2, true);
+      view.setUint16(34, 16, true);
+      writeStr(36, "data");
+      view.setUint32(40, len * 2, true);
+
+      let offset = 44;
+      for (let i = 0; i < len; i++, offset += 2) {
+        const clamped = Math.max(-1, Math.min(1, samples[i]));
+        view.setInt16(offset, clamped < 0 ? clamped * 0x8000 : clamped * 0x7fff, true);
+      }
+      return new Uint8Array(buffer);
+    }
+
+    function arrayToBase64(u8) {
+      let binary = "";
+      const chunk = 0x8000;
+      for (let i = 0; i < u8.length; i += chunk) {
+        binary += String.fromCharCode.apply(null, u8.subarray(i, i + chunk));
+      }
+      return btoa(binary);
+    }
+
+    async function ensureMic() {
+      if (!navigator.mediaDevices?.getUserMedia) {
+        throw new Error("Microphone API blocked (must open over HTTPS or 127.0.0.1).");
+      }
+      if (!audioCtx) {
+        audioCtx = new (window.AudioContext || window.webkitAudioContext)();
+      }
+      if (audioCtx.state === "suspended") {
+        await audioCtx.resume();
+      }
+      if (mediaStream) return;
+
+      mediaStream = await navigator.mediaDevices.getUserMedia({
+        audio: {
+          channelCount: 1,
+          echoCancellation: false,
+          noiseSuppression: false,
+          autoGainControl: false,
+        },
+      });
+
+      sourceNode = audioCtx.createMediaStreamSource(mediaStream);
+      processorNode = audioCtx.createScriptProcessor(2048, 1, 1);
+      const zeroGain = audioCtx.createGain();
+      zeroGain.gain.value = 0;
+
+      processorNode.onaudioprocess = (e) => {
+        const input = e.inputBuffer.getChannelData(0);
+        let peak = 0;
+        let sq = 0;
+        for (let i = 0; i < input.length; i++) {
+          const a = Math.abs(input[i]);
+          if (a > peak) peak = a;
+          sq += input[i] * input[i];
+        }
+        const rms = Math.sqrt(sq / input.length);
+        const pct = Math.min(100, Math.round(rms * 420));
+        meterBarEl.style.width = pct + "%";
+        meterBarEl.style.background = peak > 0.98 ? "#de4343" : "#6b8e7b";
+
+        if (isRecording) {
+          if (peak > currentMaxPeak) currentMaxPeak = peak;
+          recordedBlocks.push(new Float32Array(input));
+        }
+      };
+
+      sourceNode.connect(processorNode);
+      processorNode.connect(zeroGain);
+      zeroGain.connect(audioCtx.destination);
+      setStatus(`Mic ready (${audioCtx.sampleRate}Hz -> 16000Hz clean PCM WAV).`, "ok");
+    }
+
+    async function startRecording() {
+      try {
+        await ensureMic();
+        recordedBlocks = [];
+        currentMaxPeak = 0;
+        isRecording = true;
+        recordBtn.textContent = "Recording... Tap (or Release Space) to Save";
+        recordBtn.classList.add("recording");
+        setStatus("Recording live... speak cleanly now.", "");
+      } catch (err) {
+        setStatus("Mic error: " + (err?.message || err), "err");
+      }
+    }
+
+    async function stopRecordingAndSave() {
+      if (!isRecording) return;
+      isRecording = false;
+      recordBtn.textContent = "Tap to Start Recording (or Hold Space)";
+      recordBtn.classList.remove("recording");
+
+      const totalRaw = recordedBlocks.reduce((acc, b) => acc + b.length, 0);
+      const merged = new Float32Array(totalRaw);
+      let off = 0;
+      for (const b of recordedBlocks) {
+        merged.set(b, off);
+        off += b.length;
+      }
+
+      const downsampled = downsampleTo16k(merged, audioCtx.sampleRate);
+      const durationSec = downsampled.length / 16000;
+
+      if (durationSec < 0.35) {
+        setStatus(`Too short (${durationSec.toFixed(2)}s). Hold/wait at least 0.5s while speaking.`, "warn");
+        return;
+      }
+
+      let sumSq = 0;
+      for (let i = 0; i < downsampled.length; i++) sumSq += downsampled[i] * downsampled[i];
+      const rms = Math.sqrt(sumSq / downsampled.length);
+
+      if (rms < 0.002 && activeCatId !== "neg_ambient") {
+        setStatus(`Near-silence (rms=${rms.toFixed(4)}). Check microphone / speak slightly louder.`, "warn");
+        return;
+      }
+
+      const cleanSpeaker = (speakerEl.value || "contributor").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_") || "contributor";
+      if (isFriendMode) localStorage.setItem("aven_contrib_name", cleanSpeaker);
+
+      const wavBytes = encodeWav16k(downsampled);
+      const wavBase64 = arrayToBase64(wavBytes);
+      const cat = CATEGORIES.find((c) => c.id === activeCatId);
+      const prompt = cat.prompts[promptIdx % cat.prompts.length];
+
+      setStatus("Uploading 16kHz WAV to studio...", "");
+      const res = await fetch("/api/clips", {
+        method: "POST",
+        headers: authHeaders({ "Content-Type": "application/json" }),
+        body: JSON.stringify({
+          split: splitEl.value,
+          speaker: cleanSpeaker,
+          category: activeCatId,
+          promptText: prompt.text,
+          accent: accentEl.value,
+          deviceType: deviceEl.value,
+          gender: genderEl.value,
+          rms: Number(rms.toFixed(5)),
+          peak: Number(currentMaxPeak.toFixed(4)),
+          wavBase64,
+        }),
+      });
+
+      const data = await res.json();
+      if (!res.ok) {
+        setStatus("Save error: " + (data.error || res.status), "err");
+        return;
+      }
+
+      const warnMsg = currentMaxPeak >= 0.98 ? " [WARN: loud peak clipped!]" : "";
+      setStatus(`Saved (${data.durationSec}s, rms=${rms.toFixed(3)})${warnMsg} -> Ready for next!`, currentMaxPeak >= 0.98 ? "warn" : "ok");
+      promptIdx++;
+      renderPrompt();
+      await loadClips();
+    }
+
+    function renderPrompt() {
+      const cat = CATEGORIES.find((c) => c.id === activeCatId);
+      const p = cat.prompts[promptIdx % cat.prompts.length];
+      promptTagEl.textContent = cat.label.toUpperCase();
+      promptTextEl.textContent = p.text;
+      promptHintEl.textContent = p.hint;
+    }
+
+    function renderCategoriesAndClips() {
+      const activeSpeaker = (speakerEl.value || "owner").trim().toLowerCase().replace(/[^a-z0-9_-]+/g, "_");
+      totalCounterEl.textContent = isFriendMode
+        ? `${allClips.length} of your clips saved`
+        : `${allClips.length} total clips saved on disk`;
+
+      catListEl.innerHTML = "";
+      for (const cat of CATEGORIES) {
+        const countForSpeaker = allClips.filter(
+          (c) => c.category === cat.id && c.speaker === activeSpeaker
+        ).length;
+        const targetForMode = isFriendMode ? Math.max(2, Math.ceil(cat.target / 3)) : cat.target;
+        const btn = document.createElement("button");
+        btn.className = "cat-btn" + (cat.id === activeCatId ? " active" : "");
+        btn.innerHTML = `
+          <span style="display:flex;align-items:center;gap:6px;">
+            <span class="cat-badge ${cat.group}">${cat.group.toUpperCase()}</span>
+            <span>${cat.label}</span>
+          </span>
+          <span class="cat-count ${countForSpeaker >= targetForMode ? "done" : ""}">${countForSpeaker}/${targetForMode}</span>`;
+        btn.onclick = () => {
+          activeCatId = cat.id;
+          promptIdx = 0;
+          renderPrompt();
+          renderCategoriesAndClips();
+        };
+        catListEl.appendChild(btn);
+      }
+
+      const filtered = allClips.filter((c) => c.category === activeCatId);
+      clipsListEl.innerHTML = filtered.length === 0
+        ? `<div class="clip-meta">No clips saved in ${activeCatId} for this view yet.</div>`
+        : "";
+
+      for (const clip of filtered.slice(0, 40)) {
+        const row = document.createElement("div");
+        row.className = "clip-row";
+        row.innerHTML = `
+          <div>
+            <div><strong>${clip.filename}</strong></div>
+            <div class="clip-meta">${clip.split} / ${clip.speaker} &bull; ${clip.durationSec}s</div>
+          </div>
+          <div style="display:flex; gap:6px;">
+            <button class="mini-btn" data-play="${encodeURIComponent(clip.relPath)}" data-spk="${encodeURIComponent(clip.speaker)}">Play</button>
+            <button class="mini-btn del" data-del="${encodeURIComponent(clip.relPath)}" data-spk="${encodeURIComponent(clip.speaker)}">Delete</button>
+          </div>
+        `;
+        clipsListEl.appendChild(row);
+      }
+
+      clipsListEl.querySelectorAll("[data-play]").forEach((b) => {
+        b.onclick = () => {
+          const p = b.getAttribute("data-play");
+          const s = b.getAttribute("data-spk");
+          new Audio(`/api/clip-audio?path=${p}&speaker=${s}&k=${encodeURIComponent(inviteKey)}`).play();
+        };
+      });
+      clipsListEl.querySelectorAll("[data-del]").forEach((b) => {
+        b.onclick = async () => {
+          const p = b.getAttribute("data-del");
+          const s = b.getAttribute("data-spk");
+          await fetch(`/api/clips?path=${p}&speaker=${s}`, { method: "DELETE", headers: authHeaders() });
+          await loadClips();
+        };
+      });
+    }
+
+    async function loadClips() {
+      const spk = encodeURIComponent(speakerEl.value || "");
+      const res = await fetch(`/api/clips?speaker=${spk}`, { headers: authHeaders() });
+      if (!res.ok) return;
+      const data = await res.json();
+      allClips = data.clips || [];
+      renderCategoriesAndClips();
+    }
+
+    async function loadShareInfo() {
+      if (isFriendMode) return;
+      try {
+        const res = await fetch("/api/share-info");
+        if (!res.ok) return;
+        const info = await res.json();
+        if (info.isHost && info.publicUrl) {
+          shareBarEl.style.display = "flex";
+          shareUrlTextEl.textContent = `Active HTTPS Tunnel: ${info.publicUrl}`;
+          document.getElementById("copyTrainBtn").onclick = () => {
+            navigator.clipboard.writeText(info.trainLink);
+            setStatus("Copied Training Friend Share Link!", "ok");
+          };
+          document.getElementById("copyBlindBtn").onclick = () => {
+            navigator.clipboard.writeText(info.blindLink);
+            setStatus("Copied Blind Validation Friend Share Link!", "ok");
+          };
+        }
+      } catch {}
+    }
+
+    enableMicBtn.onclick = () => ensureMic().catch((e) => setStatus("Mic error: " + e.message, "err"));
+    nextPromptBtn.onclick = () => { promptIdx++; renderPrompt(); };
+    document.getElementById("refreshBtn").onclick = () => loadClips();
+    speakerEl.oninput = () => loadClips();
+
+    recordBtn.onclick = () => {
+      if (isRecording) stopRecordingAndSave();
+      else startRecording();
+    };
+
+    window.addEventListener("keydown", (e) => {
+      if (e.code === "Space" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "SELECT" && !e.repeat) {
+        e.preventDefault();
+        if (!isRecording) startRecording();
+      }
+    });
+    window.addEventListener("keyup", (e) => {
+      if (e.code === "Space" && document.activeElement?.tagName !== "INPUT" && document.activeElement?.tagName !== "SELECT") {
+        e.preventDefault();
+        if (isRecording) stopRecordingAndSave();
+      }
+    });
+
+    renderPrompt();
+    loadClips();
+    loadShareInfo();
+  </script>
+</body>
+</html>

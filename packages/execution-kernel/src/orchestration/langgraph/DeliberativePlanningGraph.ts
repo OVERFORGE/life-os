@@ -13,7 +13,7 @@
 
 import { Annotation, StateGraph, START, END, MemorySaver } from "@langchain/langgraph";
 import { ActionProposal } from "../contracts/ActionProposalContracts";
-import { KernelCapabilityToolBridge } from "./adapters/KernelCapabilityToolBridge";
+import { KernelCapabilityToolBridge, buildLangGraphThreadConfig } from "./adapters/KernelCapabilityToolBridge";
 import { IDeliberativePlanResult } from "./contracts/LangGraphPilotContracts";
 import { generateId } from "../../shared/ids";
 
@@ -212,10 +212,12 @@ export class DeliberativePlanningGraph {
       stepCount: 0,
     };
 
-    const config = {
-      configurable: { thread_id: threadId },
+    const config = buildLangGraphThreadConfig({
+      userId,
+      executionId,
       recursionLimit: 10, // Operational safety ceiling
-    };
+      tags: ["langgraph:deliberative_pilot"],
+    });
 
     const finalState = await this.app.invoke(initialState, config);
 

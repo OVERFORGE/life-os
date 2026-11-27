@@ -17,6 +17,7 @@ import {
   Sparkles,
   Search,
 } from "lucide-react";
+import { useReactiveInvalidation } from "@/features/runtime/hooks/useReactiveInvalidation";
 
 function getLocalDateString() {
   const d = new Date();
@@ -89,6 +90,11 @@ export default function NutritionDashboard() {
   useEffect(() => {
     fetchAll().finally(() => setInitialLoading(false));
   }, [fetchAll]);
+
+  useReactiveInvalidation({
+    tags: ["nutrition", "daily-log", "dashboard"],
+    onInvalidate: fetchAll,
+  });
 
   const logFoodItem = async (food: any, amount: number, mealType = "snack", quantity: number = 1) => {
     const today = getLocalDateString();
@@ -209,7 +215,7 @@ export default function NutritionDashboard() {
     return (
       <div className="flex-1 flex flex-col items-center justify-center min-h-[50vh] bg-[#111113] text-[#F7F5F0]">
         <div className="w-8 h-8 rounded-full border-2 border-[#D98B2B] border-t-transparent animate-spin mb-4" />
-        <p className="text-[#85827A] text-xs font-mono font-semibold">Loading metabolic telemetry...</p>
+        <p className="text-[#85827A] text-xs font-mono font-semibold">Loading your nutrition overview...</p>
       </div>
     );
   }
@@ -230,7 +236,7 @@ export default function NutritionDashboard() {
             <h1 className="text-2xl font-bold tracking-tight text-[#F7F5F0]">Nutrition Hub</h1>
           </div>
           <p className="text-[10px] font-mono font-bold text-[#85827A] uppercase tracking-widest mt-1">
-            Metabolic Telemetry &amp; Macro Calibration
+            Nutrition &amp; Daily Targets
           </p>
         </div>
       </div>

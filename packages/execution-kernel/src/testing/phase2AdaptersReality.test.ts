@@ -14,8 +14,7 @@ import {
   RecoveryConstraintAdapter,
 } from "../orchestration/kernel/DefaultActionAdapters";
 import { ActionProposal } from "../orchestration/contracts/ActionProposalContracts";
-
-const MONGODB_URI = process.env.MONGODB_URI || "mongodb+srv://overforge:overforgedatabase@cluster0.s8cvx.mongodb.net/life-os";
+import { connectIsolatedTestDB } from "./helpers/testDbIsolation";
 
 test("Phase 2: Offline Zero Fake Success Enforcement", async () => {
   // Ensure DB is disconnected
@@ -85,10 +84,9 @@ test("Phase 2: Offline Zero Fake Success Enforcement", async () => {
   );
 });
 
-test("Phase 2: Live MongoDB Atlas State Persistence & Verification", async () => {
-  // Connect to live MongoDB
-  await mongoose.connect(MONGODB_URI, { bufferCommands: false });
-  assert.equal(mongoose.connection.readyState, 1, "MongoDB must be actively connected");
+test("Phase 2: Isolated Test MongoDB State Persistence & Verification", async () => {
+  await connectIsolatedTestDB();
+  assert.equal(mongoose.connection.readyState, 1, "Isolated test MongoDB must be actively connected");
 
   const { User } = await import("@/server/db/models/User");
   const { Task } = await import("@/server/db/models/Task");

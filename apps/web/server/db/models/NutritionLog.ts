@@ -39,7 +39,12 @@ const NutritionLogSchema = new Schema(
       protein: { type: Number, default: 0 },
       carbs: { type: Number, default: 0 },
       fats: { type: Number, default: 0 },
-    }
+    },
+
+    // Optimistic Concurrency & Outbox Fencing
+    version: { type: Number, default: 0 },
+    mutationEpoch: { type: Number, default: 0 },
+    recentMutationReceipts: { type: [Object], default: [] },
   },
   { timestamps: true }
 );

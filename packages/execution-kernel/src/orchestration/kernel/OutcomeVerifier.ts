@@ -6,9 +6,17 @@ import { AuthoritativeKernelState, VerificationOutcome } from "./IKernelCapabili
  * Invariant 14: Goal completion is verified against authoritative state wherever possible.
  * Requirement 4: Decouple stability score from hard goal completion invariants.
  */
+export type StructuredExecutionConstraint =
+  | string
+  | {
+      kind: "NO_RESCHEDULE_ENTITY";
+      entityId?: string;
+      entityTitle?: string;
+    };
+
 export class OutcomeVerifier {
   static verify(
-    constraints: string[],
+    constraints: StructuredExecutionConstraint[],
     preSnapshot: AuthoritativeKernelState,
     postSnapshot: AuthoritativeKernelState
   ): VerificationOutcome {
@@ -22,20 +30,25 @@ export class OutcomeVerifier {
       );
     }
 
-    // 2. HARD INVARIANT: Zero violations of user-specified explicit constraints
-    for (const constraint of constraints) {
-      const lower = constraint.toLowerCase();
-      // Example constraint check: "do not reschedule thesis"
-      if (lower.includes("do not reschedule") || lower.includes("must not move")) {
-        // Find if target node was moved
-        const match = lower.match(/(?:reschedule|move)\s+(.+)/i);
-        if (match) {
-          const keyword = match[1].trim();
-          const preNode = preSnapshot.graphSnapshot.readyNodes.find((n) => n.title.toLowerCase().includes(keyword));
-          const postNode = postSnapshot.graphSnapshot.readyNodes.find((n) => n.title.toLowerCase().includes(keyword));
-          if (preNode && postNode && preNode.metadata?.dueDate !== postNode.metadata?.dueDate) {
-            failedInvariants.push(`[CONSTRAINT_VIOLATED]: Constraint forbade moving "${preNode.title}", but date was changed`);
-          }
+    // 2. HARD INVARIANT: Zero violations of structured explicit constraints (zero NL regex guessing)
+    for (const rawConstraint of constraints) {
+      let targetTitle: string | undefined;
+      let targetId: string | undefined;
+      if (typeof rawConstraint === "object" && rawConstraint?.kind === "NO_RESCHEDULE_ENTITY") {
+        targetId = rawConstraint.entityId;
+        targetTitle = rawConstraint.entityTitle;
+      } else if (typeof rawConstraint === "string" && rawConstraint.startsWith("NO_RESCHEDULE:")) {
+        targetTitle = rawConstraint.slice("NO_RESCHEDULE:".length).trim();
+      }
+      if (targetId || targetTitle) {
+        const preNode = preSnapshot.graphSnapshot.readyNodes.find(
+          (n) => (targetId && n.id === targetId) || (targetTitle && n.title.toLowerCase() === targetTitle.toLowerCase())
+        );
+        const postNode = postSnapshot.graphSnapshot.readyNodes.find(
+          (n) => (targetId && n.id === targetId) || (targetTitle && n.title.toLowerCase() === targetTitle.toLowerCase())
+        );
+        if (preNode && postNode && preNode.metadata?.dueDate !== postNode.metadata?.dueDate) {
+          failedInvariants.push(`[CONSTRAINT_VIOLATED]: Constraint forbade moving "${preNode.title}", but date was changed`);
         }
       }
     }

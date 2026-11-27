@@ -63,7 +63,7 @@ describe("Step 4 Loop 7: Semantic Generalization & Anti-Keyword Verification", (
 
     const proposal: ActionProposal = {
       id: "action-novel-1",
-      actionType: "quantum_biofeedback_calibration",
+      actionType: "quantum_biofeedback_calibration" as any,
       domain: "productivity",
       reversibility: "atomic_single_doc",
       rationale: "Unit test",
@@ -73,13 +73,16 @@ describe("Step 4 Loop 7: Semantic Generalization & Anti-Keyword Verification", (
         customDomain: "Transhumanist Recovery Protocol",
         parameters: { frequencies: [432, 528], intensity: 0.8 },
       },
+      payload: {
+        entityName: "Somatosensory Resonance Chamber Beta",
+      },
     };
 
     const result = await kernel.executeAction("user-novel-1", proposal);
 
     assert.equal(result.status, "SUCCEEDED");
     assert.equal(result.data.registeredEntity, "Somatosensory Resonance Chamber Beta");
-    assert.equal(executedAction?.actionType, "quantum_biofeedback_calibration");
+    assert.equal((executedAction as any)?.actionType, "quantum_biofeedback_calibration");
   });
 
   it("2. ExecutionGraph projection handles arbitrary entity names and complex topological chains", async () => {

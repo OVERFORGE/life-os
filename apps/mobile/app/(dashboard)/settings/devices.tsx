@@ -65,7 +65,9 @@ export default function DevicesScreen() {
   }, []);
 
   useEffect(() => {
-    fetchSessions();
+    queueMicrotask(() => {
+      void fetchSessions();
+    });
   }, [fetchSessions]);
 
   const revokeSession = async (id: string) => {
@@ -257,7 +259,7 @@ export default function DevicesScreen() {
             <View style={{ backgroundColor: C.primaryBg, borderWidth: 1, borderColor: 'rgba(232,65,74,0.2)', borderRadius: 20, padding: 20 }}>
               <Text style={{ color: C.primary, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 8 }}>Security</Text>
               <Text style={{ color: C.muted, fontSize: 12, fontWeight: '600', lineHeight: 20 }}>
-                Sessions are automatically tracked when you sign in. Logging out a device immediately revokes its access — they'll be signed out on their next action.
+                Sessions are automatically tracked when you sign in. Logging out a device immediately revokes its access — they&apos;ll be signed out on their next action.
               </Text>
             </View>
 

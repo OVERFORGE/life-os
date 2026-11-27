@@ -1,6 +1,11 @@
-import { groqChat, cleanLLMResponse } from "../../shared/groq";
+import { cleanLLMResponse } from "../../shared/groq";
+import { invokeLifeOSChat } from "../../shared/langchain/LifeOSChatModel";
 import { GoalProposal } from "@/server/db/models/GoalProposal";
 import { LifeSignal } from "@/features/signals/models/LifeSignal";
+import {
+    createCatalogDocWithOutbox,
+    upsertCatalogDocWithOutbox,
+} from "@/features/catalog/services/catalogMutationEngine";
 
 export async function handleProposeGoal(userMessage: string, userId: string, model?: string) {
     // Get existing tracked signals so the LLM can suggest ones that already exist
@@ -36,26 +41,47 @@ Return strict JSON only:
 `;
 
     try {
-        const res = await groqChat({ messages: [{ role: "user", content: prompt }], temperature: 0, model });
+        const res = await invokeLifeOSChat({ messages: [{ role: "user", content: prompt }], temperature: 0, model });
         const cleanRes = cleanLLMResponse(res);
         const parsed = JSON.parse(cleanRes);
 
-        // Cancel any previous pending proposals for this user
-        await GoalProposal.updateMany({ userId, status: "pending" }, { status: "rejected" });
+        // Cancel any previous pending proposals for this user via outbox
+        const priorPendings = await GoalProposal.find({ userId, status: "pending" }).select("_id").lean();
+        for (const p of priorPendings) {
+            await upsertCatalogDocWithOutbox({
+                userId,
+                model: GoalProposal,
+                filter: { _id: (p as any)._id, userId },
+                aggregateType: "goal_proposal",
+                eventType: "domain.goal_proposal.updated",
+                domain: "goals",
+                updateFields: { status: "rejected" },
+                options: { source: "kernel.propose_goal.supersede" },
+            });
+        }
 
-        // Save new pending proposal
-        const saved = await GoalProposal.create({
+        // Save new pending proposal via outbox
+        const createdRes = await createCatalogDocWithOutbox({
             userId,
-            status: "pending",
-            proposal: {
-                title: parsed.title,
-                type: parsed.type || "maintenance",
-                cadence: parsed.cadence || "daily",
-                signals: parsed.signals || [],
-                newSignals: parsed.newSignals || [],
-                description: parsed.description || "",
+            model: GoalProposal,
+            aggregateType: "goal_proposal",
+            eventType: "domain.goal_proposal.updated",
+            domain: "goals",
+            docFields: {
+                userId,
+                status: "pending",
+                proposal: {
+                    title: parsed.title,
+                    type: parsed.type || "maintenance",
+                    cadence: parsed.cadence || "daily",
+                    signals: parsed.signals || [],
+                    newSignals: parsed.newSignals || [],
+                    description: parsed.description || "",
+                },
             },
+            options: { source: "kernel.propose_goal" },
         });
+        const saved = createdRes.doc;
 
         console.log("📝 [PROPOSE GOAL] Saved pending proposal:", JSON.stringify(saved.proposal));
 
@@ -65,7 +91,7 @@ Return strict JSON only:
             data: {
                 proposal: saved.proposal,
                 pendingId: saved._id.toString(),
-                ai_instruction: `Present this goal proposal to the user CLEARLY. Title: "${saved.proposal.title}". Type: ${saved.proposal.type}. Cadence: ${saved.proposal.cadence}. Signals to track: ${[...( saved.proposal.signals || []), ...(saved.proposal.newSignals?.map((s: any) => `${s.label} (${s.inputType})`) || [])].join(", ")}. Description: "${saved.proposal.description}". Ask the user: "Does this look right? Want to adjust anything before I create it? Just say yes or describe your changes."`,
+                ai_instruction: `Present this goal proposal to the user CLEARLY. Title: "${saved.proposal.title}". Type: ${saved.proposal.type}. Cadence: ${saved.proposal.cadence}. Signals to track: ${[...(saved.proposal.signals || []), ...(saved.proposal.newSignals?.map((s: any) => `${s.label} (${s.inputType})`) || [])].join(", ")}. Description: "${saved.proposal.description}". Ask the user: "Does this look right? Want to adjust anything before I create it? Just say yes or describe your changes."`,
             },
         };
     } catch (e: any) {

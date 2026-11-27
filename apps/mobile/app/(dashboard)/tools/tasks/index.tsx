@@ -32,8 +32,6 @@ export default function TasksScreen() {
   const [rescheduleTime, setRescheduleTime] = useState('');
   const slideAnim = useRef(new Animated.Value(SCREEN_HEIGHT)).current;
 
-  useSafeFocusEffect(useCallback(() => { loadTasks(); }, []));
-
   const loadTasks = async (silent = false) => {
     if (!silent && !tasksData) setLoading(true);
     try {
@@ -42,6 +40,8 @@ export default function TasksScreen() {
     } catch (e) { console.error(e); }
     finally { setLoading(false); }
   };
+
+  useSafeFocusEffect(useCallback(() => { void loadTasks(); }, []));
 
   const openModal = (task: any) => {
     setSelectedTask(task);
@@ -412,7 +412,7 @@ export default function TasksScreen() {
           <View style={{ backgroundColor: '#1F2023', borderRadius: 20, padding: 22, borderWidth: 1, borderColor: '#2A2B2F' }}>
             <Text style={{ color: '#FFFDFC', fontWeight: '700', fontSize: 17, marginBottom: 6 }}>Delay Task</Text>
             <Text style={{ color: 'rgba(236,231,227,0.5)', fontSize: 13, marginBottom: 18 }} numberOfLines={1}>
-              "{rescheduleTask?.title}"
+              &quot;{rescheduleTask?.title}&quot;
             </Text>
             <View style={{ flexDirection: 'row', gap: 8, marginBottom: 16 }}>
               {[1, 2, 3, 7].map(d => (

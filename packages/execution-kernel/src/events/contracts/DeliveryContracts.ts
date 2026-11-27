@@ -31,16 +31,25 @@ export type CanonicalEventType =
   | "domain.temporal.occurrence_deleted"
   | "domain.temporal.deleted"
 
-  // Physical Readiness & Wearables (4)
+  // Physical Readiness & Wearables (7)
   | "domain.health.workout_logged"
   | "domain.physical.workout_logged"
   | "domain.physical.session_deleted"
+  | "domain.daily_log.updated"
+  | "domain.nutrition.logged"
+  | "domain.weight.logged"
   | "telemetry.wearables.ingested"
 
   // Analytical & Cognitive Context (3)
   | "analytical.schedule.conflict_detected"
   | "observation.cognitive.assessed"
   | "domain.signal.logged"
+
+  // Catalog, Settings, User Profile & Goal Proposals (4)
+  | "domain.catalog.updated"
+  | "domain.settings.updated"
+  | "domain.user.profile_updated"
+  | "domain.goal_proposal.updated"
 
   // Autonomous Governance & Auditing (3)
   | "autonomous.cycle_evaluated"

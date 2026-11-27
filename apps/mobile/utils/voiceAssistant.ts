@@ -35,7 +35,7 @@ export async function handleSpontaneousSpeech(text: string) {
             },
             body: JSON.stringify({
               message: cleaned,
-              model: 'llama-3.3-70b-versatile',
+              model: 'openai/gpt-oss-120b',
               mode: 'general',
               timezone: localTz,
             }),

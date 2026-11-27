@@ -1,6 +1,9 @@
 import mongoose from "mongoose";
 
-const MONGODB_URI = 'mongodb+srv://overforge:overforgedatabase@cluster0.s8cvx.mongodb.net/life-os';
+const MONGODB_URI = process.env.MONGODB_URI || "";
+if (!MONGODB_URI) {
+  throw new Error("MONGODB_URI environment variable is required.");
+}
 
 async function main() {
   await mongoose.connect(MONGODB_URI);

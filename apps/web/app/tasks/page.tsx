@@ -709,7 +709,7 @@ export default function ExecutePage() {
       <div className="flex-1 w-full overflow-y-auto pr-1 flex flex-col gap-5 min-h-0 relative z-10 custom-h-scrollbar">
         {loading && (
           <div className="flex items-center justify-center py-12 text-xs text-[#85827A] font-mono">
-            Synchronizing execution state with database...
+            Saving your tasks...
           </div>
         )}
 

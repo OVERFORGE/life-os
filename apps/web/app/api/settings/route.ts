@@ -1,12 +1,12 @@
 import { connectDB } from "@/server/db/connect";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getAuthSession } from "@/lib/auth";
 import { LifeSystemSettings } from "@/features/settings/models/LifeSystemSettings";
 import { getEffectiveSettings } from "@/features/settings/getEffectiveSettings";
 import { DEFAULT_SYSTEM_SETTINGS } from "@/features/settings/defaultSystemSettings";
+import { upsertCatalogDocWithOutbox } from "@/features/catalog/services/catalogMutationEngine";
 
 export async function GET() {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -32,7 +32,7 @@ export async function GET() {
 
 
 export async function PUT(req: Request) {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
 
@@ -40,26 +40,40 @@ export async function PUT(req: Request) {
 
   await connectDB();
 
-  await LifeSystemSettings.findOneAndUpdate(
-    { userId: session.user.id },
-    { overrides: body },
-    { upsert: true }
-  );
+  await upsertCatalogDocWithOutbox({
+    userId: session.user.id,
+    model: LifeSystemSettings,
+    filter: { userId: session.user.id },
+    aggregateType: "system_settings",
+    eventType: "domain.settings.updated",
+    domain: "settings",
+    updateFields: { overrides: body },
+    createFields: { userId: session.user.id, learned: {} },
+    createIfMissing: true,
+    options: { source: "web.settings.put" },
+  });
 
   return Response.json({ ok: true });
 }
 
 export async function DELETE() {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id)
     return Response.json({ error: "Unauthorized" }, { status: 401 });
 
   await connectDB();
 
-  await LifeSystemSettings.findOneAndUpdate(
-    { userId: session.user.id },
-    { overrides: {} }
-  );
+  await upsertCatalogDocWithOutbox({
+    userId: session.user.id,
+    model: LifeSystemSettings,
+    filter: { userId: session.user.id },
+    aggregateType: "system_settings",
+    eventType: "domain.settings.updated",
+    domain: "settings",
+    updateFields: { overrides: {} },
+    createIfMissing: false,
+    options: { source: "web.settings.delete" },
+  });
 
   return Response.json({ ok: true });
 }

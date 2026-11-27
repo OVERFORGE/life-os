@@ -94,7 +94,7 @@ async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
       const pendingUpcoming = data.upcoming?.filter((t: any) => t.status === 'pending') || [];
 
       const allPending = [...pendingOverdue, ...pendingToday, ...pendingUpcoming];
-      
+
       // Check Reminders
       const now = Date.now();
       for (const task of allPending) {
@@ -132,8 +132,8 @@ async function getNextTaskSummary(): Promise<{ title: string; text: string }> {
         };
       }
     }
-  } catch {}
-  
+  } catch { }
+
   noTasksCounter++;
   return { title: 'ALL CLEAR', text: 'No pending targets.' };
 }
@@ -148,7 +148,7 @@ async function sendChatCommand(message: string): Promise<string> {
       method: 'POST',
       body: JSON.stringify({
         message: message.trim(),
-        model: 'llama-3.3-70b-versatile',
+        model: 'openai/gpt-oss-120b',
         mode: 'general',
       }),
     });
@@ -189,7 +189,7 @@ export async function displayExecutionerNotification(title?: string, body?: stri
   if (!isAssistantResponding && lastDisplayedText === newDisplayText) {
     return;
   }
-  
+
   lastDisplayedText = newDisplayText;
 
   const notifConfig: any = {
@@ -239,7 +239,7 @@ export async function displayExecutionerNotification(title?: string, body?: stri
 
 export async function setupPersistentNotification() {
   if (Platform.OS !== 'android' || isExpoGo) return;
-  
+
   try {
     const { FEATURE_FLAGS } = await import('./featureFlags');
     if (FEATURE_FLAGS.USE_AMBIENT_ACTIVE_NOTIFICATION) {
@@ -318,14 +318,14 @@ async function handleChatInput(inputText: string) {
   const isVoiceAllowed = await isVoiceAssistantEnabledAtCurrentLocation();
   if (isVoiceAllowed) {
     speakAndListen(response.trim(), () => {
-       if (Platform.OS === 'android' || Platform.OS === 'ios') {
-          getVoiceRecorder().startRecording(async (uri: string | null) => {
-            if (!uri) return;
-            const { transcribeAudio } = await import('./audioCapture');
-            const { text } = await transcribeAudio(uri);
-            if (text) handleChatInput(text);
-          });
-       }
+      if (Platform.OS === 'android' || Platform.OS === 'ios') {
+        getVoiceRecorder().startRecording(async (uri: string | null) => {
+          if (!uri) return;
+          const { transcribeAudio } = await import('./audioCapture');
+          const { text } = await transcribeAudio(uri);
+          if (text) handleChatInput(text);
+        });
+      }
     });
   }
 
@@ -363,7 +363,7 @@ async function handleEvent(type: number, detail: any) {
     } else if (actionId === ACTION_MIC_ID) {
       // MIC pressed — start headless background recording!
       await displayExecutionerNotification('LISTENING...', 'Speak your command now...');
-      
+
       const success = await getVoiceRecorder().startRecording(async (uri: string | null) => {
         if (!uri) {
           await displayExecutionerNotification('CANCELLED', 'No speech detected.');
@@ -371,7 +371,7 @@ async function handleEvent(type: number, detail: any) {
         }
         await displayExecutionerNotification('PROCESSING...', 'Transcribing voice...');
         const { text, error } = await transcribeAudio(uri);
-        
+
         if (text) {
           await handleChatInput(text);
         } else {
@@ -386,8 +386,8 @@ async function handleEvent(type: number, detail: any) {
       if (!success) {
         await displayExecutionerNotification('ERROR', 'Mic permission denied or failed.');
         setTimeout(() => {
-            lastDisplayedText = null;
-            displayExecutionerNotification();
+          lastDisplayedText = null;
+          displayExecutionerNotification();
         }, 3000);
       }
     }

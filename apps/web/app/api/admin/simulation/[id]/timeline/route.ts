@@ -1,3 +1,4 @@
+import { requireAdminSession } from "@/lib/adminAuth";
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { TimelineService } from "@/simulation/execution/services/timelineService";
@@ -11,6 +12,8 @@ type RouteParams = { params: Promise<{ id: string }> };
  * Reads ONLY from sim_run_journal — never snapshots or artifacts.
  */
 export async function GET(_req: NextRequest, props: RouteParams) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     const { id } = await props.params;
     await connectDB();

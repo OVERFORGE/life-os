@@ -5,6 +5,7 @@ import { getTodayDateString } from "@/utils/date";
 import { getAuthSession } from "@/lib/auth";
 
 import { DailyLogSchema } from "@/features/daily-log/schema";
+import { upsertDailyLogWithOutbox } from "@/features/daily-log/services/dailyLogEngine";
 import { NextResponse } from "next/server";
 
 /* ===================================================== */
@@ -57,36 +58,24 @@ export async function POST(req: Request) {
   await connectDB();
 
   const today = getTodayDateString();
-
-  /* ---------------- Preserve Signals ---------------- */
-
-  const existing = await DailyLog.findOne({ userId, date: today }).lean();
-  const existingSignals = existing?.signals || {};
-
-  /* ---------------- Merge Core + Signals ---------------- */
-
-  const merged = {
-    ...parsed.data,
-    signals: existingSignals,
-  };
-
-  // ✅ CRITICAL FIX: Remove forbidden fields
-  delete (merged as any).userId;
-  delete (merged as any).date;
-
-  /* ---------------- Save ---------------- */
-
-  const log = await DailyLog.findOneAndUpdate(
-    { userId, date: today },
-    {
-      $set: merged,
-      $setOnInsert: {
-        userId,
-        date: today,
-      },
+  const result = await upsertDailyLogWithOutbox({
+    userId,
+    date: today,
+    sections: parsed.data,
+    preserveSignals: true,
+    options: {
+      clientMutationId: typeof body?.clientMutationId === "string" ? body.clientMutationId : undefined,
+      expectedVersion: typeof body?.expectedVersion === "number" ? body.expectedVersion : undefined,
+      source: "web.daily_log.today",
     },
-    { upsert: true, new: true }
-  );
+  });
 
-  return NextResponse.json(log);
+  if (!result.success) {
+    return NextResponse.json(
+      { error: result.error, code: result.code },
+      { status: result.statusCode || 500 }
+    );
+  }
+
+  return NextResponse.json(result.log);
 }

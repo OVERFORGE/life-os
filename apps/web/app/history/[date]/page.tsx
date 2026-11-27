@@ -1,7 +1,8 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useParams, useRouter } from "next/navigation";
+import { useReactiveInvalidation } from "@/features/runtime/hooks/useReactiveInvalidation";
 import { MentalReadOnlyCard } from "@/features/daily-log/read-only/MentalReadOnlyCard";
 import { SleepReadOnlyCard } from "@/features/daily-log/read-only/SleepReadOnlyCard";
 import { PhysicalReadOnlyCard } from "@/features/daily-log/read-only/PhysicalReadOnlyCard";
@@ -17,12 +18,24 @@ export default function HistoryDayPage() {
   const [log, setLog] = useState<any>(null);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    fetch(`/api/daily-log/by-date?date=${date}`)
-      .then((res) => res.json())
-      .then((data) => setLog(data))
-      .finally(() => setLoading(false));
+  const loadDayLog = useCallback(async () => {
+    try {
+      const res = await fetch(`/api/daily-log/by-date?date=${date}`);
+      const data = await res.json();
+      setLog(data);
+    } finally {
+      setLoading(false);
+    }
   }, [date]);
+
+  useEffect(() => {
+    loadDayLog();
+  }, [loadDayLog]);
+
+  useReactiveInvalidation({
+    tags: ["daily-log", "dashboard", "world"],
+    onInvalidate: loadDayLog,
+  });
 
   if (loading) {
     return <div className="p-6 text-gray-400">Loading...</div>;

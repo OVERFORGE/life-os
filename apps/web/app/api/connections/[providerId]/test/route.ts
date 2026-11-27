@@ -10,21 +10,13 @@ type RouteParams = { params: Promise<{ providerId: string }> };
 export async function POST(req: NextRequest, props: RouteParams) {
   try {
     const session = await getAuthSession();
-    let userId = (session?.user as any)?.id;
-
-    await connectDB();
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-      }
-    }
+    const userId = (session?.user as any)?.id;
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
     }
+
+    await connectDB();
 
     const { providerId } = await props.params;
 
@@ -223,9 +215,9 @@ export async function POST(req: NextRequest, props: RouteParams) {
     }
 
     if (providerId === "obsidian_vault") {
-      const fs = require("fs");
-      const path = require("path");
-      const os = require("os");
+      const fs = await import("fs");
+      const path = await import("path");
+      const os = await import("os");
       const prefs =
         conn.preferences instanceof Map
           ? Object.fromEntries(conn.preferences)

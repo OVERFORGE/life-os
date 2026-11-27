@@ -4,7 +4,6 @@ import { ContextModeService } from "../context/ContextModeService";
 import { DEFAULT_MODE_CONFIGS, ContextModeRecord } from "../context/ContextModeContracts";
 import { LifeStateEngine } from "../worldv2/LifeStateEngine";
 import { GoalIntelligenceEngine } from "../worldv2/GoalIntelligenceEngine";
-import { FastPathExecutor } from "../orchestration/supervisor/FastPathExecutor";
 import { KernelCapabilityService } from "../orchestration/kernel/KernelCapabilityService";
 import { ActionAdapterRegistry } from "../orchestration/kernel/ActionAdapters";
 import { SetContextModeAdapter, ClearContextModeAdapter } from "../orchestration/kernel/DefaultActionAdapters";
@@ -73,41 +72,56 @@ describe("Context Modes (Seasons of Life) End-to-End Integration", () => {
     assert.equal(autoReverted.mode, "standard", "Expired custom mode must automatically revert to standard");
   });
 
-  it("2. FastPathExecutor handles context mode conversational commands in <10ms with zero DAG jargon", async () => {
+  it("2. Atomic Kernel executes context mode commands in <50ms with zero DAG jargon", async () => {
     service.clearInMemoryStore();
     const userId = "usr_fastpath_pilot";
     const registry = new ActionAdapterRegistry();
     registry.register("set_context_mode", new SetContextModeAdapter());
     registry.register("clear_context_mode", new ClearContextModeAdapter());
     const kernelCapability = new KernelCapabilityService(registry);
-    const fastPath = new FastPathExecutor(kernelCapability);
 
-    // 2a. Pattern matching assertions
-    assert.equal(fastPath.canHandle("start sprint mode for 7 days"), true);
-    assert.equal(fastPath.canHandle("enable sanctuary mode"), true);
-    assert.equal(fastPath.canHandle("switch to sabbatical mode for 14 days"), true);
-    assert.equal(fastPath.canHandle("exit sprint mode"), true);
-    assert.equal(fastPath.canHandle("resume standard mode"), true);
-
-    // 2b. Execution of "start sprint mode for 7 days"
     const t0 = Date.now();
-    const res1 = await fastPath.execute("start sprint mode for 7 days", userId);
+    const prop1 = {
+      id: "prop_cm_1",
+      domain: "productivity" as const,
+      actionType: "set_context_mode" as const,
+      reversibility: "atomic_single_doc" as const,
+      state: "APPROVED" as const,
+      title: "Activate sprint mode",
+      rationale: "User requested sprint mode for 7 days",
+      idempotencyKey: "cm_1",
+      payload: { mode: "SPRINT", durationDays: 7 },
+    };
+    const val1 = await kernelCapability.validateActionProposals(userId, [prop1]);
+    assert.equal(val1.valid, true);
+    const res1 = await kernelCapability.executeAction(userId, prop1);
     const latency = Date.now() - t0;
 
-    assert.equal(res1.handled, true);
+    assert.equal(res1.success, true);
     assert.ok(latency <= 50, `Latency was ${latency}ms, expected <= 50ms`);
-    assert.match(res1.userResponse, /Sprint Mode activated for the next 7 days/i);
-    // Invariant 28: Zero DAG jargon leaked
-    assert.doesNotMatch(res1.userResponse, /node|dag|graph|dependency|executionnode/i);
+    assert.ok(!JSON.stringify(res1).includes("DAG"));
+    assert.ok(!JSON.stringify(res1).includes("ExecutionNode"));
 
     // Verify system state
     const activeAfterSprint = await service.getActiveMode(userId);
     assert.equal(activeAfterSprint.mode, "sprint");
 
-    // 2c. Execution of "exit sprint mode"
-    const res2 = await fastPath.execute("exit sprint mode", userId);
-    assert.equal(res2.handled, true);
-    assert.match(res2.userResponse, /Returned to Standard operational mode/i);
+    // 2c. Execution of clear_context_mode
+    const prop2 = {
+      id: "prop_cm_2",
+      domain: "productivity" as const,
+      actionType: "clear_context_mode" as const,
+      reversibility: "atomic_single_doc" as const,
+      state: "APPROVED" as const,
+      title: "Clear context mode",
+      rationale: "User requested to exit sprint mode",
+      idempotencyKey: "cm_2",
+      payload: {},
+    };
+    const val2 = await kernelCapability.validateActionProposals(userId, [prop2]);
+    assert.equal(val2.valid, true);
+    const res2 = await kernelCapability.executeAction(userId, prop2);
+    assert.equal(res2.success, true);
 
     const activeAfterClear = await service.getActiveMode(userId);
     assert.equal(activeAfterClear.mode, "standard");

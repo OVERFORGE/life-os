@@ -36,7 +36,9 @@ export default function GymProgressDashboard() {
   };
 
   useEffect(() => {
-    loadData();
+    queueMicrotask(() => {
+      void loadData();
+    });
   }, []);
 
   const getStatusColor = (status: string) => {

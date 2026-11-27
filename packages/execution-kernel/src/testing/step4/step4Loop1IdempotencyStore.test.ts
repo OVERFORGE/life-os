@@ -8,7 +8,7 @@ import {
   canonicalJsonStringify,
   computeRequestFingerprint,
 } from "../../orchestration/kernel/KernelCapabilityService";
-import { ActionAdapterRegistry, IActionAdapter } from "../../orchestration/kernel/ActionAdapters";
+import { ActionAdapterRegistry, IKernelActionAdapter as IActionAdapter } from "../../orchestration/kernel/ActionAdapters";
 import { ActionProposal } from "../../orchestration/contracts/ActionProposalContracts";
 
 class MockAuditModel {
@@ -94,10 +94,10 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
     registry = new ActionAdapterRegistry();
     adapterExecutionCount = 0;
 
-    const mockAdapter: IActionAdapter = {
+    const mockAdapter: any = {
       actionType: "create_task",
       validatePreconditions: async () => ({ valid: true }),
-      execute: async (action, userId) => {
+      execute: async (action: any, _userId: string) => {
         adapterExecutionCount++;
         return {
           success: true,
@@ -144,6 +144,7 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
       reversibility: "atomic_single_doc",
       rationale: "Unit test",
       parameters: { title: "Build LifeOS" },
+      payload: { title: "Build LifeOS" },
       idempotencyKey: "idemp_test_001",
     };
 
@@ -168,6 +169,7 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
       reversibility: "atomic_single_doc",
       rationale: "Process restart test",
       parameters: { title: "Durable Task" },
+      payload: { title: "Durable Task" },
       idempotencyKey: "idemp_restart",
     };
 
@@ -195,6 +197,7 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
       reversibility: "atomic_single_doc",
       rationale: "Original payload",
       parameters: { title: "Original Title" },
+      payload: { title: "Original Title" },
       idempotencyKey: "idemp_tamper_test",
     };
 
@@ -207,6 +210,7 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
       reversibility: "atomic_single_doc",
       rationale: "Tampered payload",
       parameters: { title: "Hacked Altered Title" },
+      payload: { title: "Hacked Altered Title" },
       idempotencyKey: "idemp_tamper_test",
     };
 
@@ -227,6 +231,7 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
       reversibility: "atomic_single_doc",
       rationale: "Concurrency test",
       parameters: { title: "Concurrent Task" },
+      payload: { title: "Concurrent Task" },
       idempotencyKey: "idemp_concurrent_storm",
     };
 
@@ -264,6 +269,7 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
       reversibility: "atomic_single_doc",
       rationale: "Conflict check",
       parameters: { title: "In Flight" },
+      payload: { title: "In Flight" },
       idempotencyKey: "idemp_active_lease",
     };
 
@@ -284,6 +290,7 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
       reversibility: "atomic_single_doc",
       rationale: "Crash recovery",
       parameters: { title: "Recovered Task", priority: "HIGH" },
+      payload: { title: "Recovered Task", priority: "HIGH" },
       idempotencyKey: "idemp_crashed",
     };
 
@@ -334,6 +341,7 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
       rationale: "Ghost version test",
       targetEntityId: "task_ghost_789",
       parameters: { title: "Ghost Task" },
+      payload: { title: "Ghost Task" },
       idempotencyKey: "idemp_ghost",
     };
     (proposal as any).expectedVersion = 2;
@@ -379,6 +387,7 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
       reversibility: "atomic_single_doc",
       rationale: "Tenant A",
       parameters: { title: "User A Task" },
+      payload: { title: "User A Task" },
       idempotencyKey: "shared_key_123",
     };
 
@@ -389,6 +398,7 @@ describe("Step 4 Loop 1: Durable Kernel Idempotency & Audit Store", () => {
       reversibility: "atomic_single_doc",
       rationale: "Tenant B",
       parameters: { title: "User B Task" },
+      payload: { title: "User B Task" },
       idempotencyKey: "shared_key_123",
     };
 

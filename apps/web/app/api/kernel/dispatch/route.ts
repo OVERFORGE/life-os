@@ -10,6 +10,11 @@ import {
   IKernelExecutionResult,
   KernelExecutionOutcome,
   SurfaceActionType,
+  createTraceContext,
+  runWithTraceContext,
+  recordTraceStep,
+  startDirectLangSmithRun,
+  TracePersistenceService,
 } from "@life-os/execution-kernel";
 
 export const dynamic = "force-dynamic";
@@ -17,7 +22,11 @@ export const dynamic = "force-dynamic";
 export async function POST(req: NextRequest) {
   try {
     const session = await getAuthSession();
-    let userId = (session?.user as any)?.id;
+    const userId = (session?.user as any)?.id;
+
+    if (!userId) {
+      return apiError("Unauthorized", "UNAUTHORIZED", 401);
+    }
 
     await connectDB();
 
@@ -31,36 +40,8 @@ export async function POST(req: NextRequest) {
       );
     }
 
-    if (!userId && (envelope as any).clientSessionToken) {
-      try {
-        const jwt = (await import("jsonwebtoken")).default;
-        const decoded = jwt.verify((envelope as any).clientSessionToken, process.env.NEXTAUTH_SECRET || "fallback-secret-key-12345") as any;
-        if (decoded?.id) {
-          userId = decoded.id;
-        }
-      } catch (_) {}
-    }
-
-    if (!userId && (envelope as any).userId) {
-      try {
-        const { User } = await import("@/server/db/models/User");
-        const userExists = await User.findById((envelope as any).userId).lean();
-        if (userExists) {
-          userId = (envelope as any).userId;
-        }
-      } catch (_) {}
-    }
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-      }
-    }
-
-    if (!userId) {
-      return apiError("Unauthorized", "UNAUTHORIZED", 401);
+    if ((envelope as any).userId && String((envelope as any).userId) !== String(userId)) {
+      return apiError("Forbidden: Caller userId does not match authenticated session", "FORBIDDEN", 403);
     }
 
     const kernel = KernelCapabilityService.getInstance();
@@ -106,44 +87,91 @@ export async function POST(req: NextRequest) {
     // 3. Map Surface Action Envelope to Canonical ActionProposal
     const proposal = translateEnvelopeToProposal(userId, envelope);
 
-    // 4. Sovereign Kernel Dispatch
-    const kernelResult = await kernel.executeAction(userId, proposal);
+    const requestId = req.headers.get("x-request-id") || `req_kd_${Date.now()}`;
+    const executionId = `exec_kd_${proposal.id}`;
+    const lsRun = await startDirectLangSmithRun({
+      name: `kernel_dispatch:${envelope.actionType}`,
+      runType: "chain",
+      inputs: { actionType: envelope.actionType, entityId: envelope.entityId },
+      metadata: { userId, requestId, executionId },
+      tags: ["lifeos:kernel_dispatch"],
+    });
+    const traceCtx = createTraceContext({
+      requestId,
+      executionId,
+      userId: String(userId),
+      surface: "kernel_dispatch",
+      langsmithRunId: lsRun.runId,
+      langsmithUrl: lsRun.url,
+    });
 
-    // 5. Compute fresh authoritative reprojection
-    const reprojection = await fetchAuthoritativeSurfaceProjection(userId, timezoneHint);
+    return await runWithTraceContext(traceCtx, async () => {
+      // 4. Sovereign Kernel Dispatch
+      const kernelStart = Date.now();
+      const kernelResult = await kernel.executeAction(userId, proposal);
+      recordTraceStep({
+        layer: "kernel",
+        component: "KernelCapabilityService",
+        operation: envelope.actionType,
+        status: kernelResult.success ? "COMPLETED" : "FAILED",
+        startedAtMs: kernelStart,
+        durationMs: Date.now() - kernelStart,
+        inputs: { actionType: envelope.actionType, idempotencyKey: envelope.idempotencyKey },
+        outputs: { actionId: kernelResult.actionId, status: kernelResult.status, success: kernelResult.success },
+        error: kernelResult.error,
+      });
 
-    if (!kernelResult.success) {
-      const failureOutcome: KernelExecutionOutcome =
-        kernelResult.status === "NEEDS_CLARIFICATION"
-          ? "CONFIRMATION_REQUIRED"
-          : "RECONCILIATION_REQUIRED";
+      // 5. Compute fresh authoritative reprojection
+      const reprojection = await fetchAuthoritativeSurfaceProjection(userId, timezoneHint);
 
-      const responsePayload: IKernelExecutionResult = {
-        outcome: failureOutcome,
+      if (!kernelResult.success) {
+        const failureOutcome: KernelExecutionOutcome =
+          kernelResult.status === "NEEDS_CLARIFICATION"
+            ? "CONFIRMATION_REQUIRED"
+            : "RECONCILIATION_REQUIRED";
+
+        const responsePayload: IKernelExecutionResult = {
+          outcome: failureOutcome,
+          actionId: kernelResult.actionId,
+          idempotencyKey: envelope.idempotencyKey,
+          errorMessage: kernelResult.error || "Execution failed",
+          reprojection,
+        };
+        await lsRun.finish(responsePayload, kernelResult.error);
+        void TracePersistenceService.getInstance().persistTrace({
+          ctx: traceCtx,
+          status: "FAILED",
+          terminationReason: failureOutcome,
+          finalFrontendPayload: responsePayload,
+        });
+        return apiSuccess(responsePayload);
+      }
+
+      // 6. Map Successful Outcome
+      const outcome: KernelExecutionOutcome =
+        proposal.reversibility === "atomic_single_doc" || proposal.reversibility === "reversible_with_compensation"
+          ? "EXECUTE_WITH_UNDO"
+          : "EXECUTE_COMMITTED";
+
+      const successResult: IKernelExecutionResult = {
+        outcome: kernelResult.idempotent ? "REJECTED_IDEMPOTENT_DUPLICATE" : outcome,
         actionId: kernelResult.actionId,
         idempotencyKey: envelope.idempotencyKey,
-        errorMessage: kernelResult.error || "Execution failed",
+        committedAtMs: Date.now(),
+        undoToken: outcome === "EXECUTE_WITH_UNDO" ? `undo_${kernelResult.actionId}` : undefined,
         reprojection,
       };
-      return apiSuccess(responsePayload);
-    }
 
-    // 6. Map Successful Outcome
-    const outcome: KernelExecutionOutcome =
-      proposal.reversibility === "atomic_single_doc" || proposal.reversibility === "reversible_with_compensation"
-        ? "EXECUTE_WITH_UNDO"
-        : "EXECUTE_COMMITTED";
+      await lsRun.finish(successResult);
+      void TracePersistenceService.getInstance().persistTrace({
+        ctx: traceCtx,
+        status: "COMPLETED",
+        terminationReason: outcome,
+        finalFrontendPayload: { outcome, actionId: kernelResult.actionId, idempotent: kernelResult.idempotent },
+      });
 
-    const successResult: IKernelExecutionResult = {
-      outcome: kernelResult.idempotent ? "REJECTED_IDEMPOTENT_DUPLICATE" : outcome,
-      actionId: kernelResult.actionId,
-      idempotencyKey: envelope.idempotencyKey,
-      committedAtMs: Date.now(),
-      undoToken: outcome === "EXECUTE_WITH_UNDO" ? `undo_${kernelResult.actionId}` : undefined,
-      reprojection,
-    };
-
-    return apiSuccess(successResult);
+      return apiSuccess(successResult);
+    });
   } catch (err: any) {
     console.error("POST /api/kernel/dispatch Error:", err);
     return apiError(err.message || "Failed to dispatch kernel action", "INTERNAL_ERROR", 500);

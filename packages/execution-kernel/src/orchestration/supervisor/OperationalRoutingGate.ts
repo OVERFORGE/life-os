@@ -34,16 +34,36 @@ export interface RoutingEvaluationResult {
   userExplanation?: string;
   clarificationQuestion?: string;
   candidateEntities?: Array<{ entityId: string; displayName: string }>;
+  hasReadOperations?: boolean;
+  isReadOnly?: boolean;
+  requiresInvestigation?: boolean;
+  requiresSynthesis?: boolean;
 }
 
 export function evaluateOperationalRouting(semanticTurn: SemanticTurn): RoutingEvaluationResult {
+  const registry = CapabilityRegistry.getInstance();
+
   // Gate 1: Non-Action Turns (Casual dialogue, queries, observations)
   if (semanticTurn.primaryClassification !== "ACTION_REQUEST") {
+    const ops = semanticTurn.operations || [];
+    const readCount = ops.filter((op) => {
+      const urn = op.capabilityURN || (op.payload?.capabilityURN as string | undefined) || op.actionType;
+      return registry.getCapability(urn)?.operationKind === "READ";
+    }).length;
+    const hasReadOperations = readCount > 0;
+    const isReadOnly = ops.length > 0 && readCount === ops.length;
+    const requiresInvestigation =
+      semanticTurn.primaryClassification === "INFORMATION_QUERY" &&
+      semanticTurn.requiresRetrieval === true;
     return {
       category: "CLARIFICATION_REQUIRED",
       eligibleForImmediateExecution: false,
       rejectionCode: "NON_ACTION_TURN",
       userExplanation: semanticTurn.conversationalSummary,
+      hasReadOperations,
+      isReadOnly,
+      requiresInvestigation,
+      requiresSynthesis: hasReadOperations || semanticTurn.requiresRetrieval === true,
     };
   }
 
@@ -68,8 +88,6 @@ export function evaluateOperationalRouting(semanticTurn: SemanticTurn): RoutingE
     };
   }
 
-  const registry = CapabilityRegistry.getInstance();
-
   // Gate 4: Capability Existence Check (Fail Closed)
   for (const op of semanticTurn.operations) {
     const urn = op.capabilityURN || op.actionType;
@@ -85,12 +103,26 @@ export function evaluateOperationalRouting(semanticTurn: SemanticTurn): RoutingE
   }
 
   // Gate 5: Structural Data Dependency Evaluation
+  const readCount = semanticTurn.operations.filter((op) => {
+    const urn = op.capabilityURN || op.actionType;
+    return registry.getCapability(urn)?.operationKind === "READ";
+  }).length;
+  const hasReadOperations = readCount > 0;
+  const isReadOnly = semanticTurn.operations.length > 0 && readCount === semanticTurn.operations.length;
+  const requiresInvestigation =
+    semanticTurn.objectiveComplexity === "INVESTIGATIVE" || semanticTurn.requiresRetrieval === true;
+  const requiresSynthesis = hasReadOperations || semanticTurn.requiresRetrieval === true;
+
   const hasDependencies = hasStructuralDataDependencies(semanticTurn.operations);
   if (hasDependencies) {
     return {
       category: "COMPOSITE_WORKFLOW_DAG",
       eligibleForImmediateExecution: false,
       rejectionCode: "REQUIRES_DYNAMIC_WORKFLOW_PLANNER",
+      hasReadOperations,
+      isReadOnly,
+      requiresInvestigation,
+      requiresSynthesis,
     };
   }
 
@@ -181,12 +213,20 @@ export function evaluateOperationalRouting(semanticTurn: SemanticTurn): RoutingE
       category: "SINGLE_ATOMIC_OPERATION",
       eligibleForImmediateExecution: true,
       proposals,
+      hasReadOperations,
+      isReadOnly,
+      requiresInvestigation,
+      requiresSynthesis,
     };
   } else {
     return {
       category: "INDEPENDENT_OPERATION_BATCH",
       eligibleForImmediateExecution: true,
       proposals,
+      hasReadOperations,
+      isReadOnly,
+      requiresInvestigation,
+      requiresSynthesis,
     };
   }
 }

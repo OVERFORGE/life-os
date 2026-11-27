@@ -40,7 +40,7 @@ export async function POST(req: Request) {
     // Ingest audio directly into Groq Whisper Large v3 Turbo with domain vocabulary biasing
     const transcription = await groq.audio.transcriptions.create({
       file,
-      model: "whisper-large-v3-turbo",
+      model: process.env.WHISPER_MODEL || "whisper-large-v3-turbo",
       response_format: "json",
       language: "en",
       temperature: 0,

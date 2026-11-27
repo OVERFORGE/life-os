@@ -91,11 +91,12 @@ describe("Step 4 Loop 7: 15-Scenario End-to-End Concurrency Chaos Battery", () =
 
     const proposal: ActionProposal = {
       id: "mut-crash-1",
-      actionType: "sample_action",
+      actionType: "sample_action" as any,
       domain: "productivity",
       reversibility: "atomic_single_doc",
       rationale: "Unit test",
       parameters: { value: 42 },
+      payload: { value: 42 },
       idempotencyKey: "idemp-crash-1",
     };
 
@@ -371,12 +372,13 @@ describe("Step 4 Loop 7: 15-Scenario End-to-End Concurrency Chaos Battery", () =
 
     const proposal: ActionProposal = {
       id: "mut-ghost-10",
-      actionType: "ghost_action",
+      actionType: "ghost_action" as any,
       domain: "productivity",
       reversibility: "atomic_single_doc",
       rationale: "Unit test",
       targetEntityId: "task_ghost_789",
       parameters: { x: 1 },
+      payload: { x: 1 },
       idempotencyKey: "idemp-ghost",
     };
     (proposal as any).expectedVersion = 2;
@@ -532,11 +534,12 @@ describe("Step 4 Loop 7: 15-Scenario End-to-End Concurrency Chaos Battery", () =
 
     const proposal: ActionProposal = {
       id: "mut-rapid-14",
-      actionType: "rapid_fire",
+      actionType: "rapid_fire" as any,
       domain: "productivity",
       reversibility: "atomic_single_doc",
       rationale: "Unit test",
       parameters: { test: true },
+      payload: { test: true },
       idempotencyKey: "idemp-rapid-14",
     };
 

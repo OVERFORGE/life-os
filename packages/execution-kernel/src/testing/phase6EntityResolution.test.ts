@@ -1,30 +1,24 @@
 import { describe, it, before, after } from "node:test";
 import assert from "node:assert/strict";
 import mongoose from "mongoose";
-import * as dotenv from "dotenv";
-import * as path from "path";
-
-dotenv.config({ path: path.resolve(process.cwd(), "apps/web/.env") });
-
 import { AuthoritativeEntityResolver } from "../orchestration/context/AuthoritativeEntityResolver";
 import { SemanticIntentInterpreter } from "../orchestration/semantic/SemanticIntentInterpreter";
 import { Supervisor } from "../orchestration/supervisor/Supervisor";
+import { connectIsolatedTestDB, disconnectIsolatedTestDB } from "./helpers/testDbIsolation";
 
 describe("PHASE 6: Authoritative Entity Resolution & Zero-Tolerance Ambiguity", () => {
   const userId = new mongoose.Types.ObjectId().toString();
 
   before(async () => {
-    if (process.env.MONGODB_URI && mongoose.connection.readyState !== 1) {
-      await mongoose.connect(process.env.MONGODB_URI);
-    }
+    await connectIsolatedTestDB();
   });
 
   after(async () => {
     if (mongoose.connection.readyState === 1) {
       const { Task } = await import("@/server/db/models/Task");
       await Task.deleteMany({ userId: new mongoose.Types.ObjectId(userId) });
-      await mongoose.disconnect();
     }
+    await disconnectIsolatedTestDB({ dropDatabase: false });
   });
 
   it("TEST 1: Single Candidate Resolution without ambiguity", async () => {

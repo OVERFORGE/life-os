@@ -21,10 +21,14 @@ import {
 } from "../contracts/CanonicalEventContracts";
 import { DailyLog } from "../../../../../apps/web/server/db/models/DailyLog";
 import { WorkoutSession } from "../../../../../apps/web/server/db/models/WorkoutSession";
+import { ObservationPipeline } from "../../telemetry/pipeline/ObservationPipeline";
+import { ObservationMapper } from "../../telemetry/ObservationMapper";
+import { createFrozenObservation } from "../../telemetry/Observation";
 
 export interface PhysicalReadinessConsumerDependencies {
   dailyLogModel?: any;
   workoutSessionModel?: any;
+  observationPipeline?: ObservationPipeline;
 }
 
 export class PhysicalReadinessConsumer implements ICanonicalConsumer {
@@ -34,14 +38,20 @@ export class PhysicalReadinessConsumer implements ICanonicalConsumer {
     "domain.health.workout_logged",
     "domain.physical.session_deleted",
     "telemetry.wearables.ingested",
+    "domain.daily_log.updated",
+    "domain.nutrition.logged",
+    "domain.weight.logged",
+    "domain.signal.logged",
   ];
 
   private dailyLogModel: any;
   private workoutSessionModel: any;
+  private observationPipeline: ObservationPipeline;
 
   constructor(deps?: PhysicalReadinessConsumerDependencies) {
     this.dailyLogModel = deps?.dailyLogModel || DailyLog;
     this.workoutSessionModel = deps?.workoutSessionModel || WorkoutSession;
+    this.observationPipeline = deps?.observationPipeline || ObservationPipeline.getInstance();
   }
 
   public async process(
@@ -51,12 +61,112 @@ export class PhysicalReadinessConsumer implements ICanonicalConsumer {
     try {
       const payload = envelope.payload || {};
       const occurredDate = new Date(envelope.occurredAt);
+      const occurredMs = occurredDate.getTime() || Date.now();
       const targetDate =
         payload.dateOnly ||
         (payload.date && typeof payload.date === "string" && payload.date.slice(0, 10)) ||
         `${occurredDate.getFullYear()}-${String(occurredDate.getMonth() + 1).padStart(2, "0")}-${String(occurredDate.getDate()).padStart(2, "0")}`;
 
       const userId = envelope.userId;
+
+      // For DailyLog / Nutrition / Weight / Signal events: extract Observations without overwriting originating DailyLog sections
+      if (
+        envelope.type === "domain.daily_log.updated" ||
+        envelope.type === "domain.nutrition.logged" ||
+        envelope.type === "domain.weight.logged" ||
+        envelope.type === "domain.signal.logged"
+      ) {
+        const extracted: any[] = [];
+        if (envelope.type === "domain.daily_log.updated") {
+          extracted.push(
+            ...ObservationMapper.toObservations({
+              userId,
+              generationTimestamp: occurredMs,
+              dailyLogs: [
+                {
+                  _id: envelope.aggregateId,
+                  userId,
+                  date: targetDate,
+                  mental: {
+                    stress: payload.mentalStress,
+                    energy: payload.mentalEnergy,
+                    mood: payload.mentalMood,
+                    focus: payload.mentalFocus,
+                  },
+                  sleep: {
+                    hours: payload.sleepHours,
+                    quality: payload.sleepQuality,
+                  },
+                  physical: {
+                    calories: payload.calories,
+                  },
+                  work: {
+                    deepWorkHours: payload.deepWorkHours,
+                  },
+                } as any,
+              ],
+              tasks: [],
+              goals: [],
+            })
+          );
+          if (typeof payload.sleepHours === "number") {
+            extracted.push(
+              createFrozenObservation({
+                id: `obs-phys-sleep-${envelope.eventId}`,
+                type: "SleepDurationHours",
+                userId,
+                timestamp: occurredMs,
+                generatedAt: occurredMs,
+                generatedBy: "PhysicalReadinessConsumer",
+                confidence: 0.95,
+                normalizedValue: Math.min(1.0, Math.max(0.0, payload.sleepHours / 8.0)),
+                rawValue: payload.sleepHours,
+                unit: "hours",
+                metadata: {},
+                ownership: {
+                  sourceCollection: "dailylogs",
+                  sourceEntityId: envelope.aggregateId,
+                  originatingSubsystem: "PhysicalReadinessConsumer",
+                  createdAt: occurredMs,
+                },
+              })
+            );
+          }
+        } else if (envelope.type === "domain.signal.logged") {
+          const val = Number(payload.value);
+          if (!Number.isNaN(val)) {
+            extracted.push(
+              createFrozenObservation({
+                id: `obs-phys-signal-${envelope.eventId}`,
+                type: payload.key === "sleepHours" ? "SleepDurationHours" : "EnergyDeficit",
+                userId,
+                timestamp: occurredMs,
+                generatedAt: occurredMs,
+                generatedBy: "PhysicalReadinessConsumer",
+                confidence: 0.9,
+                normalizedValue:
+                  payload.key === "sleepHours"
+                    ? Math.min(1.0, Math.max(0.0, val / 8.0))
+                    : Math.min(1.0, Math.max(0.0, val > 10 ? val / 100 : val / 10)),
+                rawValue: val,
+                unit: String(payload.key || "signal"),
+                metadata: { signalKey: payload.key, date: targetDate },
+                ownership: {
+                  sourceCollection: "dailylogs",
+                  sourceEntityId: envelope.aggregateId,
+                  originatingSubsystem: "PhysicalReadinessConsumer",
+                  createdAt: occurredMs,
+                },
+              })
+            );
+          }
+        }
+
+        if (extracted.length > 0) {
+          await this.observationPipeline.ingestObservations(extracted);
+        }
+        return { status: "SUCCEEDED" };
+      }
 
       // In-band CAS retry loop (up to 3 attempts with exponential backoff on write collision)
       const maxRetries = 3;

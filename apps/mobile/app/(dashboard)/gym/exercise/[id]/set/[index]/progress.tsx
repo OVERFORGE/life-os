@@ -36,7 +36,13 @@ export default function SpecificSetProgressScreen() {
     }
   };
 
-  useEffect(() => { if (equipmentName) loadData(); }, [equipmentName, setIndex]);
+  useEffect(() => {
+    if (equipmentName) {
+      queueMicrotask(() => {
+        void loadData();
+      });
+    }
+  }, [equipmentName, setIndex]);
 
   // ── Chart: date vs weight ──────────────────────────────────────
   const chartItems = history.slice(-10);

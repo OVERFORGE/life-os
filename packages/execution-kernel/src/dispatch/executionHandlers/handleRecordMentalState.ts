@@ -1,15 +1,13 @@
 import mongoose from "mongoose";
 import { RecordMentalStatePayload } from "../../orchestration/contracts/ActionPayloadSchemas";
+import { upsertDailyLogWithOutbox } from "@/features/daily-log/services/dailyLogEngine";
 
 export async function handleRecordMentalState(payload: RecordMentalStatePayload, userId: string) {
   if (!mongoose.connection || mongoose.connection.readyState !== 1) {
     throw new Error("[KERNEL_DATABASE_DISCONNECTED]: Cannot record mental state while MongoDB is disconnected.");
   }
 
-  const { DailyLog } = await import("@/server/db/models/DailyLog");
-
   const today = payload.date || new Date().toISOString().split("T")[0];
-  const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
   const updateFields: Record<string, any> = {};
 
   const toNum = (val: any) => {
@@ -36,11 +34,21 @@ export async function handleRecordMentalState(payload: RecordMentalStatePayload,
     updateFields["mental.updatedAt"] = new Date().toISOString();
   }
 
-  const updatedDoc = await DailyLog.findOneAndUpdate(
-    { userId: userObjId, date: today },
-    { $set: updateFields },
-    { upsert: true, returnDocument: 'after' }
-  );
+  const result = await upsertDailyLogWithOutbox({
+    userId,
+    date: today,
+    dotUpdates: updateFields,
+    preserveSignals: true,
+    options: {
+      source: "kernel.record_mental_estimate",
+    },
+  });
+
+  if (!result.success || !result.log) {
+    throw new Error(result.error || "Failed to record mental state through outbox");
+  }
+
+  const updatedDoc = result.log;
 
   return {
     type: "record_mental_estimate",

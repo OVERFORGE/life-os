@@ -31,10 +31,6 @@ export default function AmbientSettingsScreen() {
   const [avenEnabled, setAvenEnabled] = useState(false);
   const [permStatus, setPermStatus] = useState<string>('Checking…');
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
   const loadSettings = async () => {
     try {
       const notifs = await AsyncStorage.getItem('@ambient_notifs_enabled');
@@ -49,6 +45,12 @@ export default function AmbientSettingsScreen() {
       setPermStatus(granted ? 'Granted' : 'Permission Required');
     } catch {}
   };
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadSettings();
+    });
+  }, []);
 
   const toggleNotifications = async (val: boolean) => {
     setNotificationsEnabled(val);
@@ -133,7 +135,7 @@ export default function AmbientSettingsScreen() {
           <Text style={styles.stepNum}>2</Text>
           <Text style={styles.stepText}>
             <Text style={{ fontWeight: 'bold', color: '#FFF' }}>Quick Settings Tile: </Text>
-            Pull down your notification shade twice, tap Edit, and add the "Aven" tile for 1-tap voice access.
+            Pull down your notification shade twice, tap Edit, and add the &quot;Aven&quot; tile for 1-tap voice access.
           </Text>
         </View>
       </View>
@@ -167,7 +169,7 @@ export default function AmbientSettingsScreen() {
               style={[styles.phraseChip, heyAvenEnabled && styles.phraseChipActive]}
             >
               <Text style={[styles.phraseText, heyAvenEnabled && styles.phraseTextActive]}>
-                "Hey Aven" (Recommended)
+                &quot;Hey Aven&quot; (Recommended)
               </Text>
               {heyAvenEnabled && <Ionicons name="checkmark" size={16} color="#E8414A" />}
             </TouchableOpacity>
@@ -177,7 +179,7 @@ export default function AmbientSettingsScreen() {
               style={[styles.phraseChip, avenEnabled && styles.phraseChipActive]}
             >
               <Text style={[styles.phraseText, avenEnabled && styles.phraseTextActive]}>
-                "Aven"
+                &quot;Aven&quot;
               </Text>
               {avenEnabled && <Ionicons name="checkmark" size={16} color="#E8414A" />}
             </TouchableOpacity>

@@ -1,9 +1,10 @@
 import { FoodItem } from "@/server/db/models/FoodItem";
 import { DayTemplate } from "@/server/db/models/DayTemplate";
 import { NutritionLog } from "@/server/db/models/NutritionLog";
-import { DailyLog } from "@/server/db/models/DailyLog";
 import { User } from "@/server/db/models/User";
 import { getActiveDate } from "../../automation/timeUtils";
+import { saveNutritionLogWithOutbox } from "@/features/nutrition/services/nutritionLogEngine";
+import { createCatalogDocWithOutbox } from "@/features/catalog/services/catalogMutationEngine";
 
 // Parses free-text like "4 bananas and 2 eggs" into [{name, quantity}]
 function parseIngredients(description: string): { name: string; quantity: number }[] {
@@ -38,17 +39,26 @@ export async function handleLogMeal(payload: { description: string; date?: strin
             const itemName = it.name || "Food Item";
             let foodDoc = await FoodItem.findOne({ userId, name: new RegExp(`^${itemName}$`, "i") });
             if (!foodDoc) {
-                foodDoc = await FoodItem.create({
+                const foodRes = await createCatalogDocWithOutbox({
                     userId,
-                    name: itemName,
-                    baseWeight: it.amount || 100,
-                    macros: {
-                        calories: it.calories || 100,
-                        protein: it.protein || 5,
-                        carbs: it.carbs || 10,
-                        fats: it.fats || 3,
-                    }
+                    model: FoodItem,
+                    aggregateType: "food_item",
+                    eventType: "domain.catalog.updated",
+                    domain: "nutrition",
+                    docFields: {
+                        userId,
+                        name: itemName,
+                        baseWeight: it.amount || 100,
+                        macros: {
+                            calories: it.calories || 100,
+                            protein: it.protein || 5,
+                            carbs: it.carbs || 10,
+                            fats: it.fats || 3,
+                        },
+                    },
+                    options: { source: "kernel.log_meal.food_item" },
                 });
+                foodDoc = foodRes.doc;
             }
 
             const itemCals = Math.round(it.calories ?? foodDoc.macros.calories);
@@ -84,16 +94,16 @@ export async function handleLogMeal(payload: { description: string; date?: strin
             fats: parseFloat(((existingTotals.fats || 0) + addedFats).toFixed(1)),
         };
 
-        await NutritionLog.findOneAndUpdate(
-            { userId, date: today },
-            { meals: [...existingMeals, ...structuredMeals], dailyTotals: updatedTotals },
-            { upsert: true, new: true }
-        );
-        await DailyLog.findOneAndUpdate(
-            { userId, date: today },
-            { $set: { "physical.calories": updatedTotals.calories } },
-            { upsert: true }
-        );
+        const saved = await saveNutritionLogWithOutbox({
+            userId,
+            date: today,
+            meals: [...existingMeals, ...structuredMeals],
+            dailyTotals: updatedTotals,
+            options: { source: "kernel.log_meal.structured" },
+        });
+        if (!saved.success) {
+            throw new Error(saved.error || "Failed to save meal via outbox");
+        }
 
         return {
             type: "log_meal",
@@ -153,18 +163,27 @@ export async function handleLogMeal(payload: { description: string; date?: strin
         }
 
         if (!directMatch) {
-            // Auto-create on-demand FoodItem for uncataloged item
-            directMatch = await FoodItem.create({
+            // Auto-create on-demand FoodItem for uncataloged item via outbox
+            const foodRes = await createCatalogDocWithOutbox({
                 userId,
-                name: cleaned || "Custom Meal",
-                baseWeight: 150,
-                macros: {
-                    calories: payload.totalCalories || 250,
-                    protein: 12,
-                    carbs: 30,
-                    fats: 8,
-                }
+                model: FoodItem,
+                aggregateType: "food_item",
+                eventType: "domain.catalog.updated",
+                domain: "nutrition",
+                docFields: {
+                    userId,
+                    name: cleaned || "Custom Meal",
+                    baseWeight: 150,
+                    macros: {
+                        calories: payload.totalCalories || 250,
+                        protein: 12,
+                        carbs: 30,
+                        fats: 8,
+                    },
+                },
+                options: { source: "kernel.log_meal.food_item" },
             });
+            directMatch = foodRes.doc;
         }
 
         // Default: 1 serving = 1 baseWeight
@@ -191,16 +210,16 @@ export async function handleLogMeal(payload: { description: string; date?: strin
             fats: parseFloat(((existingTotals.fats || 0) + macros.fats).toFixed(1)),
         };
 
-        await NutritionLog.findOneAndUpdate(
-            { userId, date: today },
-            { meals: [...existingMeals, mealEntry], dailyTotals: updatedTotals },
-            { upsert: true, new: true }
-        );
-        await DailyLog.findOneAndUpdate(
-            { userId, date: today },
-            { $set: { "physical.calories": updatedTotals.calories } },
-            { upsert: true }
-        );
+        const saved = await saveNutritionLogWithOutbox({
+            userId,
+            date: today,
+            meals: [...existingMeals, mealEntry],
+            dailyTotals: updatedTotals,
+            options: { source: "kernel.log_meal.direct" },
+        });
+        if (!saved.success) {
+            throw new Error(saved.error || "Failed to save meal via outbox");
+        }
 
         return {
             type: "log_meal",
@@ -278,18 +297,16 @@ export async function handleLogMeal(payload: { description: string; date?: strin
         fats: parseFloat(((existingTotals.fats || 0) + totalFats).toFixed(1)),
     };
 
-    await NutritionLog.findOneAndUpdate(
-        { userId, date: today },
-        { meals: [...existingMeals, ...mealsToAdd], dailyTotals: updatedTotals },
-        { upsert: true, new: true }
-    );
-
-    // Cross-sync to DailyLog
-    await DailyLog.findOneAndUpdate(
-        { userId, date: today },
-        { $set: { "physical.calories": updatedTotals.calories } },
-        { upsert: true }
-    );
+    const saved = await saveNutritionLogWithOutbox({
+        userId,
+        date: today,
+        meals: [...existingMeals, ...mealsToAdd],
+        dailyTotals: updatedTotals,
+        options: { source: "kernel.log_meal.ingredients" },
+    });
+    if (!saved.success) {
+        throw new Error(saved.error || "Failed to save meal via outbox");
+    }
 
     return {
         type: "log_meal",
@@ -343,17 +360,16 @@ async function applyTemplate(template: any, userId: string, today: string) {
         fats: parseFloat(((existingTotals.fats || 0) + totalFats).toFixed(1)),
     };
 
-    await NutritionLog.findOneAndUpdate(
-        { userId, date: today },
-        { meals: [...existingMeals, ...meals], dailyTotals: updatedTotals },
-        { upsert: true, new: true }
-    );
-
-    await DailyLog.findOneAndUpdate(
-        { userId, date: today },
-        { $set: { "physical.calories": updatedTotals.calories } },
-        { upsert: true }
-    );
+    const saved = await saveNutritionLogWithOutbox({
+        userId,
+        date: today,
+        meals: [...existingMeals, ...meals],
+        dailyTotals: updatedTotals,
+        options: { source: "kernel.log_meal.template" },
+    });
+    if (!saved.success) {
+        throw new Error(saved.error || "Failed to save meal template via outbox");
+    }
 
     return {
         type: "log_meal",

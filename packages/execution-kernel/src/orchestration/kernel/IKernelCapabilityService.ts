@@ -16,11 +16,46 @@ export interface ActionValidationResult {
   rejectedProposals: Array<{ proposalId: string; reason: string }>;
 }
 
+export interface AuthoritativeDomainSnapshot {
+  dailyLog?: {
+    date?: string;
+    sleepHours?: number | null;
+    sleepQuality?: number | null;
+    moodScore?: number | null;
+    energyLevel?: number | null;
+    stressLevel?: number | null;
+    hydrationMl?: number | null;
+    caloriesEstimate?: number | null;
+  } | null;
+  nutrition?: {
+    date?: string;
+    totalCalories?: number | null;
+    hydrationMl?: number | null;
+  } | null;
+  recentWorkouts?: Array<{
+    id: string;
+    type: string;
+    intensity: string;
+    durationMinutes: number;
+  }>;
+  cognitiveState?: {
+    focusIndex?: number | null;
+    stressLevel?: number | null;
+    energyLevel?: number | null;
+    recoveryCapacity?: number | null;
+    sleepDebtHours?: number | null;
+    physiologicalScore?: number | null;
+    confidence?: number | null;
+  } | null;
+  missingDomains: string[];
+}
+
 export interface AuthoritativeKernelState {
   userId: string;
   timestamp: number;
   graphSnapshot: ExecutionGraphSnapshot;
   worldSnapshot: KernelSnapshot;
+  domainSnapshot?: AuthoritativeDomainSnapshot;
 }
 
 export interface VerificationOutcome {

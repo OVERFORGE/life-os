@@ -1,4 +1,5 @@
-import { groqChat } from "../../shared/groq";
+import { invokeLifeOSChat } from "../../shared/langchain/LifeOSChatModel";
+import { isFastSemanticFillerEnabled, resolveFastModel } from "../../shared/modelRegistry";
 
 /**
  * FastSemanticFiller
@@ -26,6 +27,7 @@ export class FastSemanticFiller {
    * Returns null if the user utterance is casual dialogue, greeting, gratitude, sign-off, or cancellation.
    */
   async generateFiller(userMessage: string, timeoutMs: number = 600): Promise<string | null> {
+    if (!isFastSemanticFillerEnabled()) return null;
     const cleanMsg = (userMessage || "").trim();
     if (!cleanMsg || cleanMsg.length < 3) return null;
 
@@ -37,14 +39,14 @@ If the user's utterance is an action request (e.g. creating/scheduling a task, l
 If the utterance is a greeting, casual chat, farewell, gratitude, or negation/cancellation, return NONE.
 Return ONLY the sentence or NONE.`;
 
-        const response = await groqChat({
+        const response = await invokeLifeOSChat({
           messages: [
             { role: "system", content: systemPrompt },
             { role: "user", content: cleanMsg },
           ],
-          model: "qwen/qwen3.8-27b",
+          model: resolveFastModel(),
           temperature: 0.1,
-          max_tokens: 30,
+          maxTokens: 30,
         });
 
         const clean = (response || "").trim().replace(/^["']|["']$/g, "");

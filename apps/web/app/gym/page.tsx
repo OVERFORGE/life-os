@@ -141,7 +141,7 @@ export default function GymHub() {
               <h1 className="text-2xl font-bold tracking-tight text-[#F7F5F0]">Gym Protocol</h1>
             </div>
             <p className="text-[10px] font-mono font-bold text-[#85827A] uppercase tracking-widest mt-1">
-              Strength Telemetry &amp; Overload Cadence
+              Workouts &amp; Strength Progress
             </p>
           </div>
         </div>
@@ -158,7 +158,7 @@ export default function GymHub() {
         {loading ? (
           <div className="flex flex-col items-center justify-center py-20">
             <div className="w-8 h-8 rounded-full border-2 border-[#D98B2B] border-t-transparent animate-spin" />
-            <p className="text-xs font-semibold text-[#85827A] mt-4 font-mono">Loading Telemetry...</p>
+            <p className="text-xs font-semibold text-[#85827A] mt-4 font-mono">Loading workouts...</p>
           </div>
         ) : (
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-8">

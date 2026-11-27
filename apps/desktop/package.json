@@ -6,6 +6,8 @@
   "scripts": {
     "dev": "tsc -p tsconfig.main.json && electron .",
     "build": "tsc -p tsconfig.main.json",
+    "typecheck": "tsc -p tsconfig.main.json --noEmit && tsc -p tsconfig.json --noEmit",
+    "lint": "tsc -p tsconfig.main.json --noEmit",
     "package": "tsc -p tsconfig.main.json && electron-builder"
   },
   "dependencies": {},

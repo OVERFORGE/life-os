@@ -22,6 +22,10 @@ const LifeCategorySchema = new Schema(
       type: Number,
       default: 0,
     },
+    deletedAt: { type: Date, default: null },
+    version: { type: Number, default: 0 },
+    mutationEpoch: { type: Number, default: 0 },
+    recentMutationReceipts: { type: [Schema.Types.Mixed], default: [] },
   },
   { timestamps: true }
 );

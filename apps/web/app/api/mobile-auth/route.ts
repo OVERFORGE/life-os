@@ -83,7 +83,7 @@ export async function POST(req: Request) {
         req.headers.get("x-real-ip") ||
         "";
         
-      let deviceInfo = parseUserAgent(ua);
+      const deviceInfo = parseUserAgent(ua);
       
       // Override with explicit device details from React Native payload if provided
       const bodyDeviceOs = body.deviceOs;

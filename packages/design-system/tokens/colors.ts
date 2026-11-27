@@ -1,11 +1,13 @@
 export const palette = {
   neutral: {
+    950: '#0B0B0C', // Deep Void
     900: '#161618', // Deepest background (Mobile Match)
     800: '#1F2023', // Elevated workspace surface
     700: '#2A2B2F', // Borders / Lightest surface
     600: '#23252A',
     500: '#687076', // Muted icons
     400: '#9BA1A6', // Secondary text
+    200: '#C5C2BA', // Champagne Grey
     100: '#ECE7E3', // Less muted text
     50: '#FFFDFC',  // Primary Text (Mobile white)
   },

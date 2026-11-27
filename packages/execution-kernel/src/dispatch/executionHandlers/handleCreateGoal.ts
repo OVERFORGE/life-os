@@ -3,6 +3,7 @@ import { OutboxStorageService, OutboxEventDraft } from "../../events/persistence
 import { LifeSignal } from "@/features/signals/models/LifeSignal";
 import { Goal } from "@/features/goals/models/Goal";
 import { evaluateGoal } from "@/features/goals/engine/evaluateGoal";
+import { upsertCatalogDocWithOutbox } from "@/features/catalog/services/catalogMutationEngine";
 
 export async function handleCreateGoal(
     payload: any,
@@ -18,16 +19,23 @@ export async function handleCreateGoal(
     if (payload.newSignals && payload.newSignals.length > 0) {
         for (const ns of payload.newSignals) {
             const key = ns.label.toLowerCase().replace(/[^a-z0-9]/g, "_");
-            await LifeSignal.findOneAndUpdate(
-                { userId, key },
-                { 
-                  label: ns.label, 
-                  inputType: ns.inputType || "number", 
-                  categoryKey: ns.categoryKey || "habits", // Default category to habits so it appears on mobile
-                  enabled: true 
+            await upsertCatalogDocWithOutbox({
+                userId,
+                model: LifeSignal,
+                filter: { userId, key },
+                aggregateType: "life_signal",
+                eventType: "domain.catalog.updated",
+                domain: "signals",
+                updateFields: {
+                    label: ns.label,
+                    inputType: ns.inputType || "number",
+                    categoryKey: ns.categoryKey || "habits",
+                    enabled: true,
                 },
-                { upsert: true }
-            );
+                createFields: { userId, key },
+                createIfMissing: true,
+                options: { source: "kernel.create_goal.signal" },
+            });
             if (!finalSignals.includes(key)) finalSignals.push(key);
             signalWeights.set(key, ns.weight || 5);
         }

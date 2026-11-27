@@ -1,6 +1,18 @@
 import { KernelExecutionResult, DOMAIN_CAPABILITIES } from "../contracts/ActionProposalContracts";
 import { SemanticTurn, EntityResolutionEvidence } from "../contracts/SemanticTurnContracts";
 import { ObjectiveOutcomeStatus } from "../contracts/WorkflowExecutionContracts";
+import {
+  cleanLLMResponse,
+  StreamInterruptedError,
+  isAbortError,
+  createAbortError,
+} from "../../shared/groq";
+import { invokeLifeOSChat, streamLifeOSChat } from "../../shared/langchain/LifeOSChatModel";
+import { resolveGroqModel } from "../../shared/modelRegistry";
+import { ExecutionEvidencePackage, buildExecutionEvidencePackage } from "./EvidencePackageBuilder";
+
+export { buildExecutionEvidencePackage };
+export type { ExecutionEvidencePackage };
 
 export interface GroundedResponseOptions {
   userMessage?: string;
@@ -57,6 +69,158 @@ export class GroundedResponseGenerator {
     return GroundedResponseGenerator.instance;
   }
 
+  /**
+   * Canonical Stage 2 Synthesis Pathway (Single Source of Truth).
+   * Receives strictly sanitized, allowlisted ExecutionEvidencePackage data and produces
+   * a grounded user-facing answer without fabricating unavailable records.
+   */
+  async synthesizeFromEvidence(
+    evidencePackage: ExecutionEvidencePackage,
+    options?: {
+      llmComplete?: (prompt: string) => Promise<string>;
+      llmStream?: (prompt: string, onDelta: (delta: string) => void | Promise<void>) => Promise<string>;
+      onDelta?: (delta: string) => void | Promise<void>;
+      signal?: AbortSignal;
+    }
+  ): Promise<string> {
+    if (options?.signal?.aborted) {
+      throw createAbortError();
+    }
+
+    const prompt = `You are Aven, the user's grounded personal execution assistant.
+Answer the user's objective strictly using the sanitized Execution Evidence Package below.
+
+User Objective: "${evidencePackage.objective}"
+Temporal Context: ${JSON.stringify(evidencePackage.temporalContext || {})}
+${evidencePackage.tailoredContextSummary ? `World Context:\n${evidencePackage.tailoredContextSummary}\n` : ""}
+Sanitized Execution Evidence Package:
+${JSON.stringify(evidencePackage.items, null, 2)}
+${evidencePackage.limitations.length > 0 ? `\nLimitations / Coverage Notes:\n- ${evidencePackage.limitations.join("\n- ")}\n` : ""}
+
+STRICT GROUNDING RULES:
+1. Cite ONLY records, counts, dates, statuses, and fields explicitly present in the Execution Evidence Package.
+2. If any source has coverageStatus "READ_EMPTY", state clearly that no matching records were found for that source/range. Never invent tasks, mood scores, logs, memories, or events.
+3. If coverageStatus is "PARTIAL_RESULT" or "CAPABILITY_EXECUTION_FAILED", disclose the partial coverage or failure honestly.
+4. Keep the response concise, helpful, and directly oriented to the user's objective.
+5. Treat "lifeos.memory.search" items as historical remembered context, NOT live state. If a remembered belief conflicts with live records from "lifeos.tasks.query", "lifeos.goals.query", "lifeos.schedule.query_occurrences", "lifeos.daily_logs.query_range", or "lifeos.telemetry.query_state_history", treat the live record as authoritative and note the difference calmly.
+6. Present ONLY active, non-superseded remembered facts as current truth—never present superseded or expired memories as active. Surface disputed conflicts or stale/low-confidence caveats transparently.`;
+
+    let emittedAny = false;
+    try {
+      let rawText = "";
+      if (options?.llmStream) {
+        rawText = await options.llmStream(prompt, async (delta) => {
+          if (delta) {
+            emittedAny = true;
+            await options.onDelta?.(delta);
+          }
+        });
+      } else if (options?.llmComplete) {
+        rawText = await options.llmComplete(prompt);
+        const cleanedProvided = cleanLLMResponse(rawText).trim();
+        if (cleanedProvided.length >= 20) {
+          if (options.onDelta) {
+            emittedAny = true;
+            await options.onDelta(cleanedProvided);
+          }
+          return cleanedProvided;
+        }
+      } else if (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== "mock_key_for_dev") {
+        if (options?.onDelta) {
+          rawText = await streamLifeOSChat({
+            messages: [{ role: "user", content: prompt }],
+            model: resolveGroqModel(),
+            temperature: 0.2,
+            maxTokens: 700,
+            signal: options.signal,
+            onDelta: async (delta) => {
+              if (delta) {
+                emittedAny = true;
+                await options.onDelta?.(delta);
+              }
+            },
+          });
+        } else {
+          rawText = await invokeLifeOSChat({
+            messages: [{ role: "user", content: prompt }],
+            model: resolveGroqModel(),
+            temperature: 0.2,
+            maxTokens: 700,
+            signal: options?.signal,
+          });
+        }
+      }
+      const cleaned = cleanLLMResponse(rawText).trim();
+      if (cleaned.length >= 20) {
+        return cleaned;
+      }
+    } catch (err: any) {
+      if (isAbortError(err) || options?.signal?.aborted) {
+        throw createAbortError();
+      }
+      if (err instanceof StreamInterruptedError || emittedAny) {
+        throw err instanceof StreamInterruptedError ? err : new StreamInterruptedError("", err);
+      }
+      // Deterministic grounded fallback below when zero tokens were emitted
+    }
+
+    let fallbackText = "";
+    if (evidencePackage.items.length === 0) {
+      fallbackText = "I checked your available LifeOS sources, but no capability results were returned for this request.";
+      await options?.onDelta?.(fallbackText);
+      return fallbackText;
+    }
+
+    const lines: string[] = [];
+    for (const item of evidencePackage.items) {
+      if (item.coverageStatus === "READ_EMPTY") {
+        lines.push(`- **${item.capabilityURN}**: No matching records found${item.limitation ? ` (${item.limitation})` : ""}.`);
+      } else if (item.coverageStatus === "CAPABILITY_EXECUTION_FAILED" || item.coverageStatus === "AUTHORIZATION_OR_VALIDATION_FAILED") {
+        lines.push(`- **${item.capabilityURN}**: Could not retrieve data (${item.limitation || item.executionStatus}).`);
+      } else {
+        const previewItems = Array.isArray(item.allowlistedSummary?.items)
+          ? item.allowlistedSummary.items
+          : Array.isArray(item.allowlistedSummary?.messages)
+            ? item.allowlistedSummary.messages
+            : null;
+        if (previewItems && previewItems.length > 0) {
+          if (item.capabilityURN === "lifeos.memory.search") {
+            const memNotes = previewItems
+              .slice(0, 5)
+              .map((m: any) => {
+                const label = m.summary || m.content || "memory";
+                const tags: string[] = [];
+                if (m.isDisputed) tags.push("disputed");
+                if (m.isStale) tags.push("stale");
+                if (typeof m.confidence === "number" && m.confidence < 0.6) tags.push("low confidence");
+                return tags.length > 0 ? `${label} (${tags.join(", ")})` : label;
+              })
+              .join("; ");
+            lines.push(`- **Remembered Context**: ${memNotes}.`);
+          } else {
+            const labels = previewItems
+              .slice(0, 5)
+              .map((r: any) => r.title || r.name || r.subject || r.date || r.id || "entry")
+              .join(", ");
+            const extra = item.totalCount && item.totalCount > 5 ? ` (showing top 5 of ${item.totalCount})` : "";
+            lines.push(`- **${item.capabilityURN}**: Found ${item.returnedCount ?? previewItems.length} record(s)${extra}: ${labels}.`);
+          }
+        } else {
+          lines.push(`- **${item.capabilityURN}**: Retrieved ${item.returnedCount ?? 1} result(s).`);
+        }
+        if (item.coverageStatus === "PARTIAL_RESULT" && item.limitation) {
+          lines.push(`  Note: ${item.limitation}`);
+        }
+      }
+    }
+
+    fallbackText = lines.join("\n");
+    if (!emittedAny && fallbackText) {
+      await options?.onDelta?.(fallbackText);
+    }
+    return fallbackText;
+  }
+
   formatWorkflowOutcome(
     status: ObjectiveOutcomeStatus,
     details?: { path?: string; bytes?: number; emailCount?: number; reason?: string }
@@ -65,11 +229,13 @@ export class GroundedResponseGenerator {
       case "GOAL_ACHIEVED_AND_VERIFIED": {
         const path = details?.path || "file";
         const bytes = details?.bytes !== undefined ? ` (verified ${details.bytes.toLocaleString()} bytes on disk)` : "";
-        const count = details?.emailCount || 2;
-        return `Saved deployment failure summary to ${path}${bytes}. The summary was synthesized by Aven from ${count} unread emails matching 'deployment failure'.`;
+        const count = details?.emailCount;
+        return count !== undefined
+          ? `Saved approved output to ${path}${bytes}, synthesized from ${count} retrieved record(s).`
+          : `Completed and verified workflow output at ${path}${bytes}.`;
       }
       case "OBJECTIVE_UNMET_EMPTY_SOURCE":
-        return `I searched your emails for deployment failure, but found no matching messages. No summary file was written.`;
+        return details?.reason || `The required upstream source query returned no matching records to complete this action.`;
       case "OBJECTIVE_UNMET_INSUFFICIENT_SYNTHESIS":
         return `The synthesized summary was incomplete or insufficient to satisfy the objective.`;
       case "OBJECTIVE_UNREALIZABLE":
@@ -558,7 +724,7 @@ export class GroundedResponseGenerator {
         if (capURN.includes("storage.read_file")) {
           const resObj = data?.result || data || {};
           const fileName = resObj.fileName || require("path").basename(payload?.parameters?.path || payload?.path || "file");
-          
+
           if (resObj.isSummarized && resObj.summary) {
             return `### 📄 Executive Summary: ${fileName}\n\n${resObj.summary.trim()}`;
           }

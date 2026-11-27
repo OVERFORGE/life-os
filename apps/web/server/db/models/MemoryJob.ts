@@ -9,7 +9,21 @@ export interface IMemoryJobDoc extends Document {
     userMessage: string;
     assistantResponse: string;
     conversationId?: string;
+    turnId?: string;
+    requestId?: string;
+    semanticTurnMeta?: {
+      primaryClassification?: string;
+      operationsCount?: number;
+      hasOperations?: boolean;
+    };
+    explicitMemory?: {
+      content: string;
+      summary?: string;
+      domain?: string;
+      memoryType?: string;
+    };
   };
+  workerId?: string;
   status: "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "DEAD_LETTER";
   attempts: number;
   maxAttempts: number;
@@ -44,6 +58,22 @@ const MemoryJobSchema = new Schema<IMemoryJobDoc>(
       userMessage: { type: String, required: true },
       assistantResponse: { type: String, default: "" },
       conversationId: { type: String },
+      turnId: { type: String },
+      requestId: { type: String },
+      semanticTurnMeta: {
+        primaryClassification: { type: String },
+        operationsCount: { type: Number },
+        hasOperations: { type: Boolean },
+      },
+      explicitMemory: {
+        content: { type: String },
+        summary: { type: String },
+        domain: { type: String },
+        memoryType: { type: String },
+      },
+    },
+    workerId: {
+      type: String,
     },
     status: {
       type: String,
@@ -80,6 +110,7 @@ const MemoryJobSchema = new Schema<IMemoryJobDoc>(
 );
 
 MemoryJobSchema.index({ status: 1, heartbeatAt: 1 });
+MemoryJobSchema.index({ status: 1, nextRetryTimestamp: 1 });
 MemoryJobSchema.index({ userId: 1, status: 1 });
 
 export const MemoryJob: Model<IMemoryJobDoc> =

@@ -15,20 +15,13 @@ export const dynamic = "force-dynamic";
 export async function POST(req: Request) {
   try {
     const session = await getAuthSession();
-    let userId = (session?.user as any)?.id;
-
-    await connectDB();
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-      }
-    }
+    const userId = (session?.user as any)?.id;
 
     if (!userId) {
       return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
+
+    await connectDB();
 
     const user = await User.findById(userId);
     if (!user) {
@@ -53,7 +46,7 @@ export async function POST(req: Request) {
     // 1. Transcribe audio sample using Whisper
     const transcription = await groq.audio.transcriptions.create({
       file: audioFile,
-      model: "whisper-large-v3-turbo",
+      model: process.env.WHISPER_MODEL || "whisper-large-v3-turbo",
       response_format: "json",
       temperature: 0,
       prompt: `The user is speaking their name: ${writtenName}.`,

@@ -35,14 +35,18 @@ export default function NewTaskScreen() {
   const [subtasks, setSubtasks] = useState<string[]>([]);
   const [newSubtask, setNewSubtask] = useState('');
 
-  useEffect(() => { fetchGoals(); }, []);
-
   const fetchGoals = async () => {
     try {
       const res = await fetchWithAuth('/goals/list');
       if (res.ok) setGoals(await res.json());
     } catch (e) { console.error(e); }
   };
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void fetchGoals();
+    });
+  }, []);
 
   const addSubtask = () => {
     if (!newSubtask.trim()) return;

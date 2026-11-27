@@ -30,13 +30,16 @@ import {
   MailOpen,
   Sparkles,
 } from "lucide-react";
-import { ToolActivityItem, ConfirmationItem, MissingConnectionItem } from "./useChat";
+import { ToolActivityItem, ConfirmationItem, MissingConnectionItem, TurnStatus } from "./useChat";
+import { formatStatusPhaseLabel } from "./sseStreamParser";
 import CarouselView from "./CarouselView";
 
 type Props = {
   role: "user" | "assistant";
   content: string;
   statusPhase?: string;
+  turnStatus?: TurnStatus;
+  errorMessage?: string;
   toolActivities?: ToolActivityItem[];
   confirmation?: ConfirmationItem;
   missingConnection?: MissingConnectionItem;
@@ -48,6 +51,8 @@ export default function ChatMessage({
   role,
   content,
   statusPhase,
+  turnStatus,
+  errorMessage,
   toolActivities,
   confirmation,
   missingConnection,
@@ -179,6 +184,25 @@ export default function ChatMessage({
 
   // Thinking State Pill (Calm glowing Torus / Amber pulse)
   if (!isUser && !displayContent && (!toolActivities || toolActivities.length === 0)) {
+    if (turnStatus === "cancelled") {
+      return (
+        <div className="flex w-full justify-start py-2">
+          <span className="text-[11px] font-mono text-[#85827A] px-3 py-1 rounded-xl bg-[#1b1b1d] border border-[#26262a]">
+            Response stopped
+          </span>
+        </div>
+      );
+    }
+    if (turnStatus === "failed") {
+      return (
+        <div className="flex w-full justify-start py-2">
+          <div className="flex items-center gap-2 px-3.5 py-2 rounded-xl bg-[#1b1b1d] border border-red-500/30 text-red-300 text-xs">
+            <AlertCircle size={14} />
+            <span>{errorMessage || "Failed to generate response."}</span>
+          </div>
+        </div>
+      );
+    }
     return (
       <div className="flex w-full justify-start py-3 animate-in fade-in duration-200">
         <div className="flex items-center gap-2.5 px-4 py-2 rounded-2xl bg-[#1b1b1d] border border-[#26262a] text-[#C5C2BA] text-xs shadow-sm">
@@ -187,7 +211,7 @@ export default function ChatMessage({
             <span className="relative w-2 h-2 rounded-full bg-[#ffb86c]" />
           </div>
           <span className="font-mono text-[11px] text-[#F7F5F0]">
-            {statusPhase === "understanding" ? "Understanding your request…" : "Checking execution context…"}
+            {formatStatusPhaseLabel(statusPhase)}
           </span>
         </div>
       </div>
@@ -612,6 +636,19 @@ export default function ChatMessage({
             </div>
           )
         ) : null}
+
+        {!isUser && turnStatus === "cancelled" && displayContent && (
+          <div className="mt-1.5 text-[11px] font-mono text-[#85827A]">
+            Stopped early
+          </div>
+        )}
+
+        {!isUser && turnStatus === "failed" && (
+          <div className="mt-2 flex items-center gap-1.5 text-xs text-red-300 bg-red-500/10 border border-red-500/25 rounded-lg px-2.5 py-1.5">
+            <AlertCircle size={13} />
+            <span>{errorMessage || "Stream interrupted before completion."}</span>
+          </div>
+        )}
 
         {/* Actions Row (Listen / Copy) */}
         {displayContent && (

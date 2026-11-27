@@ -55,12 +55,14 @@ export interface HandleInput {
   userId: string;
   userName?: string;
   conversationId?: string;
+  requestId?: string;
   message: string;
   model?: string;
   mode?: string;
   streamFormat?: "events" | "raw";
   timezone?: string;
   referenceTimeMs?: number;
+  abortSignal?: AbortSignal;
   surfaceContext?: {
     activeExecutionTitle?: string;
     activeExecutionCategory?: string;
@@ -426,7 +428,8 @@ export class KernelEngine {
 
         try {
           for await (const chunk of groqStream) {
-            const content = chunk.choices[0]?.delta?.content || "";
+            const content =
+              typeof chunk === "string" ? chunk : (chunk as any)?.choices?.[0]?.delta?.content || "";
             if (content) {
               fullResponse += content;
               controller.enqueue(new TextEncoder().encode(content));

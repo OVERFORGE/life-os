@@ -1,6 +1,7 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
 export interface IPersonalMemoryDoc extends Document {
+  memoryId?: string;
   userId: mongoose.Types.ObjectId;
   memoryType: string;
   domain: string;
@@ -25,15 +26,25 @@ export interface IPersonalMemoryDoc extends Document {
   relatedEntityIds: string[];
   embedding: number[];
   embedding384?: number[];
+  embeddingStatus?: "READY" | "PENDING_EMBEDDING" | "LEXICAL_ONLY" | "FAILED";
   embeddingModel: string;
   embeddingVersion: number;
   lifecycleStatus: string;
+  sourceJobId?: string;
+  contentHash?: string;
+  slotKey?: string;
+  supersededByMemoryId?: string;
+  disputedWithMemoryIds?: string[];
   createdAt: Date;
   updatedAt: Date;
 }
 
 const PersonalMemorySchema = new Schema<IPersonalMemoryDoc>(
   {
+    memoryId: {
+      type: String,
+      required: false,
+    },
     userId: {
       type: Schema.Types.ObjectId,
       ref: "User",
@@ -138,6 +149,12 @@ const PersonalMemorySchema = new Schema<IPersonalMemoryDoc>(
       type: [Number],
       default: undefined,
     },
+    embeddingStatus: {
+      type: String,
+      enum: ["READY", "PENDING_EMBEDDING", "LEXICAL_ONLY", "FAILED"],
+      default: "READY",
+      index: true,
+    },
     embeddingModel: {
       type: String,
       default: "sentence-transformers/all-MiniLM-L6-v2",
@@ -148,19 +165,52 @@ const PersonalMemorySchema = new Schema<IPersonalMemoryDoc>(
     },
     lifecycleStatus: {
       type: String,
-      enum: ["provisional", "verified", "reinforced", "stale", "archived"],
+      enum: ["provisional", "verified", "reinforced", "stale", "archived", "superseded", "disputed"],
       default: "verified",
       index: true,
     },
+    sourceJobId: {
+      type: String,
+      required: false,
+    },
+    contentHash: {
+      type: String,
+      required: false,
+    },
+    slotKey: {
+      type: String,
+      required: false,
+    },
+    supersededByMemoryId: {
+      type: String,
+      required: false,
+    },
+    disputedWithMemoryIds: [{ type: String }],
   },
   {
     timestamps: true,
   }
 );
 
-// Compound filtering index for tenant-isolated vector candidates and metadata searches
+// Canonical globally unique sparse identity index (avoids null collisions on legacy docs)
+PersonalMemorySchema.index({ memoryId: 1 }, { unique: true, sparse: true });
+
+// Non-unique compound indexes for tenant-isolated lookup, vector candidates, and metadata searches
+PersonalMemorySchema.index({ userId: 1, memoryId: 1 });
 PersonalMemorySchema.index({ userId: 1, isArchived: 1, domain: 1, memoryType: 1 });
+PersonalMemorySchema.index({ userId: 1, isArchived: 1, lastReinforcedAt: -1 });
 PersonalMemorySchema.index({ userId: 1, confidence: -1, lastReinforcedAt: -1 });
+PersonalMemorySchema.index({ content: "text", summary: "text" });
+PersonalMemorySchema.index(
+  { userId: 1, sourceJobId: 1, contentHash: 1 },
+  {
+    unique: true,
+    partialFilterExpression: {
+      sourceJobId: { $type: "string" },
+      contentHash: { $type: "string" },
+    },
+  }
+);
 
 export const PersonalMemory: Model<IPersonalMemoryDoc> =
   (mongoose.models.PersonalMemory as Model<IPersonalMemoryDoc>) ||

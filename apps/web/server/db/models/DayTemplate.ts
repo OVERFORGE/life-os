@@ -15,7 +15,11 @@ const DayTemplateSchema = new Schema(
         foodItemId: { type: Schema.Types.ObjectId, ref: "FoodItem", required: true },
         customAmount: { type: Number, required: true }, // Override the baseWeight with custom grams
       }
-    ]
+    ],
+    deletedAt: { type: Date, default: null },
+    version: { type: Number, default: 0 },
+    mutationEpoch: { type: Number, default: 0 },
+    recentMutationReceipts: { type: [Schema.Types.Mixed], default: [] },
   },
   { timestamps: true }
 );

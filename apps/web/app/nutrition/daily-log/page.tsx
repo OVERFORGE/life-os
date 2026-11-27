@@ -6,6 +6,7 @@ import {
   ArrowLeft, Trash2, Coffee, Sun, Moon, Apple, Activity, Zap, 
   BookOpen, Layers, X, Plus, Minus, Check 
 } from 'lucide-react';
+import { useReactiveInvalidation } from '@/features/runtime/hooks/useReactiveInvalidation';
 
 function getLocalDateString() {
   const d = new Date();
@@ -94,6 +95,11 @@ function DailyLogContent() {
   useEffect(() => {
     loadLog();
   }, [loadLog]);
+
+  useReactiveInvalidation({
+    tags: ['nutrition', 'daily-log', 'dashboard'],
+    onInvalidate: loadLog,
+  });
 
   const deleteMeal = async (mealIndex: number) => {
     if (!log) return;

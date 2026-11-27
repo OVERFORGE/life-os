@@ -215,7 +215,7 @@ test("PHASE 4: Deep User Model & Preference Intelligence Suite", async (suite) =
   });
 
   await suite.test("PREF-05: MongoDB Persistence in UserDeepProfileModel", async () => {
-    if (mongoose.connection.readyState !== 1) return;
+    assert.equal(mongoose.connection.readyState, 1, "Isolated test MongoDB must be connected for PREF-05");
 
     const doc = await UserDeepProfileModel.findOne({ userId: testUserId });
     assert.ok(doc, "UserDeepProfileModel document must exist in MongoDB");

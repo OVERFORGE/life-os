@@ -1,6 +1,7 @@
 import { connectDB } from "@/server/db/connect";
 import { getAuthSession } from "@/lib/auth";
 import { FoodItem } from "@/server/db/models/FoodItem";
+import { createCatalogDocWithOutbox } from "@/features/catalog/services/catalogMutationEngine";
 
 export async function GET(req: Request) {
   try {
@@ -24,12 +25,17 @@ export async function POST(req: Request) {
     const body = await req.json();
     await connectDB();
 
-    const newFood = await FoodItem.create({
-      ...body,
+    const res = await createCatalogDocWithOutbox({
       userId: session.user.id,
+      model: FoodItem,
+      aggregateType: "food_item",
+      eventType: "domain.catalog.updated",
+      domain: "nutrition",
+      docFields: { ...body, userId: session.user.id },
+      options: { source: "web.nutrition.library.create" },
     });
 
-    return Response.json({ success: true, food: newFood });
+    return Response.json({ success: true, food: res.doc });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }

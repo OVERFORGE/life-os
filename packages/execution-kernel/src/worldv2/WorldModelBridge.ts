@@ -31,6 +31,7 @@ import { ScheduleExtractionHelper } from "./ScheduleExtractionHelper";
 import { PreferenceResolutionHelper, ResolvedUserContext } from "./PreferenceResolutionHelper";
 import { Observation } from "../telemetry/Observation";
 import { BehavioralProfileRepository } from "../learning/BehavioralProfileRepository";
+import { MemoryRepository } from "../memory/MemoryRepository";
 
 export interface CachedProjectionEntry {
   projection: ILifeContextProjection;
@@ -371,12 +372,30 @@ export class WorldModelBridge {
         ])
       : Promise.resolve(null);
 
-    const [userContextResult, telemetryResult, graphResult, behavioralResult] = await Promise.allSettled([
-      userContextPromise,
-      telemetryPromise,
-      graphPromise,
-      behavioralPromise,
+    const memoryRepo = MemoryRepository.getInstance();
+    const memoryConstraintsPromise = Promise.race([
+      memoryRepo
+        .search({
+          userId,
+          includeArchived: false,
+          includeStale: false,
+          includeSuperseded: false,
+          minConfidence: 0.7,
+          referenceTime: now,
+          limit: 16,
+        })
+        .catch(() => []),
+      new Promise<any[]>((resolve) => setTimeout(() => resolve([]), 75)),
     ]);
+
+    const [userContextResult, telemetryResult, graphResult, behavioralResult, memoryResult] =
+      await Promise.allSettled([
+        userContextPromise,
+        telemetryPromise,
+        graphPromise,
+        behavioralPromise,
+        memoryConstraintsPromise,
+      ]);
 
     // Check fencing before continuing expensive analytical computations
     if (this.userSnapshotTokens.get(userId) !== token) {
@@ -595,7 +614,44 @@ export class WorldModelBridge {
       };
     }
 
-    // 10. Assemble Degradation State
+    // 10. Bounded Active Remembered Constraints (Stage 4.5: <= 8 active, non-stale, high-confidence, tenant-scoped)
+    let activeMemoryConstraints = undefined;
+    if (memoryResult.status === "fulfilled" && Array.isArray(memoryResult.value) && memoryResult.value.length > 0) {
+      const validConstraints = memoryResult.value
+        .map((r: any) => r.memory)
+        .filter(
+          (m: any) =>
+            m &&
+            m.userId === userId &&
+            !m.isArchived &&
+            m.confidence >= 0.7 &&
+            m.lifecycleStatus !== "stale" &&
+            m.lifecycleStatus !== "superseded" &&
+            m.lifecycleStatus !== "disputed" &&
+            (!m.validFrom || m.validFrom <= now) &&
+            (!m.validTo || m.validTo >= now)
+        )
+        .sort((a: any, b: any) => {
+          if (b.confidence !== a.confidence) return b.confidence - a.confidence;
+          if (b.lastReinforcedAt !== a.lastReinforcedAt) return b.lastReinforcedAt - a.lastReinforcedAt;
+          return String(a.memoryId || a.id).localeCompare(String(b.memoryId || b.id));
+        })
+        .slice(0, 8)
+        .map((m: any) => ({
+          memoryId: m.memoryId || m.id,
+          summary: String(m.summary || m.content || "").slice(0, 120),
+          domain: m.domain || "general",
+          confidence: m.confidence,
+          source: m.source || "explicit_user_statement",
+          lastReinforcedAt: m.lastReinforcedAt,
+        }));
+
+      if (validConstraints.length > 0) {
+        activeMemoryConstraints = validConstraints;
+      }
+    }
+
+    // 11. Assemble Degradation State
     const degradation: IContextDegradationState = {
       isDegraded: isDegraded || missingFields.length > 0,
       degradationReason:
@@ -617,6 +673,7 @@ export class WorldModelBridge {
       goalPressures: mappedGoals,
       activeInterventions: [],
       behavioralProfile,
+      ...(activeMemoryConstraints ? { activeMemoryConstraints } : {}),
       quietHoursActive,
     };
 

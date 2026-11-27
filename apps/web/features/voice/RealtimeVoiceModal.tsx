@@ -128,10 +128,10 @@ export default function RealtimeVoiceModal({
                 <div className="text-sm font-bold font-mono text-[#F7F5F0] tracking-wide flex items-center gap-2">
                   Aven Voice
                   <span className="text-[10px] uppercase font-mono px-2 py-0.5 rounded-full bg-[#ffb86c]/15 text-[#ffb86c] border border-[#ffb86c]/30">
-                    Studio Neural Kernel
+                    Voice Assistant
                   </span>
                 </div>
-                <p className="text-xs text-[#85827A] font-mono">Real-Time Autonomous Voice Interaction</p>
+                <p className="text-xs text-[#85827A] font-mono">Real-Time Voice Conversation</p>
               </div>
             </div>
 
@@ -229,7 +229,7 @@ export default function RealtimeVoiceModal({
                     ? "Tap orb to interrupt"
                     : hasDetectedUserSpeech
                     ? "Tap orb to send now"
-                    : "Aven living neural core"
+                    : "Aven is listening"
                 }
               >
                 <AvenBlob
@@ -352,7 +352,7 @@ export default function RealtimeVoiceModal({
                     <span>Ready. Speak naturally or tap the orb when done.</span>
                   </div>
                   <p className="text-[10px] text-[#85827A] mt-1 font-mono">
-                    LifeOS Neural Voice Architecture (Full-Duplex)
+                    Live Voice Conversation
                   </p>
                 </div>
               )}

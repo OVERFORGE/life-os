@@ -396,7 +396,7 @@ export default function CockpitDashboardPage() {
         title: t.title,
         subtitle:
           t.blockReason ||
-          `${t.estimatedDurationMinutes || 45}m slot • Execution-ready DAG node`,
+          `${t.estimatedDurationMinutes || 45}m focus block`,
         time: t.dueDate
           ? new Date(t.dueDate).toLocaleTimeString([], {
               hour: "2-digit",
@@ -440,7 +440,7 @@ export default function CockpitDashboardPage() {
   const telemetryRestNote =
     world?.lifeState?.explanation ||
     dashboard?.lifeState?.explanation ||
-    "Cognitive reserve remains uncompromised. Mental bandwidth will comfortably sustain deep execution until planned evening shutdown at 18:00.";
+    "No rest or energy notes logged yet today.";
 
   return (
     <LayoutGroup id="cockpit-aven-group">
@@ -798,7 +798,7 @@ export default function CockpitDashboardPage() {
             <div className="flex items-center justify-between mb-4">
               <div className="flex items-center gap-2 text-xs font-semibold text-[#85827A]">
                 <TrendingUp size={13} className="text-[#D98B2B]" />
-                <span className="tracking-wide">Pacing Wave & Telemetry</span>
+                <span className="tracking-wide">Energy &amp; Daily Rhythm</span>
               </div>
               <span className="text-xs font-mono font-semibold text-[#D98B2B]">
                 {clarityScore} Clarity
@@ -857,7 +857,7 @@ export default function CockpitDashboardPage() {
 
                 {/* Peak Zone Tag */}
                 <div className="absolute top-1 left-[67%] -translate-x-1/2 bg-[#1E1F24] border border-[#23242A] px-2 py-0.5 rounded text-[10px] font-mono text-[#D98B2B] shadow-sm pointer-events-none">
-                  Peak Zone {peakZone}
+                  Peak Focus {peakZone}
                 </div>
               </div>
             </div>
@@ -869,10 +869,10 @@ export default function CockpitDashboardPage() {
             <div className="flex-1 min-w-0">
               <div className="flex items-center justify-between text-xs">
                 <span className="font-semibold text-[#F7F5F0]">
-                  7.5h Restorative Rest
+                  Daily Rest &amp; Recovery
                 </span>
                 <span className="text-[10px] font-mono text-[#85827A]">
-                  Optimal Recovery
+                  Daily Check-in
                 </span>
               </div>
               <p className="text-[11px] text-[#85827A] mt-1 leading-relaxed">
@@ -888,7 +888,7 @@ export default function CockpitDashboardPage() {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2 text-xs font-semibold text-[#85827A]">
                 <Layers size={13} className="text-[#D98B2B]" />
-                <span className="tracking-wide">System Architecture & Service</span>
+                <span className="tracking-wide">Today&apos;s Focus Tasks</span>
               </div>
               <span className="text-xs font-mono text-[#85827A]">
                 {addressedCount} of {taskList.length} addressed

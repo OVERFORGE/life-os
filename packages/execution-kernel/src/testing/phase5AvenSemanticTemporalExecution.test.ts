@@ -7,6 +7,7 @@ import {
   StructuredTemporalMeaning,
 } from "../orchestration/contracts/SemanticTurnContracts";
 import { KernelExecutionResult } from "../orchestration/contracts/ActionProposalContracts";
+import { setMockGroqChat } from "../shared/groq";
 
 test("Phase 5: GroundedResponseGenerator - RoutineAI Verbalizations", () => {
   const generator = GroundedResponseGenerator.getInstance();
@@ -95,16 +96,28 @@ test("Phase 5: GroundedResponseGenerator - RoutineAI Verbalizations", () => {
 });
 
 test("Phase 5: FastSemanticFiller - Instant Voice Responsiveness (< 180ms)", async () => {
-  const filler = FastSemanticFiller.getInstance();
+  const prevFillerEnv = process.env.ENABLE_FAST_SEMANTIC_FILLER;
+  process.env.ENABLE_FAST_SEMANTIC_FILLER = "true";
+  setMockGroqChat(async () => "On it, checking that right now.");
+  try {
+    const filler = FastSemanticFiller.getInstance();
 
-  // Test filler generation for time blocking
-  const fill1 = await filler.generateFiller("Schedule deep work tomorrow at 2pm");
-  assert.ok(fill1, "Filler must return instant acknowledgment");
-  assert.ok(fill1.length > 5, "Filler must be non-empty");
+    // Test filler generation for time blocking
+    const fill1 = await filler.generateFiller("Schedule deep work tomorrow at 2pm");
+    assert.ok(fill1, "Filler must return instant acknowledgment");
+    assert.ok(fill1.length > 5, "Filler must be non-empty");
 
-  // Test filler generation for work logging
-  const fill2 = await filler.generateFiller("I just finished working on the deck for two hours");
-  assert.ok(fill2, "Filler must return instant acknowledgment for logged work");
+    // Test filler generation for work logging
+    const fill2 = await filler.generateFiller("I just finished working on the deck for two hours");
+    assert.ok(fill2, "Filler must return instant acknowledgment for logged work");
+  } finally {
+    setMockGroqChat(undefined);
+    if (prevFillerEnv === undefined) {
+      delete process.env.ENABLE_FAST_SEMANTIC_FILLER;
+    } else {
+      process.env.ENABLE_FAST_SEMANTIC_FILLER = prevFillerEnv;
+    }
+  }
 });
 
 test("Phase 5: Clarification Handling on Ambiguous Temporal References", () => {

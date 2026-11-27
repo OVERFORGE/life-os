@@ -17,7 +17,6 @@ import http from "node:http";
 import https from "node:https";
 import mongoose from "mongoose";
 
-import { FastPathExecutor } from "../orchestration/supervisor/FastPathExecutor";
 import { SemanticIntentInterpreter } from "../orchestration/semantic/SemanticIntentInterpreter";
 import { Supervisor } from "../orchestration/supervisor/Supervisor";
 import { KernelCapabilityService } from "../orchestration/kernel/KernelCapabilityService";
@@ -56,16 +55,36 @@ describe("PHASE 18: Production Harness Maturity Verification (V2.2)", () => {
       });
 
       const kernel = new (KernelCapabilityService as any)(customRegistry);
-      const fastPath = new FastPathExecutor(kernel);
+      const supervisor = Supervisor.createDefault(kernel);
+      const interpreter = SemanticIntentInterpreter.getInstance();
+      interpreter.setMockChat(async () =>
+        JSON.stringify({
+          primaryClassification: "ACTION_REQUEST",
+          ambiguityStatus: "UNAMBIGUOUS",
+          conversationalSummary: "Completed task_clean_123.",
+          operations: [
+            {
+              domain: "productivity",
+              actionType: "complete_task",
+              executionEligibility: "READY",
+              targetReference: { rawExpression: "task_clean_123", resolvedEntityId: "task_clean_123", kind: "EXPLICIT_ID" },
+              payload: { taskId: "task_clean_123" },
+            },
+          ],
+        })
+      );
 
-      assert.equal(fastPath.canHandle("mark task task_clean_123 as completed"), true);
-      const res = await fastPath.execute("mark task task_clean_123 as completed", "user_test", {
-        knownTasks: [{ id: "task_clean_123", title: "Clean Room" }],
-      });
-
-      assert.equal(res.handled, true);
-      assert.equal(executedTaskId, "task_clean_123");
-      assert.ok(res.userResponse.includes("task_clean_123") || res.userResponse.includes("completed"));
+      try {
+        const res = await supervisor.processRequest({
+          userId: "user_test",
+          message: "mark task task_clean_123 as completed",
+          knownTasks: [{ id: "task_clean_123", title: "Clean Room" }],
+        });
+        assert.equal(res.actionsExecuted, 1);
+        assert.equal(executedTaskId, "task_clean_123");
+      } finally {
+        interpreter.setMockChat(undefined);
+      }
     });
 
     it("1.2: Exact task title in knownTasks resolves cleanly", async () => {
@@ -81,14 +100,37 @@ describe("PHASE 18: Production Harness Maturity Verification (V2.2)", () => {
       });
 
       const kernel = new (KernelCapabilityService as any)(customRegistry);
-      const fastPath = new FastPathExecutor(kernel);
-
+      const supervisor = Supervisor.createDefault(kernel);
       const known = [{ id: "t_pipe_99", title: "Fix leaking pipe" }];
-      assert.equal(fastPath.canHandle("complete task 'Fix leaking pipe'"), true);
-      const res = await fastPath.execute("complete task 'Fix leaking pipe'", "user_test", { knownTasks: known });
+      const interpreter = SemanticIntentInterpreter.getInstance();
+      interpreter.setMockChat(async () =>
+        JSON.stringify({
+          primaryClassification: "ACTION_REQUEST",
+          ambiguityStatus: "UNAMBIGUOUS",
+          conversationalSummary: "Completed Fix leaking pipe.",
+          operations: [
+            {
+              domain: "productivity",
+              actionType: "complete_task",
+              executionEligibility: "READY",
+              targetReference: { rawExpression: "Fix leaking pipe", semanticDescriptor: "Fix leaking pipe", kind: "NAMED_TITLE" },
+              payload: { title: "Fix leaking pipe" },
+            },
+          ],
+        })
+      );
 
-      assert.equal(res.handled, true);
-      assert.equal(executedTaskId, "t_pipe_99", "Exact title must resolve to known task ID");
+      try {
+        const res = await supervisor.processRequest({
+          userId: "user_test",
+          message: "complete task 'Fix leaking pipe'",
+          knownTasks: known,
+        });
+        assert.equal(res.actionsExecuted, 1);
+        assert.equal(executedTaskId, "t_pipe_99", "Exact title must resolve to known task ID");
+      } finally {
+        interpreter.setMockChat(undefined);
+      }
     });
 
     it("1.3: Quoted task title resolves cleanly", async () => {
@@ -104,14 +146,37 @@ describe("PHASE 18: Production Harness Maturity Verification (V2.2)", () => {
       });
 
       const kernel = new (KernelCapabilityService as any)(customRegistry);
-      const fastPath = new FastPathExecutor(kernel);
-
+      const supervisor = Supervisor.createDefault(kernel);
       const known = [{ id: "t_doc_42", title: "Update Architecture Doc" }];
-      assert.equal(fastPath.canHandle('complete task "Update Architecture Doc"'), true);
-      const res = await fastPath.execute('complete task "Update Architecture Doc"', "user_test", { knownTasks: known });
+      const interpreter = SemanticIntentInterpreter.getInstance();
+      interpreter.setMockChat(async () =>
+        JSON.stringify({
+          primaryClassification: "ACTION_REQUEST",
+          ambiguityStatus: "UNAMBIGUOUS",
+          conversationalSummary: "Completed Update Architecture Doc.",
+          operations: [
+            {
+              domain: "productivity",
+              actionType: "complete_task",
+              executionEligibility: "READY",
+              targetReference: { rawExpression: "Update Architecture Doc", semanticDescriptor: "Update Architecture Doc", kind: "NAMED_TITLE" },
+              payload: { title: "Update Architecture Doc" },
+            },
+          ],
+        })
+      );
 
-      assert.equal(res.handled, true);
-      assert.equal(executedTaskId, "t_doc_42");
+      try {
+        const res = await supervisor.processRequest({
+          userId: "user_test",
+          message: 'complete task "Update Architecture Doc"',
+          knownTasks: known,
+        });
+        assert.equal(res.actionsExecuted, 1);
+        assert.equal(executedTaskId, "t_doc_42");
+      } finally {
+        interpreter.setMockChat(undefined);
+      }
     });
 
     it("1.4: Ambiguous task title triggers clarification and causes ZERO mutations", async () => {
@@ -286,11 +351,19 @@ describe("PHASE 18: Production Harness Maturity Verification (V2.2)", () => {
       }
     });
 
-    it("1.7: Multi-clause request containing task completion is rejected by FastPath", () => {
-      const fastPath = new FastPathExecutor(KernelCapabilityService.getInstance());
-      assert.equal(fastPath.canHandle("I finished task 123 and logged 500ml water"), false);
-      assert.equal(fastPath.canHandle("can you complete task 123 and email daksh"), false);
-      assert.equal(fastPath.canHandle("we completed task 123"), false);
+    it("1.7: Multi-clause dependent request routes to DYNAMIC_WORKFLOW rather than FAST_PATH", async () => {
+      const { DynamicRouter } = await import("../orchestration/supervisor/DynamicRouter");
+      const router = new DynamicRouter();
+      const decision = router.route("Find my open slot and schedule a review", {
+        primaryClassification: "PLANNING_REQUEST",
+        ambiguityStatus: "UNAMBIGUOUS",
+        conversationalSummary: "Dependent multi-step workflow",
+        operations: [
+          { operationId: "op1", domain: "productivity", actionType: "read_calendar", executionEligibility: "READY", payload: {} },
+          { operationId: "op2", domain: "productivity", actionType: "schedule_occurrence", executionEligibility: "READY", dependencies: ["op1"], payload: { startTime: "$ref:op1.slotStart" } },
+        ],
+      } as any);
+      assert.equal(decision.strategy, "DYNAMIC_WORKFLOW");
     });
   });
 

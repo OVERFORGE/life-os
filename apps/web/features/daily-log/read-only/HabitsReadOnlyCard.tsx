@@ -1,15 +1,17 @@
 import { Card } from "../ui/Card";
 
-export function HabitsReadOnlyCard({ data }: { data: any }) {
-  const h = data.habits;
-  if (!h) return null;
-
-  const ItemRow = ({ label, value }: { label: string; value: boolean }) => (
+function ItemRow({ label, value }: { label: string; value: boolean }) {
+  return (
     <div className="flex justify-between text-sm">
       <span className="text-gray-400">{label}</span>
       <span>{value ? "Yes" : "No"}</span>
     </div>
   );
+}
+
+export function HabitsReadOnlyCard({ data }: { data: any }) {
+  const h = data.habits;
+  if (!h) return null;
 
   return (
     <Card title="Habits & Discipline">

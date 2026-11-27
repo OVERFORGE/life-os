@@ -288,7 +288,7 @@ export default function CreateTemplateScreen() {
       {step === 3 && (
         <ScrollView contentContainerStyle={{ padding: 24, paddingBottom: 120 }} showsVerticalScrollIndicator={false}>
           <Text style={{ color: COLORS.text, fontSize: 26, fontWeight: '800', marginBottom: 6 }}>Review Template</Text>
-          <Text style={{ color: COLORS.muted, fontSize: 14, marginBottom: 24 }}>"{name}"</Text>
+          <Text style={{ color: COLORS.muted, fontSize: 14, marginBottom: 24 }}>&quot;{name}&quot;</Text>
 
           {/* Totals bar */}
           <View style={{ backgroundColor: COLORS.card, borderRadius: 20, padding: 20, marginBottom: 24, borderWidth: 1, borderColor: COLORS.border }}>

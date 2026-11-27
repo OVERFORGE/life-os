@@ -209,7 +209,9 @@ export default function CalendarScreen() {
   }, [weekDays]);
 
   useEffect(() => {
-    loadWeekTimeline();
+    queueMicrotask(() => {
+      void loadWeekTimeline();
+    });
   }, [loadWeekTimeline]);
 
   // Active projection for selected date

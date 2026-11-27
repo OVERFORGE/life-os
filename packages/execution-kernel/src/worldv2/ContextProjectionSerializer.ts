@@ -45,15 +45,59 @@ export class ContextProjectionSerializer {
 
   /**
    * Intent-tailored context selection (~350 tokens) for planning and response grounding.
+   * Accepts typed IntentRelevanceDomain or IntentRelevanceDomain[] directly; falls back to
+   * legacy string-matching only when an untyped freeform string is passed.
    */
   public static selectContext(
     projection: ILifeContextProjection,
-    domainOrIntent?: string | IntentRelevanceDomain,
+    domainOrIntent?: string | IntentRelevanceDomain | IntentRelevanceDomain[],
     budget: number = this.TAILORED_CHAR_BUDGET
   ): SerializationResult {
-    let targetDomain: IntentRelevanceDomain = "GENERAL";
+    const validDomains = new Set<IntentRelevanceDomain>(["SCHEDULE", "HEALTH", "TASKS", "GENERAL"]);
 
-    if (domainOrIntent) {
+    if (Array.isArray(domainOrIntent)) {
+      const uniqueDomains = Array.from(
+        new Set(domainOrIntent.filter((d): d is IntentRelevanceDomain => validDomains.has(d)))
+      );
+      if (uniqueDomains.length === 0) {
+        return this.serializeInternal(projection, budget, "GENERAL");
+      }
+      if (uniqueDomains.length === 1) {
+        return this.serializeInternal(projection, budget, uniqueDomains[0]);
+      }
+      // Multi-domain projection: split remaining budget after mandatory invariants cleanly
+      const perDomainBudget = Math.max(400, Math.floor(budget / uniqueDomains.length));
+      const slices = uniqueDomains.map((d) => this.serializeInternal(projection, perDomainBudget, d));
+      const mergedPruned = Array.from(new Set(slices.flatMap((s) => s.prunedSections)));
+      // Deduplicate identical mandatory header lines across slices while staying within budget
+      const seenLines = new Set<string>();
+      const combinedLines: string[] = [];
+      for (const slice of slices) {
+        for (const line of slice.serializedContext.split("\n")) {
+          if (!line.trim()) continue;
+          if (!seenLines.has(line)) {
+            seenLines.add(line);
+            combinedLines.push(line);
+          }
+        }
+      }
+      let combined = combinedLines.join("\n");
+      if (combined.length > budget) {
+        combined = combined.slice(0, budget);
+      }
+      return {
+        serializedContext: combined,
+        estimatedTokens: Math.ceil(combined.length / 4),
+        prunedSections: mergedPruned,
+      };
+    }
+
+    if (domainOrIntent && validDomains.has(domainOrIntent as IntentRelevanceDomain)) {
+      return this.serializeInternal(projection, budget, domainOrIntent as IntentRelevanceDomain);
+    }
+
+    let targetDomain: IntentRelevanceDomain = "GENERAL";
+    if (typeof domainOrIntent === "string" && domainOrIntent.length > 0) {
       const lower = domainOrIntent.toLowerCase();
       if (lower.includes("sched") || lower.includes("calendar") || lower.includes("meeting") || lower.includes("time")) {
         targetDomain = "SCHEDULE";
@@ -184,6 +228,18 @@ export class ContextProjectionSerializer {
       }
     }
 
+    // SECTION 7: Bounded Remembered Constraints (Stage 4.5)
+    let memoryStr: string | null = null;
+    if (projection.activeMemoryConstraints && projection.activeMemoryConstraints.length > 0) {
+      const items = projection.activeMemoryConstraints
+        .slice(0, 8)
+        .map((m) => m.summary)
+        .filter(Boolean);
+      if (items.length > 0) {
+        memoryStr = `Remembered Constraints: ${items.join("; ")}`;
+      }
+    }
+
     // Priority ordering based on domain relevance
     // Invariant: Mandatory lines are ALWAYS kept
     let discretionarySections: Array<{ name: string; text: string; priority: number }> = [];
@@ -196,6 +252,7 @@ export class ContextProjectionSerializer {
         ...(behavStr ? [{ name: "behavioral", text: behavStr, priority: 4 }] : []),
         ...(goalStr ? [{ name: "goalPressures", text: goalStr, priority: 5 }] : []),
         ...(activeInterventionStr ? [{ name: "activeInterventions", text: activeInterventionStr, priority: 6 }] : []),
+        ...(memoryStr ? [{ name: "rememberedConstraints", text: memoryStr, priority: 7 }] : []),
       ];
     } else if (targetDomain === "HEALTH") {
       discretionarySections = [
@@ -205,6 +262,7 @@ export class ContextProjectionSerializer {
         ...(behavStr ? [{ name: "behavioral", text: behavStr, priority: 4 }] : []),
         ...(activeInterventionStr ? [{ name: "activeInterventions", text: activeInterventionStr, priority: 5 }] : []),
         ...(goalStr ? [{ name: "goalPressures", text: goalStr, priority: 6 }] : []),
+        ...(memoryStr ? [{ name: "rememberedConstraints", text: memoryStr, priority: 7 }] : []),
       ];
     } else if (targetDomain === "TASKS") {
       discretionarySections = [
@@ -214,6 +272,7 @@ export class ContextProjectionSerializer {
         { name: "cognitive", text: cogStr, priority: 4 },
         { name: "physical", text: physStr, priority: 5 },
         ...(activeInterventionStr ? [{ name: "activeInterventions", text: activeInterventionStr, priority: 6 }] : []),
+        ...(memoryStr ? [{ name: "rememberedConstraints", text: memoryStr, priority: 7 }] : []),
       ];
     } else {
       // GENERAL
@@ -224,6 +283,7 @@ export class ContextProjectionSerializer {
         ...(behavStr ? [{ name: "behavioral", text: behavStr, priority: 4 }] : []),
         ...(goalStr ? [{ name: "goalPressures", text: goalStr, priority: 5 }] : []),
         ...(activeInterventionStr ? [{ name: "activeInterventions", text: activeInterventionStr, priority: 6 }] : []),
+        ...(memoryStr ? [{ name: "rememberedConstraints", text: memoryStr, priority: 7 }] : []),
       ];
     }
 

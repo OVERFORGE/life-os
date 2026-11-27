@@ -1,10 +1,10 @@
 import { connectDB } from "@/server/db/connect";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getAuthSession } from "@/lib/auth";
 import { LifeSignal } from "@/features/signals/models/LifeSignal";
+import { upsertCatalogDocWithOutbox } from "@/features/catalog/services/catalogMutationEngine";
 
 export async function POST() {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
@@ -60,11 +60,21 @@ export async function POST() {
   ];
 
   for (const s of coreSignals) {
-    await LifeSignal.updateOne(
-      { userId: session.user.id, key: s.key },
-      { $setOnInsert: { userId: session.user.id, ...s } },
-      { upsert: true }
-    );
+    await upsertCatalogDocWithOutbox({
+      userId: session.user.id,
+      model: LifeSignal,
+      filter: { userId: session.user.id, key: s.key },
+      aggregateType: "life_signal",
+      eventType: "domain.catalog.updated",
+      domain: "signals",
+      updateFields: {},
+      createFields: { userId: session.user.id, ...s },
+      createIfMissing: true,
+      options: {
+        clientMutationId: `mut_seed_signal_${session.user.id}_${s.key}`,
+        source: "web.signals.seed_core",
+      },
+    });
   }
 
   return Response.json({ ok: true });

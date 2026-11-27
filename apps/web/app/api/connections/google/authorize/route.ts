@@ -3,23 +3,15 @@ import { getAuthSession } from "@/lib/auth";
 
 export async function GET(req: NextRequest) {
   const session = await getAuthSession();
-  let userId = (session?.user as any)?.id;
+  const userId = (session?.user as any)?.id;
 
-  const rawHost = req.headers.get("host") || "localhost:3000";
+  if (!userId) {
+    return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
+  }
+
+  const rawHost = req.headers.get("host") || "localhost:3456";
   const protocol = rawHost.includes("localhost") || rawHost.includes("127.0.0.1") ? "http" : "https";
   const baseUrl = `${protocol}://${rawHost}`;
-
-  if (!userId && process.env.NODE_ENV !== "production") {
-    try {
-      const { connectDB } = await import("@/server/db/connect");
-      await connectDB();
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-      }
-    } catch (_) {}
-  }
 
   let clientId = process.env.GOOGLE_CLIENT_ID;
 

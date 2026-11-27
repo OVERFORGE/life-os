@@ -1,34 +1,72 @@
 {
-  "name": "personal_memory_vector_index",
-  "type": "vectorSearch",
-  "definition": {
-    "fields": [
-      {
-        "type": "vector",
-        "path": "embedding",
-        "numDimensions": 1536,
-        "similarity": "cosine"
-      },
-      {
-        "type": "filter",
-        "path": "userId"
-      },
-      {
-        "type": "filter",
-        "path": "isArchived"
-      },
-      {
-        "type": "filter",
-        "path": "domain"
-      },
-      {
-        "type": "filter",
-        "path": "memoryType"
-      },
-      {
-        "type": "filter",
-        "path": "lifecycleStatus"
+  "indexes": [
+    {
+      "name": "personal_memory_vector_index_v2",
+      "type": "vectorSearch",
+      "definition": {
+        "fields": [
+          {
+            "type": "vector",
+            "path": "embedding384",
+            "numDimensions": 384,
+            "similarity": "cosine"
+          },
+          {
+            "type": "filter",
+            "path": "userId"
+          },
+          {
+            "type": "filter",
+            "path": "isArchived"
+          },
+          {
+            "type": "filter",
+            "path": "domain"
+          },
+          {
+            "type": "filter",
+            "path": "memoryType"
+          },
+          {
+            "type": "filter",
+            "path": "lifecycleStatus"
+          }
+        ]
       }
-    ]
-  }
+    },
+    {
+      "name": "personal_memory_vector_index",
+      "type": "vectorSearch",
+      "definition": {
+        "fields": [
+          {
+            "type": "vector",
+            "path": "embedding",
+            "numDimensions": 1536,
+            "similarity": "cosine"
+          },
+          {
+            "type": "filter",
+            "path": "userId"
+          },
+          {
+            "type": "filter",
+            "path": "isArchived"
+          },
+          {
+            "type": "filter",
+            "path": "domain"
+          },
+          {
+            "type": "filter",
+            "path": "memoryType"
+          },
+          {
+            "type": "filter",
+            "path": "lifecycleStatus"
+          }
+        ]
+      }
+    }
+  ]
 }

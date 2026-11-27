@@ -158,6 +158,9 @@ export * from "./repositories/DailyLogRepository";
 export * from "./repositories/TaskRepository";
 export * from "./repositories/GoalRepository";
 export * from "./repositories/EraRepository";
+export * from "./repositories/readQueryUtils";
+export * from "./repositories/ScheduleQueryRepository";
+export * from "./repositories/TelemetryHistoryRepository";
 
 export class Kernel {
   static async initialize(): Promise<void> {
@@ -367,6 +370,7 @@ export * from "./memory/MemoryRepository";
 export * from "./memory/EpistemicVerificationEngine";
 export * from "./memory/ContradictionResolver";
 export * from "./memory/MemoryFormationPipeline";
+export * from "./memory/DurableMemoryJobQueue";
 export * from "./memory/GoalPostMortemEngine";
 export * from "./memory/MemoryConsolidationEngine";
 export * from "./incidents/IncidentContracts";
@@ -386,6 +390,7 @@ export type { VerificationAssessment as WorkflowVerificationAssessment } from ".
 
 // Semantic Orchestration & Domain Intelligence
 export * from "./orchestration";
+export * from "./orchestration/observability";
 export * from "./nutrition/nutritionEstimator";
 
 // RoutineAI Temporal Reality & Cadence Architecture (V3)
@@ -416,4 +421,6 @@ export * from "./events";
 export * from "./autonomy/AutonomousActionReverser";
 export * from "./autonomy/contracts/AutonomyContracts";
 export * from "./autonomous/HITLGovernanceEngine";
+export * from "./shared/modelRegistry";
+
 

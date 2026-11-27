@@ -1,5 +1,7 @@
+import * as crypto from "node:crypto";
 import mongoose from "mongoose";
 import { MemoryFormationPipeline, ConversationTurnInput, MemoryFormationResult } from "./MemoryFormationPipeline";
+import { MemoryRepository } from "./MemoryRepository";
 import { generateId } from "../shared/ids";
 
 export type MemoryJobStatus = "PENDING" | "PROCESSING" | "COMPLETED" | "FAILED" | "DEAD_LETTER";
@@ -9,6 +11,7 @@ export interface MemoryTurnJob {
   userId: string;
   conversationId?: string;
   turn: ConversationTurnInput;
+  workerId?: string;
   status: MemoryJobStatus;
   attempts: number;
   maxAttempts: number;
@@ -20,15 +23,13 @@ export interface MemoryTurnJob {
   heartbeatAt?: number;
 }
 
+export type MemoryJobEventDispatcher = (job: MemoryTurnJob) => Promise<void>;
+
 /**
- * Deterministic hash helper for turn deduplication
+ * Deterministic SHA-256 hash helper for turn deduplication (replaces weak 32-bit hash)
  */
-function hashString(str: string): string {
-  let hash = 0;
-  for (let i = 0; i < str.length; i++) {
-    hash = (hash * 31 + str.charCodeAt(i)) >>> 0;
-  }
-  return hash.toString(36);
+function hashTurnIdentity(str: string): string {
+  return crypto.createHash("sha256").update(str).digest("hex").slice(0, 24);
 }
 
 /**
@@ -48,10 +49,13 @@ export class DurableMemoryJobQueue {
   private static instance: DurableMemoryJobQueue;
   private jobs: Map<string, MemoryTurnJob> = new Map();
   private pipeline: MemoryFormationPipeline;
-  private isProcessing: boolean = false;
+  private eventDispatcher?: MemoryJobEventDispatcher;
+  private inFlightPromises: Set<Promise<unknown>> = new Set();
+  private workerId: string = generateId("mem_worker");
 
-  constructor(pipeline?: MemoryFormationPipeline) {
+  constructor(pipeline?: MemoryFormationPipeline, eventDispatcher?: MemoryJobEventDispatcher) {
     this.pipeline = pipeline || MemoryFormationPipeline.getInstance();
+    this.eventDispatcher = eventDispatcher;
   }
 
   static getInstance(): DurableMemoryJobQueue {
@@ -61,30 +65,50 @@ export class DurableMemoryJobQueue {
     return DurableMemoryJobQueue.instance;
   }
 
+  setEventDispatcher(dispatcher?: MemoryJobEventDispatcher): void {
+    this.eventDispatcher = dispatcher;
+  }
+
   private isDbConnected(): boolean {
     return Boolean(mongoose.connection && mongoose.connection.readyState === 1);
   }
 
   clear(): void {
     this.jobs.clear();
-    this.isProcessing = false;
+  }
+
+  async drainInFlight(): Promise<void> {
+    if (this.inFlightPromises.size === 0) return;
+    await Promise.allSettled(Array.from(this.inFlightPromises));
+  }
+
+  private trackBackgroundWork(promise: Promise<unknown>): void {
+    this.inFlightPromises.add(promise);
+    promise.finally(() => {
+      this.inFlightPromises.delete(promise);
+    });
   }
 
   /**
    * Enqueues a conversation turn for async durable memory formation.
-   * Persists to MongoDB if connected and deduplicates identical turns.
+   * Persists to MongoDB synchronously first (source of truth), then dispatches
+   * via Inngest event (or local dev fallback when Inngest is unavailable).
    */
   async enqueueTurn(
     turn: ConversationTurnInput,
     options: { maxAttempts?: number; immediateProcess?: boolean } = {}
   ): Promise<MemoryTurnJob> {
-    const turnHash = hashString(`${turn.userMessage}:::${turn.assistantResponse}`);
+    const identityMaterial = [
+      turn.userId,
+      turn.conversationId || "conv",
+      turn.requestId || turn.turnId || `${turn.userMessage}:::${turn.assistantResponse || ""}`,
+    ].join("::");
+    const turnHash = hashTurnIdentity(identityMaterial);
     const jobId = `job_mem_${turn.userId}_${turn.conversationId || "conv"}_${turnHash}`;
 
-    // 1. Check in-memory store
     const existing = this.jobs.get(jobId);
     if (existing) {
-      if (existing.status === "COMPLETED") {
+      if (existing.status === "COMPLETED" || existing.status === "DEAD_LETTER") {
         return existing;
       }
       if (
@@ -96,36 +120,36 @@ export class DurableMemoryJobQueue {
       }
     }
 
-    // 2. Check DB if connected
     if (this.isDbConnected()) {
-      try {
-        const { MemoryJob } = await import("@/server/db/models/MemoryJob");
-        const doc = await MemoryJob.findOne({ jobId }).lean();
-        if (doc) {
-          const mapped = this.mapDocToJob(doc);
-          this.jobs.set(jobId, mapped);
-          if (mapped.status === "COMPLETED") {
-            return mapped;
-          }
-          if (
-            mapped.status === "PROCESSING" &&
-            mapped.heartbeatAt &&
-            Date.now() - mapped.heartbeatAt < 30000
-          ) {
-            return mapped;
-          }
+      const { MemoryJob } = await import("@/server/db/models/MemoryJob");
+      const doc = await MemoryJob.findOne({ jobId }).lean();
+      if (doc) {
+        const mapped = this.mapDocToJob(doc);
+        this.jobs.set(jobId, mapped);
+        if (mapped.status === "COMPLETED" || mapped.status === "DEAD_LETTER") {
+          return mapped;
         }
-      } catch (dbErr) {
-        console.warn("[MEMORY_QUEUE] DB read warning during enqueue:", dbErr);
+        if (
+          mapped.status === "PROCESSING" &&
+          mapped.heartbeatAt &&
+          Date.now() - mapped.heartbeatAt < 30000
+        ) {
+          return mapped;
+        }
       }
     }
 
     const now = Date.now();
+    const enrichedTurn: ConversationTurnInput = {
+      ...turn,
+      sourceJobId: jobId,
+    };
+
     const job: MemoryTurnJob = existing || {
       jobId,
       userId: turn.userId,
       conversationId: turn.conversationId,
-      turn,
+      turn: enrichedTurn,
       status: "PENDING",
       attempts: 0,
       maxAttempts: options.maxAttempts ?? 3,
@@ -142,128 +166,170 @@ export class DurableMemoryJobQueue {
 
     this.jobs.set(jobId, job);
 
-    // Persist to MongoDB
     if (this.isDbConnected()) {
-      try {
-        const { MemoryJob } = await import("@/server/db/models/MemoryJob");
-        await MemoryJob.findOneAndUpdate(
-          { jobId },
-          {
-            $setOnInsert: {
-              jobId,
-              userId: mongoose.Types.ObjectId.isValid(job.userId)
-                ? new mongoose.Types.ObjectId(job.userId)
-                : job.userId,
-              conversationId: job.conversationId || "default",
-              turn: job.turn,
-              status: "PENDING",
-              attempts: 0,
-              maxAttempts: job.maxAttempts,
-              createdAt: new Date(now),
-            },
-            $set: {
-              updatedAt: new Date(now),
-              heartbeatAt: new Date(now),
-            },
+      const { MemoryJob } = await import("@/server/db/models/MemoryJob");
+      await MemoryJob.findOneAndUpdate(
+        { jobId },
+        {
+          $setOnInsert: {
+            jobId,
+            userId: mongoose.Types.ObjectId.isValid(job.userId)
+              ? new mongoose.Types.ObjectId(job.userId)
+              : job.userId,
+            conversationId: job.conversationId || "default",
+            turn: enrichedTurn,
+            status: "PENDING",
+            attempts: 0,
+            maxAttempts: job.maxAttempts,
+            createdAt: new Date(now),
           },
-          { upsert: true, new: true }
-        );
-      } catch (dbErr) {
-        console.warn("[MEMORY_QUEUE] DB write warning during enqueue:", dbErr);
-      }
+          $set: {
+            updatedAt: new Date(now),
+            heartbeatAt: new Date(now),
+          },
+        },
+        { upsert: true, new: true }
+      );
     }
 
     if (options.immediateProcess !== false) {
-      setTimeout(() => {
-        this.processJob(jobId).catch((err) => {
-          console.warn(`[MEMORY_QUEUE] Worker execution error for ${jobId}:`, err);
+      if (this.eventDispatcher) {
+        const dispatchPromise = this.eventDispatcher(job).catch((dispatchErr) => {
+          console.warn(
+            `[MEMORY_QUEUE] Event dispatch failed for ${jobId} (job remains PENDING in DB for sweeper):`,
+            dispatchErr
+          );
         });
-      }, 0);
+        this.trackBackgroundWork(dispatchPromise);
+      } else if (options.immediateProcess === true || !process.env.INNGEST_EVENT_KEY) {
+        const localPromise = Promise.resolve()
+          .then(() => this.processJob(jobId))
+          .catch((err) => {
+            console.warn(`[MEMORY_QUEUE] Local worker execution error for ${jobId}:`, err);
+          });
+        this.trackBackgroundWork(localPromise);
+      }
     }
 
     return job;
   }
 
   /**
-   * Processes a specific job with strict idempotency and persistence updates.
+   * Atomically claims and processes a durable memory job.
+   * Respects COMPLETED idempotency, DEAD_LETTER halts, and backoff windows.
    */
-  async processJob(jobId: string): Promise<MemoryTurnJob> {
-    let job = this.jobs.get(jobId);
-
-    // Fetch from DB if not in memory
-    if (!job && this.isDbConnected()) {
-      try {
-        const { MemoryJob } = await import("@/server/db/models/MemoryJob");
-        const doc = await MemoryJob.findOne({ jobId }).lean();
-        if (doc) {
-          job = this.mapDocToJob(doc);
-          this.jobs.set(jobId, job);
-        }
-      } catch (err) {
-        console.warn("[MEMORY_QUEUE] DB fetch warning in processJob:", err);
-      }
-    }
-
-    if (!job) {
-      throw new Error(`[MEMORY_QUEUE_ERROR]: Job ${jobId} not found`);
-    }
-
-    // Idempotency: Already completed jobs are never re-executed
-    if (job.status === "COMPLETED") {
-      return job;
-    }
-
+  async processJob(jobId: string, options: { staleTimeoutMs?: number } = {}): Promise<MemoryTurnJob> {
+    const staleTimeoutMs = options.staleTimeoutMs ?? 30000;
     const now = Date.now();
-    job.status = "PROCESSING";
-    job.attempts += 1;
-    job.heartbeatAt = now;
-    job.updatedAt = now;
+    let job: MemoryTurnJob | undefined = undefined;
 
-    // Persist PROCESSING status
     if (this.isDbConnected()) {
-      try {
-        const { MemoryJob } = await import("@/server/db/models/MemoryJob");
-        await MemoryJob.updateOne(
-          { jobId },
-          {
-            $set: {
-              status: "PROCESSING",
-              attempts: job.attempts,
-              heartbeatAt: new Date(now),
-              updatedAt: new Date(now),
+      const { MemoryJob } = await import("@/server/db/models/MemoryJob");
+      const nowDate = new Date(now);
+      const staleThreshold = new Date(now - staleTimeoutMs);
+
+      const claimedDoc = await MemoryJob.findOneAndUpdate(
+        {
+          jobId,
+          $or: [
+            { status: "PENDING" },
+            {
+              status: "FAILED",
+              $or: [
+                { nextRetryTimestamp: { $exists: false } },
+                { nextRetryTimestamp: null },
+                { nextRetryTimestamp: { $lte: nowDate } },
+              ],
             },
-          }
-        );
-      } catch (err) {
-        console.warn("[MEMORY_QUEUE] DB update warning for PROCESSING:", err);
+            { status: "PROCESSING", heartbeatAt: { $lt: staleThreshold } },
+          ],
+        },
+        {
+          $set: {
+            status: "PROCESSING",
+            workerId: this.workerId,
+            heartbeatAt: nowDate,
+            updatedAt: nowDate,
+          },
+          $inc: { attempts: 1 },
+        },
+        { new: true }
+      ).lean();
+
+      if (!claimedDoc) {
+        const currentDoc = await MemoryJob.findOne({ jobId }).lean();
+        if (!currentDoc) {
+          throw new Error(`[MEMORY_QUEUE_ERROR]: Job ${jobId} not found`);
+        }
+        const mapped = this.mapDocToJob(currentDoc);
+        this.jobs.set(jobId, mapped);
+        if (mapped.status === "COMPLETED") {
+          return mapped;
+        }
+        if (mapped.status === "DEAD_LETTER") {
+          throw new Error(`[DEAD_LETTER_HALT]: Job ${jobId} is DEAD_LETTER and requires explicit requeue`);
+        }
+        return mapped;
       }
+
+      job = this.mapDocToJob(claimedDoc);
+      this.jobs.set(jobId, job);
+    } else {
+      job = this.jobs.get(jobId);
+      if (!job) {
+        throw new Error(`[MEMORY_QUEUE_ERROR]: Job ${jobId} not found`);
+      }
+      if (job.status === "COMPLETED") {
+        return job;
+      }
+      if (job.status === "DEAD_LETTER") {
+        throw new Error(`[DEAD_LETTER_HALT]: Job ${jobId} is DEAD_LETTER and requires explicit requeue`);
+      }
+      if (
+        job.status === "PROCESSING" &&
+        job.heartbeatAt &&
+        now - job.heartbeatAt <= staleTimeoutMs
+      ) {
+        return job;
+      }
+      if (job.status === "FAILED" && job.nextRetryTimestamp && job.nextRetryTimestamp > now) {
+        return job;
+      }
+
+      job.status = "PROCESSING";
+      job.workerId = this.workerId;
+      job.attempts += 1;
+      job.heartbeatAt = now;
+      job.updatedAt = now;
     }
 
     try {
-      // Execute formation pipeline
-      const result = await this.pipeline.processConversationTurn(job.turn);
+      const turnInput: ConversationTurnInput = {
+        ...job.turn,
+        sourceJobId: job.jobId,
+      };
+      const result = await this.pipeline.processConversationTurn(turnInput);
 
       job.status = "COMPLETED";
       job.result = result;
       job.updatedAt = Date.now();
       job.lastError = undefined;
+      job.nextRetryTimestamp = undefined;
 
       if (this.isDbConnected()) {
-        try {
-          const { MemoryJob } = await import("@/server/db/models/MemoryJob");
-          await MemoryJob.updateOne(
-            { jobId },
-            {
-              $set: {
-                status: "COMPLETED",
-                result,
-                updatedAt: new Date(),
-              },
-            }
-          );
-        } catch (err) {
-          console.warn("[MEMORY_QUEUE] DB update warning for COMPLETED:", err);
-        }
+        const { MemoryJob } = await import("@/server/db/models/MemoryJob");
+        await MemoryJob.updateOne(
+          { jobId, workerId: this.workerId },
+          {
+            $set: {
+              status: "COMPLETED",
+              result,
+              lastError: null,
+              nextRetryTimestamp: null,
+              updatedAt: new Date(),
+            },
+          }
+        );
       }
 
       return job;
@@ -273,32 +339,152 @@ export class DurableMemoryJobQueue {
 
       if (job.attempts >= job.maxAttempts) {
         job.status = "DEAD_LETTER";
+        job.nextRetryTimestamp = undefined;
       } else {
         job.status = "FAILED";
         job.nextRetryTimestamp = Date.now() + Math.pow(2, job.attempts) * 1000;
       }
 
       if (this.isDbConnected()) {
-        try {
-          const { MemoryJob } = await import("@/server/db/models/MemoryJob");
-          await MemoryJob.updateOne(
-            { jobId },
-            {
-              $set: {
-                status: job.status,
-                lastError: job.lastError,
-                nextRetryTimestamp: job.nextRetryTimestamp ? new Date(job.nextRetryTimestamp) : null,
-                updatedAt: new Date(),
-              },
-            }
-          );
-        } catch (dbErr) {
-          console.warn("[MEMORY_QUEUE] DB update warning for FAILED:", dbErr);
-        }
+        const { MemoryJob } = await import("@/server/db/models/MemoryJob");
+        await MemoryJob.updateOne(
+          { jobId, workerId: this.workerId },
+          {
+            $set: {
+              status: job.status,
+              lastError: job.lastError,
+              nextRetryTimestamp: job.nextRetryTimestamp ? new Date(job.nextRetryTimestamp) : null,
+              updatedAt: new Date(),
+            },
+          }
+        );
       }
 
       throw err;
     }
+  }
+
+  /**
+   * Explicitly resets a DEAD_LETTER job back to PENDING for operator replay.
+   */
+  async requeueDeadLetterJob(jobId: string): Promise<boolean> {
+    const inMem = this.jobs.get(jobId);
+    if (inMem && inMem.status === "DEAD_LETTER") {
+      inMem.status = "PENDING";
+      inMem.attempts = 0;
+      inMem.nextRetryTimestamp = undefined;
+      inMem.updatedAt = Date.now();
+    }
+
+    if (!this.isDbConnected()) {
+      return Boolean(inMem);
+    }
+
+    const { MemoryJob } = await import("@/server/db/models/MemoryJob");
+    const res = await MemoryJob.updateOne(
+      { jobId, status: "DEAD_LETTER" },
+      {
+        $set: {
+          status: "PENDING",
+          attempts: 0,
+          nextRetryTimestamp: null,
+          updatedAt: new Date(),
+        },
+      }
+    );
+    return res.matchedCount > 0;
+  }
+
+  /**
+   * Bounded sweeper invoked by scheduled Inngest cron or local maintenance:
+   * reaps expired PROCESSING leases, processes due PENDING/FAILED jobs, and repairs PENDING_EMBEDDING.
+   */
+  async sweepAndProcessDueJobs(options: {
+    maxJobs?: number;
+    staleTimeoutMs?: number;
+    backfillEmbeddings?: boolean;
+  } = {}): Promise<{
+    reapedCount: number;
+    claimedCount: number;
+    completedCount: number;
+    failedCount: number;
+    embeddingsRepaired: number;
+  }> {
+    const maxJobs = Math.max(1, Math.min(options.maxJobs ?? 20, 100));
+    const staleTimeoutMs = options.staleTimeoutMs ?? 30000;
+    const reapedCount = this.isDbConnected()
+      ? await this.reapStaleWorkersFromDatabase(staleTimeoutMs)
+      : this.reapStaleWorkers(staleTimeoutMs);
+
+    let claimedCount = 0;
+    let completedCount = 0;
+    let failedCount = 0;
+    const now = Date.now();
+
+    if (this.isDbConnected()) {
+      const { MemoryJob } = await import("@/server/db/models/MemoryJob");
+      const nowDate = new Date(now);
+      const dueDocs = await MemoryJob.find({
+        $or: [
+          { status: "PENDING" },
+          {
+            status: "FAILED",
+            $or: [
+              { nextRetryTimestamp: { $exists: false } },
+              { nextRetryTimestamp: null },
+              { nextRetryTimestamp: { $lte: nowDate } },
+            ],
+          },
+        ],
+      })
+        .sort({ createdAt: 1 })
+        .limit(maxJobs)
+        .select({ jobId: 1 })
+        .lean();
+
+      for (const doc of dueDocs) {
+        claimedCount++;
+        try {
+          const done = await this.processJob(doc.jobId, { staleTimeoutMs });
+          if (done.status === "COMPLETED") completedCount++;
+        } catch {
+          failedCount++;
+        }
+      }
+    } else {
+      for (const job of this.jobs.values()) {
+        if (claimedCount >= maxJobs) break;
+        const isDueFailed =
+          job.status === "FAILED" && (!job.nextRetryTimestamp || job.nextRetryTimestamp <= now);
+        if (job.status === "PENDING" || isDueFailed) {
+          claimedCount++;
+          try {
+            const done = await this.processJob(job.jobId, { staleTimeoutMs });
+            if (done.status === "COMPLETED") completedCount++;
+          } catch {
+            failedCount++;
+          }
+        }
+      }
+    }
+
+    let embeddingsRepaired = 0;
+    if (options.backfillEmbeddings !== false) {
+      try {
+        const repair = await MemoryRepository.getInstance().backfillPendingEmbeddings(10);
+        embeddingsRepaired = repair.repaired;
+      } catch {
+        // Non-blocking
+      }
+    }
+
+    return {
+      reapedCount,
+      claimedCount,
+      completedCount,
+      failedCount,
+      embeddingsRepaired,
+    };
   }
 
   /**

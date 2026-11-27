@@ -2,6 +2,7 @@ import { Inngest } from "inngest";
 
 export interface OutboxDispatchedEventData {
   eventId: string;
+  userId: string;
   category: string;
   type: string;
   aggregateId: string;
@@ -22,6 +23,12 @@ export interface OutboxSweepEventData {
   batchSize?: number;
 }
 
+export interface MemoryTurnCommittedEventData {
+  jobId: string;
+  userId: string;
+  conversationId?: string;
+}
+
 export type LifeOSEvents = {
   "lifeos/outbox.dispatched": {
     data: OutboxDispatchedEventData;
@@ -31,6 +38,9 @@ export type LifeOSEvents = {
   };
   "lifeos/cron.outbox-sweep": {
     data: OutboxSweepEventData;
+  };
+  "lifeos/memory.turn_committed": {
+    data: MemoryTurnCommittedEventData;
   };
 };
 

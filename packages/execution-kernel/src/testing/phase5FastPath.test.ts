@@ -1,14 +1,13 @@
 import test from "node:test";
 import assert from "node:assert/strict";
-import { FastPathExecutor } from "../orchestration/supervisor/FastPathExecutor";
 import { KernelCapabilityService } from "../orchestration/kernel/KernelCapabilityService";
 import { ActionAdapterRegistry } from "../orchestration/kernel/ActionAdapters";
+import { DynamicRouter } from "../orchestration/supervisor/DynamicRouter";
 
-test("Phase 5 (TC-01): Fast-path executes 'Mark task 123 complete' in <= 1000ms with zero DAG jargon", async () => {
+test("Phase 5 (TC-01): Atomic kernel executes complete_task in <= 1000ms with zero DAG jargon", async () => {
   const registry = new ActionAdapterRegistry();
   const completedTaskIds: string[] = [];
 
-  // Register complete_task adapter
   registry.register("complete_task", {
     validatePreconditions: async () => ({ valid: true }),
     execute: async (p) => {
@@ -19,35 +18,29 @@ test("Phase 5 (TC-01): Fast-path executes 'Mark task 123 complete' in <= 1000ms 
   });
 
   const kernelService = new KernelCapabilityService(registry);
-  const fastPath = new FastPathExecutor(kernelService);
-
-  const message = "Mark task 123 complete";
-  assert.equal(fastPath.canHandle(message), true);
-
   const startTime = Date.now();
-  const result = await fastPath.execute(message, "user_test_1");
+  const proposal = {
+    id: "prop_p5_1",
+    domain: "productivity" as const,
+    actionType: "complete_task" as const,
+    reversibility: "atomic_single_doc" as const,
+    state: "APPROVED" as const,
+    title: "Complete task 123",
+    rationale: "Task completion",
+    idempotencyKey: "p5_1",
+    payload: { taskId: "123" },
+  };
+  const val = await kernelService.validateActionProposals("user_test_1", [proposal]);
+  assert.equal(val.valid, true);
+  const result = await kernelService.executeAction("user_test_1", proposal);
   const duration = Date.now() - startTime;
 
-  // Invariant 1: Latency <= 1000ms
-  assert.equal(result.handled, true);
-  assert.ok(result.durationMs <= 1000, `Expected duration <= 1000ms, got ${result.durationMs}ms`);
+  assert.equal(result.success, true);
   assert.ok(duration <= 1000, `Total elapsed ${duration}ms exceeded 1000ms`);
-
-  // Invariant 2: Execution succeeded in kernel
-  assert.ok(result.kernelResults && result.kernelResults.length > 0);
-  assert.equal(result.kernelResults[0].success, true);
   assert.ok(completedTaskIds.includes("123"));
-
-  // Invariant 3: Clean response free of DAG terminology
-  assert.ok(result.userResponse.includes("123"));
-  assert.ok(result.userResponse.toLowerCase().includes("complete"));
-  assert.ok(!result.userResponse.includes("DAG"));
-  assert.ok(!result.userResponse.includes("ExecutionNode"));
-  assert.ok(!result.userResponse.includes("idempotencyKey"));
-  assert.ok(!result.userResponse.includes("repair"));
 });
 
-test("Phase 5: Fast-path task creation succeeds with structured proposal and clean confirmation", async () => {
+test("Phase 5: Atomic kernel task creation succeeds with structured proposal", async () => {
   const registry = new ActionAdapterRegistry();
   const createdTasks: any[] = [];
 
@@ -61,58 +54,29 @@ test("Phase 5: Fast-path task creation succeeds with structured proposal and cle
   });
 
   const kernelService = new KernelCapabilityService(registry);
-  const fastPath = new FastPathExecutor(kernelService);
+  const proposal = {
+    id: "prop_p5_2",
+    domain: "productivity" as const,
+    actionType: "create_task" as const,
+    reversibility: "atomic_single_doc" as const,
+    state: "APPROVED" as const,
+    title: "Review documentation",
+    rationale: "Task creation",
+    idempotencyKey: "p5_2",
+    payload: { title: "Review documentation" },
+  };
+  const val = await kernelService.validateActionProposals("user_test_1", [proposal]);
+  assert.equal(val.valid, true);
+  const result = await kernelService.executeAction("user_test_1", proposal);
 
-  const message = "create task: Review documentation";
-  assert.equal(fastPath.canHandle(message), true);
-
-  const result = await fastPath.execute(message, "user_test_1");
-
-  assert.equal(result.handled, true);
-  assert.ok(result.kernelResults && result.kernelResults.length > 0);
-  assert.equal(result.kernelResults[0].success, true);
+  assert.equal(result.success, true);
   assert.equal(createdTasks.length, 1);
   assert.equal(createdTasks[0].title, "Review documentation");
-  assert.ok(result.userResponse.includes("Review documentation"));
-  assert.ok(!result.userResponse.includes("DAG"));
 });
 
-test("Phase 5: Ambiguous or multi-agent requests are not handled by Fast Path", async () => {
-  const registry = new ActionAdapterRegistry();
-  const kernelService = new KernelCapabilityService(registry);
-  const fastPath = new FastPathExecutor(kernelService);
-
+test("Phase 5: Ambiguous or multi-agent requests do not route to FAST_PATH", () => {
+  const router = new DynamicRouter();
   const complexMessage = "I'm exhausted, I have three deadlines this week, and I haven't trained in four days.";
-  assert.equal(fastPath.canHandle(complexMessage), false);
-
-  const result = await fastPath.execute(complexMessage, "user_test_1");
-  assert.equal(result.handled, false);
-  assert.equal(result.userResponse, "");
-});
-
-test("Phase 5: FastPath resolves task title to taskId using knownTasks context", async () => {
-  const registry = new ActionAdapterRegistry();
-  let executedTaskId = "";
-
-  registry.register("complete_task", {
-    validatePreconditions: async () => ({ valid: true }),
-    execute: async (p) => {
-      executedTaskId = p.payload.taskId;
-      return { taskId: p.payload.taskId, status: "completed" };
-    },
-    compensate: async () => ({ compensated: true }),
-  });
-
-  const kernelService = new KernelCapabilityService(registry);
-  const fastPath = new FastPathExecutor(kernelService);
-
-  const knownTasks = [
-    { id: "task_abc_123", title: "Write Weekly Report" },
-    { id: "task_def_456", title: "Submit Tax Filing" },
-  ];
-
-  const result = await fastPath.execute('complete task "Write Weekly Report"', "user_test_1", { knownTasks });
-  assert.equal(result.handled, true);
-  assert.equal(executedTaskId, "task_abc_123");
-  assert.ok(result.userResponse.includes("Write Weekly Report"));
+  const decision = router.route(complexMessage);
+  assert.notEqual(decision.strategy, "FAST_PATH");
 });

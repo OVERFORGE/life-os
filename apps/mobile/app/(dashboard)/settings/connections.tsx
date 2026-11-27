@@ -69,10 +69,6 @@ export default function ConnectionsSettingsScreen() {
   const [available, setAvailable] = useState<AvailableItem[]>([]);
   const [selectedItem, setSelectedItem] = useState<ConnectedItem | null>(null);
 
-  useEffect(() => {
-    loadConnections();
-  }, []);
-
   const loadConnections = async () => {
     setLoading(true);
     try {
@@ -92,6 +88,12 @@ export default function ConnectionsSettingsScreen() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadConnections();
+    });
+  }, []);
 
   const handleConnect = async (providerId: string, displayName: string) => {
     setActionLoading(providerId);

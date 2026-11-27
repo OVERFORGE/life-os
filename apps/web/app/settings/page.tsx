@@ -1217,7 +1217,7 @@ export default function SettingsWorkspace() {
                 <div>
                   <h2 className="text-sm font-semibold text-[#F7F5F0]">Temporal Coordinates & Timezone</h2>
                   <p className="text-xs text-[#85827A] font-mono mt-0.5">
-                    Aligns all timeline tasks, DAG nodes, and execution slots with your circadian day.
+                    Aligns all your calendar events, tasks, and daily schedule with your circadian day.
                   </p>
                 </div>
                 <button

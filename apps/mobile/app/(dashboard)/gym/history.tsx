@@ -116,7 +116,7 @@ export default function HistoryPage() {
             <Calendar size={40} color={C.muted} style={{ marginBottom: 16 }} />
             <Text style={{ color: C.text, fontWeight: '800', fontSize: 18, marginBottom: 8 }}>No Workouts Found</Text>
             <Text style={{ color: C.subtext, textAlign: 'center', fontSize: 14 }}>
-              You haven't logged any past sessions. They will show up here once you do.
+              You haven&apos;t logged any past sessions. They will show up here once you do.
             </Text>
           </View>
         ) : (

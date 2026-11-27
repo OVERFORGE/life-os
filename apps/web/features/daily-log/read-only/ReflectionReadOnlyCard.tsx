@@ -1,18 +1,19 @@
 import { Card } from "../ui/Card";
 
+function Block({ label, value }: { label: string; value: string }) {
+  return value ? (
+    <div>
+      <div className="text-xs text-gray-400 mb-1">{label}</div>
+      <div className="bg-[#161618] border border-[#2A2B2F] rounded-lg p-3 text-sm">
+        {value}
+      </div>
+    </div>
+  ) : null;
+}
+
 export function ReflectionReadOnlyCard({ data }: { data: any }) {
   const r = data.reflection;
   if (!r) return null;
-
-  const Block = ({ label, value }: { label: string; value: string }) =>
-    value ? (
-      <div>
-        <div className="text-xs text-gray-400 mb-1">{label}</div>
-        <div className="bg-[#161618] border border-[#2A2B2F] rounded-lg p-3 text-sm">
-          {value}
-        </div>
-      </div>
-    ) : null;
 
   return (
     <Card title="Reflection">

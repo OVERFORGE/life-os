@@ -18,12 +18,25 @@ export type AggregateType =
   | "goal"
   | "occurrence"
   | "dailylog"
+  | "nutrition_log"
+  | "weight_log"
   | "user"
   | "workout"
   | "autonomous_cycle"
   | "autonomous_intervention"
   | "autonomous_action"
-  | "workflow";
+  | "workflow"
+  | "catalog"
+  | "system_settings"
+  | "user_profile"
+  | "goal_proposal"
+  | "food_item"
+  | "day_template"
+  | "workout_routine"
+  | "gym"
+  | "life_category"
+  | "life_signal"
+  | "daily_session";
 
 export type OutboxDeliveryStatus =
   | "PENDING_COMMIT"
@@ -204,6 +217,45 @@ export interface SignalLoggedPayload {
   value: any;
 }
 
+export interface DailyLogUpdatedPayload {
+  logId: string;
+  userId: string;
+  date: string;
+  updatedSections?: string[];
+  sleepHours?: number;
+  sleepQuality?: number;
+  mentalMood?: number;
+  mentalEnergy?: number;
+  mentalStress?: number;
+  mentalFocus?: number;
+  deepWorkHours?: number;
+  calories?: number;
+  updatedAt: string;
+}
+
+export interface NutritionLoggedPayload {
+  logId: string;
+  userId: string;
+  date: string;
+  mealsCount: number;
+  dailyTotals: {
+    calories: number;
+    protein: number;
+    carbs: number;
+    fats: number;
+  };
+  loggedAt: string;
+}
+
+export interface WeightLoggedPayload {
+  weightLogId: string;
+  userId: string;
+  date: string;
+  weight: number | null;
+  deleted?: boolean;
+  loggedAt: string;
+}
+
 export interface TelemetryIngestedPayload {
   userId: string;
   generationTimestamp: number;
@@ -298,6 +350,9 @@ export type CanonicalEventPayloadMap = {
   "domain.temporal.deleted": OccurrenceDeletedPayload;
   "domain.health.workout_logged": WorkoutLoggedPayload;
   "domain.physical.workout_logged": WorkoutLoggedPayload;
+  "domain.daily_log.updated": DailyLogUpdatedPayload;
+  "domain.nutrition.logged": NutritionLoggedPayload;
+  "domain.weight.logged": WeightLoggedPayload;
   "domain.signal.logged": SignalLoggedPayload;
   "telemetry.wearables.ingested": TelemetryIngestedPayload;
   "analytical.schedule.conflict_detected": ScheduleConflictDetectedPayload;

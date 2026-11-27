@@ -145,7 +145,7 @@ export default function PhaseDetailScreen() {
             </View>
             {escapePaths.length === 0 ? (
               <Text style={{ color: 'rgba(236,231,227,0.45)', fontSize: 13, lineHeight: 20 }}>
-                Small optimizations won't exit this phase.{'\n'}
+                Small optimizations won&apos;t exit this phase.{'\n'}
                 <Text style={{ color: 'rgba(236,231,227,0.6)' }}>This requires a structural shift.</Text>
               </Text>
             ) : (

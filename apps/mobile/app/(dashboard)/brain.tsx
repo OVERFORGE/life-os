@@ -30,10 +30,9 @@ const C = {
 };
 
 const GROQ_MODELS = [
-  { id: 'llama-3.3-70b-versatile',                    name: 'Llama 3.3 70B (Best)' },
-  { id: 'qwen/qwen3-32b',                              name: 'Qwen3 32B (Great)' },
-  { id: 'meta-llama/llama-4-scout-17b-16e-instruct',   name: 'Llama 4 Scout 17B' },
-  { id: 'llama-3.1-8b-instant',                        name: 'Llama 3.1 8B (Fastest)' },
+  { id: 'openai/gpt-oss-120b', name: 'GPT OSS 120B (Aven Flagship)' },
+  { id: 'qwen/qwen3.8-27b',    name: 'Qwen 3.8 27B (Fast & Intelligent)' },
+  { id: 'openai/gpt-oss-20b',  name: 'GPT OSS 20B (Instant)' },
 ];
 
 interface ToolActivity {
@@ -256,7 +255,7 @@ export default function BrainScreen() {
   const [loading, setLoading] = useState(false);
   const [historyLoading, setHistoryLoading] = useState(true);
   const [showScrollButton, setShowScrollButton] = useState(false);
-  const [selectedModel, setSelectedModel] = useState('llama-3.3-70b-versatile');
+  const [selectedModel, setSelectedModel] = useState('openai/gpt-oss-120b');
   const [displayCount, setDisplayCount] = useState(30);
 
   const router = useRouter();

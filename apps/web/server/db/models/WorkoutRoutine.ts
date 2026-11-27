@@ -25,6 +25,10 @@ const WorkoutRoutineSchema = new mongoose.Schema(
     routineName: { type: String, required: true }, // e.g. "Push Pull Legs"
     isActive: { type: Boolean, default: false }, // used to track which routine is active for consistency score
     splitDays: [SplitDaySchema],
+    deletedAt: { type: Date, default: null },
+    version: { type: Number, default: 0 },
+    mutationEpoch: { type: Number, default: 0 },
+    recentMutationReceipts: { type: [mongoose.Schema.Types.Mixed], default: [] },
   },
   { timestamps: true }
 );

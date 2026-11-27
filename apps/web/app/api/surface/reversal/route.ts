@@ -10,28 +10,25 @@ import { NextRequest, NextResponse } from "next/server";
 import { getAuthSession } from "@/lib/auth";
 import { connectDB } from "@/server/db/connect";
 import { apiError } from "@/lib/apiResponse";
-import { AutonomousActionReverser } from "@life-os/execution-kernel";
+import {
+  AutonomousActionReverser,
+  KernelCapabilityService,
+  ActionAdapterRegistry,
+  registerDefaultActionAdapters,
+} from "@life-os/execution-kernel";
 
 export const dynamic = "force-dynamic";
 
 export async function POST(req: NextRequest) {
   try {
     const session = await getAuthSession();
-    let userId = (session?.user as any)?.id;
-
-    await connectDB();
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-      }
-    }
+    const userId = (session?.user as any)?.id;
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
     }
+
+    await connectDB();
 
     const body = await req.json().catch(() => ({}));
     const { executionId } = body;
@@ -41,13 +38,8 @@ export async function POST(req: NextRequest) {
     }
 
     const reverser = AutonomousActionReverser.getInstance();
-
-    // Mock / Real kernel capability service
-    const kernelCapabilityService: any = {
-      executeAction: async (_uid: string, _proposal: any) => ({
-        success: true,
-      }),
-    };
+    registerDefaultActionAdapters(ActionAdapterRegistry.getInstance());
+    const kernelCapabilityService = KernelCapabilityService.getInstance();
 
     const result = await reverser.executeCompensation(
       userId,

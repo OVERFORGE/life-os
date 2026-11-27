@@ -268,7 +268,6 @@ export default function AvenHudPage() {
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({
           message: textToSend,
-          model: "llama-3.3-70b-versatile",
           mode: "general",
           surfaceContext: {
             activeExecutionTitle: projection?.activeExecution?.title,

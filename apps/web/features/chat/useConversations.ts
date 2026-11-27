@@ -57,7 +57,9 @@ export function useConversations() {
   }, [setActiveConversationId]);
 
   useEffect(() => {
-    fetchConversations();
+    queueMicrotask(() => {
+      void fetchConversations();
+    });
   }, []);
 
   const createConversation = async (title?: string): Promise<string | null> => {

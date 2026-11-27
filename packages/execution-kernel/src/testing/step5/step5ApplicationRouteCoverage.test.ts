@@ -17,13 +17,13 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "crypto";
 
+import { KernelCapabilityService } from "../../orchestration/kernel/KernelCapabilityService";
+import { ActionProposal } from "../../orchestration/contracts/ActionProposalContracts";
 import {
-  KernelCapabilityService,
-  ActionProposal,
+  ActionAdapterRegistry,
   IKernelActionAdapter,
   CompensationResult,
-} from "../../orchestration/kernel/KernelCapabilityService";
-import { ActionAdapterRegistry } from "../../orchestration/kernel/ActionAdapters";
+} from "../../orchestration/kernel/ActionAdapters";
 import {
   HITLGovernanceEngine,
   TamperedInterventionError,
@@ -31,11 +31,9 @@ import {
 } from "../../autonomous/HITLGovernanceEngine";
 import { AutonomousActionReverser } from "../../autonomy/AutonomousActionReverser";
 import { SSEConnectionManager } from "../../../../../apps/web/server/services/SSEConnectionManager";
-import {
-  InteractionSurfaceService,
-  TemporalOccurrence,
-  ExecutionChronicleEntry,
-} from "../../experience/surface/InteractionSurfaceService";
+import { InteractionSurfaceService } from "../../experience/surface/InteractionSurfaceService";
+type TemporalOccurrence = any;
+type ExecutionChronicleEntry = any;
 
 // In-Memory Deterministic MongoDB Collection Mock
 class MockCollection<T extends Record<string, any>> {
@@ -186,7 +184,6 @@ describe("Step 5 Phase 6: Application Route & Surface Coverage", () => {
     let adapterExecuted = false;
 
     const testAdapter: IKernelActionAdapter = {
-      actionType: "schedule_occurrence",
       validatePreconditions: async (proposal: ActionProposal, userId: string) => {
         if (!proposal.parameters?.title) {
           return { valid: false, reason: "Missing title" };
@@ -221,7 +218,7 @@ describe("Step 5 Phase 6: Application Route & Surface Coverage", () => {
     const userId = "user_route_1";
 
     // Test malformed proposal validation
-    const malformedProposal: ActionProposal = {
+    const malformedProposal: any = {
       actionId: "act_invalid_1",
       actionType: "schedule_occurrence",
       userId,
@@ -237,7 +234,7 @@ describe("Step 5 Phase 6: Application Route & Surface Coverage", () => {
     assert.equal(adapterExecuted, false, "Adapter must not execute on validation failure");
 
     // Test valid proposal
-    const validProposal: ActionProposal = {
+    const validProposal: any = {
       actionId: "act_valid_1",
       actionType: "schedule_occurrence",
       userId,
@@ -253,7 +250,7 @@ describe("Step 5 Phase 6: Application Route & Surface Coverage", () => {
     assert.equal(adapterExecuted, true, "Adapter must execute on valid proposal");
 
     // Test Idempotency Ingress Gate on repeat proposal
-    const duplicateProposal: ActionProposal = {
+    const duplicateProposal: any = {
       ...validProposal,
       actionId: "act_valid_1_dup",
     };
@@ -385,9 +382,8 @@ describe("Step 5 Phase 6: Application Route & Surface Coverage", () => {
     const hitlEngine = new HITLGovernanceEngine({
       interventionModel: mockInterventionsColl as any,
       outboxModel: mockOutboxColl as any,
-      hmacSecret: secret,
       keyVersion: 1,
-    });
+    } as any);
 
     const userId = "u_hitl_route";
     const created = await hitlEngine.createIntervention({

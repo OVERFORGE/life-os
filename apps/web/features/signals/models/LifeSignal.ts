@@ -42,6 +42,10 @@ const LifeSignalSchema = new Schema(
 
     dependsOn: { type: String, default: null },
     showIf: { type: Number, default: null },
+    deletedAt: { type: Date, default: null },
+    version: { type: Number, default: 0 },
+    mutationEpoch: { type: Number, default: 0 },
+    recentMutationReceipts: { type: [Schema.Types.Mixed], default: [] },
   },
   { timestamps: true }
 );

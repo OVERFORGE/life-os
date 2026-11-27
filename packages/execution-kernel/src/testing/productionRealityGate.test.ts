@@ -16,8 +16,13 @@ import { ExecutionWorkspace } from "../orchestration/workspace/ExecutionWorkspac
 import { IncidentService } from "../incidents/IncidentService";
 import { ActionProposal } from "../orchestration/contracts/ActionProposalContracts";
 import { ConversationService } from "../services/ConversationService";
+import { setMockGroqChat, setMockGroqTextStream } from "../shared/groq";
 
 test("LifeOS: Production Reality Validation Gate Suite", async (t) => {
+  const originalRuntimeMode = process.env.LIFEOS_RUNTIME_MODE;
+  process.env.LIFEOS_RUNTIME_MODE = "test";
+  EmbeddingProviderRegistry.reset();
+
   const memoryRepo = MemoryRepository.getInstance();
   const incidentService = IncidentService.getInstance();
   const kernelService = KernelCapabilityService.getInstance();
@@ -31,6 +36,18 @@ test("LifeOS: Production Reality Validation Gate Suite", async (t) => {
   kernelService.clearAuditStore();
   jobQueue.clear();
   tracer.clear();
+
+  t.after(() => {
+    memoryPipeline.setSemanticExtractor(undefined);
+    setMockGroqChat(undefined);
+    setMockGroqTextStream(undefined);
+    if (originalRuntimeMode !== undefined) {
+      process.env.LIFEOS_RUNTIME_MODE = originalRuntimeMode;
+    } else {
+      delete process.env.LIFEOS_RUNTIME_MODE;
+    }
+    EmbeddingProviderRegistry.reset();
+  });
 
   const userAlpha = "user_alpha_prod";
   const userBeta = "user_beta_prod";
@@ -90,48 +107,66 @@ test("LifeOS: Production Reality Validation Gate Suite", async (t) => {
   // GATE 2: Durable Memory Queue Crash Recovery & Deduplication
   // =========================================================================
   await t.test("REALITY-GATE-02: Durable memory queue preserves jobs across worker crash simulation", async () => {
-    const turnInput = {
-      userId: userAlpha,
-      userMessage: "I always take an afternoon walk at 3pm to recharge",
-      assistantResponse: "Noted your afternoon walk routine at 3pm.",
-      conversationId: "conv_durable_01",
-    };
+    memoryPipeline.setSemanticExtractor({
+      extract: async (turn) => [
+        {
+          userId: turn.userId,
+          content: turn.userMessage,
+          summary: "Extracted routine",
+          memoryType: "behavioral_pattern",
+          domain: "health",
+          source: "explicit_user_statement",
+          confidence: 0.9,
+          importance: 0.75,
+        },
+      ],
+    });
+    try {
+      const turnInput = {
+        userId: userAlpha,
+        userMessage: "I always take an afternoon walk at 3pm to recharge",
+        assistantResponse: "Noted your afternoon walk routine at 3pm.",
+        conversationId: "conv_durable_01",
+      };
 
-    // 1. Enqueue turn
-    const job = await jobQueue.enqueueTurn(turnInput, { immediateProcess: false });
-    assert.strictEqual(job.status, "PENDING");
-    assert.strictEqual(job.attempts, 0);
+      // 1. Enqueue turn
+      const job = await jobQueue.enqueueTurn(turnInput, { immediateProcess: false });
+      assert.strictEqual(job.status, "PENDING");
+      assert.strictEqual(job.attempts, 0);
 
-    // 2. Process job to completion
-    const completedJob = await jobQueue.processJob(job.jobId);
-    assert.strictEqual(completedJob.status, "COMPLETED");
-    assert.ok(completedJob.result, "Job result must be recorded");
+      // 2. Process job to completion
+      const completedJob = await jobQueue.processJob(job.jobId);
+      assert.strictEqual(completedJob.status, "COMPLETED");
+      assert.ok(completedJob.result, "Job result must be recorded");
 
-    // 3. Re-enqueuing identical turn must deduplicate and return completed job
-    const duplicateJob = await jobQueue.enqueueTurn(turnInput, { immediateProcess: false });
-    assert.strictEqual(duplicateJob.jobId, job.jobId, "Turn hash must guarantee deterministic deduplication");
-    assert.strictEqual(duplicateJob.status, "COMPLETED", "Deduplicated job must retain completed status");
+      // 3. Re-enqueuing identical turn must deduplicate and return completed job
+      const duplicateJob = await jobQueue.enqueueTurn(turnInput, { immediateProcess: false });
+      assert.strictEqual(duplicateJob.jobId, job.jobId, "Turn hash must guarantee deterministic deduplication");
+      assert.strictEqual(duplicateJob.status, "COMPLETED", "Deduplicated job must retain completed status");
 
-    // 4. Simulate crash recovery: job stranded in PROCESSING with expired lease
-    const crashTurn = {
-      userId: userAlpha,
-      userMessage: "I need 8 hours of sleep minimum",
-      assistantResponse: "Recorded sleep requirement.",
-      conversationId: "conv_crash_recovery",
-    };
-    const strandedJob = await jobQueue.enqueueTurn(crashTurn, { immediateProcess: false });
-    strandedJob.status = "PROCESSING";
-    strandedJob.heartbeatAt = Date.now() - 40000; // 40s ago (stale lease)
-    strandedJob.attempts = 1;
+      // 4. Simulate crash recovery: job stranded in PROCESSING with expired lease
+      const crashTurn = {
+        userId: userAlpha,
+        userMessage: "I need 8 hours of sleep minimum",
+        assistantResponse: "Recorded sleep requirement.",
+        conversationId: "conv_crash_recovery",
+      };
+      const strandedJob = await jobQueue.enqueueTurn(crashTurn, { immediateProcess: false });
+      strandedJob.status = "PROCESSING";
+      strandedJob.heartbeatAt = Date.now() - 40000; // 40s ago (stale lease)
+      strandedJob.attempts = 1;
 
-    // Reaper runs and recovers stranded job
-    const recoveredCount = await jobQueue.reapStaleWorkers(30000);
-    assert.ok(recoveredCount >= 1, "Must recover stranded worker job");
-    assert.strictEqual(strandedJob.status, "PENDING", "Recovered job must be re-queued as PENDING");
+      // Reaper runs and recovers stranded job
+      const recoveredCount = await jobQueue.reapStaleWorkers(30000);
+      assert.ok(recoveredCount >= 1, "Must recover stranded worker job");
+      assert.strictEqual(strandedJob.status, "PENDING", "Recovered job must be re-queued as PENDING");
 
-    // Successfully complete the recovered job
-    const finishedStranded = await jobQueue.processJob(strandedJob.jobId);
-    assert.strictEqual(finishedStranded.status, "COMPLETED");
+      // Successfully complete the recovered job
+      const finishedStranded = await jobQueue.processJob(strandedJob.jobId);
+      assert.strictEqual(finishedStranded.status, "COMPLETED");
+    } finally {
+      memoryPipeline.setSemanticExtractor(undefined);
+    }
   });
 
   // =========================================================================
@@ -358,14 +393,21 @@ test("LifeOS: Production Reality Validation Gate Suite", async (t) => {
       },
     ];
 
-    // First execution
-    const exec1 = await kernelService.executeActionBatch(userAlpha, validDecisions);
-    assert.strictEqual(exec1[0].status, "SUCCEEDED");
+    const prevMocks = process.env.LIFEOS_ALLOW_TEST_MOCKS;
+    process.env.LIFEOS_ALLOW_TEST_MOCKS = "true";
+    try {
+      // First execution
+      const exec1 = await kernelService.executeActionBatch(userAlpha, validDecisions);
+      assert.strictEqual(exec1[0].status, "SUCCEEDED");
 
-    // Second execution with identical idempotencyKey
-    const exec2 = await kernelService.executeActionBatch(userAlpha, validDecisions);
-    assert.strictEqual(exec2[0].status, "SUCCEEDED");
-    assert.strictEqual(exec2[0].idempotencyKey, validProposal.idempotencyKey);
+      // Second execution with identical idempotencyKey
+      const exec2 = await kernelService.executeActionBatch(userAlpha, validDecisions);
+      assert.strictEqual(exec2[0].status, "SUCCEEDED");
+      assert.strictEqual(exec2[0].idempotencyKey, validProposal.idempotencyKey);
+    } finally {
+      if (prevMocks !== undefined) process.env.LIFEOS_ALLOW_TEST_MOCKS = prevMocks;
+      else delete process.env.LIFEOS_ALLOW_TEST_MOCKS;
+    }
   });
 
   // =========================================================================
@@ -410,26 +452,63 @@ test("LifeOS: Production Reality Validation Gate Suite", async (t) => {
   // GATE 10: Full End-to-End User Journey with Correlation Headers
   // =========================================================================
   await t.test("REALITY-GATE-10: Complete user journey executes and streams correlation headers", async () => {
-    const convService = ConversationService.getInstance();
-
-    const response = await convService.executeUserRequest({
-      userId: userAlpha,
-      message: "create a task to review system architecture checklist tomorrow",
-      conversationId: "conv_e2e_journey",
+    const prevKey = process.env.GROQ_API_KEY;
+    const prevMocks = process.env.LIFEOS_ALLOW_TEST_MOCKS;
+    process.env.GROQ_API_KEY = "test_key_reality_10";
+    process.env.LIFEOS_ALLOW_TEST_MOCKS = "true";
+    setMockGroqChat(async () =>
+      JSON.stringify({
+        turnId: "t_rg10",
+        rawMessage: "create a task to review system architecture checklist tomorrow",
+        primaryClassification: "ACTION_REQUEST",
+        confidence: 0.99,
+        operations: [
+          {
+            domain: "productivity",
+            actionType: "create_task",
+            capabilityURN: "lifeos.tasks.create",
+            payload: { title: "Review system architecture checklist" },
+          },
+        ],
+        relevanceDomains: ["productivity"],
+      })
+    );
+    setMockGroqTextStream(async ({ onDelta }) => {
+      await onDelta?.("Created your task.");
+      return "Created your task.";
     });
 
-    assert.ok(response, "Response must be returned");
-    assert.strictEqual(response.status, 200);
+    try {
+      const convService = ConversationService.getInstance();
 
-    // Verify correlation headers
-    const routeHeader = response.headers.get("x-lifeos-route");
-    const execIdHeader = response.headers.get("x-lifeos-execution-id");
-    const snapshotHeader = response.headers.get("x-lifeos-memory-snapshot-id");
-    const durationHeader = response.headers.get("x-lifeos-duration-ms");
+      const response = await convService.executeUserRequest({
+        userId: userAlpha,
+        message: "create a task to review system architecture checklist tomorrow",
+        conversationId: "conv_e2e_journey",
+      });
 
-    assert.ok(routeHeader, "x-lifeos-route header must be present");
-    assert.ok(execIdHeader, "x-lifeos-execution-id header must be present");
-    assert.ok(snapshotHeader, "x-lifeos-memory-snapshot-id header must be present");
-    assert.ok(durationHeader, "x-lifeos-duration-ms header must be present");
+      assert.ok(response, "Response must be returned");
+      assert.strictEqual(response.status, 200);
+
+      // Verify correlation headers
+      const routeHeader = response.headers.get("x-lifeos-route");
+      const execIdHeader = response.headers.get("x-lifeos-execution-id");
+      const snapshotHeader = response.headers.get("x-lifeos-memory-snapshot-id");
+      const durationHeader = response.headers.get("x-lifeos-duration-ms");
+
+      assert.ok(routeHeader, "x-lifeos-route header must be present");
+      assert.ok(execIdHeader, "x-lifeos-execution-id header must be present");
+      assert.ok(snapshotHeader, "x-lifeos-memory-snapshot-id header must be present");
+      assert.ok(durationHeader, "x-lifeos-duration-ms header must be present");
+
+      await response.text();
+    } finally {
+      setMockGroqChat(undefined);
+      setMockGroqTextStream(undefined);
+      if (prevKey !== undefined) process.env.GROQ_API_KEY = prevKey;
+      else delete process.env.GROQ_API_KEY;
+      if (prevMocks !== undefined) process.env.LIFEOS_ALLOW_TEST_MOCKS = prevMocks;
+      else delete process.env.LIFEOS_ALLOW_TEST_MOCKS;
+    }
   });
 });

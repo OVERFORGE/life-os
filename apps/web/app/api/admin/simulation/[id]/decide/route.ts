@@ -1,3 +1,4 @@
+import { requireAdminSession } from "@/lib/adminAuth";
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { SimulationRun, mapDocToSnapshot } from "@/server/db/models/SimulationRun";
@@ -11,6 +12,8 @@ type RouteParams = { params: Promise<{ id: string }> };
 // POST /api/admin/simulation/[id]/decide — Evaluate Decision Engine on a run snapshot
 // IMPORTANT: Zero state mutation. Pure read-only decision evaluation.
 export async function POST(req: NextRequest, props: RouteParams) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     const { id } = await props.params;
     await connectDB();

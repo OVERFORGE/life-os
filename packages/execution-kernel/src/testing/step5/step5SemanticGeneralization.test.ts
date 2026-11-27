@@ -16,8 +16,8 @@ import { describe, it, beforeEach } from "node:test";
 import assert from "node:assert/strict";
 
 import { KernelCapabilityService } from "../../orchestration/kernel/KernelCapabilityService";
-import { ActionAdapterRegistry } from "../../orchestration/kernel/ActionAdapters";
-import { IKernelActionAdapter, ActionProposal, CompensationResult } from "../../orchestration/contracts/ActionProposalContracts";
+import { ActionAdapterRegistry, IKernelActionAdapter, CompensationResult } from "../../orchestration/kernel/ActionAdapters";
+import { ActionProposal } from "../../orchestration/contracts/ActionProposalContracts";
 
 class MockCollection<T extends Record<string, any>> {
   public docs: Map<string, T> = new Map();
@@ -98,7 +98,7 @@ describe("Step 5: Full-System Integration Testing — Phase 5: Semantic Generali
 
     const genericAdapter: IKernelActionAdapter = {
       async validatePreconditions() { return { valid: true }; },
-      async execute(proposal) {
+      async execute(proposal: any) {
         executedAction = proposal.actionType;
         executedParams = proposal.parameters;
         return { success: true, outcome: "CALIBRATED_PRECISION_OPTIMAL" };
@@ -112,7 +112,7 @@ describe("Step 5: Full-System Integration Testing — Phase 5: Semantic Generali
     adapterRegistry.register("subsea_sonar_ping", genericAdapter);
     adapterRegistry.register("quantum_spin_stabilize", genericAdapter);
 
-    const proposal1: ActionProposal = {
+    const proposal1: any = {
       id: "act_sonar_1",
       idempotencyKey: "idem_sonar_1",
       actionType: "subsea_sonar_ping",
@@ -128,7 +128,7 @@ describe("Step 5: Full-System Integration Testing — Phase 5: Semantic Generali
     assert.equal(executedAction, "subsea_sonar_ping");
     assert.equal(executedParams.frequencyKhz, 37.5);
 
-    const proposal2: ActionProposal = {
+    const proposal2: any = {
       id: "act_quantum_1",
       idempotencyKey: "idem_quantum_1",
       actionType: "quantum_spin_stabilize",
@@ -153,7 +153,7 @@ describe("Step 5: Full-System Integration Testing — Phase 5: Semantic Generali
 
     const signalAdapter: IKernelActionAdapter = {
       async validatePreconditions() { return { valid: true }; },
-      async execute(proposal) {
+      async execute(proposal: any) {
         capturedPayload = proposal.parameters;
         return { success: true, stored: true };
       },
@@ -164,7 +164,7 @@ describe("Step 5: Full-System Integration Testing — Phase 5: Semantic Generali
 
     adapterRegistry.register("log_custom_signal", signalAdapter);
 
-    const customSignalProposal: ActionProposal = {
+    const customSignalProposal: any = {
       id: "act_sig_1",
       idempotencyKey: "idem_sig_1",
       actionType: "log_custom_signal",
@@ -193,7 +193,7 @@ describe("Step 5: Full-System Integration Testing — Phase 5: Semantic Generali
   // =========================================================================
   it("Scenario 3: Material ambiguity / missing parameters fails closed with validation rejection", async () => {
     const strictAdapter: IKernelActionAdapter = {
-      async validatePreconditions(proposal) {
+      async validatePreconditions(proposal: any) {
         if (!proposal.parameters?.targetEntityId) {
           return { valid: false, reason: "Missing required targetEntityId parameter" };
         }
@@ -209,7 +209,7 @@ describe("Step 5: Full-System Integration Testing — Phase 5: Semantic Generali
 
     adapterRegistry.register("strict_operation", strictAdapter);
 
-    const invalidProposal: ActionProposal = {
+    const invalidProposal: any = {
       id: "act_invalid_1",
       idempotencyKey: "idem_inv_1",
       actionType: "strict_operation",

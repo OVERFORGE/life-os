@@ -25,7 +25,7 @@ const AVAILABLE_HABIT_SIGNALS = [
   { key: "learning.product_engineering", label: "Product Engineering Study Time", category: "Cognitive" },
   { key: "learning.devops", label: "DevOps Study Time", category: "Cognitive" },
   { key: "work.coding", label: "Did Coding", category: "Cognitive" },
-  { key: "work.execution", label: "Worked on Executioners", category: "Cognitive" },
+  { key: "work.execution", label: "Focused Deep Work", category: "Cognitive" },
   { key: "learning.general", label: "Studied / Learning", category: "Cognitive" },
   { key: "intellect.reading_book", label: "Reading", category: "Cognitive" },
   { key: "work.coding_practice", label: "Coding Practice", category: "Cognitive" },

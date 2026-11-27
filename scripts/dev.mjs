@@ -18,6 +18,7 @@ const isWindows = process.platform === "win32";
 const pnpmCmd = isWindows ? "pnpm.cmd" : "pnpm";
 
 // Load root .env variables so child processes inherit GROQ_API_KEY and other config
+const DEPRECATED_MODELS = new Set(["llama-3.3-70b-versatile", "llama-3.1-8b-instant", "gemini-2.0-flash"]);
 const envPath = path.resolve(rootDir, ".env");
 if (fs.existsSync(envPath)) {
   try {
@@ -29,6 +30,10 @@ if (fs.existsSync(envPath)) {
       if (eqIdx > 0) {
         const key = trimmed.slice(0, eqIdx).trim();
         const val = trimmed.slice(eqIdx + 1).trim().replace(/^["']|["']$/g, "");
+        if (key === "GROQ_MODEL" && DEPRECATED_MODELS.has(val)) {
+          console.warn(`[LifeOS] Ignoring deprecated root .env GROQ_MODEL="${val}" so canonical/web model config applies.`);
+          continue;
+        }
         if (key && !process.env[key]) {
           process.env[key] = val;
         }
@@ -37,11 +42,24 @@ if (fs.existsSync(envPath)) {
   } catch {}
 }
 
+function sanitizeDbName(uri) {
+  if (!uri) return "unset";
+  try {
+    const cleaned = uri.replace(/^mongodb(\+srv)?:\/\/[^@]+@/, "mongodb://");
+    const parsed = new URL(cleaned);
+    return (parsed.pathname || "/").replace(/^\//, "") || "default";
+  } catch {
+    return "unparsed";
+  }
+}
+
 console.log("\n=======================================================");
 console.log("             LifeOS Unified Dev Launcher              ");
+console.log(`  DB Target: ${sanitizeDbName(process.env.MONGODB_URI)} | GROQ_MODEL: ${process.env.GROQ_MODEL || "canonical-default(openai/gpt-oss-120b)"}`);
 console.log("=======================================================\n");
 
 let webProcess = null;
+let outboxDaemonProcess = null;
 let desktopProcess = null;
 let isShuttingDown = false;
 
@@ -53,6 +71,11 @@ function cleanExit(code = 0) {
   if (desktopProcess) {
     try {
       desktopProcess.kill();
+    } catch {}
+  }
+  if (outboxDaemonProcess) {
+    try {
+      outboxDaemonProcess.kill();
     } catch {}
   }
   if (webProcess) {
@@ -88,6 +111,16 @@ webProcess.on("exit", (code) => {
     cleanExit(code || 0);
   }
 });
+
+if (process.env.LIFEOS_DEV_WITH_DAEMON !== "false") {
+  console.log("[LifeOS] Starting managed Outbox Worker Daemon (set LIFEOS_DEV_WITH_DAEMON=false to disable)...");
+  outboxDaemonProcess = spawn(pnpmCmd, ["run", "daemon:outbox"], {
+    cwd: rootDir,
+    stdio: "inherit",
+    shell: isWindows,
+    env: { ...process.env },
+  });
+}
 
 // Step 2: Poll for web server readiness
 function waitForServer(url, timeoutMs = 60000) {

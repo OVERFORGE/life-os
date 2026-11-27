@@ -3,6 +3,7 @@ import { getAuthSession } from "@/lib/auth";
 import { connectDB } from "@/server/db/connect";
 import { DailyLog } from "@/server/db/models/DailyLog";
 import { DailyLogSchema } from "@/features/daily-log/schema";
+import { upsertDailyLogWithOutbox } from "@/features/daily-log/services/dailyLogEngine";
 
 export async function GET(req: Request) {
   const session = await getAuthSession();
@@ -55,25 +56,24 @@ export async function POST(req: Request) {
 
   await connectDB();
 
-  const existing = await DailyLog.findOne({ userId, date }).lean();
-  const existingSignals = existing?.signals || {};
-
-  const merged = {
-    ...parsed.data,
-    signals: existingSignals,
-  };
-
-  delete (merged as any).userId;
-  delete (merged as any).date;
-
-  const log = await DailyLog.findOneAndUpdate(
-    { userId, date },
-    {
-      $set: merged,
-      $setOnInsert: { userId, date },
+  const result = await upsertDailyLogWithOutbox({
+    userId,
+    date,
+    sections: parsed.data,
+    preserveSignals: true,
+    options: {
+      clientMutationId: typeof body?.clientMutationId === "string" ? body.clientMutationId : undefined,
+      expectedVersion: typeof body?.expectedVersion === "number" ? body.expectedVersion : undefined,
+      source: "web.daily_log.by_date",
     },
-    { upsert: true, new: true }
-  );
+  });
 
-  return NextResponse.json(log);
+  if (!result.success) {
+    return NextResponse.json(
+      { error: result.error, code: result.code },
+      { status: result.statusCode || 500 }
+    );
+  }
+
+  return NextResponse.json(result.log);
 }

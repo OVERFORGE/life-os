@@ -38,7 +38,7 @@ export function DerivedSettingsCard({
       </div>
 
       <div className="text-xs text-gray-600 mt-1">
-        Confidence: {Math.round(metric.confidence * 100)}%
+        {metric.confidence >= 0.75 ? "Strong pattern" : metric.confidence >= 0.45 ? "Moderate pattern" : "Early pattern"}
         {metric.lastChanged && ` · Updated ${metric.lastChanged}`}
       </div>
     </div>

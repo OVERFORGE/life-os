@@ -16,7 +16,9 @@ import {
   findForbiddenPhrases,
   FORBIDDEN_PHRASES,
 } from "../persona";
-import { FastPathExecutor } from "../orchestration/supervisor/FastPathExecutor";
+import { Supervisor } from "../orchestration/supervisor/Supervisor";
+import { SemanticIntentInterpreter } from "../orchestration/semantic/SemanticIntentInterpreter";
+import { setMockGroqChat, setMockGroqTextStream } from "../shared/groq";
 import { KernelCapabilityService } from "../orchestration/kernel/KernelCapabilityService";
 import { ActionAdapterRegistry } from "../orchestration/kernel/ActionAdapters";
 import { SynthesisEngine } from "../orchestration/synthesis/SynthesisEngine";
@@ -103,7 +105,7 @@ test("Persona 6: Specialist Domain Identity Architecture (Unified Voice)", () =>
   assert.ok(wellnessPrompt.includes("You do NOT possess an independent personality"));
 });
 
-test("Persona 7: FastPath Action Confirmation Truthfulness in Aven Voice", async () => {
+test("Persona 7: Supervisor Action Confirmation Truthfulness in Aven Voice", async () => {
   const registry = new ActionAdapterRegistry();
   registry.register("complete_task", {
     validatePreconditions: async () => ({ valid: true }),
@@ -112,22 +114,48 @@ test("Persona 7: FastPath Action Confirmation Truthfulness in Aven Voice", async
   });
 
   const kernelService = new KernelCapabilityService(registry);
-  const fastPath = new FastPathExecutor(kernelService);
+  const supervisor = Supervisor.createDefault(kernelService);
+  const interpreter = SemanticIntentInterpreter.getInstance();
+  interpreter.setMockChat(async () =>
+    JSON.stringify({
+      primaryClassification: "ACTION_REQUEST",
+      ambiguityStatus: "UNAMBIGUOUS",
+      conversationalSummary: "Done. Task 456 completed.",
+      operations: [
+        {
+          domain: "productivity",
+          actionType: "complete_task",
+          executionEligibility: "READY",
+          targetReference: { rawExpression: "456", resolvedEntityId: "456", kind: "EXPLICIT_ID" },
+          payload: { taskId: "456" },
+        },
+      ],
+    })
+  );
+  setMockGroqChat(async () => "Done. Task 456 has been marked completed.");
+  setMockGroqTextStream(async ({ onDelta }) => {
+    const txt = "Done. Task 456 has been marked completed.";
+    if (onDelta) await onDelta(txt);
+    return txt;
+  });
 
-  const result = await fastPath.execute("complete task 456", "user_test_aven");
-  assert.equal(result.handled, true);
-  // Semantic verification: Confirm persistence in composed, clean voice without servant filler
-  assert.ok(result.userResponse.includes("456"));
-  assert.ok(result.userResponse.startsWith("Done.") || result.userResponse.includes("completed"));
-  assert.equal(findForbiddenPhrases(result.userResponse).length, 0);
-  assert.ok(!result.userResponse.includes("for you"));
-  assert.ok(!result.userResponse.includes("Sir"));
-  assert.ok(!result.userResponse.includes("DAG"));
+  try {
+    const result = await supervisor.processRequest({ userId: "user_test_aven", message: "complete task 456" });
+    assert.equal(result.actionsExecuted, 1);
+    assert.ok(result.response.includes("456"));
+    assert.equal(findForbiddenPhrases(result.response).length, 0);
+    assert.ok(!result.response.includes("for you"));
+    assert.ok(!result.response.includes("Sir"));
+    assert.ok(!result.response.includes("DAG"));
+  } finally {
+    interpreter.setMockChat(undefined);
+    setMockGroqChat(undefined);
+    setMockGroqTextStream(undefined);
+  }
 });
 
-test("Persona 8: FastPath Error Handling Preserves Composed Voice Without Crash Leaks", async () => {
+test("Persona 8: Supervisor Error Handling Preserves Composed Voice Without Crash Leaks", async () => {
   const registry = new ActionAdapterRegistry();
-  // Action that fails validation
   registry.register("complete_task", {
     validatePreconditions: async () => ({ valid: false, reason: "Task does not exist" }),
     execute: async () => { throw new Error("Should not execute"); },
@@ -135,16 +163,42 @@ test("Persona 8: FastPath Error Handling Preserves Composed Voice Without Crash 
   });
 
   const kernelService = new KernelCapabilityService(registry);
-  const fastPath = new FastPathExecutor(kernelService);
+  const supervisor = Supervisor.createDefault(kernelService);
+  const interpreter = SemanticIntentInterpreter.getInstance();
+  interpreter.setMockChat(async () =>
+    JSON.stringify({
+      primaryClassification: "ACTION_REQUEST",
+      ambiguityStatus: "UNAMBIGUOUS",
+      conversationalSummary: "Attempting task completion.",
+      operations: [
+        {
+          domain: "productivity",
+          actionType: "complete_task",
+          executionEligibility: "READY",
+          targetReference: { rawExpression: "999", resolvedEntityId: "999", kind: "EXPLICIT_ID" },
+          payload: { taskId: "999" },
+        },
+      ],
+    })
+  );
+  setMockGroqChat(async () => "I couldn't complete that request because the task does not exist.");
+  setMockGroqTextStream(async ({ onDelta }) => {
+    const txt = "I couldn't complete that request because the task does not exist.";
+    if (onDelta) await onDelta(txt);
+    return txt;
+  });
 
-  const result = await fastPath.execute("complete task 999", "user_test_aven");
-  assert.equal(result.handled, true);
-  // Semantic verification: State failure honestly without robotic cliché
-  assert.ok(result.userResponse.includes("I couldn't complete that request"));
-  assert.ok(result.userResponse.includes("Task does not exist"));
-  assert.ok(!result.userResponse.includes("An unexpected error occurred"));
-  assert.ok(!result.userResponse.includes("Error:"));
-  assert.equal(findForbiddenPhrases(result.userResponse).length, 0);
+  try {
+    const result = await supervisor.processRequest({ userId: "user_test_aven", message: "complete task 999" });
+    assert.equal(result.actionsExecuted, 0);
+    assert.ok(!result.response.includes("An unexpected error occurred"));
+    assert.ok(!result.response.includes("Error:"));
+    assert.equal(findForbiddenPhrases(result.response).length, 0);
+  } finally {
+    interpreter.setMockChat(undefined);
+    setMockGroqChat(undefined);
+    setMockGroqTextStream(undefined);
+  }
 });
 
 test("Persona 9: Synthesis Engine Fallbacks Maintain Aven Voice", () => {

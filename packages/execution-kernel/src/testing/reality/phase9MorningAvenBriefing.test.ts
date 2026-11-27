@@ -9,25 +9,21 @@ import { MorningWakeDetector } from "../../experience/morning/MorningWakeDetecto
 import { ILifeContextProjection } from "../../worldv2/contracts/LifeContextProjectionContracts";
 import { MorningBriefingModel } from "../../../../../apps/web/server/db/models/MorningBriefingModel";
 import { IKernelCapabilityService } from "../../orchestration/kernel/IKernelCapabilityService";
+import { connectIsolatedTestDB, disconnectIsolatedTestDB } from "../helpers/testDbIsolation";
 
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
-
-test("PHASE 9: Morning Aven / Jarvis Executive Briefing Suite", async (suite) => {
+test("PHASE 9: Morning Aven Executive Briefing Suite", async (suite) => {
   const testUserId = "test-user-morning-phase9-" + Date.now();
   const testDate = "2026-10-04";
 
   suite.before(async () => {
-    const mongoUri = process.env.MONGODB_URI;
-    if (mongoUri && mongoose.connection.readyState === 0) {
-      await mongoose.connect(mongoUri, { dbName: "life-os" });
-    }
+    await connectIsolatedTestDB();
   });
 
   suite.after(async () => {
     if (mongoose.connection.readyState === 1) {
       await MorningBriefingModel.deleteMany({ userId: testUserId });
-      await mongoose.disconnect();
     }
+    await disconnectIsolatedTestDB({ dropDatabase: false });
   });
 
   const createBaseProjection = (sleepScore: number, meetingMinutes: number): any => ({

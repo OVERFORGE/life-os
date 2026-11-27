@@ -13,24 +13,20 @@ import { IProactiveCandidate } from "../../proactive/contracts/ProactiveContract
 import { ILifeContextProjection } from "../../worldv2/contracts/LifeContextProjectionContracts";
 import { ProactiveActionLogModel } from "../../../../../apps/web/server/db/models/ProactiveActionLogModel";
 import { ActionProposal } from "../../orchestration/contracts/ActionProposalContracts";
-
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+import { connectIsolatedTestDB, disconnectIsolatedTestDB } from "../helpers/testDbIsolation";
 
 test("PHASE 8: Proactive Intelligence & Policy Engine Suite", async (suite) => {
   const testUserId = "test-user-proact-phase8-" + Date.now();
 
   suite.before(async () => {
-    const mongoUri = process.env.MONGODB_URI;
-    if (mongoUri && mongoose.connection.readyState === 0) {
-      await mongoose.connect(mongoUri, { dbName: "life-os" });
-    }
+    await connectIsolatedTestDB();
   });
 
   suite.after(async () => {
     if (mongoose.connection.readyState === 1) {
       await ProactiveActionLogModel.deleteMany({ userId: testUserId });
-      await mongoose.disconnect();
     }
+    await disconnectIsolatedTestDB({ dropDatabase: false });
   });
 
   await suite.test("PROACT-01: Autonomy Tiers (L0-L5) & Constitutional Safety (No Confidence-Based Execution)", async () => {

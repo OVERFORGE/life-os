@@ -30,19 +30,21 @@ export default function NutritionScanScreen() {
 
   useEffect(() => {
     if (editFood && typeof editFood === 'string') {
-      try {
-        const item = JSON.parse(editFood);
-        setEditModeId(item._id);
-        if (item.imageUrl) setImageUri(item.imageUrl);
-        setResults({
-          name: item.name,
-          baseWeight: item.baseWeight || 100,
-          macros: item.macros || { calories: 0, protein: 0, carbs: 0, fats: 0 },
-          micros: item.micros || { zinc: 0, magnesium: 0, vitaminC: 0, vitaminB: 0, iron: 0, calcium: 0 }
-        });
-      } catch (e) {
-        console.error("Failed parsing edit item", e);
-      }
+      queueMicrotask(() => {
+        try {
+          const item = JSON.parse(editFood);
+          setEditModeId(item._id);
+          if (item.imageUrl) setImageUri(item.imageUrl);
+          setResults({
+            name: item.name,
+            baseWeight: item.baseWeight || 100,
+            macros: item.macros || { calories: 0, protein: 0, carbs: 0, fats: 0 },
+            micros: item.micros || { zinc: 0, magnesium: 0, vitaminC: 0, vitaminB: 0, iron: 0, calcium: 0 }
+          });
+        } catch (e) {
+          console.error("Failed parsing edit item", e);
+        }
+      });
     }
   }, [editFood]);
 

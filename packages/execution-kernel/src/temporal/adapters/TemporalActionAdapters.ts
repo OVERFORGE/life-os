@@ -718,7 +718,11 @@ export class CancelOccurrenceAdapter implements IKernelActionAdapter {
               ],
               isCreation: true,
             });
+          } else {
+            throw new Error(`[NOT_FOUND]: Recurring occurrence series '${occId}' not found for user`);
           }
+        } else {
+          throw new Error(`[NOT_FOUND]: Occurrence '${occId}' not found for user`);
         }
       }
 

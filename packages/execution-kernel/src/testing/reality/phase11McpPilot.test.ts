@@ -10,24 +10,20 @@ import { RemoteMcpTransport } from "../../orchestration/external/mcp/transports/
 import { McpCapabilityGateway } from "../../orchestration/external/mcp/McpCapabilityGateway";
 import { McpBenchmarkSuite } from "./McpBenchmarkSuite";
 import { UserMcpServerModel } from "../../../../../apps/web/server/db/models/UserMcpServerModel";
-
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+import { connectIsolatedTestDB, disconnectIsolatedTestDB } from "../helpers/testDbIsolation";
 
 test("PHASE 11: Controlled MCP Evaluation & Pilot Suite", async (suite) => {
   const testUserId = "test-user-mcp-phase11-" + Date.now();
 
   suite.before(async () => {
-    const mongoUri = process.env.MONGODB_URI;
-    if (mongoUri && mongoose.connection.readyState === 0) {
-      await mongoose.connect(mongoUri, { dbName: "life-os" });
-    }
+    await connectIsolatedTestDB();
   });
 
   suite.after(async () => {
     if (mongoose.connection.readyState === 1) {
       await UserMcpServerModel.deleteMany({ userId: testUserId });
-      await mongoose.disconnect();
     }
+    await disconnectIsolatedTestDB({ dropDatabase: false });
   });
 
   await suite.test("MCP-01: Official MCP SDK Preflight Verification", async () => {

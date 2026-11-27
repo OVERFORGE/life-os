@@ -22,10 +22,6 @@ export default function SettingsScreen() {
   const [saving, setSaving] = useState(false);
   const [loading, setLoading] = useState(true);
 
-  useEffect(() => {
-    loadSettings();
-  }, []);
-
   const loadSettings = async () => {
     setLoading(true);
     try {
@@ -61,6 +57,12 @@ export default function SettingsScreen() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadSettings();
+    });
+  }, []);
 
   const saveOverrides = async () => {
     setSaving(true);

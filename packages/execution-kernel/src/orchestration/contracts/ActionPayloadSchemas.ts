@@ -222,6 +222,83 @@ export interface LogExecutionIntervalPayload {
   source?: "aven_voice" | "web_manual" | "mobile_touch" | "desktop_heartbeat" | "imported";
 }
 
+// ============================================================
+// Stage 1 Generic LifeOS Read Capability Payloads
+// ============================================================
+
+export interface QueryTasksPayload {
+  status?: "pending" | "completed" | "skipped" | "in_progress" | "waiting" | "blocked" | "all";
+  overdue?: boolean;
+  priority?: "low" | "medium" | "high";
+  dueDateFrom?: string;           // YYYY-MM-DD
+  dueDateTo?: string;             // YYYY-MM-DD
+  goalId?: string;
+  search?: string;
+  includeSubtasks?: boolean;
+  sortBy?: "dueDate" | "priority" | "createdAt" | "updatedAt";
+  sortOrder?: "asc" | "desc";
+  limit?: number;
+  offset?: number;
+}
+
+export interface QueryGoalsPayload {
+  status?: "active" | "proposed" | "archived" | "completed" | "all";
+  nature?: "finite_deliverable" | "habitual_cadence";
+  cadence?: "daily" | "weekly" | "flexible";
+  includeStats?: boolean;
+  includeMilestones?: boolean;
+  search?: string;
+  limit?: number;
+  offset?: number;
+}
+
+export interface QueryScheduleOccurrencesPayload {
+  startDate: string;              // YYYY-MM-DD
+  endDate: string;                // YYYY-MM-DD
+  timezone?: string;
+  status?: "SCHEDULED" | "IN_PROGRESS" | "COMPLETED" | "SKIPPED" | "CANCELLED" | "RESCHEDULED" | "all";
+  kind?: "HARD_EVENT" | "ROUTINE_BLOCK" | "WORK_SESSION" | "TRANSITION_BUFFER" | "EPHEMERAL_PING";
+  includeExecutionChronicle?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface QueryDailyLogsRangePayload {
+  startDate: string;              // YYYY-MM-DD
+  endDate: string;                // YYYY-MM-DD
+  sections?: Array<"mental" | "sleep" | "physical" | "work" | "habits" | "planning" | "signals" | "reflection">;
+  includeReflection?: boolean;
+  limit?: number;
+  offset?: number;
+}
+
+export interface QueryTelemetryStateHistoryPayload {
+  startDate?: string;             // YYYY-MM-DD
+  endDate?: string;               // YYYY-MM-DD
+  includeObservations?: boolean;
+  observationTypes?: string[];
+  limit?: number;
+  offset?: number;
+}
+
+export interface QueryMemoryPayload {
+  query?: string;
+  domain?: "productivity" | "health" | "wellness" | "identity" | "general";
+  memoryType?:
+    | "semantic_fact"
+    | "episodic_event"
+    | "behavioral_pattern"
+    | "goal_intelligence"
+    | "incident"
+    | "intervention";
+  includeStale?: boolean;
+  includeSuperseded?: boolean;
+  minConfidence?: number;
+  referenceTime?: string;         // ISO 8601
+  limit?: number;
+  offset?: number;
+}
+
 /**
  * Mapping from DomainActionType to its strongly-typed payload interface
  */
@@ -252,5 +329,11 @@ export interface DomainActionPayloadMap {
   cancel_occurrence: CancelOccurrencePayload;
   create_temporal_series: CreateTemporalSeriesPayload;
   log_execution_interval: LogExecutionIntervalPayload;
+  "lifeos.tasks.query": QueryTasksPayload;
+  "lifeos.goals.query": QueryGoalsPayload;
+  "lifeos.schedule.query_occurrences": QueryScheduleOccurrencesPayload;
+  "lifeos.daily_logs.query_range": QueryDailyLogsRangePayload;
+  "lifeos.telemetry.query_state_history": QueryTelemetryStateHistoryPayload;
+  "lifeos.memory.search": QueryMemoryPayload;
 }
 

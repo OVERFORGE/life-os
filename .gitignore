@@ -27,6 +27,9 @@ build
 # Logs
 *.log
 
+# Local ML model cache
+.cache/
+
 # ============================================
 # Desktop App (Tauri) — Build Artifacts
 # ============================================
@@ -56,6 +59,14 @@ apps/desktop/start.cjs
 # Desktop app local env overrides
 apps/desktop/.env
 apps/desktop/.env.local
+
+# Wake-word training datasets, Python venvs & intermediate work artifacts
+tools/aven-wake-detector/training/dataset_real/
+tools/aven-wake-detector/training/work/
+tools/aven-wake-detector/training/.venv/
+tools/aven-wake-detector/training/.bin/
+tools/aven-wake-detector/training/*.onnx
+tools/aven-wake-detector/training/*.tflite
 
 # ============================================
 # Misc

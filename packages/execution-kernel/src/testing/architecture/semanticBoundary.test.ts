@@ -119,12 +119,15 @@ describe("Semantic Architecture Boundary Verification (Rules 1-8)", () => {
       process.env.NODE_ENV = "production";
       const planner = new DynamicWorkflowPlanner({ allowBenchmarkFallback: false });
 
-      assert.throws(
-        () => {
-          (planner as any).generateDeterministicFallback("Complete project planning");
-        },
-        /Benchmark plan fallback is strictly prohibited in production environment/,
-        "Must throw error rather than returning hardcoded benchmark plan in production"
+      assert.equal((planner as any).generateDeterministicFallback, undefined, "Keyword fallback method must be removed");
+      await assert.rejects(
+        () =>
+          planner.planWorkflow({
+            userRequest: "Complete project planning",
+            goal: "Complete project planning",
+          }),
+        /PLANNING_FAILED/,
+        "Must fail closed rather than returning hardcoded benchmark plan when LLM is unavailable"
       );
     } finally {
       process.env.NODE_ENV = prevEnv;

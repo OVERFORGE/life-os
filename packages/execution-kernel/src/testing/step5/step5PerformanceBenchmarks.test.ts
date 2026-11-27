@@ -16,12 +16,8 @@ import { describe, it } from "node:test";
 import assert from "node:assert/strict";
 import crypto from "crypto";
 
-import {
-  KernelCapabilityService,
-  ActionProposal,
-  IKernelActionAdapter,
-} from "../../orchestration/kernel/KernelCapabilityService";
-import { ActionAdapterRegistry } from "../../orchestration/kernel/ActionAdapters";
+import { KernelCapabilityService } from "../../orchestration/kernel/KernelCapabilityService";
+import { ActionAdapterRegistry, IKernelActionAdapter } from "../../orchestration/kernel/ActionAdapters";
 import { ExecutionGraphProjectionService } from "../../events/projections/ExecutionGraphProjectionService";
 import { DurableOutboxDispatcher } from "../../events/dispatch/DurableOutboxDispatcher";
 import { ConsumerRegistry } from "../../events/consumers/ConsumerRegistry";
@@ -259,9 +255,8 @@ describe("Step 5 Phase 7: Performance, Stability & Resource Benchmarks", () => {
   it("Benchmark 1: Kernel Mutation Dispatch Latency meets P95 < 50ms invariant", async () => {
     const registry = new ActionAdapterRegistry();
     const testAdapter: IKernelActionAdapter = {
-      actionType: "complete_task",
       validatePreconditions: async () => ({ valid: true }),
-      execute: async (action) => ({
+      execute: async (action: any) => ({
         success: true,
         actionId: action.id,
         timestamp: Date.now(),
@@ -297,7 +292,7 @@ describe("Step 5 Phase 7: Performance, Stability & Resource Benchmarks", () => {
         parameters: { taskId: `warm_${i}` },
         timestamp: Date.now(),
         status: "PROPOSED",
-      });
+      } as any);
     }
 
     // Benchmark Run: 50 sequential mutations
@@ -311,7 +306,7 @@ describe("Step 5 Phase 7: Performance, Stability & Resource Benchmarks", () => {
         parameters: { taskId: `task_${i}` },
         timestamp: Date.now(),
         status: "PROPOSED",
-      });
+      } as any);
       const t1 = performance.now();
       assert.equal(res.success, true);
       latencies.push(t1 - t0);
@@ -440,7 +435,6 @@ describe("Step 5 Phase 7: Performance, Stability & Resource Benchmarks", () => {
       leaseManager,
       consumerHandler: registry.createDispatchHandler(),
       batchSize: 100,
-      pollIntervalMs: 100,
     });
 
     // Ingest 100 benchmark events
@@ -585,9 +579,8 @@ describe("Step 5 Phase 7: Performance, Stability & Resource Benchmarks", () => {
   it("Benchmark 5: Heap memory remains bounded over rapid sequential operations", async () => {
     const registry = new ActionAdapterRegistry();
     registry.register("complete_task", {
-      actionType: "complete_task",
       validatePreconditions: async () => ({ valid: true }),
-      execute: async (p) => ({ success: true, actionId: p.id, timestamp: Date.now() }),
+      execute: async (p: any) => ({ success: true, actionId: p.id, timestamp: Date.now() }),
     });
 
     const mockAudit = new MockCollection();
@@ -612,7 +605,7 @@ describe("Step 5 Phase 7: Performance, Stability & Resource Benchmarks", () => {
         parameters: { index: i, note: "Memory stability test iteration" },
         timestamp: Date.now(),
         status: "PROPOSED",
-      });
+      } as any);
     }
 
     if (global.gc) global.gc();

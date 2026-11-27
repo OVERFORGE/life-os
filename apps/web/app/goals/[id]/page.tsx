@@ -561,7 +561,7 @@ export default function GoalDetailPage() {
                   {draftSignals.length} Active
                 </span>
                 <span className="text-[10px] text-[#C5C2BA]/60">
-                  Driving execution score
+                  Contributing to goal progress
                 </span>
               </div>
 
@@ -589,9 +589,9 @@ export default function GoalDetailPage() {
                 Evaluates a rolling 14-day weighted sum of your daily logs and linked task completions. Continuous cadence keeps life momentum resilient.
               </p>
               <div className="flex items-center gap-2 mt-1">
-                <span className="font-mono text-[10px] text-[#85827A]">Engine:</span>
+                <span className="font-mono text-[10px] text-[#85827A]">Sync:</span>
                 <span className="font-mono text-[10px] px-2 py-0.5 rounded bg-[#111113] text-[#ffb86c] border border-[#23242A]">
-                  v2.0 Monotonic Outbox
+                  Synced &amp; Up to Date
                 </span>
               </div>
             </div>
@@ -614,16 +614,16 @@ export default function GoalDetailPage() {
                   </div>
                   <div>
                     <h3 className="text-xs font-semibold uppercase tracking-wider text-rose-300 font-mono">
-                      Cognitive Load Alert · {pressure.status} Demand
+                      Heavy Workload · {pressure.status} Demand
                     </h3>
                     <span className="text-[11px] text-[#C5C2BA]/70">
-                      System detected elevated friction against your daily habit cadence
+                      Your recent schedule looks heavier than usual for this habit
                     </span>
                   </div>
                 </div>
 
                 <span className="text-[10px] font-mono px-2.5 py-0.5 rounded-full bg-rose-500/10 border border-rose-500/20 text-rose-400 shrink-0">
-                  Adaptation Advised
+                  Adjustment Suggested
                 </span>
               </div>
 

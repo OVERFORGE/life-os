@@ -7,17 +7,11 @@ import {
   SemanticIntentInterpreter,
 } from "../orchestration";
 import { ConversationManager } from "../kernel/ConversationManager";
-
-const MONGODB_URI =
-  process.env.MONGODB_URI ||
-  "mongodb+srv://overforge:overforgedatabase@cluster0.s8cvx.mongodb.net/life-os";
+import { connectIsolatedTestDB, disconnectIsolatedTestDB } from "./helpers/testDbIsolation";
 
 test("Phase 15: Human-in-the-Loop (HITL) Security Gates, Approvals & Coreference", async (t) => {
-  // 1. Database connection check
-  if (mongoose.connection.readyState !== 1) {
-    await mongoose.connect(MONGODB_URI, { bufferCommands: false });
-  }
-  assert.equal(mongoose.connection.readyState, 1, "MongoDB must be actively connected");
+  await connectIsolatedTestDB();
+  assert.equal(mongoose.connection.readyState, 1, "Isolated test MongoDB must be actively connected");
 
   const supervisor = Supervisor.getInstance();
   const interpreter = SemanticIntentInterpreter.getInstance();
@@ -25,9 +19,7 @@ test("Phase 15: Human-in-the-Loop (HITL) Security Gates, Approvals & Coreference
   const conversationId = `test_conv_hitl_${Date.now()}`;
 
   t.after(async () => {
-    if (mongoose.connection.readyState !== 0) {
-      await mongoose.disconnect();
-    }
+    await disconnectIsolatedTestDB({ dropDatabase: false });
   });
 
   // ──────────────────────────────────────────────────────────────────────────

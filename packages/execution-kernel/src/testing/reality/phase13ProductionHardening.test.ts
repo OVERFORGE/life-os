@@ -8,21 +8,15 @@ import { ProductionReplayFixtureEngine } from "./ProductionReplayFixtureEngine";
 import { ChaosFailureInjector } from "./ChaosFailureInjector";
 import { NoSecondBrainAuditSuite } from "./NoSecondBrainAuditSuite";
 import { ActionProposal } from "../../orchestration/contracts/ActionProposalContracts";
-
-dotenv.config({ path: path.resolve(process.cwd(), ".env") });
+import { connectIsolatedTestDB, disconnectIsolatedTestDB } from "../helpers/testDbIsolation";
 
 test("PHASE 13: Real-System Production Hardening & Mock Purge Suite", async (suite) => {
   suite.before(async () => {
-    const mongoUri = process.env.MONGODB_URI;
-    if (mongoUri && mongoose.connection.readyState === 0) {
-      await mongoose.connect(mongoUri, { dbName: "life-os", serverSelectionTimeoutMS: 5000 });
-    }
+    await connectIsolatedTestDB();
   });
 
   suite.after(async () => {
-    if (mongoose.connection.readyState === 1) {
-      await mongoose.disconnect();
-    }
+    await disconnectIsolatedTestDB({ dropDatabase: false });
   });
 
   await suite.test("HARD-01: Production Replay Fixture Engine (Class B Testing & SHA-256 Signatures)", async () => {

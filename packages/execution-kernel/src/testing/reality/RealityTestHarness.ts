@@ -6,13 +6,11 @@
  */
 
 import mongoose from 'mongoose';
-import * as dotenv from 'dotenv';
-import path from 'path';
-
-// Load root .env if not already loaded
-dotenv.config({ path: path.resolve(process.cwd(), '.env') });
-dotenv.config({ path: path.resolve(__dirname, '../../../../../.env') });
-
+import {
+  assertSafeTestDatabase,
+  connectIsolatedTestDB,
+  disconnectIsolatedTestDB,
+} from '../helpers/testDbIsolation';
 
 export interface IRealityTestContext {
   userId: string;
@@ -21,32 +19,35 @@ export interface IRealityTestContext {
 
 export class RealityTestHarness {
   private isConnected: boolean = false;
-  private defaultUri: string;
+  private customUri?: string;
 
   constructor(customUri?: string) {
-    this.defaultUri = customUri || process.env.MONGODB_URI || 'mongodb://localhost:27017/life-os-test';
+    this.customUri = customUri;
   }
 
   public async connect(): Promise<void> {
-    if (this.isConnected || mongoose.connection.readyState === 1) {
+    if (this.isConnected && mongoose.connection.readyState === 1) {
+      return;
+    }
+
+    if (this.customUri) {
+      const dbName = assertSafeTestDatabase(this.customUri);
+      await mongoose.connect(this.customUri, {
+        dbName,
+        bufferCommands: false,
+        serverSelectionTimeoutMS: 5000,
+      });
       this.isConnected = true;
       return;
     }
 
-    try {
-      await mongoose.connect(this.defaultUri, {
-        serverSelectionTimeoutMS: 5000,
-      });
-      this.isConnected = true;
-    } catch (err: any) {
-      console.warn(`[RealityTestHarness] MongoDB connection warning: ${err.message}. Ensure MongoDB is accessible.`);
-      throw err;
-    }
+    await connectIsolatedTestDB({ serverSelectionTimeoutMS: 5000 });
+    this.isConnected = true;
   }
 
   public async disconnect(): Promise<void> {
-    if (this.isConnected && mongoose.connection.readyState !== 0) {
-      await mongoose.disconnect();
+    if (this.isConnected || mongoose.connection.readyState !== 0) {
+      await disconnectIsolatedTestDB({ dropDatabase: false });
       this.isConnected = false;
     }
   }

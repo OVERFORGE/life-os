@@ -87,6 +87,12 @@ export async function POST(req: Request) {
       userId,
       userMessage: content.trim(),
       domainHint: domain,
+      explicitMemory: {
+        content: content.trim(),
+        summary: typeof summary === "string" ? summary.trim() : undefined,
+        domain: domain || undefined,
+        memoryType: memoryType || undefined,
+      },
     });
 
     return apiSuccess(result, 201);

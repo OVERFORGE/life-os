@@ -5,11 +5,15 @@
  * calm, non-technical, human-readable labels and Lucide icon identifiers (NO EMOJIS).
  */
 
-import { CapabilityPresentation, CapabilityURN, ProviderId } from "../../contracts/ExternalCapabilityContracts";
+import { CapabilityPresentation } from "../../contracts/ExternalCapabilityContracts";
+
+export type PresentationEntry = Omit<CapabilityPresentation, "capabilityURN"> & {
+  capabilityURN: string;
+};
 
 export class CapabilityPresentationRegistry {
   private static instance: CapabilityPresentationRegistry;
-  private presentations: Map<CapabilityURN, CapabilityPresentation> = new Map();
+  private presentations: Map<string, PresentationEntry> = new Map();
 
   constructor() {
     this.registerDefaults();
@@ -22,7 +26,7 @@ export class CapabilityPresentationRegistry {
     return CapabilityPresentationRegistry.instance;
   }
 
-  get(capabilityURN: CapabilityURN, providerIdHint?: string): CapabilityPresentation {
+  get(capabilityURN: string, providerIdHint?: string): PresentationEntry {
     const found = this.presentations.get(capabilityURN);
     if (found) {
       if (providerIdHint) {
@@ -644,6 +648,74 @@ export class CapabilityPresentationRegistry {
       progressPhrase: "Paused securely at checkout screen for user payment authorization...",
       completedPhrase: "Checkout screen ready",
       failedPhrase: "Couldn't reach checkout gate",
+    });
+
+    // 19. Stage 1 Internal LifeOS Read Capabilities
+    this.presentations.set("lifeos.tasks.query", {
+      capabilityURN: "lifeos.tasks.query",
+      displayName: "LifeOS Tasks",
+      providerDisplayName: "LifeOS Kernel",
+      iconName: "CheckSquare",
+      actionLabel: "Querying your tasks",
+      progressPhrase: "Checking your LifeOS tasks...",
+      completedPhrase: "Tasks retrieved",
+      failedPhrase: "Couldn't query tasks",
+    });
+
+    this.presentations.set("lifeos.goals.query", {
+      capabilityURN: "lifeos.goals.query",
+      displayName: "LifeOS Goals",
+      providerDisplayName: "LifeOS Kernel",
+      iconName: "Target",
+      actionLabel: "Querying your goals",
+      progressPhrase: "Reviewing your LifeOS goals and milestones...",
+      completedPhrase: "Goals retrieved",
+      failedPhrase: "Couldn't query goals",
+    });
+
+    this.presentations.set("lifeos.schedule.query_occurrences", {
+      capabilityURN: "lifeos.schedule.query_occurrences",
+      displayName: "LifeOS Schedule",
+      providerDisplayName: "LifeOS Kernel",
+      iconName: "Calendar",
+      actionLabel: "Querying your schedule",
+      progressPhrase: "Checking your scheduled blocks and events...",
+      completedPhrase: "Schedule retrieved",
+      failedPhrase: "Couldn't query schedule",
+    });
+
+    this.presentations.set("lifeos.daily_logs.query_range", {
+      capabilityURN: "lifeos.daily_logs.query_range",
+      displayName: "LifeOS Daily Logs",
+      providerDisplayName: "LifeOS Kernel",
+      iconName: "BookOpen",
+      actionLabel: "Querying daily logs",
+      progressPhrase: "Reviewing your daily logs...",
+      completedPhrase: "Daily logs retrieved",
+      failedPhrase: "Couldn't query daily logs",
+    });
+
+    this.presentations.set("lifeos.telemetry.query_state_history", {
+      capabilityURN: "lifeos.telemetry.query_state_history",
+      displayName: "LifeOS Telemetry",
+      providerDisplayName: "LifeOS Kernel",
+      iconName: "Activity",
+      actionLabel: "Querying state history",
+      progressPhrase: "Checking your energy, mood, and cognitive telemetry...",
+      completedPhrase: "State history retrieved",
+      failedPhrase: "Couldn't query state history",
+    });
+
+    // 20. Stage 4 Internal LifeOS Memory Read Capability
+    this.presentations.set("lifeos.memory.search", {
+      capabilityURN: "lifeos.memory.search",
+      displayName: "LifeOS Memory",
+      providerDisplayName: "LifeOS Kernel",
+      iconName: "Brain",
+      actionLabel: "Checking remembered context",
+      progressPhrase: "Checking remembered preferences and context...",
+      completedPhrase: "Remembered context retrieved",
+      failedPhrase: "Couldn't query remembered context",
     });
   }
 }

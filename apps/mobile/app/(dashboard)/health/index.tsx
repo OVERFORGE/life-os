@@ -21,6 +21,12 @@ type HealthData = {
   recentMeals: any[];
 };
 
+function TrendIcon({ trend }: { trend: string }) {
+  if (trend === 'up') return <TrendingUp color="#E8414A" size={14} />;
+  if (trend === 'down') return <TrendingDown color="rgba(236,231,227,0.5)" size={14} />;
+  return <Minus color="rgba(236,231,227,0.3)" size={14} />;
+}
+
 export default function HealthScreen() {
   const router = useRouter();
   const [data, setData] = useState<HealthData | null>(null);
@@ -106,12 +112,6 @@ export default function HealthScreen() {
     } finally {
       setEditSaving(false);
     }
-  };
-
-  const TrendIcon = ({ trend }: { trend: string }) => {
-    if (trend === 'up') return <TrendingUp color="#E8414A" size={14} />;
-    if (trend === 'down') return <TrendingDown color="rgba(236,231,227,0.5)" size={14} />;
-    return <Minus color="rgba(236,231,227,0.3)" size={14} />;
   };
 
   const calorieStatusColor = (s: string) => {
@@ -249,7 +249,7 @@ export default function HealthScreen() {
           style={{ backgroundColor: '#1F2023', borderRadius: 16, borderWidth: 1, borderColor: '#2A2B2F', padding: 20, marginBottom: 16 }}
         >
           <View style={{ flexDirection: 'row', alignItems: 'center', justifyContent: 'space-between', marginBottom: 12 }}>
-            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Today's Calories</Text>
+            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 10, fontWeight: '700', letterSpacing: 1.5, textTransform: 'uppercase' }}>Today&apos;s Calories</Text>
             <View style={{ flexDirection: 'row', alignItems: 'center', gap: 6 }}>
               <Flame color="#E8414A" size={16} />
               <ChevronRight color="rgba(236,231,227,0.4)" size={14} />
@@ -305,7 +305,7 @@ export default function HealthScreen() {
               <Text style={{ color: 'rgba(236,231,227,0.3)', fontSize: 10, fontWeight: '700', marginTop: 12, letterSpacing: 1, textTransform: 'uppercase' }}>View Full Trend &rarr;</Text>
             </View>
           ) : (
-            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 12, lineHeight: 18 }}>No weight history yet. Tell Health AI "I weigh Xkg" to add an entry.</Text>
+            <Text style={{ color: 'rgba(236,231,227,0.4)', fontSize: 12, lineHeight: 18 }}>No weight history yet. Tell Health AI &quot;I weigh Xkg&quot; to add an entry.</Text>
           )}
         </TouchableOpacity>
 

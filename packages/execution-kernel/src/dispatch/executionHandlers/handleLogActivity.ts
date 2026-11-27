@@ -1,10 +1,14 @@
-import { DailyLog } from "@/server/db/models/DailyLog";
 import { DailySession } from "@/features/dailySession/models/DailySession";
 import { computeDayInsights } from "@/features/insights/computeDayInsights";
 import { NotificationLog } from "@/server/db/models/Notification";
 import { User } from "@/server/db/models/User";
 import { getActiveDate } from "../../automation/timeUtils";
 import { updateGoalStats } from "@/features/goals/engine/updateGoalStats";
+import {
+  ensureDailyLogShell,
+  upsertDailyLogWithOutbox,
+} from "@/features/daily-log/services/dailyLogEngine";
+import { upsertCatalogDocWithOutbox } from "@/features/catalog/services/catalogMutationEngine";
 
 function parseTimeStr(timeStr: string) {
   if (!timeStr) return 0;
@@ -50,21 +54,38 @@ export async function handleLogActivity(payload: any, userId: string) {
     let session = await DailySession.findOne({ userId, isComplete: false }).sort({ createdAt: -1 });
 
     if (session && session.date !== dateUsed) {
-        session.isComplete = true; 
-        await session.save();
+        await upsertCatalogDocWithOutbox({
+            userId,
+            model: DailySession,
+            filter: { _id: session._id, userId },
+            aggregateType: "daily_session",
+            eventType: "domain.daily_log.updated",
+            domain: "daily-log",
+            updateFields: { isComplete: true },
+            options: { source: "kernel.log_activity.close_prev_session" },
+        });
         session = null;
     }
 
     if (!session) {
-        session = await DailySession.create({ userId, date: dateUsed, isComplete: false });
+        const createdSessionRes = await upsertCatalogDocWithOutbox({
+            userId,
+            model: DailySession,
+            filter: { userId, date: dateUsed, isComplete: false },
+            aggregateType: "daily_session",
+            eventType: "domain.daily_log.updated",
+            domain: "daily-log",
+            updateFields: {},
+            createFields: { userId, date: dateUsed, isComplete: false },
+            createIfMissing: true,
+            options: { source: "kernel.log_activity.init_session" },
+        });
+        session = createdSessionRes.doc;
     }
 
     const finalDate = session.date;
 
-    let log = await DailyLog.findOne({ userId, date: finalDate });
-    if (!log) {
-        log = await DailyLog.create({ userId, date: finalDate, signals: {}, sleep: {}, mental: {}, physical: {}, work: {} });
-    }
+    const log = await ensureDailyLogShell(userId, finalDate);
 
     if (!log.sleep) log.sleep = {};
     if (!log.physical) log.physical = {};
@@ -89,16 +110,25 @@ export async function handleLogActivity(payload: any, userId: string) {
             offsetDate.setUTCDate(offsetDate.getUTCDate() - 1);
             const yesterday = offsetDate.toISOString().split("T")[0];
             
-            await DailyLog.updateOne(
-                { userId, date: yesterday }, 
-                { $set: { "sleep.sleepTime": payload.sleepTime } },
-                { upsert: true }
-            );
-            await DailySession.updateOne(
-                { userId, date: yesterday }, 
-                { $set: { sleepTime: payload.sleepTime, isComplete: true } },
-                { upsert: true }
-            );
+            await upsertDailyLogWithOutbox({
+                userId,
+                date: yesterday,
+                dotUpdates: { "sleep.sleepTime": payload.sleepTime },
+                preserveSignals: true,
+                options: { source: "kernel.log_activity.yesterday_sleep" },
+            });
+            await upsertCatalogDocWithOutbox({
+                userId,
+                model: DailySession,
+                filter: { userId, date: yesterday },
+                aggregateType: "daily_session",
+                eventType: "domain.daily_log.updated",
+                domain: "daily-log",
+                updateFields: { sleepTime: payload.sleepTime, isComplete: true },
+                createFields: { userId, date: yesterday },
+                createIfMissing: true,
+                options: { source: "kernel.log_activity.yesterday_sleep_session" },
+            });
         } else {
             // Standard EOD logging
             session.sleepTime = payload.sleepTime;
@@ -151,13 +181,36 @@ export async function handleLogActivity(payload: any, userId: string) {
         log.meta.ai_instruction = `Day just closed. Auto-calculated mental scores: [${scoreStr}]. Tell the user these are auto-calculated baseline scores, but they can explicitly override them if they feel differently.`;
     }
 
-    log.markModified('signals');
-    log.markModified('sleep');
-    log.markModified('mental');
-    log.markModified('work');
-    log.markModified('physical');
-    await log.save();
-    await session.save();
+    const outboxResult = await upsertDailyLogWithOutbox({
+        userId,
+        date: finalDate,
+        sections: {
+            sleep: log.sleep,
+            physical: log.physical,
+            work: log.work,
+            mental: log.mental,
+            signals: log.signals,
+        },
+        preserveSignals: false,
+        options: { source: "kernel.log_activity" },
+    });
+    if (!outboxResult.success) {
+        throw new Error(outboxResult.error || "Failed to persist activity via outbox");
+    }
+    await upsertCatalogDocWithOutbox({
+        userId,
+        model: DailySession,
+        filter: { _id: session._id, userId },
+        aggregateType: "daily_session",
+        eventType: "domain.daily_log.updated",
+        domain: "daily-log",
+        updateFields: {
+            wakeTime: session.wakeTime,
+            sleepTime: session.sleepTime,
+            isComplete: session.isComplete,
+        },
+        options: { source: "kernel.log_activity.session_sync" },
+    });
     
     if (session.isComplete) {
        await computeDayInsights({ userId, date: finalDate, session });

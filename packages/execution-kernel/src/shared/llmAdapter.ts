@@ -1,4 +1,6 @@
-import { groqChat, cleanLLMResponse } from "./groq";
+import { cleanLLMResponse } from "./groq";
+import { invokeLifeOSChat } from "./langchain/LifeOSChatModel";
+import { resolveGroqModel } from "./modelRegistry";
 
 /**
  * LLM Provider Adapter Interface
@@ -17,12 +19,12 @@ export class DefaultLLMProvider implements LLMProvider {
   }
 
   async chat(prompt: string, systemPrompt: string, model?: string): Promise<string> {
-    const rawResponse = await groqChat({
+    const rawResponse = await invokeLifeOSChat({
       messages: [
         { role: "system", content: systemPrompt },
         { role: "user", content: prompt },
       ],
-      model: model || process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+      model: resolveGroqModel(model),
     });
     return cleanLLMResponse(rawResponse);
   }

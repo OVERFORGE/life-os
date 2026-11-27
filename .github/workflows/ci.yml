@@ -50,3 +50,24 @@ jobs:
       - name: Run Architecture Test Suites
         run: npm run test:architecture
 
+      - name: Typecheck All Workspace Targets
+        run: pnpm run typecheck:all
+
+      - name: Lint Design System
+        run: pnpm --filter @life-os/design-system lint
+
+      - name: Lint Mobile Core
+        run: pnpm --filter mobile exec eslint app/ utils/ services/ hooks/ --quiet
+
+      - name: Lint Web Core
+        run: pnpm --filter web exec eslint app/api lib server hooks features/chat features/daily-log features/health features/nutrition features/goals features/gym --quiet
+
+      - name: Build Desktop Runtime
+        run: pnpm --filter desktop run build
+
+      - name: Build Web Application (Webpack)
+        run: pnpm --filter web exec next build --webpack
+
+      - name: Run Full Stage 6 Release Gate
+        run: pnpm run verify:stage6
+

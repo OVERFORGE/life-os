@@ -62,11 +62,6 @@ export default function LocationsSettingsScreen() {
     longitudeDelta: 0.01,
   });
 
-  useEffect(() => {
-    fetchProfile();
-    requestLocation();
-  }, []);
-
   const requestLocation = async () => {
     try {
       const { status } = await Location.requestForegroundPermissionsAsync();
@@ -96,6 +91,13 @@ export default function LocationsSettingsScreen() {
       setLoading(false);
     }
   };
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void fetchProfile();
+      void requestLocation();
+    });
+  }, []);
 
   const persist = async (list: SavedLocation[]) => {
     setSaving(true);
@@ -230,7 +232,7 @@ export default function LocationsSettingsScreen() {
         <View style={styles.infoCard}>
           <Mic size={15} color={C.primary} style={{ marginRight: 10, marginTop: 1 }} />
           <Text style={styles.infoText}>
-            AI responses will be spoken aloud and the mic will auto-activate only when you're within a saved location that has Voice Assistant enabled.
+            AI responses will be spoken aloud and the mic will auto-activate only when you&apos;re within a saved location that has Voice Assistant enabled.
           </Text>
         </View>
 

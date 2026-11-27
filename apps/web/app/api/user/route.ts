@@ -1,53 +1,21 @@
 import { NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { User } from "@/server/db/models/User";
-import { WeightLog } from "@/server/db/models/WeightLog";
-import jwt from "jsonwebtoken";
+import { getAuthSession } from "@/lib/auth";
+import { upsertWeightLogWithOutbox } from "@/features/health/services/weightLogEngine";
+import { updateUserProfileWithOutbox } from "@/features/user/services/userProfileEngine";
 import bcrypt from "bcryptjs";
 
 export const runtime = "nodejs";
 
-const authenticate = (req: Request) => {
-  const authHeader = req.headers.get("authorization");
-  if (!authHeader || !authHeader.startsWith("Bearer ")) {
-    return null;
-  }
-  const token = authHeader.split(" ")[1];
+export async function GET() {
   try {
-    const secret = process.env.NEXTAUTH_SECRET;
-    if (!secret) return null;
-    const decoded: any = jwt.verify(token, secret);
-    return decoded.id;
-  } catch (error) {
-    return null;
-  }
-};
-
-export async function GET(req: Request) {
-  try {
-    const authHeader = req.headers.get("authorization");
-    console.log("AUTH HEADER:", authHeader);
-    
-    if (!authHeader || !authHeader.startsWith("Bearer ")) {
-      return NextResponse.json({ error: "Unauthorized - missing header" }, { status: 401 });
-    }
-    const token = authHeader.split(" ")[1];
-    
-    let userId = null;
-    try {
-      const secret = process.env.NEXTAUTH_SECRET;
-      if (!secret) return NextResponse.json({ error: "No secret" }, { status: 500 });
-      const decoded: any = jwt.verify(token, secret);
-      userId = decoded.id;
-    } catch (err: any) {
-      console.log("JWT VERIFY ERR:", err.message);
-      return NextResponse.json({ error: "Unauthorized - bad token" }, { status: 401 });
-    }
-    
+    const session = await getAuthSession();
+    const userId = (session?.user as any)?.id;
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     await connectDB();
-    const user = await User.findById(userId).select('+password');
+    const user = await User.findById(userId).select("+password");
 
     if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
 
@@ -57,14 +25,14 @@ export async function GET(req: Request) {
       avatar: user.avatar,
       gender: user.gender,
       age: user.age,
-      weight: user.weight,
-      height: user.height,
-      heightUnit: user.heightUnit,
+      weight: user.weight ?? null,
+      height: user.height ?? null,
+      heightUnit: user.heightUnit ?? null,
       hasPassword: !!user.password,
-      targetCalories: (user as any).targetCalories || 2000,
-      maintenanceCalories: (user as any).maintenanceCalories || 2200,
-      dietMode: (user as any).dietMode || 'recomp',
-      dietModeCalorieOffset: (user as any).dietModeCalorieOffset || 0,
+      targetCalories: (user as any).targetCalories ?? null,
+      maintenanceCalories: (user as any).maintenanceCalories ?? null,
+      dietMode: (user as any).dietMode ?? null,
+      dietModeCalorieOffset: (user as any).dietModeCalorieOffset ?? null,
       preferences: (user as any).preferences || {},
     });
   } catch (error: any) {
@@ -75,12 +43,13 @@ export async function GET(req: Request) {
 
 export async function PUT(req: Request) {
   try {
-    const userId = authenticate(req);
+    const session = await getAuthSession();
+    const userId = (session?.user as any)?.id;
     if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
     const body = await req.json();
     await connectDB();
-    
+
     // We explicitly exclude email modification here natively for safety without complex verification flows
     const updatePayload: any = {};
     if (body.name !== undefined) updatePayload.name = body.name;
@@ -88,14 +57,16 @@ export async function PUT(req: Request) {
     if (body.gender !== undefined) updatePayload.gender = body.gender;
     if (body.age !== undefined) updatePayload.age = Number(body.age);
     if (body.weight !== undefined) {
-      updatePayload.weight = Number(body.weight);
-      // Create or update today's weight log
-      const dateStr = new Date().toISOString().split('T')[0];
-      await WeightLog.findOneAndUpdate(
-        { userId, date: dateStr },
-        { weight: Number(body.weight) },
-        { upsert: true, new: true }
-      );
+      const numericWeight = Number(body.weight);
+      updatePayload.weight = numericWeight;
+      const dateStr = new Date().toISOString().split("T")[0];
+      const weightRes = await upsertWeightLogWithOutbox(userId, dateStr, numericWeight, {
+        clientMutationId: typeof body.clientMutationId === "string" ? `${body.clientMutationId}:weight` : undefined,
+        source: "web.user.patch",
+      });
+      if (!weightRes.success) {
+        return NextResponse.json({ error: weightRes.error || "Failed to update weight log" }, { status: weightRes.statusCode || 500 });
+      }
     }
     if (body.height !== undefined) updatePayload.height = Number(body.height);
     if (body.heightUnit !== undefined) updatePayload.heightUnit = body.heightUnit;
@@ -127,8 +98,18 @@ export async function PUT(req: Request) {
       if (body.settings.timezone !== undefined) updatePayload['settings.timezone'] = body.settings.timezone;
     }
     
-    const user = await User.findByIdAndUpdate(userId, { $set: updatePayload }, { new: true });
-    if (!user) return NextResponse.json({ error: "User not found" }, { status: 404 });
+    if (Object.keys(updatePayload).length > 0) {
+      const profileRes = await updateUserProfileWithOutbox(userId, updatePayload, {
+        clientMutationId: typeof body.clientMutationId === "string" ? body.clientMutationId : undefined,
+        source: "web.user.patch",
+      });
+      if (!profileRes.success) {
+        return NextResponse.json(
+          { error: profileRes.error || "User not found" },
+          { status: profileRes.statusCode || 404 }
+        );
+      }
+    }
 
     // Handle password updating separately (requires fetching with password)
     if (body.password && body.password.length >= 6) {

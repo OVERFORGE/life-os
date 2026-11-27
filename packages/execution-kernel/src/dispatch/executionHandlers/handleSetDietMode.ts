@@ -1,4 +1,5 @@
 import { User } from "@/server/db/models/User";
+import { updateUserProfileWithOutbox } from "@/features/user/services/userProfileEngine";
 import { connectDB } from "@/server/db/connect";
 
 const DIET_MODE_DEFAULTS: Record<string, number> = {
@@ -64,13 +65,15 @@ export async function handleSetDietMode(
     const offset = payload.calorieOffset ?? DIET_MODE_DEFAULTS[mode] ?? 0;
     const newTarget = Math.max(1200, maintenance + offset);
 
-    await User.findByIdAndUpdate(userId, {
-        $set: {
+    await updateUserProfileWithOutbox(
+        userId,
+        {
             dietMode: mode,
             dietModeCalorieOffset: offset,
             targetCalories: newTarget,
-        }
-    });
+        },
+        { source: "kernel.set_diet_mode" }
+    );
 
     return {
         type: 'diet_mode_set',

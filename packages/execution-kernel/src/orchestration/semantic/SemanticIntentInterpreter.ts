@@ -1,5 +1,7 @@
 import * as crypto from "crypto";
-import { groqChat, cleanLLMResponse } from "../../shared/groq";
+import { cleanLLMResponse } from "../../shared/groq";
+import { invokeLifeOSChat } from "../../shared/langchain/LifeOSChatModel";
+import { resolveGroqModel } from "../../shared/modelRegistry";
 import { generateId } from "../../shared/ids";
 import {
   SemanticTurn,
@@ -13,6 +15,8 @@ import {
   IPendingOperationContext,
 } from "../contracts/SemanticTurnContracts";
 import { DomainActionType, DOMAIN_CAPABILITIES } from "../contracts/ActionProposalContracts";
+import { CapabilityRegistry } from "../capabilities/CapabilityRegistry";
+import type { IntentRelevanceDomain } from "../../worldv2/ContextProjectionSerializer";
 import { resolveTemporalExpression, resolveStructuredTemporal } from "./temporalResolver";
 import { getActiveDate } from "../../automation/timeUtils";
 import { minutesToTimeString } from "../../temporal/normalization/temporalNormalizer";
@@ -230,6 +234,10 @@ OUTPUT SCHEMA (Return ONLY valid JSON with minimal tokens):
 {
   "primaryClassification": "ACTION_REQUEST" | "INFORMATION_QUERY" | "STATE_OBSERVATION" | "CASUAL_DIALOGUE" | "CLARIFICATION_RESPONSE" | "CONFIRMATION" | "CANCEL_OR_DISMISS",
   "ambiguityStatus": "UNAMBIGUOUS" | "OPERATION_AMBIGUOUS" | "ENTITY_AMBIGUOUS" | "TEMPORAL_AMBIGUOUS" | "CONFLICTING_INTENTS",
+  "requiresRetrieval": false,
+  "relevanceDomains": ["GENERAL"],
+  "objectiveComplexity": "SIMPLE",
+  "informationNeed": "Optional concise description of what user data is needed when requiresRetrieval is true",
   "conversationalSummary": "Brief gist of what the user communicated",
   "operations": [
     {
@@ -244,7 +252,13 @@ OUTPUT SCHEMA (Return ONLY valid JSON with minimal tokens):
       }
     }
   ]
-}`;
+}
+RETRIEVAL & DISCOVERY RULES:
+- Set "requiresRetrieval": true whenever answering the user requires querying registered LifeOS or external READ capabilities (tasks, goals, schedule, daily logs, cognitive/mood telemetry, personal memories, emails, files, calendar).
+- Use "lifeos.memory.search" whenever answering requires recalling remembered personal preferences, dietary/health/work constraints, past statements, or longitudinal personal context outside the immediate dialogue window.
+- Set "relevanceDomains" using ONLY ["SCHEDULE", "HEALTH", "TASKS", "GENERAL"] based on the structured capabilities and user objective.
+- Set "objectiveComplexity": "SIMPLE" (single straightforward read or action), "INVESTIGATIVE" (open-ended review/analysis/planning needing dynamic multi-source read planning, e.g. combining personal memory constraints with live tasks/schedule/goals), or "MULTI_STEP" (explicit multi-step workflow).
+- For internal LifeOS read capabilities (source INTERNAL_ADAPTER), use the exact capabilityURN as both "actionType" and "capabilityURN" with "requiresConfirmation": false and validated filter parameters in "payload".`;
 
 // Ensure environment variables from apps/web/.env are loaded if not already in environment
 if (!process.env.GROQ_API_KEY) {
@@ -261,7 +275,7 @@ if (!process.env.GROQ_API_KEY) {
         }
       }
     }
-  } catch (_) {}
+  } catch (_) { }
 }
 
 const PROMPT_HASH = crypto.createHash("sha256").update(SYSTEM_PROMPT_V2).digest("hex");
@@ -269,7 +283,7 @@ const PROMPT_HASH = crypto.createHash("sha256").update(SYSTEM_PROMPT_V2).digest(
 function repairTruncatedJSON(jsonString: string): any {
   try {
     return JSON.parse(jsonString);
-  } catch (_) {}
+  } catch (_) { }
 
   // If truncated inside operations array, salvage completed operation objects
   const opIdx = jsonString.indexOf('"operations"');
@@ -311,7 +325,7 @@ function repairTruncatedJSON(jsonString: string): any {
         const repaired = jsonString.substring(0, lastCompletedObjEnd + 1) + "\n]}";
         try {
           return JSON.parse(repaired);
-        } catch (_) {}
+        } catch (_) { }
       }
     }
   }
@@ -347,8 +361,8 @@ export class SemanticIntentInterpreter {
     if (
       !parsedTurn &&
       (this.mockChat ||
-       (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== "mock_key_for_dev") ||
-       (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "mock_key_for_dev"))
+        (process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== "mock_key_for_dev") ||
+        (process.env.GEMINI_API_KEY && process.env.GEMINI_API_KEY !== "mock_key_for_dev"))
     ) {
       try {
         const refDate = new Date(refTime);
@@ -380,6 +394,7 @@ export class SemanticIntentInterpreter {
           weekdayStr = "Today";
         }
 
+        const compactReadCatalog = CapabilityRegistry.getInstance().formatCompactReadCatalogForInterpreter();
         const contextSummary = [
           `Current User Local Time: ${localDateStr} ${localTimeStr} (${weekdayStr}, Timezone: ${timezone}) [UTC ISO: ${refDate.toISOString()}]`,
           ctx.activeMode ? `Active Context Mode: ${ctx.activeMode}` : null,
@@ -394,6 +409,7 @@ export class SemanticIntentInterpreter {
           ctx.knownTasks?.length ? `Known Active Tasks: ${JSON.stringify(ctx.knownTasks)}` : null,
           ctx.activeIncidents?.length ? `Active Incidents: ${JSON.stringify(ctx.activeIncidents)}` : null,
           ctx.serializedLifeContext ? `LIFEOS WORLD CONTEXT:\n${ctx.serializedLifeContext}` : null,
+          compactReadCatalog ? `REGISTERED READ CAPABILITIES (INTERNAL & EXTERNAL):\n${compactReadCatalog}` : null,
         ]
           .filter(Boolean)
           .join("\n");
@@ -410,14 +426,15 @@ export class SemanticIntentInterpreter {
 
         messages.push({ role: "user", content: trimmedInput });
 
+        const activeModel = resolveGroqModel();
         const rawResponse = this.mockChat
           ? await this.mockChat({ messages })
-          : await groqChat({
-              messages,
-              model: process.env.GROQ_MODEL || "qwen/qwen3.8-27b",
-              temperature: 0.1,
-              max_tokens: 900,
-            });
+          : await invokeLifeOSChat({
+            messages,
+            model: activeModel,
+            temperature: 0.1,
+            maxTokens: 900,
+          });
 
         const cleaned = cleanLLMResponse(rawResponse);
         const jsonStart = cleaned.indexOf("{");
@@ -448,15 +465,11 @@ export class SemanticIntentInterpreter {
     const hasActivePending = Boolean(
       ctx.pendingOperation &&
       ((ctx.pendingOperation as any).state === "AWAITING_CLARIFICATION" ||
-       (ctx.pendingOperation as any).state === "AWAITING_CONFIRMATION")
+        (ctx.pendingOperation as any).state === "AWAITING_CONFIRMATION")
     );
 
     if (hasActivePending) {
-      const isAffirmative =
-        parsedTurn?.primaryClassification === "CONFIRMATION" ||
-        /^(?:yes|yep|yeah|sure|confirm|proceed|ok|okay|allow|do it|send it|go ahead)[\s.!]*$/i.test(trimmedInput) ||
-        trimmedInput.toLowerCase().startsWith("yes,") ||
-        trimmedInput.toLowerCase().startsWith("yes ");
+      const isAffirmative = parsedTurn?.primaryClassification === "CONFIRMATION";
       const isClarificationClassification =
         isAffirmative || parsedTurn?.primaryClassification === "CLARIFICATION_RESPONSE";
 
@@ -469,7 +482,7 @@ export class SemanticIntentInterpreter {
 
         const missingKind = typeof pending.missingRequirement === "object" ? pending.missingRequirement.kind : pending.missingRequirement;
 
-        // Case 1: Pending Confirmation (e.g. proposed goal confirmation, slot blocking, duplicate confirmation, or sensitive external action confirmation)
+        // Case 1: Pending Confirmation strictly driven by structured PendingOperationContext state
         if (
           isAffirmative &&
           (pending.state === "AWAITING_CONFIRMATION" ||
@@ -479,12 +492,7 @@ export class SemanticIntentInterpreter {
             continuedActionType === "propose_goal" ||
             continuedActionType === "create_temporal_series" ||
             continuedActionType === "schedule_occurrence" ||
-            continuedActionType === "external_capability_action" ||
-            String(pending.clarificationQuestion || "").toLowerCase().includes("block") ||
-            String(pending.clarificationQuestion || "").toLowerCase().includes("calendar") ||
-            String(pending.clarificationQuestion || "").toLowerCase().includes("schedule") ||
-            String(pending.clarificationQuestion || "").toLowerCase().includes("permission") ||
-            String(pending.clarificationQuestion || "").toLowerCase().includes("proceed"))
+            continuedActionType === "external_capability_action")
         ) {
           if (continuedActionType === "propose_goal") {
             continuedActionType = "confirm_goal";
@@ -592,9 +600,7 @@ export class SemanticIntentInterpreter {
           if (
             continuedActionType === "create_temporal_series" ||
             continuedActionType === "schedule_occurrence" ||
-            String(pending.clarificationQuestion || "").toLowerCase().includes("class") ||
-            String(pending.clarificationQuestion || "").toLowerCase().includes("routine") ||
-            String(pending.clarificationQuestion || "").toLowerCase().includes("schedule")
+            pending.missingRequirement?.targetEntityType === "schedule_block"
           ) {
             continuedActionType = "create_temporal_series";
             if (!continuedPayload.title) {
@@ -641,7 +647,14 @@ export class SemanticIntentInterpreter {
       let actionType: DomainActionType = rawOp.actionType || "create_task";
       let payload = rawOp.payload || {};
 
-      if (rawOp.actionType === "external_capability_action" || (rawOp.capabilityURN && !DOMAIN_CAPABILITIES[actionType])) {
+      const candidateURN = rawOp.capabilityURN || payload.capabilityURN;
+      const descriptor = candidateURN ? CapabilityRegistry.getInstance().getCapability(candidateURN) : undefined;
+      if (descriptor?.source === "INTERNAL_ADAPTER") {
+        actionType = (DOMAIN_CAPABILITIES[candidateURN as DomainActionType] ? candidateURN : actionType) as DomainActionType;
+        if (!rawOp.payload && rawOp.parameters && typeof rawOp.parameters === "object") {
+          payload = { ...rawOp.parameters };
+        }
+      } else if (rawOp.actionType === "external_capability_action" || (rawOp.capabilityURN && !DOMAIN_CAPABILITIES[actionType])) {
         actionType = "external_capability_action";
         if (!payload.capabilityURN) payload.capabilityURN = rawOp.capabilityURN;
         if (!payload.providerId) payload.providerId = rawOp.providerId || rawOp.providerHint;
@@ -868,8 +881,7 @@ export class SemanticIntentInterpreter {
           payload.dateOnly = resolvedTemporal?.resolvedDate || getActiveDate(timezone, 4, new Date(refTime));
         }
         if (!payload.status) {
-          const msgLower = (trimmedInput || "").toLowerCase();
-          payload.status = msgLower.includes("skip") ? "SKIPPED" : "CANCELLED";
+          payload.status = "CANCELLED";
         }
       }
 
@@ -991,6 +1003,22 @@ export class SemanticIntentInterpreter {
       operations.push(op);
     }
 
+    const validDomains = new Set<IntentRelevanceDomain>(["SCHEDULE", "HEALTH", "TASKS", "GENERAL"]);
+    const parsedDomains = Array.isArray(parsedTurn.relevanceDomains)
+      ? parsedTurn.relevanceDomains.filter((d: unknown): d is IntentRelevanceDomain => typeof d === "string" && validDomains.has(d as IntentRelevanceDomain))
+      : undefined;
+    const derivedDomainsFromOps = operations
+      .map((op) => {
+        const urn = op.capabilityURN || (op.payload?.capabilityURN as string | undefined) || op.actionType;
+        return CapabilityRegistry.getInstance().getCapability(urn)?.contextDomain;
+      })
+      .filter((d): d is IntentRelevanceDomain => Boolean(d));
+    const relevanceDomains = parsedDomains && parsedDomains.length > 0
+      ? parsedDomains
+      : derivedDomainsFromOps.length > 0
+        ? Array.from(new Set(derivedDomainsFromOps))
+        : undefined;
+
     const durationMs = Date.now() - startTime;
     const finalTurn: SemanticTurn = {
       turnId,
@@ -1002,7 +1030,7 @@ export class SemanticIntentInterpreter {
       normalizedTimezone: timezone,
       provenance: {
         interpreterProvider: "groq",
-        modelIdentifier: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+        modelIdentifier: resolveGroqModel(),
         promptVersionHash: PROMPT_HASH,
         contextSnapshotId: "ctx_live",
         contextSnapshotHash: crypto.createHash("sha256").update(JSON.stringify(ctx)).digest("hex"),
@@ -1014,6 +1042,15 @@ export class SemanticIntentInterpreter {
       affectiveEvidence,
       conversationalSummary: parsedTurn.conversationalSummary || trimmedInput,
       clarification: parsedTurn.clarification,
+      requiresRetrieval: typeof parsedTurn.requiresRetrieval === "boolean" ? parsedTurn.requiresRetrieval : undefined,
+      relevanceDomains,
+      objectiveComplexity:
+        parsedTurn.objectiveComplexity === "SIMPLE" ||
+          parsedTurn.objectiveComplexity === "INVESTIGATIVE" ||
+          parsedTurn.objectiveComplexity === "MULTI_STEP"
+          ? parsedTurn.objectiveComplexity
+          : undefined,
+      informationNeed: typeof parsedTurn.informationNeed === "string" ? parsedTurn.informationNeed : undefined,
     };
 
     return finalTurn;
@@ -1022,41 +1059,8 @@ export class SemanticIntentInterpreter {
    * Fail-Safe Fallback when LLM is unreachable or encounters an outage
    * Pure model-driven architecture: NEVER guesses with regexes or brittle substring checks.
    */
-  private heuristicInterpretation(input: string, ctx: SemanticInterpreterContext): any {
-    const trimmed = input.trim();
-    const completeMatch = trimmed.match(/^complete\s+task\s+([a-zA-Z0-9_\-]+)$/i);
-    if (completeMatch) {
-      const taskId = completeMatch[1];
-      return {
-        turnId: `turn_${Date.now()}`,
-        rawUtterance: input,
-        primaryClassification: "ACTION_REQUEST",
-        ambiguityStatus: "UNAMBIGUOUS",
-        turnConfidence: 1.0,
-        conversationalSummary: `Complete task: ${taskId}`,
-        operations: [
-          {
-            operationId: `op_complete_${taskId}`,
-            domain: "productivity",
-            actionType: "complete_task",
-            capabilityURN: "complete_task",
-            intentCategory: "COMPLETE",
-            targetReference: {
-              referenceId: `ref_${taskId}`,
-              rawExpression: taskId,
-              entityType: "task",
-              resolutionStrategy: "EXPLICIT_ID",
-              resolvedEntityId: taskId,
-            },
-            payload: { taskId },
-            dependencies: [],
-            executionEligibility: "READY",
-          },
-        ],
-        entities: [],
-      };
-    }
-
+  private heuristicInterpretation(input: string, _ctx: SemanticInterpreterContext): any {
+    // Fail-safe: zero NL regex command guessing when LLM is unreachable.
     return {
       primaryClassification: "CASUAL_DIALOGUE",
       ambiguityStatus: "UNAMBIGUOUS",

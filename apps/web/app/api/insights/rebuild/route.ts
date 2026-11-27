@@ -1,6 +1,5 @@
 import { connectDB } from "@/server/db/connect";
-import { getServerSession } from "next-auth";
-import { authOptions } from "@/app/api/auth/[...nextauth]/route";
+import { getAuthSession } from "@/lib/auth";
 
 import { DailyLog } from "@/server/db/models/DailyLog";
 import { PhaseHistory } from "@/features/insights/models/PhaseHistory";
@@ -18,7 +17,7 @@ import { updateGoalLoadWeightsFromFeedback } from "@/features/goals/engine/updat
 import { LearningEvent } from "@/features/learning/models/LearningEvent";
 
 export async function POST() {
-  const session = await getServerSession(authOptions);
+  const session = await getAuthSession();
 
   if (!session?.user?.id) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });

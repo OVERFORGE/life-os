@@ -211,7 +211,7 @@ test("PHASE 5: Behavioral, Relationship & Physical Models Suite", async (suite) 
   });
 
   await suite.test("REL-06: MongoDB Persistence in RelationshipModel", async () => {
-    if (mongoose.connection.readyState !== 1) return;
+    assert.equal(mongoose.connection.readyState, 1, "Isolated test MongoDB must be connected for REL-06");
 
     const count = await RelationshipModel.countDocuments({ userId: testUserId });
     assert.equal(count, 3, "Database must persist the 3 contacts created in suite");

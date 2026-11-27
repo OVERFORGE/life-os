@@ -20,6 +20,8 @@ export interface ActiveClientStream {
   clientIp: string;
   controller: ReadableStreamDefaultController;
   seqConn: number;
+  highWaterSeq: number;
+  deduplicateBySeq: boolean;
   unacknowledgedFrames: number;
   connectedAt: Date;
 }
@@ -125,6 +127,8 @@ export class SSEConnectionManager {
       clientIp,
       controller,
       seqConn: 1,
+      highWaterSeq: 0,
+      deduplicateBySeq: false,
       unacknowledgedFrames: 0,
       connectedAt: new Date(),
     };
@@ -152,6 +156,16 @@ export class SSEConnectionManager {
     }
   }
 
+  public advanceStreamHighWaterSeq(userId: string, streamId: string, seq: number): void {
+    const stream = this.userStreams.get(userId)?.get(streamId);
+    if (stream) {
+      stream.deduplicateBySeq = true;
+      if (seq > stream.highWaterSeq) {
+        stream.highWaterSeq = seq;
+      }
+    }
+  }
+
   /**
    * Broadcasts an invalidation frame to all active streams for a given user.
    */
@@ -166,6 +180,9 @@ export class SSEConnectionManager {
     const streamsToClose: string[] = [];
 
     for (const [sId, stream] of streams.entries()) {
+      if (stream.deduplicateBySeq && frame.deliverySeq <= stream.highWaterSeq) {
+        continue;
+      }
       if (stream.unacknowledgedFrames >= this.SLOW_CONSUMER_THRESHOLD) {
         // Slow consumer backpressure threshold exceeded: schedule termination
         streamsToClose.push(sId);
@@ -185,6 +202,7 @@ export class SSEConnectionManager {
 
         const sseMessage = `id: ${frame.deliverySeq}\nevent: message\ndata: ${payload}\n\n`;
         stream.controller.enqueue(encoder.encode(sseMessage));
+        stream.highWaterSeq = frame.deliverySeq;
         stream.unacknowledgedFrames++;
         sentCount++;
       } catch {

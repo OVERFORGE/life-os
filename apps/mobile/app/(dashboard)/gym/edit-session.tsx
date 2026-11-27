@@ -29,10 +29,6 @@ export default function EditSessionWorkout() {
   type ExerciseLog = { _id?: string, equipmentName: string; sets: SetLog[] };
   const [exercises, setExercises] = useState<ExerciseLog[]>([]);
 
-  useEffect(() => {
-    loadSession();
-  }, [id]);
-
   const loadSession = async () => {
     try {
       const [resSession, resRoutines] = await Promise.all([
@@ -62,6 +58,12 @@ export default function EditSessionWorkout() {
       setFetching(false);
     }
   };
+
+  useEffect(() => {
+    queueMicrotask(() => {
+      void loadSession();
+    });
+  }, [id]);
 
   const handleSave = async () => {
     const durationNum = parseInt(durationMinutes, 10);

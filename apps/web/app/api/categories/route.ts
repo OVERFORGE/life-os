@@ -3,6 +3,10 @@
 import { connectDB } from "@/server/db/connect";
 import { getAuthSession } from "@/lib/auth";
 import { LifeCategory } from "@/features/schema/models/LifeCategory";
+import {
+  createCatalogDocWithOutbox,
+  deleteCatalogDocWithOutbox,
+} from "@/features/catalog/services/catalogMutationEngine";
 
 /* ======================= */
 /* GET Categories          */
@@ -34,14 +38,22 @@ export async function POST(req: Request) {
   const body: any = await req.json();
   await connectDB();
 
-  const created = await LifeCategory.create({
+  const res = await createCatalogDocWithOutbox({
     userId: session.user.id,
-    key: body.key,
-    label: body.label,
-    order: body.order ?? 0,
+    model: LifeCategory,
+    aggregateType: "life_category",
+    eventType: "domain.catalog.updated",
+    domain: "signals",
+    docFields: {
+      userId: session.user.id,
+      key: body.key,
+      label: body.label,
+      order: body.order ?? 0,
+    },
+    options: { source: "web.categories.create" },
   });
 
-  return Response.json({ ok: true, category: created });
+  return Response.json({ ok: true, category: res.doc });
 }
 
 /* ======================= */
@@ -61,9 +73,14 @@ export async function DELETE(req: Request) {
 
   await connectDB();
 
-  await LifeCategory.deleteOne({
+  await deleteCatalogDocWithOutbox({
     userId: session.user.id,
-    key,
+    model: LifeCategory,
+    filter: { userId: session.user.id, key },
+    aggregateType: "life_category",
+    eventType: "domain.catalog.updated",
+    domain: "signals",
+    options: { source: "web.categories.delete" },
   });
 
   return Response.json({ ok: true });

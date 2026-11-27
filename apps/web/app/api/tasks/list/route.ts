@@ -31,7 +31,7 @@ export async function GET(req: Request) {
     ? { $in: [userId, userObjId, String(userId)] }
     : userId;
 
-  let query: any = { userId: userMatcher };
+  const query: any = { userId: userMatcher };
 
   if (filter === "today") {
     query.dueDate = today;

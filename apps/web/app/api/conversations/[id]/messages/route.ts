@@ -13,24 +13,20 @@ type RouteParams = { params: Promise<{ id: string }> };
  */
 export async function POST(req: NextRequest, props: RouteParams) {
   const session = await getAuthSession();
-  let userId = (session?.user as any)?.id;
-
-  await connectDB();
-
-  if (!userId && process.env.NODE_ENV !== "production") {
-    const { User } = await import("@/server/db/models/User");
-    const firstUser = await User.findOne().lean();
-    if (firstUser) {
-      userId = (firstUser as any)._id.toString();
-    }
-  }
+  const userId = (session?.user as any)?.id;
 
   if (!userId) {
     return Response.json({ error: "Unauthorized" }, { status: 401 });
   }
 
+  await connectDB();
+
   const { id: conversationId } = await props.params;
-  const { message, model, mode = "general", streamFormat } = await req.json();
+  const { message, model, mode = "general", streamFormat, requestId: bodyRequestId } = await req.json();
+  const requestId =
+    (typeof bodyRequestId === "string" && bodyRequestId.trim()) ||
+    req.headers.get("x-request-id") ||
+    undefined;
 
   if (!message) {
     return Response.json({ error: "Message is required" }, { status: 400 });
@@ -76,11 +72,13 @@ export async function POST(req: NextRequest, props: RouteParams) {
       userId,
       userName,
       conversationId,
+      requestId,
       message,
       model,
       mode,
       timezone: userTimezone || "UTC",
       referenceTimeMs: Date.now(),
+      abortSignal: req.signal,
       streamFormat: streamFormat || (req.headers.get("accept")?.includes("text/event-stream") ? "events" : "raw"),
     });
   } catch (err: any) {

@@ -1,37 +1,15 @@
+import { requireAdminSession } from "@/lib/adminAuth";
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
-import { SimulationRun, mapDocToSnapshot, mapSnapshotToDoc } from "@/server/db/models/SimulationRun";
+import { SimulationRun, mapSnapshotToDoc } from "@/server/db/models/SimulationRun";
 import { SimulationPersona } from "@/server/db/models/SimulationPersona";
 import { SimulationRuntimeEngine } from "@/simulation/engine/runtime";
-import { deriveRuntimeState } from "@/simulation/engine/state";
-import { SimulationRunDTO } from "@/simulation/types";
-
-export function serializeRun(doc: any): SimulationRunDTO {
-  const snapshot = mapDocToSnapshot(doc);
-  const state = deriveRuntimeState(snapshot.status, snapshot.tick, snapshot.configuration);
-
-  return {
-    id: doc._id?.toString() ?? doc.id ?? "",
-    runUid: snapshot.context.runUid,
-    personaId: snapshot.context.personaId,
-    status: snapshot.status,
-    startedAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : null,
-    completedAt: snapshot.status === "COMPLETED" && doc.updatedAt ? new Date(doc.updatedAt).toISOString() : null,
-    seed: snapshot.seed,
-    configuration: snapshot.configuration,
-    context: snapshot.context,
-    state,
-    metrics: snapshot.metrics,
-    logs: snapshot.logs,
-    error: snapshot.error,
-    kernelVersion: snapshot.context.kernelVersion,
-    createdAt: doc.createdAt ? new Date(doc.createdAt).toISOString() : undefined,
-    updatedAt: doc.updatedAt ? new Date(doc.updatedAt).toISOString() : undefined,
-  };
-}
+import { serializeRun } from "./serializeRun";
 
 // GET /api/admin/simulation — List simulation runs
 export async function GET() {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     await connectDB();
     const docs = await SimulationRun.find().sort({ createdAt: -1 }).lean();
@@ -43,6 +21,8 @@ export async function GET() {
 
 // POST /api/admin/simulation — Start a new simulation run
 export async function POST(req: NextRequest) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     await connectDB();
     const body = await req.json();

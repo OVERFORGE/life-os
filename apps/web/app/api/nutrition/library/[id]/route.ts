@@ -1,6 +1,10 @@
 import { connectDB } from "@/server/db/connect";
 import { getAuthSession } from "@/lib/auth";
 import { FoodItem } from "@/server/db/models/FoodItem";
+import {
+  deleteCatalogDocWithOutbox,
+  upsertCatalogDocWithOutbox,
+} from "@/features/catalog/services/catalogMutationEngine";
 
 export async function PUT(req: Request, { params }: { params: Promise<{ id: string }> }) {
   try {
@@ -11,17 +15,22 @@ export async function PUT(req: Request, { params }: { params: Promise<{ id: stri
     const body = await req.json();
     await connectDB();
 
-    const updatedFood = await FoodItem.findOneAndUpdate(
-      { _id: id, userId: session.user.id },
-      { $set: body },
-      { new: true }
-    );
+    const res = await upsertCatalogDocWithOutbox({
+      userId: session.user.id,
+      model: FoodItem,
+      filter: { _id: id, userId: session.user.id },
+      aggregateType: "food_item",
+      eventType: "domain.catalog.updated",
+      domain: "nutrition",
+      updateFields: body,
+      options: { source: "web.nutrition.library.update" },
+    });
 
-    if (!updatedFood) {
+    if (res.notFound) {
       return Response.json({ error: "Food item not found or unauthorized" }, { status: 404 });
     }
 
-    return Response.json({ success: true, food: updatedFood });
+    return Response.json({ success: true, food: res.doc });
   } catch (error: any) {
     return Response.json({ error: error.message }, { status: 500 });
   }
@@ -34,9 +43,17 @@ export async function DELETE(req: Request, { params }: { params: Promise<{ id: s
 
     const { id } = await params;
     await connectDB();
-    const deletedFood = await FoodItem.findOneAndDelete({ _id: id, userId: session.user.id });
+    const res = await deleteCatalogDocWithOutbox({
+      userId: session.user.id,
+      model: FoodItem,
+      filter: { _id: id, userId: session.user.id },
+      aggregateType: "food_item",
+      eventType: "domain.catalog.updated",
+      domain: "nutrition",
+      options: { source: "web.nutrition.library.delete" },
+    });
 
-    if (!deletedFood) {
+    if (res.notFound) {
       return Response.json({ error: "Food item not found or unauthorized" }, { status: 404 });
     }
 

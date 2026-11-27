@@ -1,7 +1,10 @@
 import crypto from "node:crypto";
 import { generateId } from "../../shared/ids";
-import { groqChat, cleanLLMResponse } from "../../shared/groq";
+import { cleanLLMResponse, createAbortError, isAbortError } from "../../shared/groq";
+import { invokeLifeOSChat } from "../../shared/langchain/LifeOSChatModel";
 import { KernelCapabilityService } from "./KernelCapabilityService";
+import { ActionAdapterRegistry } from "./ActionAdapters";
+import { GroundedResponseGenerator, buildExecutionEvidencePackage } from "../grounding/GroundedResponseGenerator";
 import { ExecutionWorkspace } from "../workspace/ExecutionWorkspace";
 import { StepDataResolver } from "../workspace/StepDataResolver";
 import { ActionProposal } from "../contracts/ActionProposalContracts";
@@ -40,6 +43,7 @@ import { ExecutionPersistenceService } from "../workspace/ExecutionPersistenceSe
 import { WorkspaceStatus, TerminationReason } from "../workspace/WorkspaceStateMachine";
 import { ObjectiveVerificationEngine } from "../verification/ObjectiveVerificationEngine";
 import { CapabilityRegistry } from "../capabilities/CapabilityRegistry";
+import { CapabilityPresentationRegistry } from "../external/presentation/CapabilityPresentationRegistry";
 import { WorkflowExecutionGraph } from "../graph/WorkflowExecutionGraph";
 import { ConflictGovernanceEngine } from "../graph/ConflictGovernanceEngine";
 import { PlanValidator } from "../planning/PlanValidator";
@@ -59,12 +63,15 @@ export interface GraphWorkflowRequest {
   activeReservations?: ResourceReservation[];
   onEvent?: (event: any) => void;
   onChunk?: (chunk: string) => void;
+  abortSignal?: AbortSignal;
   observationProbeExecutor?: (capabilityURN: string, params: any) => Promise<{ observed: boolean; state?: any }>;
+  temporalContext?: { localDate: string; dayOfWeek?: string; timezone: string };
+  tailoredContext?: string;
 }
 
 export interface GraphWorkflowResult {
   executionId: string;
-  status: "COMPLETED" | "ESCALATED" | "TERMINATED_FAILED" | "PAUSED_AWAITING_CONFIRMATION" | "WAITING_FOR_APPROVAL";
+  status: "COMPLETED" | "ESCALATED" | "TERMINATED_FAILED" | "PAUSED_AWAITING_CONFIRMATION" | "WAITING_FOR_APPROVAL" | "CANCELLED_BY_USER";
   outcomeStatus: ObjectiveOutcomeStatus;
   response: string;
   actionsExecuted: number;
@@ -114,7 +121,7 @@ export interface IterativeWorkflowResult {
 export class IterativeActionDispatcher {
   private static instance: IterativeActionDispatcher;
 
-  constructor(private kernel: KernelCapabilityService = KernelCapabilityService.getInstance()) {}
+  constructor(private kernel: KernelCapabilityService = KernelCapabilityService.getInstance()) { }
 
   static getInstance(customKernel?: KernelCapabilityService): IterativeActionDispatcher {
     if (!IterativeActionDispatcher.instance) {
@@ -169,8 +176,8 @@ export class IterativeActionDispatcher {
               status === "COMPLETED"
                 ? "ExecutionCompleted"
                 : status === "CANCELLED_BY_USER"
-                ? "ExecutionCancelled"
-                : "ExecutionFailed",
+                  ? "ExecutionCancelled"
+                  : "ExecutionFailed",
             source: "Supervisor",
             timestamp: Date.now(),
             payload: { reason: termReason, status },
@@ -185,7 +192,7 @@ export class IterativeActionDispatcher {
         },
       });
       workspace.stateVersion += 1;
-    } catch (_) {}
+    } catch (_) { }
   }
 
   async executeWorkflow(req: IterativeWorkflowRequest): Promise<IterativeWorkflowResult> {
@@ -416,7 +423,7 @@ export class IterativeActionDispatcher {
             },
           });
           workspace.stateVersion += 1;
-        } catch (_) {}
+        } catch (_) { }
 
         req.onEvent?.({
           type: "status",
@@ -581,7 +588,7 @@ export class IterativeActionDispatcher {
             },
           });
           workspace.stateVersion += 1;
-        } catch (_) {}
+        } catch (_) { }
 
         continue;
       }
@@ -748,7 +755,7 @@ export class IterativeActionDispatcher {
               },
             });
             workspace.stateVersion += 1;
-          } catch (_) {}
+          } catch (_) { }
 
           req.onEvent?.({
             type: "status",
@@ -795,17 +802,23 @@ export class IterativeActionDispatcher {
         // Boundary 3: Pre-dispatch lease validation / renewal
         try {
           await persistence.renewLock(executionId, req.userId, workerToken, generation, 60000);
-        } catch (_) {}
+        } catch (_) { }
+
+        const capDesc = CapabilityRegistry.getCapability(capURN);
+        const isInternalAdapter =
+          capDesc?.source === "INTERNAL_ADAPTER" && ActionAdapterRegistry.getInstance().has(capURN);
 
         const proposal: ActionProposal = {
           id: `prop_${stepId}`,
-          domain: "productivity",
-          actionType: "external_capability_action" as any,
-          payload: {
-            capabilityURN: capURN,
-            providerHint: decision.providerHint,
-            parameters: resolvedParameters,
-          },
+          domain: (capDesc?.domain as any) || "productivity",
+          actionType: (isInternalAdapter ? capURN : "external_capability_action") as any,
+          payload: isInternalAdapter
+            ? resolvedParameters
+            : {
+              capabilityURN: capURN,
+              providerHint: decision.providerHint,
+              parameters: resolvedParameters,
+            },
           rationale: decision.rationale,
           reversibility: "irreversible_local",
           idempotencyKey: `idemp_${executionId}_${stepId}`,
@@ -833,8 +846,8 @@ export class IterativeActionDispatcher {
           const classification: StepOutcomeClassification = isTimeout
             ? "AMBIGUOUS_TIMEOUT"
             : execResult.status?.includes("NOT_FOUND") || execResult.error?.includes("NOT_FOUND")
-            ? "RECOVERABLE_FAILURE"
-            : "PERMANENT_FAILURE";
+              ? "RECOVERABLE_FAILURE"
+              : "PERMANENT_FAILURE";
 
           completedSteps.push({
             stepId,
@@ -968,7 +981,7 @@ export class IterativeActionDispatcher {
             },
           });
           workspace.stateVersion += 1;
-        } catch (_) {}
+        } catch (_) { }
 
         continue;
       }
@@ -1238,13 +1251,13 @@ export class IterativeActionDispatcher {
       if (readResult.success && readResult.data) {
         verifiedBytes = readResult.data.bytesRead || readResult.data.content?.length || verifiedBytes;
       }
-    } catch (_) {}
+    } catch (_) { }
 
     // Find email search step for truthful provenance reporting
     const searchStep = allSteps.find((s) => s.capabilityURN?.includes("search") || s.actionType?.includes("search"));
     const emailCount = searchStep?.data?.messages?.length || 2;
 
-    const truthfulDisclosure = `Saved deployment failure summary to ${readBackPath} (verified ${verifiedBytes.toLocaleString()} bytes on disk). The summary was synthesized by Aven from ${emailCount} unread emails matching 'deployment failure'.`;
+    const truthfulDisclosure = `Saved approved output to ${readBackPath} (verified ${verifiedBytes.toLocaleString()} bytes on disk)${emailCount > 0 ? `, synthesized from ${emailCount} retrieved record(s)` : ""}.`;
 
     // Commit terminal completion to persistence
     try {
@@ -1272,7 +1285,7 @@ export class IterativeActionDispatcher {
           retentionExpiresAt: new Date(Date.now() + 30 * 24 * 60 * 60 * 1000),
         },
       });
-    } catch (_) {}
+    } catch (_) { }
 
     options?.onChunk?.(truthfulDisclosure);
 
@@ -1349,15 +1362,19 @@ export class IterativeActionDispatcher {
    * Default Step Reasoner powered by Groq LLM
    */
   private async invokeGroqStepReasoner(input: StepReasonerInput): Promise<StepReasonerDecision> {
+    const compactReads = CapabilityRegistry.getInstance().formatCompactReadCatalogForInterpreter();
     const prompt = `You are Aven's Step Reasoner for multi-step goals.
 Goal: "${input.goal}"
 User Request: "${input.userRequest}"
 Iteration: ${input.iteration}
 Completed Steps so far: ${JSON.stringify(input.completedSteps)}
 
+Available READ Capabilities:
+${compactReads}
+
 You must emit STRICT JSON matching one of these schema types:
 1. Action Step:
-{"type":"PROPOSE_ACTION_STEP","actionType":"external_capability_action","capabilityURN":"...","parameters":{...},"rationale":"..."}
+{"type":"PROPOSE_ACTION_STEP","actionType":"<capabilityURN or external_capability_action>","capabilityURN":"...","parameters":{...},"rationale":"..."}
 2. Synthesis Step:
 {"type":"PROPOSE_SYNTHESIS_STEP","sourceStepId":"...","targetPrompt":"...","rationale":"..."}
 3. Recommend Completion:
@@ -1366,98 +1383,51 @@ You must emit STRICT JSON matching one of these schema types:
 {"type":"REPORT_UNREALIZABLE","reason":"..."}
 
 Rules:
-- For searching emails, use capabilityURN: "productivity.email.search_messages", parameters: { "query": "..." }
-- To write a file, use capabilityURN: "productivity.storage.write_file", parameters: { "path": "Desktop/...", "content": { "$ref": "step_id.text" } }
-- If email search returns 0 messages for an incident report, emit REPORT_UNREALIZABLE.
+- Ground parameters strictly in user intent and completed step outputs.
 - Once all actions and verification steps are done, emit RECOMMEND_COMPLETION.`;
 
     try {
-      const resp = await groqChat({
+      const resp = await invokeLifeOSChat({
         messages: [{ role: "user", content: prompt }],
         temperature: 0.1,
-        max_tokens: 500,
+        maxTokens: 500,
       });
 
       const cleanJson = cleanLLMResponse(resp || "");
       const parsed = JSON.parse(cleanJson);
       return parsed;
     } catch (_) {
-      // Deterministic fallback for test / development environments without active Groq key
-      if (input.completedSteps.length === 0) {
+      if (input.completedSteps.length > 0) {
         return {
-          type: "PROPOSE_ACTION_STEP",
-          actionType: "external_capability_action",
-          capabilityURN: "productivity.email.search_messages",
-          parameters: { query: 'is:unread "deployment failure"' },
-          rationale: "Search for failure emails",
+          type: "RECOMMEND_COMPLETION",
+          claimedOutcome: "Completed available workflow steps.",
         };
       }
-
-      const hasSearch = input.completedSteps.some((s) => s.capabilityURN?.includes("search"));
-      const hasSynth = input.completedSteps.some((s) => s.actionType === "synthesis");
-      const hasWrite = input.completedSteps.some((s) => s.capabilityURN?.includes("write_file"));
-
-      if (hasSearch && !hasSynth) {
-        return {
-          type: "PROPOSE_SYNTHESIS_STEP",
-          sourceStepId: input.completedSteps[0].stepId,
-          targetPrompt: "Summarize deployment failure findings",
-          rationale: "Synthesize email content",
-        };
-      }
-
-      if (hasSynth && !hasWrite) {
-        return {
-          type: "PROPOSE_ACTION_STEP",
-          actionType: "external_capability_action",
-          capabilityURN: "productivity.storage.write_file",
-          parameters: {
-            path: "Desktop/deploy_summary.txt",
-            content: { $ref: `${input.completedSteps[1].stepId}.text` },
-          },
-          rationale: "Save summary to file",
-          requiresConfirmation: true,
-        };
-      }
-
       return {
-        type: "RECOMMEND_COMPLETION",
-        claimedOutcome: "Incident summary created and saved",
+        type: "REPORT_UNREALIZABLE",
+        reason: "Step reasoning LLM unavailable; cannot fabricate workflow steps.",
       };
     }
   }
 
   /**
-   * Executes synthesis step over intermediate scratchpad data
+   * Executes synthesis step via canonical GroundedResponseGenerator.synthesizeFromEvidence(...)
    */
   private async executeSynthesis(decision: any, sourceRecord: StepOutputRecord): Promise<string> {
-    const dataStr = JSON.stringify(sourceRecord.data);
-    const prompt = `Synthesize the following data for prompt: "${decision.targetPrompt}".
-Data:
-${dataStr.slice(0, 4000)}
-
-Provide a concise, professional executive summary of the deployment failure.`;
-
-    try {
-      const resp = await groqChat({
-        messages: [{ role: "user", content: prompt }],
-        temperature: 0.2,
-        max_tokens: 400,
-      });
-      const cleaned = cleanLLMResponse(resp || "");
-      if (cleaned && cleaned.length >= MULTI_STEP_WORKFLOW_POLICY.minSynthesisLength) {
-        return cleaned;
-      }
-    } catch (_) {}
-
-    // Deterministic fallback for test/dev environments
-    return (
-      "Deployment Failure Summary:\n" +
-      "- Incident: CI/CD Pipeline deployment #492 failed.\n" +
-      "- Root Cause: Database migration lock timeout on replica node 2.\n" +
-      "- Impact: 14 API requests dropped between 14:02 and 14:06 UTC.\n" +
-      "- Resolution: Migration lock cleared; service restored."
-    );
+    const evidencePackage = buildExecutionEvidencePackage({
+      objective: decision?.targetPrompt || "Synthesize verified capability results",
+      steps: [
+        {
+          stepId: sourceRecord.stepId,
+          capabilityURN: sourceRecord.capabilityURN,
+          actionType: sourceRecord.actionType,
+          data: sourceRecord.data,
+          status: "SUCCESS",
+          success: true,
+        },
+      ],
+    });
+    return GroundedResponseGenerator.getInstance().synthesizeFromEvidence(evidencePackage);
   }
 
   /**
@@ -1524,10 +1494,23 @@ Provide a concise, professional executive summary of the deployment failure.`;
     const scratchpad = new Map<string, any>();
     const completedSteps: CompletedStepObservation[] = [];
     let actionsExecuted = 0;
+    let canonicalSynthesizedText: string | undefined;
+    let streamedSynthesisEmitted = false;
+    let cancelledBySignal = false;
     const deadlineMs = startTime + 45000; // 45s continuous execution budget
 
     // 4. Batch Execution Loop
     while (!graph.isTerminal()) {
+      if (req.abortSignal?.aborted) {
+        cancelledBySignal = true;
+        for (const [sId, n] of graph.nodes.entries()) {
+          if (n.status === "PENDING" || n.status === "READY" || n.status === "WAITING_FOR_APPROVAL") {
+            graph.markCancelled(sId, "Cancelled by user");
+          }
+        }
+        break;
+      }
+
       if (Date.now() > deadlineMs) {
         graph.status = "TERMINATED_FAILED";
         return {
@@ -1624,10 +1607,13 @@ Provide a concise, professional executive summary of the deployment failure.`;
           }
 
           actionsExecuted++;
+          const pres = CapabilityPresentationRegistry.getInstance().get(urn);
           req.onEvent?.({
-            type: "action_started",
+            type: "step_progress",
             stepId: node.stepId,
             capabilityURN: urn,
+            phase: "started",
+            humanMessage: `Running ${pres.displayName}`,
           });
 
           let actionResult: any;
@@ -1635,24 +1621,52 @@ Provide a concise, professional executive summary of the deployment failure.`;
 
           try {
             if (node.step.actionType === "synthesis" || urn === "synthesis") {
-              const sourceStepId = resolvedParams.sourceStepId || node.step.dependsOn?.[0];
-              const sourceData = sourceStepId
-                ? scratchpad.get(sourceStepId)
-                : Object.fromEntries(scratchpad.entries());
-              actionResult = await this.executeSynthesis(
-                { targetPrompt: resolvedParams.targetPrompt || node.step.rationale },
-                { stepId: sourceStepId || "source", actionType: "synthesis", data: sourceData, timestamp: Date.now() }
+              req.onEvent?.({ type: "status", status: "synthesizing", message: "Synthesizing grounded answer..." });
+              const evidencePackage = buildExecutionEvidencePackage({
+                objective: req.userRequest || req.goal,
+                temporalContext: req.temporalContext,
+                tailoredContextSummary: req.tailoredContext,
+                steps: completedSteps.map((s) => ({
+                  stepId: s.stepId,
+                  capabilityURN: s.capabilityURN,
+                  actionType: s.actionType,
+                  parameters: s.parameters,
+                  data: s.data,
+                  status: s.status,
+                  success: s.status === "SUCCESS",
+                  error: s.error,
+                  integrityHash: s.integrityHash,
+                  isTruncated: s.isTruncated,
+                })),
+              });
+              canonicalSynthesizedText = await GroundedResponseGenerator.getInstance().synthesizeFromEvidence(
+                evidencePackage,
+                {
+                  signal: req.abortSignal,
+                  onDelta: (delta) => {
+                    streamedSynthesisEmitted = true;
+                    req.onChunk?.(delta);
+                    req.onEvent?.({ type: "assistant_delta", text: delta });
+                  },
+                }
               );
+              actionResult = { text: canonicalSynthesizedText };
             } else {
+              const capDesc = CapabilityRegistry.getCapability(urn);
+              const isInternalAdapter =
+                capDesc?.source === "INTERNAL_ADAPTER" && ActionAdapterRegistry.getInstance().has(urn);
+
               const proposal: ActionProposal = {
                 id: `prop_${node.stepId}`,
-                domain: "productivity",
-                actionType: (node.step.actionType || "external_capability_action") as any,
-                payload: {
-                  capabilityURN: urn,
-                  providerHint: node.step.providerHint,
-                  parameters: resolvedParams,
-                },
+                domain: (capDesc?.domain as any) || "productivity",
+                actionType: (isInternalAdapter ? urn : node.step.actionType || "external_capability_action") as any,
+                payload: isInternalAdapter
+                  ? resolvedParams
+                  : {
+                    capabilityURN: urn,
+                    providerHint: node.step.providerHint,
+                    parameters: resolvedParams,
+                  },
                 rationale: node.step.rationale || "Execute workflow step",
                 reversibility: "irreversible_local",
                 idempotencyKey: `idemp_${executionId}_${node.stepId}`,
@@ -1670,7 +1684,19 @@ Provide a concise, professional executive summary of the deployment failure.`;
 
           // 3. Four-Tier Provider Error Classification (Correction A)
           if (actionError) {
+            if (isAbortError(actionError) || (req.abortSignal?.aborted && (node.step.actionType === "synthesis" || urn === "synthesis"))) {
+              cancelledBySignal = true;
+              graph.markCancelled(node.stepId, "Cancelled by user");
+              return;
+            }
             const classification = registry.classifyProviderError(urn, actionError);
+            req.onEvent?.({
+              type: "step_progress",
+              stepId: node.stepId,
+              capabilityURN: urn,
+              phase: "failed",
+              humanMessage: `${pres.displayName} failed`,
+            });
 
             if (classification.category === "DEFINITIVE_REJECTION") {
               // Confirmed failure: safe to release lock
@@ -1729,6 +1755,7 @@ Provide a concise, professional executive summary of the deployment failure.`;
               capabilityURN: urn,
               parameters: resolvedParams,
               data: actionResult,
+              status: "SUCCESS" as const,
             };
 
             const stepVerif = await verifier.verifyStep(verificationContext, stepObs, completedSteps, this.kernel);
@@ -1754,6 +1781,13 @@ Provide a concise, professional executive summary of the deployment failure.`;
           if (verificationPassed) {
             graph.markCompleted(node.stepId, actionResult);
             scratchpad.set(node.stepId, actionResult);
+            req.onEvent?.({
+              type: "step_progress",
+              stepId: node.stepId,
+              capabilityURN: urn,
+              phase: "completed",
+              humanMessage: `${pres.displayName} completed`,
+            });
 
             // Confirmed success and verified: Release reservation
             ConflictGovernanceEngine.releaseReservations({
@@ -1802,20 +1836,63 @@ Provide a concise, professional executive summary of the deployment failure.`;
       );
 
       // Check for replanning if any step failed and budget permits
+      if (req.abortSignal?.aborted) {
+        cancelledBySignal = true;
+        for (const [sId, n] of graph.nodes.entries()) {
+          if (n.status === "PENDING" || n.status === "READY" || n.status === "WAITING_FOR_APPROVAL") {
+            graph.markCancelled(sId, "Cancelled by user");
+          }
+        }
+        break;
+      }
+
       const failedNodes = Array.from(graph.nodes.values()).filter((n) => n.status === "FAILED");
-      if (failedNodes.length > 0 && graph.replanCount < 3) {
+      if (failedNodes.length > 0 && graph.replanCount < STAGE2_ADAPTIVE_POLICY.maxReplanningAttempts) {
         const failedNode = failedNodes[0];
+        req.onEvent?.({
+          type: "status",
+          status: "adapting",
+          message: "Adapting workflow steps...",
+        });
+        req.onEvent?.({
+          type: "step_progress",
+          stepId: failedNode.stepId,
+          capabilityURN: failedNode.step.capabilityURN || failedNode.step.actionType,
+          phase: "replanning",
+          humanMessage: "Adapting next steps after failure",
+        });
         try {
-          const planner = new DynamicWorkflowPlanner({ registry });
+          const planner = new DynamicWorkflowPlanner({
+            registry,
+            llmClient: process.env.GROQ_API_KEY && process.env.GROQ_API_KEY !== "mock_key_for_dev"
+              ? {
+                complete: async (prompt: string, signal?: AbortSignal) =>
+                  invokeLifeOSChat({
+                    messages: [{ role: "user", content: prompt }],
+                    temperature: 0.1,
+                    maxTokens: 1200,
+                    signal,
+                  }),
+              }
+              : undefined,
+          });
           const replannedPlan = await planner.replanRemainder({
             currentPlan: normalizedPlan,
             failedStepId: failedNode.stepId,
             failureReason: failedNode.error || "Step execution failed",
             completedSteps: completedSteps.filter((s) => s.status === "SUCCESS"),
+            temporalContext: req.temporalContext,
+            tailoredContext: req.tailoredContext,
+            signal: req.abortSignal,
           });
           normalizedPlan = replannedPlan;
           graph.replanRemainder(replannedPlan);
-        } catch (_) {}
+        } catch (replanErr: any) {
+          if (isAbortError(replanErr) || req.abortSignal?.aborted) {
+            cancelledBySignal = true;
+            break;
+          }
+        }
       }
     }
 
@@ -1829,10 +1906,28 @@ Provide a concise, professional executive summary of the deployment failure.`;
     let outcomeStatus: ObjectiveOutcomeStatus = "GOAL_ACHIEVED_AND_VERIFIED";
     let responseText = "All workflow steps completed and verified successfully.";
 
-    if (hasWaitingApproval) {
+    if (cancelledBySignal || req.abortSignal?.aborted) {
+      status = "CANCELLED_BY_USER";
+      outcomeStatus = "EXECUTION_ABORTED";
+      responseText = canonicalSynthesizedText || "";
+    } else if (hasWaitingApproval) {
       status = "WAITING_FOR_APPROVAL";
       outcomeStatus = "REQUIRES_USER_ACTION";
       responseText = "Workflow paused awaiting required approval.";
+      const waitingNode = Array.from(graph.nodes.values()).find((n) => n.status === "WAITING_FOR_APPROVAL");
+      req.onEvent?.({ type: "status", status: "waiting_for_confirmation", message: "Awaiting user approval..." });
+      if (waitingNode) {
+        req.onEvent?.({
+          type: "confirmation_required",
+          actionId: waitingNode.stepId,
+          capabilityURN: waitingNode.step.capabilityURN || waitingNode.step.actionType,
+          providerDisplayName: "LifeOS",
+          title: "Approval Required",
+          message: responseText,
+          confirmLabel: "Allow",
+          cancelLabel: "Deny",
+        });
+      }
     } else if (hasAmbiguous) {
       status = "TERMINATED_FAILED";
       outcomeStatus = "AMBIGUOUS_EXTERNAL_STATE";
@@ -1841,9 +1936,83 @@ Provide a concise, professional executive summary of the deployment failure.`;
       status = "TERMINATED_FAILED";
       outcomeStatus = "OBJECTIVE_UNMET";
       responseText = "Workflow terminated: one or more steps failed to achieve objective.";
+    } else if (canonicalSynthesizedText) {
+      responseText = canonicalSynthesizedText;
+    } else if (completedSteps.some((s) => registry.getCapability(s.capabilityURN || s.actionType)?.operationKind === "READ")) {
+      req.onEvent?.({ type: "status", status: "synthesizing", message: "Synthesizing grounded answer..." });
+      const evidencePackage = buildExecutionEvidencePackage({
+        objective: req.userRequest || req.goal,
+        temporalContext: req.temporalContext,
+        tailoredContextSummary: req.tailoredContext,
+        steps: completedSteps.map((s) => ({
+          stepId: s.stepId,
+          capabilityURN: s.capabilityURN,
+          actionType: s.actionType,
+          parameters: s.parameters,
+          data: s.data,
+          status: s.status,
+          success: s.status === "SUCCESS",
+          error: s.error,
+          integrityHash: s.integrityHash,
+          isTruncated: s.isTruncated,
+        })),
+      });
+      try {
+        responseText = await GroundedResponseGenerator.getInstance().synthesizeFromEvidence(evidencePackage, {
+          signal: req.abortSignal,
+          onDelta: (delta) => {
+            streamedSynthesisEmitted = true;
+            req.onChunk?.(delta);
+            req.onEvent?.({ type: "assistant_delta", text: delta });
+          },
+        });
+      } catch (synthErr: any) {
+        if (isAbortError(synthErr) || req.abortSignal?.aborted) {
+          status = "CANCELLED_BY_USER";
+          outcomeStatus = "EXECUTION_ABORTED";
+          responseText = "";
+        } else {
+          throw synthErr;
+        }
+      }
+    }
+
+    if (status !== "CANCELLED_BY_USER" && !streamedSynthesisEmitted && responseText) {
+      req.onChunk?.(responseText);
+      req.onEvent?.({ type: "assistant_delta", text: responseText });
     }
 
     graph.status = status;
+
+    try {
+      const persistence = ExecutionPersistenceService.getInstance();
+      await persistence.commitCheckpoint({
+        executionId,
+        userId: req.userId,
+        userRequest: req.userRequest,
+        goal: req.goal,
+        conversationId: req.conversationId,
+        expectedVersion: 1,
+        checkpointId: `chk_gw_${executionId}_end`,
+        events: [
+          {
+            seq: completedSteps.length,
+            type: status === "COMPLETED" ? "ExecutionCompleted" : "ExecutionTerminated",
+            source: "Supervisor",
+            timestamp: Date.now(),
+            payload: { status, outcomeStatus, replanCount: graph.replanCount },
+          },
+        ],
+        snapshotUpdate: {
+          userRequest: req.userRequest,
+          goal: req.goal,
+          conversationId: req.conversationId,
+          status: status === "COMPLETED" ? "COMPLETED" : status === "WAITING_FOR_APPROVAL" ? "PAUSED_AWAITING_CONFIRMATION" : "TERMINATED_FAILED",
+          plan: normalizedPlan,
+          completedSteps: completedSteps as any,
+        },
+      });
+    } catch (_) { }
 
     return {
       executionId,

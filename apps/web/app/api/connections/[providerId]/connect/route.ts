@@ -10,23 +10,14 @@ type RouteParams = { params: Promise<{ providerId: string }> };
 export async function POST(req: NextRequest, props: RouteParams) {
   try {
     const session = await getAuthSession();
-    let userId = (session?.user as any)?.id;
-    let userEmail = (session?.user as any)?.email;
-
-    await connectDB();
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-        userEmail = (firstUser as any).email;
-      }
-    }
+    const userId = (session?.user as any)?.id;
+    const userEmail = (session?.user as any)?.email;
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
     }
+
+    await connectDB();
 
     const { providerId } = await props.params;
     const provider = ProviderRegistry.getInstance().get(providerId as any);

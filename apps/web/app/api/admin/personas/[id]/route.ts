@@ -1,3 +1,4 @@
+import { requireAdminSession } from "@/lib/adminAuth";
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { SimulationPersona } from "@/server/db/models/SimulationPersona";
@@ -60,6 +61,8 @@ type RouteParams = { params: Promise<{ id: string }> };
 
 // GET /api/admin/personas/[id]
 export async function GET(_req: NextRequest, props: RouteParams) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     const { id } = await props.params;
     await connectDB();
@@ -76,6 +79,8 @@ export async function GET(_req: NextRequest, props: RouteParams) {
 
 // PUT /api/admin/personas/[id] — Full update
 export async function PUT(req: NextRequest, props: RouteParams) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     const { id } = await props.params;
     await connectDB();
@@ -157,6 +162,8 @@ export async function PUT(req: NextRequest, props: RouteParams) {
 
 // PATCH /api/admin/personas/[id] — Partial action (archive, restore, soft-delete, recover)
 export async function PATCH(req: NextRequest, props: RouteParams) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     const { id } = await props.params;
     await connectDB();
@@ -195,6 +202,8 @@ export async function PATCH(req: NextRequest, props: RouteParams) {
 
 // DELETE /api/admin/personas/[id] — Permanent delete (admin only)
 export async function DELETE(_req: NextRequest, props: RouteParams) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     const { id } = await props.params;
     await connectDB();

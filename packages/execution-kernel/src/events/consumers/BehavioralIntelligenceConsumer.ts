@@ -40,6 +40,9 @@ export class BehavioralIntelligenceConsumer implements ICanonicalConsumer {
     "domain.signal.logged",
     "domain.health.workout_logged",
     "domain.physical.workout_logged",
+    "domain.daily_log.updated",
+    "domain.nutrition.logged",
+    "domain.weight.logged",
   ];
 
   private repository: BehavioralProfileRepository;
@@ -60,8 +63,17 @@ export class BehavioralIntelligenceConsumer implements ICanonicalConsumer {
       let category: BehavioralObservationDraft["category"] = "EXECUTION";
       if (envelope.type.startsWith("domain.task.")) {
         category = "EXECUTION";
-      } else if (envelope.type.includes("workout")) {
+      } else if (envelope.type.includes("workout") || envelope.type.includes("nutrition") || envelope.type.includes("weight")) {
         category = "PHYSICAL";
+      } else if (envelope.type === "domain.daily_log.updated") {
+        const sections = Array.isArray(payload.updatedSections) ? payload.updatedSections : [];
+        if (sections.includes("mental") || sections.includes("work")) {
+          category = "COGNITIVE";
+        } else if (sections.includes("sleep")) {
+          category = "ROUTINE";
+        } else {
+          category = "PHYSICAL";
+        }
       } else if (envelope.type.includes("signal")) {
         const key = payload.key || "";
         if (["energy", "mood", "stress", "focus", "deepWorkHours", "anxiety"].includes(key)) {

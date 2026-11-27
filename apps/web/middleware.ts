@@ -16,6 +16,7 @@ const PROTECTED_PREFIXES = [
   "/reports",
   "/notifications",
   "/checkin",
+  "/admin",
 ];
 
 export async function middleware(req: NextRequest) {
@@ -52,6 +53,21 @@ export async function middleware(req: NextRequest) {
     const loginUrl = new URL("/login", req.url);
     loginUrl.searchParams.set("callbackUrl", pathname);
     return NextResponse.redirect(loginUrl);
+  }
+
+  // Fail-closed admin check on /admin/** pages
+  if (pathname.startsWith("/admin")) {
+    const devBypass =
+      process.env.NODE_ENV !== "production" &&
+      process.env.ALLOW_DEV_ADMIN_BYPASS === "true";
+    const email = typeof token?.email === "string" ? token.email.trim().toLowerCase() : "";
+    const allowlist = (process.env.ADMIN_EMAILS || "")
+      .split(",")
+      .map((e) => e.trim().toLowerCase())
+      .filter(Boolean);
+    if (!devBypass && (!email || !allowlist.includes(email))) {
+      return NextResponse.redirect(new URL("/dashboard", req.url));
+    }
   }
 
   return NextResponse.next();

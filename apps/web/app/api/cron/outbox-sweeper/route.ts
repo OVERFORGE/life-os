@@ -13,7 +13,7 @@ export async function GET(req: NextRequest) {
   const authHeader = req.headers.get("authorization");
   const cronSecret = process.env.CRON_SECRET;
 
-  if (cronSecret && authHeader !== `Bearer ${cronSecret}`) {
+  if (!cronSecret || authHeader !== `Bearer ${cronSecret}`) {
     return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
   }
 
@@ -30,6 +30,7 @@ export async function GET(req: NextRequest) {
         name: "lifeos/outbox.dispatched" as const,
         data: {
           eventId: event.eventId,
+          userId: event.userId,
           category: event.category,
           type: event.type,
           aggregateId: event.aggregateId,

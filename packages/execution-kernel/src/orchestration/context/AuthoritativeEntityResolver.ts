@@ -192,15 +192,10 @@ export class AuthoritativeEntityResolver {
       }
     }
 
-    // 2. Check STM Active Focus (Contextual Anaphora Precedence)
+    // 2. Check STM Active Focus (Structured Contextual Anaphora Precedence)
     const isAnaphoric =
       context?.kind === "CONTEXTUAL_ANAPHORIC" ||
-      context?.contextualRelation === "ACTIVE_FOCUS" ||
-      /^(?:that|this|the|it|that\s+one|the\s+one)(?:\s+task)?$/i.test(trimmed) ||
-      trimmed.includes("that task") ||
-      trimmed.includes("this task") ||
-      trimmed === "it" ||
-      trimmed === "that";
+      context?.contextualRelation === "ACTIVE_FOCUS";
 
     if (context?.activeFocus && context.activeFocus.entityType === "task") {
       const focusTitleLower = context.activeFocus.displayName.toLowerCase();
@@ -482,11 +477,10 @@ export class AuthoritativeEntityResolver {
       }
     }
 
-    // 2. STM Active Focus
+    // 2. STM Active Focus (Structured Contextual Anaphora)
     const isAnaphoric =
       context?.kind === "CONTEXTUAL_ANAPHORIC" ||
-      context?.contextualRelation === "ACTIVE_FOCUS" ||
-      /^(?:that|this|the|it)(?:\s+goal)?$/i.test(trimmed);
+      context?.contextualRelation === "ACTIVE_FOCUS";
 
     if (context?.activeFocus && context.activeFocus.entityType === "goal") {
       const focusLower = context.activeFocus.displayName.toLowerCase();
@@ -612,6 +606,7 @@ export class AuthoritativeEntityResolver {
       activeFocus?: IContextEntityRef | null;
       recentEntities?: IContextEntityRef[];
       pendingCandidates?: Array<{ entityId: string; displayName: string }>;
+      referenceKind?: string;
     }
   ): Promise<EntityResolutionOutcome> {
     const trimmed = (rawExpression || "").trim().toLowerCase();
@@ -645,7 +640,7 @@ export class AuthoritativeEntityResolver {
     const userObjId = mongoose.isValidObjectId(userId) ? new mongoose.Types.ObjectId(userId) : userId;
 
     const query: any = { userId: { $in: [userId, userObjId] } };
-    if (trimmed && !/^(?:that|this|the|it)(?:\s+workout)?$/i.test(trimmed)) {
+    if (trimmed && context?.referenceKind !== "CONTEXTUAL_ANAPHORIC") {
       const escaped = trimmed.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
       query.$or = [{ name: { $regex: escaped, $options: "i" } }, { workoutType: { $regex: escaped, $options: "i" } }];
     }

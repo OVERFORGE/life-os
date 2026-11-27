@@ -9,6 +9,9 @@ const DailySessionSchema = new mongoose.Schema(
         sleepTime: { type: String },
 
         isComplete: { type: Boolean, default: false },
+        version: { type: Number, default: 0 },
+        mutationEpoch: { type: Number, default: 0 },
+        recentMutationReceipts: { type: [mongoose.Schema.Types.Mixed], default: [] },
     },
     { timestamps: true }
 );

@@ -4,6 +4,8 @@ import { connectDB } from "@/server/db/connect";
 import { apiError } from "@/lib/apiResponse";
 import { SSEConnectionManager } from "@/server/services/SSEConnectionManager";
 import { UserDeliverySequencer } from "@life-os/execution-kernel";
+import { UserDeliveryJournalModel } from "@/server/db/models/UserDeliveryJournalModel";
+import { UserDeliverySequenceModel } from "@/server/db/models/UserDeliverySequenceModel";
 
 export const dynamic = "force-dynamic";
 export const maxDuration = 60;
@@ -20,22 +22,13 @@ export async function GET(req: NextRequest) {
     }
 
     const session = await getAuthSession();
-    let userId = (session?.user as any)?.id;
-
-    await connectDB();
-
-    // Development fallback strictly barred in production
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-      }
-    }
+    const userId = (session?.user as any)?.id;
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
     }
+
+    await connectDB();
 
     const clientIp =
       req.headers.get("x-forwarded-for")?.split(",")[0].trim() ||
@@ -50,8 +43,26 @@ export async function GET(req: NextRequest) {
     const encoder = new TextEncoder();
 
     let heartbeatTimer: NodeJS.Timeout | null = null;
+    let journalPollTimer: NodeJS.Timeout | null = null;
+    let changeStream: any = null;
     let streamId: string | null = null;
     let closeTimer: NodeJS.Timeout | null = null;
+    let isClosed = false;
+
+    const cleanupStream = () => {
+      if (isClosed) return;
+      isClosed = true;
+      if (heartbeatTimer) clearInterval(heartbeatTimer);
+      if (journalPollTimer) clearInterval(journalPollTimer);
+      if (closeTimer) clearTimeout(closeTimer);
+      if (changeStream && typeof changeStream.close === "function") {
+        Promise.resolve(changeStream.close()).catch(() => {});
+        changeStream = null;
+      }
+      if (streamId) {
+        connManager.unregisterConnection(userId, streamId);
+      }
+    };
 
     const stream = new ReadableStream({
       async start(controller) {
@@ -68,15 +79,20 @@ export async function GET(req: NextRequest) {
         }
 
         streamId = reg.streamId!;
+        let highWaterSeq = 0;
 
         // 3. Bypass Reverse Proxy Buffering via 1024-byte comment flush
         controller.enqueue(encoder.encode(connManager.getInitialFlushPadding()));
 
         // 4. Replay Completeness Verification (5-Point Exact Interval Coverage)
         if (lastAckSeq !== null && !isNaN(lastAckSeq)) {
+          highWaterSeq = lastAckSeq;
+          connManager.advanceStreamHighWaterSeq(userId, streamId, highWaterSeq);
           const replayResult = await sequencer.verifyReplayInterval(userId, lastAckSeq);
 
           if (replayResult.resyncRequired) {
+            highWaterSeq = replayResult.currentSeq;
+            connManager.advanceStreamHighWaterSeq(userId, streamId, highWaterSeq);
             // Emits system.resync_required if gap detected, buffer overflow, or cursor skew
             const resyncMsg = connManager.formatSSEMessage(
               "system.resync_required",
@@ -92,6 +108,9 @@ export async function GET(req: NextRequest) {
           } else if (replayResult.records && replayResult.records.length > 0) {
             // Replay missed frames sequentially
             for (const r of replayResult.records) {
+              if (r.deliverySeq <= highWaterSeq) continue;
+              highWaterSeq = r.deliverySeq;
+              connManager.advanceStreamHighWaterSeq(userId, streamId, highWaterSeq);
               const replayMsg = connManager.formatSSEMessage("message", r.deliverySeq, {
                 type: "INVALIDATE",
                 tags: r.invalidationTags || [],
@@ -105,8 +124,11 @@ export async function GET(req: NextRequest) {
             }
           }
         } else {
-          // Cold Connection: emit connected baseline
-          const baselineMsg = connManager.formatSSEMessage("system.connected", 0, {
+          // Cold Connection: establish baseline sequence and emit connected baseline
+          const seqDoc = await UserDeliverySequenceModel.findOne({ userId }).lean();
+          highWaterSeq = (seqDoc as any)?.currentSequence ?? 0;
+          connManager.advanceStreamHighWaterSeq(userId, streamId, highWaterSeq);
+          const baselineMsg = connManager.formatSSEMessage("system.connected", highWaterSeq, {
             status: "CONNECTED",
             userId,
           });
@@ -131,12 +153,90 @@ export async function GET(req: NextRequest) {
           console.warn("[Surface SSE] Initial projection hydration error:", err);
         }
 
+        // 5b. Durable Cross-Process Delivery Journal Bridge (ChangeStream + bounded polling fallback)
+        const emitJournalDoc = (doc: any) => {
+          if (isClosed || !doc || typeof doc.deliverySeq !== "number") return;
+          if (doc.deliverySeq <= highWaterSeq) return;
+          highWaterSeq = doc.deliverySeq;
+          if (streamId) {
+            connManager.advanceStreamHighWaterSeq(userId, streamId, highWaterSeq);
+          }
+          try {
+            const liveMsg = connManager.formatSSEMessage("message", doc.deliverySeq, {
+              type: "INVALIDATE",
+              tags: doc.invalidationTags || [],
+              deliverySeq: doc.deliverySeq,
+              eventId: doc.eventId,
+              eventType: doc.eventType,
+              occurredAt: doc.occurredAt,
+            });
+            controller.enqueue(encoder.encode(liveMsg));
+          } catch {
+            cleanupStream();
+          }
+        };
+
+        const pollJournal = async () => {
+          if (isClosed) return;
+          try {
+            const newDocs = await UserDeliveryJournalModel.find({
+              userId,
+              deliverySeq: { $gt: highWaterSeq },
+            })
+              .sort({ deliverySeq: 1 })
+              .limit(50)
+              .lean();
+            for (const doc of newDocs) {
+              emitJournalDoc(doc);
+            }
+          } catch {
+            // Non-fatal transient poll error
+          }
+        };
+
+        let changeStreamActive = false;
+        if (typeof (UserDeliveryJournalModel as any).watch === "function") {
+          try {
+            changeStream = (UserDeliveryJournalModel as any).watch(
+              [
+                {
+                  $match: {
+                    "fullDocument.userId": userId,
+                    operationType: { $in: ["insert", "update", "replace"] },
+                  },
+                },
+              ],
+              { fullDocument: "updateLookup" }
+            );
+            changeStream.on("change", (change: any) => {
+              if (change?.fullDocument) {
+                emitJournalDoc(change.fullDocument);
+              }
+            });
+            changeStream.on("error", () => {
+              if (changeStream && typeof changeStream.close === "function") {
+                Promise.resolve(changeStream.close()).catch(() => {});
+                changeStream = null;
+              }
+              if (!isClosed && !journalPollTimer) {
+                journalPollTimer = setInterval(pollJournal, 1500);
+              }
+            });
+            changeStreamActive = true;
+          } catch {
+            changeStreamActive = false;
+          }
+        }
+
+        // Always keep bounded cursor polling when ChangeStreams aren't active (or at a slower 5s safety interval)
+        journalPollTimer = setInterval(pollJournal, changeStreamActive ? 5000 : 1500);
+
         // 6. Keep-Alive Heartbeat every 15 seconds
         heartbeatTimer = setInterval(() => {
           try {
             controller.enqueue(encoder.encode(": ping\n\n"));
           } catch {
-            if (heartbeatTimer) clearInterval(heartbeatTimer);
+            cleanupStream();
           }
         }, 15000);
 
@@ -146,23 +246,16 @@ export async function GET(req: NextRequest) {
             controller.enqueue(encoder.encode(": closing\n\n"));
             controller.close();
           } catch {}
+          cleanupStream();
         }, 55000);
       },
       cancel() {
-        if (heartbeatTimer) clearInterval(heartbeatTimer);
-        if (closeTimer) clearTimeout(closeTimer);
-        if (streamId) {
-          connManager.unregisterConnection(userId, streamId);
-        }
+        cleanupStream();
       },
     });
 
     req.signal.addEventListener("abort", () => {
-      if (heartbeatTimer) clearInterval(heartbeatTimer);
-      if (closeTimer) clearTimeout(closeTimer);
-      if (streamId) {
-        connManager.unregisterConnection(userId, streamId);
-      }
+      cleanupStream();
     });
 
     return new Response(stream, {

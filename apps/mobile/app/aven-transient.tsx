@@ -376,7 +376,7 @@ export default function AvenTransientModal(props: AvenTransientProps) {
         body: JSON.stringify({
           message: query,
           conversationId: conversationIdRef.current || undefined,
-          model: 'llama-3.3-70b-versatile',
+          model: 'openai/gpt-oss-120b',
           mode: 'general',
           streamFormat: 'events',
           clientPlatform: 'mobile',
@@ -533,7 +533,7 @@ export default function AvenTransientModal(props: AvenTransientProps) {
         body: JSON.stringify({
           message: query,
           conversationId: conversationIdRef.current || undefined,
-          model: 'llama-3.3-70b-versatile',
+          model: 'openai/gpt-oss-120b',
           mode: 'general',
           streamFormat: 'events',
           clientPlatform: 'mobile',
@@ -738,7 +738,7 @@ export default function AvenTransientModal(props: AvenTransientProps) {
               {userSpokenText.length > 0 && (
                 <View style={styles.transcriptCard}>
                   <Text style={styles.transcriptText} numberOfLines={2}>
-                    "{userSpokenText}"
+                    &quot;{userSpokenText}&quot;
                   </Text>
                 </View>
               )}

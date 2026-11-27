@@ -12,6 +12,12 @@ export const queryKeys = {
   // Dashboard & Surface
   dashboard: () => [...queryKeys.all, "dashboard"] as const,
   dashboardSummary: () => [...queryKeys.dashboard(), "summary"] as const,
+  surface: () => [...queryKeys.all, "surface"] as const,
+
+  // Health, Daily Log & Nutrition
+  dailyLog: () => [...queryKeys.all, "daily-log"] as const,
+  nutrition: () => [...queryKeys.all, "nutrition"] as const,
+  health: () => [...queryKeys.all, "health"] as const,
 
   // Tasks & Execution Graph
   tasks: () => [...queryKeys.all, "tasks"] as const,
@@ -31,6 +37,7 @@ export const queryKeys = {
   // System & Settings
   settings: () => [...queryKeys.all, "settings"] as const,
   diagnostics: () => [...queryKeys.all, "diagnostics"] as const,
+  governance: () => [...queryKeys.all, "governance"] as const,
 
   // Assistant & Conversation
   assistant: () => [...queryKeys.all, "assistant"] as const,
@@ -45,12 +52,18 @@ export const queryKeys = {
 export type CanonicalTag =
   | "tasks"
   | "dashboard"
+  | "surface"
   | "goals"
   | "learning"
   | "world"
   | "insights"
   | "settings"
-  | "assistant";
+  | "diagnostics"
+  | "governance"
+  | "assistant"
+  | "daily-log"
+  | "nutrition"
+  | "health";
 
 /**
  * Compile-time exhaustive mapping from canonical delivery invalidation tags
@@ -59,11 +72,17 @@ export type CanonicalTag =
 export const CanonicalTagToQueryMap: Record<CanonicalTag, readonly string[]> = {
   tasks: queryKeys.tasks(),
   dashboard: queryKeys.dashboard(),
+  surface: queryKeys.surface(),
   goals: queryKeys.goals(),
   learning: queryKeys.learning(),
   world: queryKeys.world(),
   insights: queryKeys.insights(),
   settings: queryKeys.settings(),
+  diagnostics: queryKeys.diagnostics(),
+  governance: queryKeys.governance(),
   assistant: queryKeys.assistant(),
+  "daily-log": queryKeys.dailyLog(),
+  nutrition: queryKeys.nutrition(),
+  health: queryKeys.health(),
 };
 

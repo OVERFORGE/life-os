@@ -125,7 +125,9 @@ export default function PersonalizationScreen() {
 
   // Safe standard useEffect - does not crash with NavigationContainer mismatch
   useEffect(() => {
-    loadPrefs();
+    queueMicrotask(() => {
+      void loadPrefs();
+    });
   }, []);
 
   const save = async () => {
@@ -473,7 +475,7 @@ export default function PersonalizationScreen() {
                 <Text style={{ color: C.subtext, fontSize: 10, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1.5, marginBottom: 12 }}>Reminder Time (local)</Text>
                 <Stepper value={reminderHour} min={0} max={23} onChange={setReminderHour} format={formatHour} />
                 <Text style={{ color: C.muted, fontSize: 12, marginTop: 12, lineHeight: 18, fontWeight: '600' }}>
-                  You'll be reminded every {DAYS_FULL[reminderDay]} at {formatHour(reminderHour)} to measure your weight.
+                  You&apos;ll be reminded every {DAYS_FULL[reminderDay]} at {formatHour(reminderHour)} to measure your weight.
                 </Text>
               </>
             )}
@@ -487,7 +489,7 @@ export default function PersonalizationScreen() {
               </View>
               <View style={{ flex: 1 }}>
                 <Text style={{ color: C.text, fontSize: 16, fontWeight: '900' }}>Day Rollover Hour</Text>
-                <Text style={{ color: C.muted, fontSize: 12, marginTop: 4, fontWeight: '600' }}>When does your "day" actually start?</Text>
+                <Text style={{ color: C.muted, fontSize: 12, marginTop: 4, fontWeight: '600' }}>When does your &quot;day&quot; actually start?</Text>
               </View>
             </View>
 
@@ -497,7 +499,7 @@ export default function PersonalizationScreen() {
               <Text style={{ color: C.primary, fontSize: 11, fontWeight: '900', textTransform: 'uppercase', letterSpacing: 1, marginBottom: 8 }}>How it works</Text>
               <Text style={{ color: C.subtext, fontSize: 12, lineHeight: 20, fontWeight: '600' }}>
                 Currently set to <Text style={{ color: C.text, fontWeight: '900' }}>{formatHour(rolloverHour)}</Text>.{'\n'}
-                Any food or activity logged before {formatHour(rolloverHour)} will count towards <Text style={{ color: C.text, fontWeight: '900' }}>yesterday's</Text> record — great if you're a night owl.
+                Any food or activity logged before {formatHour(rolloverHour)} will count towards <Text style={{ color: C.text, fontWeight: '900' }}>yesterday&apos;s</Text> record — great if you&apos;re a night owl.
               </Text>
             </View>
           </View>
@@ -582,7 +584,7 @@ export default function PersonalizationScreen() {
                       <Text> {activeModeObj.offset > 0 ? '+ ' : '− '}{Math.abs(activeModeObj.offset)} = <Text style={{ fontWeight: '900' }}>{targetCals} kcal target</Text></Text>
                     ) : ' (your target)'}
                   </Text>
-                  <Text style={{ color: C.muted, fontSize: 11, marginTop: 8, fontWeight: '700' }}>You can also say "switch to bulk" or "start a cut" in the AI chat.</Text>
+                  <Text style={{ color: C.muted, fontSize: 11, marginTop: 8, fontWeight: '700' }}>You can also say &quot;switch to bulk&quot; or &quot;start a cut&quot; in the AI chat.</Text>
                 </View>
               </View>
             );

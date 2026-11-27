@@ -131,6 +131,7 @@ export function auditSourceFile(
         moduleSpecifier.startsWith("../workspace/") ||
         moduleSpecifier.startsWith("../observability/") ||
         moduleSpecifier.startsWith("../external/") ||
+        moduleSpecifier.startsWith("../langgraph/") ||
         moduleSpecifier.startsWith("../../shared/") ||
         moduleSpecifier.startsWith("../../kernel/") ||
         moduleSpecifier.startsWith("../../persona") ||
@@ -362,6 +363,126 @@ export function auditSourceFile(
       }
     }
 
+    // RULE 10: Legacy FastPathExecutor Prohibition in Production Code
+    if (!normalizedPath.includes("/testing/") && (ts.isImportDeclaration(node) || ts.isExportDeclaration(node))) {
+      const modText = node.moduleSpecifier?.getText(sourceFile) || "";
+      if (modText.includes("FastPathExecutor")) {
+        if (!isExempt("NO_LEGACY_FAST_PATH_IMPORT", normalizedPath, line)) {
+          violationsList.push({
+            ruleId: "NO_LEGACY_FAST_PATH_IMPORT",
+            file: normalizedPath,
+            line,
+            message: `Rule 10 violation: Legacy FastPathExecutor must not be imported or exported in production code.`,
+          });
+        }
+      }
+    }
+
+    // RULE 11: Planner, Verifier, Goal Handler & Interpreter Heuristic Regex Prohibition
+    const isSemanticPureTarget =
+      normalizedPath.endsWith("orchestration/planning/DynamicWorkflowPlanner.ts") ||
+      normalizedPath.endsWith("orchestration/kernel/OutcomeVerifier.ts") ||
+      normalizedPath.endsWith("dispatch/executionHandlers/handleConfirmGoal.ts");
+    if (isSemanticPureTarget && (ts.isRegularExpressionLiteral(node) || ts.isCallExpression(node))) {
+      const nodeText = node.getText(sourceFile);
+      if (
+        ts.isRegularExpressionLiteral(node) ||
+        /\.toLowerCase\(\)\.includes\(/.test(nodeText)
+      ) {
+        if (!isExempt("NO_PLANNER_VERIFIER_HANDLER_REGEX", normalizedPath, line)) {
+          violationsList.push({
+            ruleId: "NO_PLANNER_VERIFIER_HANDLER_REGEX",
+            file: normalizedPath,
+            line,
+            message: `Rule 11 violation: NL regex or prose substring matching is prohibited in '${path.basename(normalizedPath)}'.`,
+          });
+        }
+      }
+    }
+
+    // RULE 12: ContextProjectionEngine Fabricated Numeric Default Prohibition (D1)
+    if (normalizedPath.endsWith("orchestration/context/ContextProjectionEngine.ts") && ts.isBinaryExpression(node)) {
+      const op = node.operatorToken.kind;
+      if (op === ts.SyntaxKind.QuestionQuestionToken || op === ts.SyntaxKind.BarBarToken) {
+        const leftText = node.left.getText(sourceFile);
+        const rightText = node.right.getText(sourceFile).trim();
+        if (
+          /\b(mood|energy|stress|sleepHours|focus|anxiety|readinessScore|weightKg)\b/.test(leftText) &&
+          /^\d+(?:\.\d+)?$/.test(rightText)
+        ) {
+          if (!isExempt("NO_FABRICATED_CONTEXT_PROJECTION_DEFAULTS", normalizedPath, line)) {
+            violationsList.push({
+              ruleId: "NO_FABRICATED_CONTEXT_PROJECTION_DEFAULTS",
+              file: normalizedPath,
+              line,
+              message: `Rule 12 violation: Fabricated numeric fallback '${rightText}' on telemetry metric '${leftText}' violates D1 nullable/unknown policy.`,
+            });
+          }
+        }
+      }
+    }
+
+    // RULE 13: API Auth & Tenant Guard
+    if (normalizedPath.includes("apps/web/app/api/") && !normalizedPath.includes("/testing/") && ts.isCallExpression(node)) {
+      const callText = node.getText(sourceFile);
+      if (/^User\.findOne\(\s*\)$/.test(callText)) {
+        if (!isExempt("API_AUTH_AND_TENANT_GUARD", normalizedPath, line)) {
+          violationsList.push({
+            ruleId: "API_AUTH_AND_TENANT_GUARD",
+            file: normalizedPath,
+            line,
+            message: `Rule 13 violation: Unauthenticated User.findOne() fallback is prohibited in API routes.`,
+          });
+        }
+      }
+      if (/^getServerSession\s*\(/.test(callText)) {
+        if (!isExempt("API_AUTH_AND_TENANT_GUARD", normalizedPath, line)) {
+          violationsList.push({
+            ruleId: "API_AUTH_AND_TENANT_GUARD",
+            file: normalizedPath,
+            line,
+            message: `Rule 13 violation: API routes must use getAuthSession() instead of direct getServerSession(authOptions).`,
+          });
+        }
+      }
+    }
+
+    // RULE 14: API & Dispatch Handler Outbox Parity
+    const isProtectedMutationLayer =
+      (normalizedPath.includes("apps/web/app/api/") ||
+        normalizedPath.includes("execution-kernel/src/dispatch/executionHandlers/")) &&
+      !normalizedPath.includes("/testing/");
+    if (isProtectedMutationLayer && ts.isCallExpression(node)) {
+      const callText = node.getText(sourceFile);
+      const outboxModels = [
+        "WeightLog",
+        "FoodItem",
+        "DayTemplate",
+        "WorkoutRoutine",
+        "Gym",
+        "LifeCategory",
+        "LifeSignal",
+        "LifeSystemSettings",
+        "GoalProposal",
+        "DailySession",
+      ];
+      const matchedModel = outboxModels.find((m) =>
+        new RegExp(`^${m}\\.(create|findOneAndUpdate|findByIdAndUpdate|updateOne|updateMany|findOneAndDelete|deleteOne)\\s*\\(`).test(
+          callText
+        )
+      );
+      if (matchedModel) {
+        if (!isExempt("API_AND_HANDLER_OUTBOX_PARITY", normalizedPath, line)) {
+          violationsList.push({
+            ruleId: "API_AND_HANDLER_OUTBOX_PARITY",
+            file: normalizedPath,
+            line,
+            message: `Rule 14 violation: Direct write on '${matchedModel}' detected outside Outbox engine.`,
+          });
+        }
+      }
+    }
+
     ts.forEachChild(node, visit);
   }
 
@@ -429,7 +550,7 @@ if (require.main === module || (typeof process !== "undefined" && process.argv[1
 
   if (violations.length === 0) {
     console.log("SUCCESS: 0 architectural violations found.");
-    console.log("All 9 Semantic Architecture Rules verified and compliant.");
+    console.log("All 14 Semantic Architecture Rules verified and compliant.");
     console.log("=======================================================\n");
     process.exit(0);
   } else {

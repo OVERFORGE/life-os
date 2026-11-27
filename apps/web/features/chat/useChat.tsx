@@ -1,41 +1,32 @@
 "use client";
 
 import { useState, useEffect, useCallback, useRef } from "react";
+import {
+  SseStreamParser,
+  createInitialChatStreamState,
+  reduceChatStreamEvent,
+  type TurnStatus,
+  type ParsedToolActivityItem,
+  type ParsedConfirmationItem,
+  type ParsedMissingConnectionItem,
+} from "./sseStreamParser";
 
-export interface ToolActivityItem {
-  id: string;
-  providerId: string;
-  providerDisplayName: string;
-  capabilityURN: string;
-  iconName: string;
-  humanMessage: string;
-  state: "started" | "completed" | "failed";
-  error?: string;
+export interface ToolActivityItem extends Omit<ParsedToolActivityItem, "details"> {
   details?: Record<string, any>;
 }
-
-export interface ConfirmationItem {
-  actionId: string;
-  title: string;
-  message: string;
-  details?: Record<string, string>;
-  confirmLabel: string;
-  cancelLabel: string;
-}
-
-export interface MissingConnectionItem {
-  providerId: string;
-  providerDisplayName: string;
-  iconName: string;
-  message: string;
-  connectUrl: string;
-}
+export type ConfirmationItem = ParsedConfirmationItem;
+export type MissingConnectionItem = ParsedMissingConnectionItem;
+export type { TurnStatus };
 
 export interface ChatMessageItem {
+  id?: string;
+  requestId?: string;
   role: "user" | "assistant";
   content: string;
   createdAt?: string;
   statusPhase?: string;
+  turnStatus?: TurnStatus;
+  errorMessage?: string;
   toolActivities?: ToolActivityItem[];
   confirmation?: ConfirmationItem;
   missingConnection?: MissingConnectionItem;
@@ -51,64 +42,144 @@ export function useChat(options?: UseChatOptions) {
   const onMessageSent = options?.onMessageSent;
 
   const [messages, setMessages] = useState<ChatMessageItem[]>([]);
-  const [loading, setLoading] = useState(false);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [isStreaming, setIsStreaming] = useState(false);
   const [selectedModel, setSelectedModel] = useState("openai/gpt-oss-120b");
+
   const abortControllerRef = useRef<AbortController | null>(null);
+  const historyAbortRef = useRef<AbortController | null>(null);
+  const inFlightRef = useRef(false);
+  const activeConversationRef = useRef<string | null | undefined>(conversationId);
+
+  useEffect(() => {
+    activeConversationRef.current = conversationId;
+  }, [conversationId]);
+
+  const stopGeneration = useCallback(() => {
+    if (abortControllerRef.current) {
+      abortControllerRef.current.abort();
+    }
+  }, []);
 
   // Load message history whenever active conversationId changes
   const loadHistory = useCallback(async (id: string) => {
+    historyAbortRef.current?.abort();
+    const historyController = new AbortController();
+    historyAbortRef.current = historyController;
+
     try {
-      setLoading(true);
-      const res = await fetch(`/api/conversations/${encodeURIComponent(id)}`);
+      setIsLoadingHistory(true);
+      const res = await fetch(`/api/conversations/${encodeURIComponent(id)}`, {
+        signal: historyController.signal,
+      });
       if (!res.ok) {
         if (res.status === 404) {
-          setMessages([]);
+          if (activeConversationRef.current === id) setMessages([]);
           return;
         }
         throw new Error(`Failed to load history (${res.status})`);
       }
       const data = await res.json();
-      const history = (data.messages || []).map((m: any) => ({
+      if (activeConversationRef.current !== id) return;
+      const history: ChatMessageItem[] = (data.messages || []).map((m: any, idx: number) => ({
+        id: m._id || m.id || `hist_${idx}`,
+        requestId: m.requestId,
         role: m.role as "user" | "assistant",
         content: m.content || "",
         createdAt: m.createdAt,
+        turnStatus: m.status,
         toolActivities: m.toolActivities && m.toolActivities.length > 0 ? m.toolActivities : undefined,
         missingConnection: m.missingConnection,
         confirmation: m.confirmation,
       }));
       setMessages(history);
-    } catch (err) {
-      console.warn("[USE_CHAT] Error loading history for conversation:", id, err);
+    } catch (err: any) {
+      if (err?.name !== "AbortError") {
+        console.warn("[USE_CHAT] Error loading history for conversation:", id, err);
+      }
     } finally {
-      setLoading(false);
+      if (historyAbortRef.current === historyController) {
+        historyAbortRef.current = null;
+        setIsLoadingHistory(false);
+      }
     }
   }, []);
 
   useEffect(() => {
-    if (conversationId) {
-      loadHistory(conversationId);
-    } else {
-      setMessages([]);
-    }
+    // Cancel any active stream when switching conversations so stale chunks never leak
+    abortControllerRef.current?.abort();
+    abortControllerRef.current = null;
+    inFlightRef.current = false;
+
+    let cancelled = false;
+    queueMicrotask(() => {
+      if (cancelled) return;
+      setIsStreaming(false);
+      if (conversationId) {
+        void loadHistory(conversationId);
+      } else {
+        setMessages([]);
+      }
+    });
+    return () => {
+      cancelled = true;
+    };
   }, [conversationId, loadHistory]);
 
   const sendMessage = useCallback(
     async (text: string) => {
       const trimmed = text.trim();
-      if (!trimmed || loading) return;
+      if (!trimmed || inFlightRef.current) return;
+
+      inFlightRef.current = true;
+      setIsStreaming(true);
 
       const activeId = conversationId || "default";
+      const clientRequestId =
+        typeof crypto !== "undefined" && typeof crypto.randomUUID === "function"
+          ? `req_${crypto.randomUUID()}`
+          : `req_${Date.now()}_${Math.random().toString(36).slice(2, 8)}`;
+
+      const userMsgId = `${clientRequestId}_user`;
+      const assistantMsgId = `${clientRequestId}_assistant`;
 
       // 1. Optimistically display user's bubble and an initial streaming assistant bubble
       setMessages((prev) => [
         ...prev,
-        { role: "user", content: trimmed },
-        { role: "assistant", content: "", statusPhase: "understanding" },
+        { id: userMsgId, requestId: clientRequestId, role: "user", content: trimmed },
+        {
+          id: assistantMsgId,
+          requestId: clientRequestId,
+          role: "assistant",
+          content: "",
+          statusPhase: "understanding",
+          turnStatus: "streaming",
+        },
       ]);
-      setLoading(true);
 
       const abortController = new AbortController();
       abortControllerRef.current = abortController;
+      let streamState = createInitialChatStreamState();
+
+      const updateBubble = () => {
+        setMessages((prev) =>
+          prev.map((m) =>
+            m.id === assistantMsgId
+              ? {
+                  ...m,
+                  content: streamState.content,
+                  statusPhase: streamState.statusPhase,
+                  turnStatus: streamState.turnStatus,
+                  errorMessage: streamState.errorMessage,
+                  toolActivities:
+                    streamState.toolActivities.length > 0 ? [...streamState.toolActivities] : undefined,
+                  confirmation: streamState.confirmation,
+                  missingConnection: streamState.missingConnection,
+                }
+              : m
+          )
+        );
+      };
 
       try {
         const localTz = Intl.DateTimeFormat().resolvedOptions().timeZone || "UTC";
@@ -119,8 +190,10 @@ export function useChat(options?: UseChatOptions) {
             "Content-Type": "application/json",
             Accept: "text/event-stream",
             "x-timezone": localTz,
+            "x-request-id": clientRequestId,
           },
           body: JSON.stringify({
+            requestId: clientRequestId,
             message: trimmed,
             model: selectedModel,
             mode: "general",
@@ -145,150 +218,71 @@ export function useChat(options?: UseChatOptions) {
 
         const reader = res.body.getReader();
         const decoder = new TextDecoder();
-        let buffer = "";
-        let assistantAccumulated = "";
-        let currentActivities: ToolActivityItem[] = [];
-        let currentConfirmation: ConfirmationItem | undefined = undefined;
-        let currentMissingConnection: MissingConnectionItem | undefined = undefined;
-        let currentStatusPhase = "understanding";
-
-        const updateBubble = () => {
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const updated = [...prev];
-            const lastIdx = updated.length - 1;
-            if (updated[lastIdx].role === "assistant") {
-              updated[lastIdx] = {
-                ...updated[lastIdx],
-                content: assistantAccumulated,
-                statusPhase: currentStatusPhase,
-                toolActivities: currentActivities.length > 0 ? [...currentActivities] : undefined,
-                confirmation: currentConfirmation,
-                missingConnection: currentMissingConnection,
-              };
-            }
-            return updated;
-          });
-        };
+        const parser = new SseStreamParser();
 
         while (true) {
           const { done, value } = await reader.read();
           if (done) break;
 
           const chunkText = decoder.decode(value, { stream: true });
-          buffer += chunkText;
-
-          // Process SSE lines
-          if (buffer.includes("\n\n")) {
-            const parts = buffer.split("\n\n");
-            buffer = parts.pop() || "";
-
-            for (const part of parts) {
-              const lines = part.split("\n");
-              for (const line of lines) {
-                const trimmedLine = line.trim();
-                if (trimmedLine.startsWith("data: ")) {
-                  try {
-                    const eventData = JSON.parse(trimmedLine.slice(6));
-                    if (eventData.type === "assistant_delta") {
-                      assistantAccumulated += eventData.text || "";
-                    } else if (eventData.type === "status") {
-                      currentStatusPhase = eventData.status;
-                    } else if (eventData.type === "tool_activity") {
-                      const existingIdx = currentActivities.findIndex(
-                        (a) =>
-                          a.capabilityURN === eventData.capabilityURN &&
-                          a.providerId === eventData.providerId
-                      );
-                      const activityObj: ToolActivityItem = {
-                        id: `${eventData.providerId}_${eventData.capabilityURN}`,
-                        providerId: eventData.providerId,
-                        providerDisplayName: eventData.providerDisplayName,
-                        capabilityURN: eventData.capabilityURN,
-                        iconName: eventData.iconName,
-                        humanMessage: eventData.humanMessage,
-                        state: eventData.state,
-                        error: eventData.error,
-                        details: eventData.details,
-                      };
-                      if (existingIdx !== -1) {
-                        currentActivities[existingIdx] = activityObj;
-                      } else {
-                        currentActivities.push(activityObj);
-                      }
-                    } else if (eventData.type === "confirmation_required") {
-                      currentConfirmation = {
-                        actionId: eventData.actionId,
-                        title: eventData.title,
-                        message: eventData.message,
-                        details: eventData.details,
-                        confirmLabel: eventData.confirmLabel || "Allow",
-                        cancelLabel: eventData.cancelLabel || "Deny",
-                      };
-                    } else if (eventData.type === "missing_connection") {
-                      currentMissingConnection = {
-                        providerId: eventData.providerId,
-                        providerDisplayName: eventData.providerDisplayName,
-                        iconName: eventData.iconName,
-                        message: eventData.message,
-                        connectUrl: eventData.connectUrl || "/settings/connections",
-                      };
-                    } else if (eventData.type === "error") {
-                      assistantAccumulated += `\n${eventData.message}`;
-                    }
-                  } catch (_) {
-                    assistantAccumulated += trimmedLine.slice(6);
-                  }
-                } else if (trimmedLine.length > 0 && !trimmedLine.startsWith("event:")) {
-                  // Fallback raw text stream
-                  assistantAccumulated += trimmedLine;
-                }
-              }
+          const events = parser.push(chunkText);
+          if (events.length > 0) {
+            for (const ev of events) {
+              streamState = reduceChatStreamEvent(streamState, ev);
             }
-            updateBubble();
-          } else if (!buffer.startsWith("data:") && !buffer.startsWith("event:")) {
-            // Raw text chunking fallback
-            assistantAccumulated += buffer;
-            buffer = "";
             updateBubble();
           }
         }
 
+        const trailingEvents = parser.flush();
+        if (trailingEvents.length > 0) {
+          for (const ev of trailingEvents) {
+            streamState = reduceChatStreamEvent(streamState, ev);
+          }
+        }
+        if (streamState.turnStatus === "streaming") {
+          streamState = { ...streamState, turnStatus: "completed", statusPhase: "completed" };
+        }
         updateBubble();
         onMessageSent?.();
       } catch (err: any) {
-        if (err.name === "AbortError") {
-          console.log("[USE_CHAT] Request aborted by user.");
+        if (err?.name === "AbortError") {
+          streamState = {
+            ...streamState,
+            turnStatus: "cancelled",
+            statusPhase: "cancelled",
+          };
+          updateBubble();
         } else {
           console.error("[USE_CHAT] Failed to send message:", err);
-          // Update assistant bubble with clear error feedback
-          setMessages((prev) => {
-            if (prev.length === 0) return prev;
-            const updated = [...prev];
-            const lastIdx = updated.length - 1;
-            if (updated[lastIdx].role === "assistant") {
-              updated[lastIdx] = {
-                ...updated[lastIdx],
-                content: `Sorry, I encountered an issue: ${err.message || "Failed to respond"}`,
-              };
-            }
-            return updated;
-          });
+          streamState = {
+            ...streamState,
+            turnStatus: "failed",
+            statusPhase: "failed",
+            errorMessage: err?.message || "Failed to respond",
+          };
+          updateBubble();
         }
       } finally {
-        setLoading(false);
-        abortControllerRef.current = null;
+        inFlightRef.current = false;
+        setIsStreaming(false);
+        if (abortControllerRef.current === abortController) {
+          abortControllerRef.current = null;
+        }
       }
     },
-    [conversationId, loading, selectedModel, onMessageSent]
+    [conversationId, selectedModel, onMessageSent]
   );
 
   return {
     messages,
-    loading,
+    loading: isStreaming || isLoadingHistory,
+    isStreaming,
+    isLoadingHistory,
     selectedModel,
     setSelectedModel,
     sendMessage,
+    stopGeneration,
     reload: () => {
       if (conversationId) loadHistory(conversationId);
     },

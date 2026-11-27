@@ -35,7 +35,7 @@ export default function VoiceCallScreen() {
   const [userTranscript, setUserTranscript] = useState('');
   const [assistantTranscript, setAssistantTranscript] = useState('');
   const [errorMessage, setErrorMessage] = useState('');
-  const [selectedModel] = useState('llama-3.3-70b-versatile');
+  const [selectedModel] = useState('openai/gpt-oss-120b');
 
   const voiceRecorderRef = useRef(new VoiceRecorder());
   const cancelledRef = useRef(false);
@@ -627,7 +627,7 @@ export default function VoiceCallScreen() {
                 <View style={{ width: 5, height: 5, borderRadius: 3, backgroundColor: C.primary }} />
                 <Text style={{ fontSize: 10, fontWeight: '700', color: C.primary, letterSpacing: 1.5, textTransform: 'uppercase' }}>LIVE TRANSCRIPT</Text>
               </View>
-              <Text style={{ fontSize: 13, color: C.text, lineHeight: 18, fontStyle: 'italic' }}>"{userTranscript}"</Text>
+              <Text style={{ fontSize: 13, color: C.text, lineHeight: 18, fontStyle: 'italic' }}>&quot;{userTranscript}&quot;</Text>
             </View>
           ) : (
             <View style={{ alignItems: 'center', justifyContent: 'center', flex: 1 }}>

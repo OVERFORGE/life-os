@@ -25,21 +25,13 @@ interface SessionUser {
 export async function POST(req: NextRequest) {
   try {
     const session = await getAuthSession();
-    let userId = (session?.user as SessionUser | undefined)?.id;
-
-    await connectDB();
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as { _id: { toString: () => string } })._id.toString();
-      }
-    }
+    const userId = (session?.user as SessionUser | undefined)?.id;
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
     }
+
+    await connectDB();
 
     const body = (await req.json()) as WebPushSubscriptionPayload;
 
@@ -87,21 +79,13 @@ export async function POST(req: NextRequest) {
 export async function DELETE(req: NextRequest) {
   try {
     const session = await getAuthSession();
-    let userId = (session?.user as SessionUser | undefined)?.id;
-
-    await connectDB();
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as { _id: { toString: () => string } })._id.toString();
-      }
-    }
+    const userId = (session?.user as SessionUser | undefined)?.id;
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
     }
+
+    await connectDB();
 
     const body = (await req.json().catch(() => ({}))) as { deviceId?: string; endpoint?: string };
 

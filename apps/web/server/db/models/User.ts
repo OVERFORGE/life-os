@@ -49,6 +49,9 @@ const UserSchema = new Schema(
         phoneticSpelling: { type: String, default: "" },
       },
     },
+    version: { type: Number, default: 0 },
+    mutationEpoch: { type: Number, default: 0 },
+    recentMutationReceipts: { type: [Schema.Types.Mixed], default: [] },
   },
   { timestamps: true }
 );

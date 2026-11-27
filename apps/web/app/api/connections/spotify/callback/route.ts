@@ -24,15 +24,7 @@ export async function GET(req: NextRequest) {
     await connectDB();
 
     const session = await getAuthSession();
-    let userId = (session?.user as any)?.id || state;
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-      }
-    }
+    const userId = (session?.user as any)?.id || state;
 
     if (!userId) {
       return NextResponse.redirect(`${baseUrl}/settings/connections?error=unauthorized`);

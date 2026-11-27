@@ -1,4 +1,5 @@
 import { groqChat, cleanLLMResponse } from "../shared/groq";
+import { resolveGroqModel } from "../shared/modelRegistry";
 
 export interface EstimatedNutrientItem {
   name: string;
@@ -88,14 +89,14 @@ Return ONLY a valid JSON object matching this exact schema:
 
 Meal description: "${trimmed}"`;
 
-        const raw = await groqChat({
+        const raw = await (await import("../shared/langchain/LifeOSChatModel")).invokeLifeOSChat({
           messages: [
             { role: "system", content: "You output only valid JSON without explanation or formatting." },
             { role: "user", content: prompt },
           ],
-          model: process.env.GROQ_MODEL || "openai/gpt-oss-120b",
+          model: resolveGroqModel(),
           temperature: 0.1,
-          max_tokens: 400,
+          maxTokens: 400,
         });
 
         const cleaned = cleanLLMResponse(raw);

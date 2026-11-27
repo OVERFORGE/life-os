@@ -1,10 +1,19 @@
 import mongoose, { Schema, Document, Model } from "mongoose";
 
+export type ConversationMessageStatus =
+  | "completed"
+  | "cancelled"
+  | "failed"
+  | "waiting_for_confirmation";
+
 export interface IConversationMessage extends Document {
   conversationId: string; // "default" for legacy records without a conversation
   userId: string;
   role: "user" | "assistant" | "system";
   content: string;
+  requestId?: string;
+  executionId?: string;
+  status?: ConversationMessageStatus;
   tokenEstimate: number;
   toolActivities?: Array<{
     id: string;
@@ -57,7 +66,21 @@ const ConversationMessageSchema = new Schema<IConversationMessage>(
     },
     content: {
       type: String,
-      required: true,
+      required: false,
+      default: "",
+    },
+    requestId: {
+      type: String,
+      default: undefined,
+    },
+    executionId: {
+      type: String,
+      default: undefined,
+    },
+    status: {
+      type: String,
+      enum: ["completed", "cancelled", "failed", "waiting_for_confirmation"],
+      default: undefined,
     },
     tokenEstimate: {
       type: Number,
@@ -85,6 +108,14 @@ const ConversationMessageSchema = new Schema<IConversationMessage>(
 ConversationMessageSchema.index({ conversationId: 1, createdAt: 1 });
 // Legacy support: userId-only query still works for backward compat
 ConversationMessageSchema.index({ userId: 1, createdAt: 1 });
+// Idempotency guard: prevent duplicate user/assistant turns for identical requestId
+ConversationMessageSchema.index(
+  { userId: 1, conversationId: 1, requestId: 1, role: 1 },
+  {
+    unique: true,
+    partialFilterExpression: { requestId: { $type: "string" } },
+  }
+);
 
 export const ConversationMessage: Model<IConversationMessage> =
   (mongoose.models.ConversationMessage as Model<IConversationMessage>) ||

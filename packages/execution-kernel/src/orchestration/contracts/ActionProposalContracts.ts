@@ -47,6 +47,14 @@ export type DomainActionType =
   | "resume_execution"
   | "cancel_execution"
   | "compensate_last_action"
+  // Internal LifeOS Read Capabilities (Stage 1)
+  | "lifeos.tasks.query"
+  | "lifeos.goals.query"
+  | "lifeos.schedule.query_occurrences"
+  | "lifeos.daily_logs.query_range"
+  | "lifeos.telemetry.query_state_history"
+  // Internal LifeOS Memory Read Capability (Stage 4)
+  | "lifeos.memory.search"
   // Sovereign External Capability Action
   | "external_capability_action";
 
@@ -437,6 +445,68 @@ export const DOMAIN_CAPABILITIES: Record<DomainActionType, DomainActionCapabilit
     duplicatePolicy: "ALLOW_ALWAYS",
     idempotencyScope: "TRANSACTION_KEY",
     verbalization: { entityNoun: "action", actionVerbPast: "compensated" },
+  },
+  "lifeos.tasks.query": {
+    actionType: "lifeos.tasks.query",
+    domain: "productivity",
+    operationKind: "READ",
+    requiresTargetEntity: false,
+    targetEntityType: "task",
+    supportsContinuation: false,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "tasks", actionVerbPast: "queried" },
+  },
+  "lifeos.goals.query": {
+    actionType: "lifeos.goals.query",
+    domain: "productivity",
+    operationKind: "READ",
+    requiresTargetEntity: false,
+    targetEntityType: "goal",
+    supportsContinuation: false,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "goals", actionVerbPast: "queried" },
+  },
+  "lifeos.schedule.query_occurrences": {
+    actionType: "lifeos.schedule.query_occurrences",
+    domain: "productivity",
+    operationKind: "READ",
+    requiresTargetEntity: false,
+    supportsContinuation: false,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "schedule occurrences", actionVerbPast: "queried" },
+  },
+  "lifeos.daily_logs.query_range": {
+    actionType: "lifeos.daily_logs.query_range",
+    domain: "wellness",
+    operationKind: "READ",
+    requiresTargetEntity: false,
+    supportsContinuation: false,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "daily logs", actionVerbPast: "queried" },
+  },
+  "lifeos.telemetry.query_state_history": {
+    actionType: "lifeos.telemetry.query_state_history",
+    domain: "wellness",
+    operationKind: "READ",
+    requiresTargetEntity: false,
+    supportsContinuation: false,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "telemetry history", actionVerbPast: "queried" },
+  },
+  "lifeos.memory.search": {
+    actionType: "lifeos.memory.search",
+    domain: "context",
+    operationKind: "READ",
+    requiresTargetEntity: false,
+    supportsContinuation: false,
+    duplicatePolicy: "ALLOW_ALWAYS",
+    idempotencyScope: "TRANSACTION_KEY",
+    verbalization: { entityNoun: "personal memories", actionVerbPast: "searched" },
   },
 };
 

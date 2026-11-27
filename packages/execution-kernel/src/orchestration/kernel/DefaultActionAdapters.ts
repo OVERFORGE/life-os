@@ -1272,6 +1272,22 @@ export function registerDefaultActionAdapters(registry: ActionAdapterRegistry = 
   const externalAdapter = ExternalCapabilityAdapter.getInstance();
   if (!registry.has("external_capability_action")) registry.register("external_capability_action", externalAdapter);
 
+  // Stage 1: Internal LifeOS Read Capability Adapters
+  const {
+    QueryTasksAdapter,
+    QueryGoalsAdapter,
+    QueryOccurrencesAdapter,
+    QueryDailyLogsAdapter,
+    QueryTelemetryHistoryAdapter,
+    QueryMemoryAdapter,
+  } = require("./InternalReadAdapters");
+  if (!registry.has("lifeos.tasks.query")) registry.register("lifeos.tasks.query", new QueryTasksAdapter());
+  if (!registry.has("lifeos.goals.query")) registry.register("lifeos.goals.query", new QueryGoalsAdapter());
+  if (!registry.has("lifeos.schedule.query_occurrences")) registry.register("lifeos.schedule.query_occurrences", new QueryOccurrencesAdapter());
+  if (!registry.has("lifeos.daily_logs.query_range")) registry.register("lifeos.daily_logs.query_range", new QueryDailyLogsAdapter());
+  if (!registry.has("lifeos.telemetry.query_state_history")) registry.register("lifeos.telemetry.query_state_history", new QueryTelemetryHistoryAdapter());
+  if (!registry.has("lifeos.memory.search")) registry.register("lifeos.memory.search", new QueryMemoryAdapter());
+
   return registry;
 }
 

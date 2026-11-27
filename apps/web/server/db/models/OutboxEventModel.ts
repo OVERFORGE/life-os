@@ -53,6 +53,7 @@ export interface IOutboxEventDoc extends Document {
   maxAttempts: number;
   nextAttemptAt: Date;
   deliveredAt?: Date | null;
+  deliverySeq?: number | null;
   failureReason?: string | null;
   mutationIntent?: IMutationIntentSubdoc;
   createdAt: Date;
@@ -204,6 +205,11 @@ const OutboxEventSchema = new Schema<IOutboxEventDoc>(
       type: Date,
       default: null,
     },
+    deliverySeq: {
+      type: Number,
+      default: null,
+      index: true,
+    },
     failureReason: {
       type: String,
       default: null,
@@ -222,6 +228,7 @@ const OutboxEventSchema = new Schema<IOutboxEventDoc>(
 OutboxEventSchema.index({ deliveryStatus: 1, nextAttemptAt: 1 });
 OutboxEventSchema.index({ deliveryStatus: 1, leaseExpiresAt: 1 });
 OutboxEventSchema.index({ userId: 1, deliveryStatus: 1 });
+OutboxEventSchema.index({ userId: 1, deliveryStatus: 1, deliverySeq: 1 });
 OutboxEventSchema.index({ aggregateId: 1, causalSequence: 1 });
 
 export const OutboxEventModel: Model<IOutboxEventDoc> =

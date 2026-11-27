@@ -6,7 +6,6 @@ import { LatencyProfiler } from './LatencyProfiler';
 import { KernelCapabilityService } from '../../orchestration/kernel/KernelCapabilityService';
 import { ActionAdapterRegistry } from '../../orchestration/kernel/ActionAdapters';
 import { registerDefaultActionAdapters } from '../../orchestration/kernel/DefaultActionAdapters';
-import { FastPathExecutor } from '../../orchestration/supervisor/FastPathExecutor';
 import { ProductivityAgent } from '../../orchestration/specialists/ProductivityAgent';
 import { HealthAgent } from '../../orchestration/specialists/HealthAgent';
 import { ParallelSpecialistExecutor, SpecialistInvocation } from '../../orchestration/supervisor/ParallelSpecialistExecutor';
@@ -53,21 +52,32 @@ test('PHASE 0: Reality Baseline & Characterization Suite', async (suite) => {
     await tasksColl.insertOne(seedTask);
     seedTaskIdStr = seedTask._id.toString();
 
-    // 2. Setup Kernel & FastPath
+    // 2. Setup Kernel
     const registry = ActionAdapterRegistry.getInstance();
     registerDefaultActionAdapters(registry);
     const kernel = KernelCapabilityService.getInstance();
-    const fastPath = new FastPathExecutor(kernel);
 
-    // 3. Measure FastPath execution latency with LatencyProfiler
+    // 3. Measure atomic kernel execution latency with LatencyProfiler
     const { result, durationMs } = await profiler.measure('fastPath', async () => {
-      return await fastPath.execute(`Mark task ${seedTaskIdStr} complete`, testUserId, {
-        knownTasks: [{ id: seedTaskIdStr, title: seedTask.title }],
-      });
+      const proposal = {
+        id: 'prop_p0_1',
+        domain: 'productivity' as const,
+        actionType: 'complete_task' as const,
+        reversibility: 'atomic_single_doc' as const,
+        state: 'APPROVED' as const,
+        title: seedTask.title,
+        rationale: 'Phase 0 baseline task completion',
+        idempotencyKey: `p0_${seedTaskIdStr}`,
+        payload: { taskId: seedTaskIdStr },
+      };
+      const val = await kernel.validateActionProposals(testUserId, [proposal]);
+      assert.equal(val.valid, true);
+      const execRes = await kernel.executeAction(testUserId, proposal);
+      return { handled: execRes.success, proposal };
     });
 
-    // 4. Assert FastPath handled the request
-    assert.equal(result.handled, true, 'FastPath must handle task completion');
+    // 4. Assert execution succeeded
+    assert.equal(result.handled, true, 'Kernel must handle task completion');
     assert.equal(result.proposal?.actionType, 'complete_task');
 
     // 5. Assert actual MongoDB state mutation

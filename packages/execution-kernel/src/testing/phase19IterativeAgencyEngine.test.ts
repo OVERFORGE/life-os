@@ -13,11 +13,11 @@ import {
   StepReasonerInput,
 } from "../orchestration/contracts/WorkflowExecutionContracts";
 import { IPendingOperationContext } from "../orchestration/contracts/SemanticTurnContracts";
-import { FastPathExecutor } from "../orchestration/supervisor/FastPathExecutor";
 import {
   ExecutionPersistenceService,
   MockExecutionPersistenceStore,
 } from "../orchestration/workspace/ExecutionPersistenceService";
+import { createMockAuditModel } from "./helpers/mockAuditModel";
 
 // Setup valid HMAC secret for testing
 const TEST_HMAC_SECRET_V1 = "0123456789abcdef0123456789abcdef_v1";
@@ -68,7 +68,7 @@ test("TC-01 (End-to-End): Primary Benchmark: Search emails -> Synthesize -> Writ
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   // Turn 1: Initial Workflow run creates file write challenge requiring HITL
@@ -125,7 +125,7 @@ test("TC-01 (End-to-End): Primary Benchmark: Search emails -> Synthesize -> Writ
   assert.equal(result2.outcomeStatus, "GOAL_ACHIEVED_AND_VERIFIED");
   assert.ok(fileStore.has("Desktop/deploy_summary.txt"));
   assert.match(result2.response, /verified [\d,]+ bytes on disk/);
-  assert.match(result2.response, /synthesized by Aven from 2 unread emails/);
+  assert.match(result2.response, /synthesized from 2 retrieved record\(s\)/);
 });
 
 test("TC-02 (Integration): Decision Adaptation: Search returns healthy -> Reasoner reports unrealizable, no file created", async () => {
@@ -143,7 +143,7 @@ test("TC-02 (Integration): Decision Adaptation: Search returns healthy -> Reason
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const result = await dispatcher.executeWorkflow({
@@ -180,7 +180,7 @@ test("TC-03 (Contract): Empty Search on Positive Goal marks OBJECTIVE_UNMET_EMPT
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const result = await dispatcher.executeWorkflow({
@@ -218,7 +218,7 @@ test("TC-04 (Contract): Empty Search on Negative Check marks GOAL_ACHIEVED_AND_V
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const result = await dispatcher.executeWorkflow({
@@ -433,7 +433,7 @@ test("TC-12 (Concurrency): Delayed Worker Fenced: Worker A delayed past lease is
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const payload = { path: "Desktop/out.txt", content: "Content" };
@@ -496,7 +496,7 @@ test("TC-13 (Concurrency): Worker A Resumes After Worker B Recovery Initiated: W
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const payload = { path: "Desktop/out.txt", content: "Content" };
@@ -553,7 +553,7 @@ test("TC-14 (Concurrency): Single-Use Consumption Replay rejected", async () => 
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const payload = { path: "Desktop/out.txt", content: "Content" };
@@ -627,7 +627,7 @@ test("TC-16 (Recovery): Crash During In-Flight Mutation flags AMBIGUOUS_EXTERNAL
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const payload = { path: "Desktop/out.txt", content: "Content" };
@@ -684,7 +684,7 @@ test("TC-17 (Recovery): Crash After External Success: Read-back verifies artifac
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const payload = { path: "Desktop/recovered.txt", content: "Deployment summary recovered" };
@@ -759,7 +759,7 @@ test("TC-19 (Contract): Synthesis Fails Explicit Requirement (< 50 chars) marks 
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const result = await dispatcher.executeWorkflow({
@@ -809,7 +809,7 @@ test("TC-20 (Contract): Verified Artifact with Unverified Semantic Claims explic
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
   const dispatcher = new IterativeActionDispatcher(kernel);
 
   const payload = { path: "Desktop/summary.txt", content: "Verified content bytes" };
@@ -850,26 +850,36 @@ test("TC-20 (Contract): Verified Artifact with Unverified Semantic Claims explic
 
   assert.equal(res.outcomeStatus, "GOAL_ACHIEVED_AND_VERIFIED");
   assert.match(res.response, /verified 1,420 bytes on disk/);
-  assert.match(res.response, /synthesized by Aven from 2 unread emails/);
+  assert.match(res.response, /synthesized from 2 retrieved record\(s\)/);
 });
 
-test("TC-21 (Regression): Fast-Path Invariant: High-velocity command executes in < 20ms", async () => {
+test("TC-21 (Regression): Atomic Kernel Invariant: High-velocity command executes in < 100ms", async () => {
   const registry = new ActionAdapterRegistry();
   registry.register("complete_task", {
     validatePreconditions: async () => ({ valid: true }),
     execute: async () => ({ taskId: "task_1", completed: true }),
     compensate: async () => ({ compensated: true }),
   });
-  const kernel = new KernelCapabilityService(registry);
-  const fastPath = new FastPathExecutor(kernel);
-
-  assert.equal(fastPath.canHandle("complete task task_1"), true);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
+  const proposal = {
+    id: "prop_tc21",
+    domain: "productivity" as const,
+    actionType: "complete_task" as const,
+    reversibility: "atomic_single_doc" as const,
+    state: "APPROVED" as const,
+    title: "Complete task_1",
+    rationale: "Benchmark",
+    idempotencyKey: "tc21_key",
+    payload: { taskId: "task_1" },
+  };
   const start = performance.now();
-  const res = await fastPath.execute("complete task task_1", "user_1");
+  const val = await kernel.validateActionProposals("user_1", [proposal]);
+  assert.equal(val.valid, true);
+  const res = await kernel.executeAction("user_1", proposal);
   const elapsed = performance.now() - start;
 
-  assert.equal(res.handled, true);
-  assert.ok(elapsed < 100, `Fast path executed in ${elapsed}ms`);
+  assert.equal(res.success, true);
+  assert.ok(elapsed < 100, `Atomic kernel executed in ${elapsed}ms`);
 });
 
 test("TC-22 (Regression): Kernel Saga Invariant: Multi-action batch failure triggers reverse compensation", async () => {
@@ -893,7 +903,7 @@ test("TC-22 (Regression): Kernel Saga Invariant: Multi-action batch failure trig
     compensate: async () => ({ compensated: true }),
   });
 
-  const kernel = new KernelCapabilityService(registry);
+  const kernel = new KernelCapabilityService(registry, { auditModel: createMockAuditModel() });
 
   const proposals: any[] = [
     {

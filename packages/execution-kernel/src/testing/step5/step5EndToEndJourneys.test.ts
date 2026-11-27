@@ -28,7 +28,7 @@ import { ExecutionGraphConsumer } from "../../events/consumers/ExecutionGraphCon
 import { TemporalConflictConsumer } from "../../events/consumers/TemporalConflictConsumer";
 import { WorldModelBridge } from "../../worldv2/WorldModelBridge";
 import { KernelCapabilityService } from "../../orchestration/kernel/KernelCapabilityService";
-import { ActionProposal } from "../../orchestration/kernel/ActionProposalContracts";
+import { ActionProposal } from "../../orchestration/contracts/ActionProposalContracts";
 import { ActionAdapterRegistry } from "../../orchestration/kernel/ActionAdapters";
 import { CapabilityRegistry } from "../../orchestration/capabilities/CapabilityRegistry";
 import { HITLGovernanceEngine, TamperedInterventionError, ExpiredInterventionError } from "../../autonomous/HITLGovernanceEngine";
@@ -38,7 +38,11 @@ import { TemporalPartitionRevisionService } from "../../temporal/sweeper/Tempora
 import { ExecutionGraphProjectionService } from "../../events/projections/ExecutionGraphProjectionService";
 import { AutonomousExecutionDaemon } from "../../autonomous/AutonomousExecutionDaemon";
 import { AutonomousLeaseManager } from "../../autonomous/AutonomousLeaseManager";
-import { TAG_GOALS, TAG_TASKS, TAG_GRAPH, TAG_SCHEDULE } from "../../events/delivery/CanonicalDeliveryRegistry";
+import { CANONICAL_DELIVERY_REGISTRY } from "../../events/delivery/CanonicalDeliveryRegistry";
+const TAG_GOALS = "goals";
+const TAG_TASKS = "tasks";
+const TAG_GRAPH = "graph";
+const TAG_SCHEDULE = "schedule";
 
 // In-Memory Deterministic MongoDB Collection Mock
 class MockCollection<T extends Record<string, any>> {
@@ -266,10 +270,10 @@ class MockCollection<T extends Record<string, any>> {
       for (const [path, pushVal] of Object.entries(update.$push)) {
         const curArr = this.getDeep(doc, path) || [];
         if (Array.isArray(curArr)) {
-          if (pushVal && typeof pushVal === "object" && pushVal.$each) {
-            curArr.push(...pushVal.$each);
-            if (pushVal.$slice) {
-              const sliced = curArr.slice(pushVal.$slice);
+          if (pushVal && typeof pushVal === "object" && (pushVal as any).$each) {
+            curArr.push(...(pushVal as any).$each);
+            if ((pushVal as any).$slice) {
+              const sliced = curArr.slice((pushVal as any).$slice);
               this.setDeep(doc, path, sliced);
             }
           } else {
@@ -410,7 +414,6 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
     kernelService = new KernelCapabilityService(adapterRegistry, {
       auditModel: mockAuditColl,
       receiptModel: mockReceiptColl,
-      outboxService,
     });
 
     // 6. Projections & Sweepers
@@ -444,7 +447,7 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
     autonomousDaemon = new AutonomousExecutionDaemon({
       leaseManager: autonomousLeaseMgr,
       userModel: mockUserColl,
-    });
+    } as any);
   });
 
   // =========================================================================
@@ -458,7 +461,7 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
     // Persist goal via OutboxStorageService in Mode B
     const createGoalResult = await outboxService.persistWithStandaloneFencing({
       aggregateType: "goal",
-      aggregateModel: mockGoalColl,
+      aggregateModel: mockGoalColl as any,
       aggregateId: goalId,
       clientMutationId: `mut_create_${goalId}`,
       diffHash: `diff_${goalId}_1`,
@@ -482,12 +485,13 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
           type: "domain.goal.created",
           aggregateId: goalId,
           aggregateType: "goal",
+          aggregateVersion: 1,
           source: "GoalEngine",
           payload: { goalId, title: "Sub-3 Marathon" },
         },
       ],
       isCreation: true,
-    });
+    } as any);
 
     assert.equal(createGoalResult.success, true);
     assert.equal(createGoalResult.events[0].deliveryStatus, "PENDING");
@@ -514,7 +518,7 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
     goalVersion = 2;
     const updateGoalResult = await outboxService.persistWithStandaloneFencing({
       aggregateType: "goal",
-      aggregateModel: mockGoalColl,
+      aggregateModel: mockGoalColl as any,
       aggregateId: goalId,
       clientMutationId: `mut_update_${goalId}`,
       diffHash: `diff_${goalId}_2`,
@@ -533,6 +537,7 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
           type: "domain.goal.progress_updated",
           aggregateId: goalId,
           aggregateType: "goal",
+          aggregateVersion: 2,
           source: "GoalEngine",
           payload: {
             goalId,
@@ -542,7 +547,7 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
           },
         },
       ],
-    });
+    } as any);
 
     assert.equal(updateGoalResult.success, true);
     await dispatcher.executeCycle();
@@ -555,7 +560,7 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
     goalVersion = 3;
     const archiveGoalResult = await outboxService.persistWithStandaloneFencing({
       aggregateType: "goal",
-      aggregateModel: mockGoalColl,
+      aggregateModel: mockGoalColl as any,
       aggregateId: goalId,
       clientMutationId: `mut_archive_${goalId}`,
       diffHash: `diff_${goalId}_3`,
@@ -572,11 +577,12 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
           type: "domain.goal.deleted",
           aggregateId: goalId,
           aggregateType: "goal",
+          aggregateVersion: 3,
           source: "GoalEngine",
           payload: { goalId, title: "Sub-3 Marathon" },
         },
       ],
-    });
+    } as any);
 
     assert.equal(archiveGoalResult.success, true);
     await dispatcher.executeCycle();
@@ -600,7 +606,7 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
     // 1. Create Task A
     await outboxService.persistWithStandaloneFencing({
       aggregateType: "task",
-      aggregateModel: mockTaskColl,
+      aggregateModel: mockTaskColl as any,
       aggregateId: taskAId,
       clientMutationId: `mut_task_a`,
       diffHash: `diff_a_1`,
@@ -620,17 +626,18 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
           type: "domain.task.created",
           aggregateId: taskAId,
           aggregateType: "task",
+          aggregateVersion: 1,
           source: "TaskEngine",
           payload: { taskId: taskAId, title: "Deploy Kernel", status: "pending", dependencies: [] },
         },
       ],
       isCreation: true,
-    });
+    } as any);
 
     // 2. Create Task B (dependent on Task A)
     await outboxService.persistWithStandaloneFencing({
       aggregateType: "task",
-      aggregateModel: mockTaskColl,
+      aggregateModel: mockTaskColl as any,
       aggregateId: taskBId,
       clientMutationId: `mut_task_b`,
       diffHash: `diff_b_1`,
@@ -650,12 +657,13 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
           type: "domain.task.created",
           aggregateId: taskBId,
           aggregateType: "task",
+          aggregateVersion: 1,
           source: "TaskEngine",
           payload: { taskId: taskBId, title: "Run Smoke Tests", status: "blocked", dependencies: [taskAId] },
         },
       ],
       isCreation: true,
-    });
+    } as any);
 
     // Dispatch both creation events
     await dispatcher.executeCycle();
@@ -671,7 +679,7 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
     // 3. Complete Task A
     const completeA = await outboxService.persistWithStandaloneFencing({
       aggregateType: "task",
-      aggregateModel: mockTaskColl,
+      aggregateModel: mockTaskColl as any,
       aggregateId: taskAId,
       clientMutationId: `mut_complete_task_a`,
       diffHash: `diff_a_2`,
@@ -688,11 +696,12 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
           type: "domain.task.completed",
           aggregateId: taskAId,
           aggregateType: "task",
+          aggregateVersion: 2,
           source: "TaskEngine",
           payload: { taskId: taskAId, status: "completed" },
         },
       ],
-    });
+    } as any);
 
     assert.equal(completeA.success, true);
     await dispatcher.executeCycle();
@@ -706,7 +715,7 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
     // 5. Repeat completion request — Verify strict idempotency
     const repeatComplete = await outboxService.persistWithStandaloneFencing({
       aggregateType: "task",
-      aggregateModel: mockTaskColl,
+      aggregateModel: mockTaskColl as any,
       aggregateId: taskAId,
       clientMutationId: `mut_complete_task_a`, // SAME clientMutationId
       diffHash: `diff_a_2`,
@@ -714,7 +723,7 @@ describe("Step 5: Full-System Integration Testing — Phase 2: End-to-End User J
       fencingEpoch: 0,
       domainUpdates: { status: "completed" },
       eventDrafts: [],
-    });
+    } as any);
 
     assert.equal(repeatComplete.success, true);
     assert.equal(repeatComplete.isIdempotentReplay, true, "Must return idempotent replay without creating new mutations");

@@ -2,6 +2,10 @@ import { NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { getAuthSession } from "@/lib/auth";
 import { WeightLog } from "@/server/db/models/WeightLog";
+import {
+  upsertWeightLogWithOutbox,
+  deleteWeightLogWithOutbox,
+} from "@/features/health/services/weightLogEngine";
 
 export async function GET() {
     try {
@@ -9,7 +13,10 @@ export async function GET() {
         if (!(session?.user as any)?.id) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         await connectDB();
-        const logs = await WeightLog.find({ userId: (session!.user as any).id })
+        const logs = await WeightLog.find({
+            userId: (session!.user as any).id,
+            $or: [{ deletedAt: null }, { deletedAt: { $exists: false } }],
+        })
             .sort({ date: -1 })
             .limit(30)
             .lean();
@@ -27,16 +34,20 @@ export async function POST(req: Request) {
         if (!userId) return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
 
         const body = await req.json();
-        const { date, weight } = body;
+        const { date, weight, clientMutationId, expectedVersion } = body;
         if (!date || weight === undefined) return NextResponse.json({ error: "Missing date or weight" }, { status: 400 });
 
         await connectDB();
-        await WeightLog.findOneAndUpdate(
-            { userId, date },
-            { weight: Number(weight) },
-            { upsert: true, new: true }
-        );
-        return NextResponse.json({ success: true });
+        const result = await upsertWeightLogWithOutbox(userId, date, Number(weight), {
+            clientMutationId: typeof clientMutationId === "string" ? clientMutationId : undefined,
+            expectedVersion: typeof expectedVersion === "number" ? expectedVersion : undefined,
+            source: "web.health.weight",
+        });
+
+        if (!result.success) {
+            return NextResponse.json({ error: result.error, code: result.code }, { status: result.statusCode || 500 });
+        }
+        return NextResponse.json({ success: true, log: result.log });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }
@@ -53,8 +64,13 @@ export async function DELETE(req: Request) {
         if (!date) return NextResponse.json({ error: "Missing date" }, { status: 400 });
 
         await connectDB();
-        await WeightLog.findOneAndDelete({ userId, date });
-        return NextResponse.json({ success: true });
+        const result = await deleteWeightLogWithOutbox(userId, date, {
+            source: "web.health.weight.delete",
+        });
+        if (!result.success) {
+            return NextResponse.json({ error: result.error, code: result.code }, { status: result.statusCode || 500 });
+        }
+        return NextResponse.json({ success: true, deleted: result.deleted });
     } catch (e: any) {
         return NextResponse.json({ error: e.message }, { status: 500 });
     }

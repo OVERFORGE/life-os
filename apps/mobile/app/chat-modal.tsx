@@ -283,7 +283,7 @@ export default function ChatModalScreen() {
         body: JSON.stringify({
           message: text,
           conversationId: activeConversationId || undefined,
-          model: 'llama-3.3-70b-versatile',
+          model: 'openai/gpt-oss-120b',
           mode: 'general',
           streamFormat: 'events',
           clientPlatform: 'mobile',

@@ -9,6 +9,7 @@
 import crypto from "node:crypto";
 import {
   CapabilityDescriptor,
+  CapabilityDiscoverySummary,
   CapabilityQueryFilter,
   CapabilitySource,
   CapabilityValidationResult,
@@ -80,6 +81,7 @@ export class CapabilityRegistry {
       capabilityURN: descriptor.capabilityURN || "",
       source: descriptor.source || "INTERNAL_ADAPTER",
       category: descriptor.category || "general",
+      operationKind: descriptor.operationKind || "",
       parametersSchema: descriptor.parametersSchema || {},
       outputSchema: descriptor.outputSchema || {},
       requiredResources: descriptor.requiredResources || [],
@@ -136,6 +138,9 @@ export class CapabilityRegistry {
       if (filter?.source && desc.source !== filter.source) {
         return false;
       }
+      if (filter?.operationKind && desc.operationKind !== filter.operationKind) {
+        return false;
+      }
       if (filter?.supportsIdempotency !== undefined && desc.isIdempotent !== filter.supportsIdempotency) {
         return false;
       }
@@ -187,6 +192,191 @@ export class CapabilityRegistry {
     return registered;
   }
 
+  listReadCapabilities(
+    filter?: Omit<CapabilityQueryFilter, "operationKind">
+  ): CapabilityDescriptor[] {
+    return this.listCapabilities({ ...filter, operationKind: "READ" });
+  }
+
+  getDiscoveryCatalog(filter?: CapabilityQueryFilter): CapabilityDiscoverySummary[] {
+    return this.listCapabilities(filter).map((d) => ({
+      capabilityURN: d.capabilityURN,
+      displayName: d.displayName,
+      description: d.description,
+      category: d.category,
+      source: d.source,
+      operationKind: d.operationKind,
+      contextDomain: d.contextDomain,
+      parameterHints: d.parametersSchema?.properties ? Object.keys(d.parametersSchema.properties) : undefined,
+      outputFields: d.outputSchema?.properties ? Object.keys(d.outputSchema.properties) : undefined,
+      parametersSchema: d.parametersSchema,
+      outputSchema: d.outputSchema,
+      requiresApproval: d.requiresApproval,
+      isIdempotent: d.isIdempotent,
+      tags: d.tags,
+    }));
+  }
+
+  /**
+   * Formats a compact, token-efficient summary of registered READ capabilities
+   * for turn-1 semantic interpretation (full schemas stay in DynamicWorkflowPlanner).
+   */
+  formatCompactReadCatalogForInterpreter(
+    filter?: Omit<CapabilityQueryFilter, "operationKind">
+  ): string {
+    const reads = this.listReadCapabilities(filter);
+    return reads
+      .map((d) => {
+        const filters = d.parametersSchema?.properties ? Object.keys(d.parametersSchema.properties).join(", ") : "none";
+        const returns = d.outputSchema?.properties ? Object.keys(d.outputSchema.properties).join(", ") : "structured";
+        const domain = d.contextDomain ? ` domain=${d.contextDomain}` : "";
+        return `- ${d.capabilityURN} [${d.source}${domain}]: ${d.description} (filters: ${filters}; returns: ${returns})`;
+      })
+      .join("\n");
+  }
+
+  /**
+   * Validates any value/object against a JSON Schema subset deterministically.
+   */
+  static validateObjectAgainstSchema(
+    schema: Record<string, any> | undefined,
+    value: any,
+    options?: { allowDynamicRefs?: boolean }
+  ): CapabilityValidationResult {
+    if (!schema || schema.type !== "object") {
+      return { valid: true };
+    }
+
+    if (value !== undefined && (typeof value !== "object" || value === null || Array.isArray(value))) {
+      return {
+        valid: false,
+        reason: `Invalid payload type: expected object`,
+        errors: [`Expected object payload`],
+      };
+    }
+
+    const params = (value || {}) as Record<string, any>;
+    const errors: string[] = [];
+    const required: string[] = Array.isArray(schema.required) ? schema.required : [];
+    const properties: Record<string, any> = schema.properties || {};
+
+    // 1. Required fields check
+    for (const reqField of required) {
+      if (params[reqField] === undefined || params[reqField] === null) {
+        errors.push(`Missing required parameter: "${reqField}"`);
+      }
+    }
+
+    // 2. Reject undeclared properties when additionalProperties === false
+    if (schema.additionalProperties === false) {
+      for (const key of Object.keys(params)) {
+        if (!Object.prototype.hasOwnProperty.call(properties, key)) {
+          errors.push(`Unknown parameter "${key}" is not allowed`);
+        }
+      }
+    }
+
+    // 3. Property type, enum, bounds, length, pattern, and array item checks
+    for (const [key, propDef] of Object.entries(properties)) {
+      const val = params[key];
+      if (val === undefined || val === null) continue;
+      if (options?.allowDynamicRefs && typeof val === "string" && val.startsWith("$ref:")) {
+        continue;
+      }
+
+      CapabilityRegistry.validatePropertyValue(key, val, propDef, errors, options);
+    }
+
+    if (errors.length > 0) {
+      return {
+        valid: false,
+        reason: errors.join("; "),
+        errors,
+      };
+    }
+
+    return { valid: true };
+  }
+
+  private static validatePropertyValue(
+    key: string,
+    val: any,
+    propDef: Record<string, any> | undefined,
+    errors: string[],
+    options?: { allowDynamicRefs?: boolean }
+  ): void {
+    if (!propDef) return;
+    const expectedType = propDef.type;
+
+    if (expectedType === "string") {
+      if (typeof val !== "string") {
+        errors.push(`Invalid type for "${key}": expected string, got ${typeof val}`);
+        return;
+      }
+      if (typeof propDef.minLength === "number" && val.length < propDef.minLength) {
+        errors.push(`Parameter "${key}" length ${val.length} is less than minLength ${propDef.minLength}`);
+      }
+      if (typeof propDef.maxLength === "number" && val.length > propDef.maxLength) {
+        errors.push(`Parameter "${key}" length ${val.length} exceeds maxLength ${propDef.maxLength}`);
+      }
+      if (typeof propDef.pattern === "string" && !new RegExp(propDef.pattern).test(val)) {
+        errors.push(`Parameter "${key}" does not match required pattern ${propDef.pattern}`);
+      }
+    } else if (expectedType === "number" || expectedType === "integer") {
+      if (typeof val !== "number" || !Number.isFinite(val)) {
+        errors.push(`Invalid type for "${key}": expected ${expectedType}, got ${typeof val}`);
+        return;
+      }
+      if (expectedType === "integer" && !Number.isInteger(val)) {
+        errors.push(`Invalid type for "${key}": expected integer, got non-integer ${val}`);
+      }
+      if (typeof propDef.minimum === "number" && val < propDef.minimum) {
+        errors.push(`Parameter "${key}" (${val}) is below minimum ${propDef.minimum}`);
+      }
+      if (typeof propDef.maximum === "number" && val > propDef.maximum) {
+        errors.push(`Parameter "${key}" (${val}) exceeds maximum ${propDef.maximum}`);
+      }
+    } else if (expectedType === "boolean") {
+      if (typeof val !== "boolean") {
+        errors.push(`Invalid type for "${key}": expected boolean, got ${typeof val}`);
+        return;
+      }
+    } else if (expectedType === "array") {
+      if (!Array.isArray(val)) {
+        errors.push(`Invalid type for "${key}": expected array, got ${typeof val}`);
+        return;
+      }
+      if (typeof propDef.minItems === "number" && val.length < propDef.minItems) {
+        errors.push(`Parameter "${key}" has ${val.length} items, below minItems ${propDef.minItems}`);
+      }
+      if (typeof propDef.maxItems === "number" && val.length > propDef.maxItems) {
+        errors.push(`Parameter "${key}" has ${val.length} items, exceeding maxItems ${propDef.maxItems}`);
+      }
+      if (propDef.items) {
+        val.forEach((item, idx) => {
+          CapabilityRegistry.validatePropertyValue(`${key}[${idx}]`, item, propDef.items, errors, options);
+        });
+      }
+    } else if (expectedType === "object") {
+      if (typeof val !== "object" || Array.isArray(val)) {
+        errors.push(`Invalid type for "${key}": expected object, got ${Array.isArray(val) ? "array" : typeof val}`);
+        return;
+      }
+      if (propDef.properties) {
+        const nested = CapabilityRegistry.validateObjectAgainstSchema(propDef, val, options);
+        if (!nested.valid && nested.errors) {
+          for (const err of nested.errors) {
+            errors.push(`${key}: ${err}`);
+          }
+        }
+      }
+    }
+
+    if (Array.isArray(propDef.enum) && !propDef.enum.includes(val)) {
+      errors.push(`Invalid value for "${key}": "${val}" is not in allowed enum [${propDef.enum.join(", ")}]`);
+    }
+  }
+
   /**
    * Validates parameters against a capability's JSON Schema parametersSchema.
    */
@@ -208,54 +398,25 @@ export class CapabilityRegistry {
       };
     }
 
-    const schema = descriptor.parametersSchema;
-    if (!schema || schema.type !== "object") {
-      return { valid: true };
-    }
+    return CapabilityRegistry.validateObjectAgainstSchema(descriptor.parametersSchema, params);
+  }
 
-    const errors: string[] = [];
-    const required: string[] = Array.isArray(schema.required) ? schema.required : [];
-    const properties: Record<string, any> = schema.properties || {};
-
-    // 1. Required fields check
-    for (const reqField of required) {
-      if (params === undefined || params === null || params[reqField] === undefined || params[reqField] === null) {
-        errors.push(`Missing required parameter: "${reqField}"`);
-      }
-    }
-
-    // 2. Type checks
-    if (params && typeof params === "object") {
-      for (const [key, propDef] of Object.entries(properties)) {
-        const val = params[key];
-        if (val === undefined || val === null) continue;
-
-        const expectedType = propDef?.type;
-        if (!expectedType) continue;
-
-        if (expectedType === "string" && typeof val !== "string") {
-          errors.push(`Invalid type for "${key}": expected string, got ${typeof val}`);
-        } else if (expectedType === "number" && (typeof val !== "number" || !Number.isFinite(val))) {
-          errors.push(`Invalid type for "${key}": expected number, got ${typeof val}`);
-        } else if (expectedType === "boolean" && typeof val !== "boolean") {
-          errors.push(`Invalid type for "${key}": expected boolean, got ${typeof val}`);
-        } else if (expectedType === "array" && !Array.isArray(val)) {
-          errors.push(`Invalid type for "${key}": expected array, got ${typeof val}`);
-        } else if (expectedType === "object" && (typeof val !== "object" || Array.isArray(val))) {
-          errors.push(`Invalid type for "${key}": expected object, got ${Array.isArray(val) ? "array" : typeof val}`);
-        }
-      }
-    }
-
-    if (errors.length > 0) {
+  /**
+   * Validates a capability output envelope against its declared outputSchema.
+   */
+  validateOutput(capabilityURN: string, output: Record<string, any>): CapabilityValidationResult {
+    const descriptor = this.capabilities.get(capabilityURN);
+    if (!descriptor) {
       return {
         valid: false,
-        reason: errors.join("; "),
-        errors,
+        reason: `UNKNOWN_CAPABILITY_URN: Capability "${capabilityURN}" is not registered in catalog.`,
+        errors: [`Unregistered capability: ${capabilityURN}`],
       };
     }
-
-    return { valid: true };
+    if (!descriptor.outputSchema) {
+      return { valid: true };
+    }
+    return CapabilityRegistry.validateObjectAgainstSchema(descriptor.outputSchema, output);
   }
 
   /**
@@ -378,6 +539,7 @@ export class CapabilityRegistry {
       paramsSchema: Record<string, any>,
       options: {
         operationKind?: CapabilityDescriptor["operationKind"];
+        contextDomain?: CapabilityDescriptor["contextDomain"];
         reversibility?: CapabilityDescriptor["reversibility"];
         isIdempotent?: boolean;
         isReversible?: boolean;
@@ -386,6 +548,8 @@ export class CapabilityRegistry {
         verificationMethod?: CapabilityDescriptor["verificationMethod"];
         observationProbeCapabilityURN?: string;
         requiredResources?: CapabilityDescriptor["requiredResources"];
+        outputSchema?: Record<string, any>;
+        timeoutMs?: number;
         tags?: string[];
       } = {}
     ) => {
@@ -396,8 +560,10 @@ export class CapabilityRegistry {
         displayName,
         description,
         operationKind: options.operationKind,
+        contextDomain: options.contextDomain,
         reversibility: options.reversibility || (options.isReversible ? "reversible_with_compensation" : "atomic_single_doc"),
         parametersSchema: paramsSchema,
+        outputSchema: options.outputSchema,
         isIdempotent: options.isIdempotent ?? true,
         isReversible: options.isReversible ?? false,
         compensationCapabilityURN: options.compensationCapabilityURN,
@@ -405,7 +571,7 @@ export class CapabilityRegistry {
         verificationMethod: options.verificationMethod ?? "NONE",
         observationProbeCapabilityURN: options.observationProbeCapabilityURN,
         requiredResources: options.requiredResources ?? [],
-        timeoutMs: 30000,
+        timeoutMs: options.timeoutMs ?? 30000,
         tags: options.tags || [category, urn.split(".").pop() || ""],
         status: "ACTIVE",
       });
@@ -471,19 +637,19 @@ export class CapabilityRegistry {
       type: "object",
       properties: { query: { type: "string" }, maxResults: { type: "number" } },
       required: ["query"],
-    }, { isIdempotent: true, verificationMethod: "NONE", tags: ["email", "search", "gmail"] });
+    }, { operationKind: "READ", isIdempotent: true, verificationMethod: "NONE", tags: ["email", "search", "gmail"] });
 
     seed("productivity.email.read_message", "MODULAR_PROVIDER", "productivity", "Read Email", "Reads an email message", {
       type: "object",
       properties: { messageId: { type: "string" } },
       required: ["messageId"],
-    }, { isIdempotent: true, tags: ["email", "read", "gmail"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["email", "read", "gmail"] });
 
     seed("productivity.email.read_thread", "MODULAR_PROVIDER", "productivity", "Read Email Thread", "Reads an email thread", {
       type: "object",
       properties: { threadId: { type: "string" } },
       required: ["threadId"],
-    }, { isIdempotent: true, tags: ["email", "thread", "gmail"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["email", "thread", "gmail"] });
 
     seed("productivity.email.create_draft", "MODULAR_PROVIDER", "productivity", "Create Draft Email", "Creates an email draft", {
       type: "object",
@@ -508,6 +674,8 @@ export class CapabilityRegistry {
       properties: { path: { type: "string" } },
       required: ["path"],
     }, {
+      operationKind: "READ",
+      contextDomain: "TASKS",
       isIdempotent: true,
       requiredResources: [{ type: "FILESYSTEM", uriTemplate: "{path}", accessMode: "SHARED_READ" }],
       verificationMethod: "READ_BACK",
@@ -529,7 +697,7 @@ export class CapabilityRegistry {
     seed("productivity.storage.list_files", "MODULAR_PROVIDER", "productivity", "List Files", "Lists files in directory", {
       type: "object",
       properties: { path: { type: "string" } },
-    }, { isIdempotent: true, tags: ["storage", "filesystem", "list"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["storage", "filesystem", "list"] });
 
     seed("productivity.calendar.create_event", "MODULAR_PROVIDER", "productivity", "Create Calendar Event", "Creates a new calendar event", {
       type: "object",
@@ -547,7 +715,7 @@ export class CapabilityRegistry {
     seed("productivity.calendar.read_events", "MODULAR_PROVIDER", "productivity", "Read Calendar Events", "Reads calendar events", {
       type: "object",
       properties: { timeMin: { type: "string" }, timeMax: { type: "string" } },
-    }, { isIdempotent: true, tags: ["calendar", "events"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["calendar", "events"] });
 
     seed("productivity.calendar.update_event", "MODULAR_PROVIDER", "productivity", "Update Calendar Event", "Updates an event", {
       type: "object",
@@ -570,7 +738,7 @@ export class CapabilityRegistry {
     seed("productivity.task.sync_tasks", "MODULAR_PROVIDER", "productivity", "Sync External Tasks", "Syncs tasks", {
       type: "object",
       properties: {},
-    }, { isIdempotent: true, tags: ["tasks", "sync"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["tasks", "sync"] });
 
     seed("productivity.git.create_issue", "MODULAR_PROVIDER", "productivity", "Create Git Issue", "Creates a GitHub issue", {
       type: "object",
@@ -582,30 +750,30 @@ export class CapabilityRegistry {
       type: "object",
       properties: { repo: { type: "string" } },
       required: ["repo"],
-    }, { isIdempotent: true, tags: ["git", "github", "pr"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["git", "github", "pr"] });
 
     seed("productivity.git.list_repos", "MODULAR_PROVIDER", "productivity", "List Git Repositories", "Lists repositories", {
       type: "object",
       properties: {},
-    }, { isIdempotent: true, tags: ["git", "github", "repos"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["git", "github", "repos"] });
 
     seed("productivity.git.search_code", "MODULAR_PROVIDER", "productivity", "Search Git Code", "Searches code in repo", {
       type: "object",
       properties: { query: { type: "string" } },
       required: ["query"],
-    }, { isIdempotent: true, tags: ["git", "github", "code"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["git", "github", "code"] });
 
     seed("productivity.contacts.search_contacts", "MODULAR_PROVIDER", "productivity", "Search Contacts", "Searches user contacts", {
       type: "object",
       properties: { query: { type: "string" } },
       required: ["query"],
-    }, { isIdempotent: true, tags: ["contacts", "search"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["contacts", "search"] });
 
     seed("productivity.contacts.get_contact", "MODULAR_PROVIDER", "productivity", "Get Contact", "Gets contact details", {
       type: "object",
       properties: { contactId: { type: "string" } },
       required: ["contactId"],
-    }, { isIdempotent: true, tags: ["contacts"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["contacts"] });
 
     // --- Health & Wellness Domain ---
     seed("health.activity.record_workout", "MODULAR_PROVIDER", "health", "Record Workout Telemetry", "Records workout telemetry", {
@@ -622,12 +790,12 @@ export class CapabilityRegistry {
     seed("health.biometrics.read_sleep", "MODULAR_PROVIDER", "health", "Read Sleep Biometrics", "Reads sleep data", {
       type: "object",
       properties: {},
-    }, { isIdempotent: true, tags: ["health", "sleep"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["health", "sleep"] });
 
     seed("health.biometrics.read_daily_summary", "MODULAR_PROVIDER", "health", "Read Daily Health Summary", "Reads daily health summary", {
       type: "object",
       properties: {},
-    }, { isIdempotent: true, tags: ["health", "summary"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["health", "summary"] });
 
     seed("health.nutrition.log_food", "MODULAR_PROVIDER", "health", "Log Nutrition Food", "Logs nutrition food entry", {
       type: "object",
@@ -644,7 +812,7 @@ export class CapabilityRegistry {
     seed("wellness.media.read_current_track", "MODULAR_PROVIDER", "wellness", "Read Current Track", "Reads active playing track", {
       type: "object",
       properties: {},
-    }, { isIdempotent: true, tags: ["media", "music"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["media", "music"] });
 
     seed("wellness.smarthome.set_light_state", "MODULAR_PROVIDER", "wellness", "Set Smart Light State", "Sets smart light status", {
       type: "object",
@@ -662,13 +830,13 @@ export class CapabilityRegistry {
     seed("context.system.read_clipboard", "INTERNAL_ADAPTER", "context", "Read Clipboard", "Reads clipboard text", {
       type: "object",
       properties: {},
-    }, { isIdempotent: true, tags: ["system", "clipboard"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["system", "clipboard"] });
 
     seed("context.system.search_web", "MODULAR_PROVIDER", "context", "Search Web", "Searches web via Brave / Google", {
       type: "object",
       properties: { query: { type: "string" } },
       required: ["query"],
-    }, { isIdempotent: true, tags: ["search", "web"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["search", "web"] });
 
     seed("context.system.open_url", "INTERNAL_ADAPTER", "context", "Open URL", "Opens a URL in default browser", {
       type: "object",
@@ -679,12 +847,12 @@ export class CapabilityRegistry {
     seed("context.environment.read_weather", "MODULAR_PROVIDER", "context", "Read Weather", "Reads current weather", {
       type: "object",
       properties: { location: { type: "string" } },
-    }, { isIdempotent: true, tags: ["weather"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["weather"] });
 
     seed("context.environment.get_forecast", "MODULAR_PROVIDER", "context", "Get Weather Forecast", "Gets weather forecast", {
       type: "object",
       properties: { location: { type: "string" }, days: { type: "number" } },
-    }, { isIdempotent: true, tags: ["weather", "forecast"] });
+    }, { operationKind: "READ", isIdempotent: true, tags: ["weather", "forecast"] });
 
     seed("travel.itinerary.generate", "MODULAR_PROVIDER", "travel", "Generate Travel Itinerary", "Generates travel itinerary", {
       type: "object",
@@ -757,5 +925,249 @@ export class CapabilityRegistry {
       properties: { query: { type: "string" } },
       required: ["query"],
     }, { isIdempotent: true, tags: ["commerce"] });
+
+    // --- Stage 1: Generic LifeOS Read Capabilities (Internal Kernel) ---
+    seed("lifeos.tasks.query", "INTERNAL_ADAPTER", "productivity", "Query LifeOS Tasks", "Queries user tasks with bounded filtering, sorting, and pagination", {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: { type: "string", enum: ["pending", "completed", "skipped", "in_progress", "waiting", "blocked", "all"] },
+        overdue: { type: "boolean" },
+        priority: { type: "string", enum: ["low", "medium", "high"] },
+        dueDateFrom: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+        dueDateTo: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+        goalId: { type: "string", minLength: 1, maxLength: 64 },
+        search: { type: "string", minLength: 1, maxLength: 120 },
+        includeSubtasks: { type: "boolean" },
+        sortBy: { type: "string", enum: ["dueDate", "priority", "createdAt", "updatedAt"] },
+        sortOrder: { type: "string", enum: ["asc", "desc"] },
+        limit: { type: "integer", minimum: 1, maximum: 100 },
+        offset: { type: "integer", minimum: 0, maximum: 5000 },
+      },
+    }, {
+      operationKind: "READ",
+      contextDomain: "TASKS",
+      isIdempotent: true,
+      isReversible: false,
+      requiresApproval: false,
+      verificationMethod: "NONE",
+      timeoutMs: 10000,
+      requiredResources: [{ type: "LIFEOS_TASKS", accessMode: "SHARED_READ" }],
+      outputSchema: {
+        type: "object",
+        required: ["items", "totalCount", "returnedCount", "hasMore", "emptyReason"],
+        properties: {
+          items: { type: "array" },
+          totalCount: { type: "integer" },
+          returnedCount: { type: "integer" },
+          hasMore: { type: "boolean" },
+          emptyReason: { type: "string" },
+        },
+      },
+      tags: ["lifeos", "tasks", "read", "query", "stage1"],
+    });
+
+    seed("lifeos.goals.query", "INTERNAL_ADAPTER", "productivity", "Query LifeOS Goals", "Queries user goals with optional GoalStats and milestones", {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        status: { type: "string", enum: ["active", "proposed", "archived", "completed", "all"] },
+        nature: { type: "string", enum: ["finite_deliverable", "habitual_cadence"] },
+        cadence: { type: "string", enum: ["daily", "weekly", "flexible"] },
+        includeStats: { type: "boolean" },
+        includeMilestones: { type: "boolean" },
+        search: { type: "string", minLength: 1, maxLength: 120 },
+        limit: { type: "integer", minimum: 1, maximum: 100 },
+        offset: { type: "integer", minimum: 0, maximum: 1000 },
+      },
+    }, {
+      operationKind: "READ",
+      contextDomain: "TASKS",
+      isIdempotent: true,
+      isReversible: false,
+      requiresApproval: false,
+      verificationMethod: "NONE",
+      timeoutMs: 10000,
+      requiredResources: [{ type: "LIFEOS_GOALS", accessMode: "SHARED_READ" }],
+      outputSchema: {
+        type: "object",
+        required: ["items", "totalCount", "returnedCount", "hasMore", "emptyReason"],
+        properties: {
+          items: { type: "array" },
+          totalCount: { type: "integer" },
+          returnedCount: { type: "integer" },
+          hasMore: { type: "boolean" },
+          emptyReason: { type: "string" },
+        },
+      },
+      tags: ["lifeos", "goals", "read", "query", "stage1"],
+    });
+
+    seed("lifeos.schedule.query_occurrences", "INTERNAL_ADAPTER", "productivity", "Query LifeOS Schedule Occurrences", "Queries bounded date-range schedule occurrences and optional execution chronicle", {
+      type: "object",
+      additionalProperties: false,
+      required: ["startDate", "endDate"],
+      properties: {
+        startDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+        endDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+        timezone: { type: "string", minLength: 1, maxLength: 64 },
+        status: { type: "string", enum: ["SCHEDULED", "IN_PROGRESS", "COMPLETED", "SKIPPED", "CANCELLED", "RESCHEDULED", "all"] },
+        kind: { type: "string", enum: ["HARD_EVENT", "ROUTINE_BLOCK", "WORK_SESSION", "TRANSITION_BUFFER", "EPHEMERAL_PING"] },
+        includeExecutionChronicle: { type: "boolean" },
+        limit: { type: "integer", minimum: 1, maximum: 200 },
+        offset: { type: "integer", minimum: 0, maximum: 2000 },
+      },
+    }, {
+      operationKind: "READ",
+      contextDomain: "SCHEDULE",
+      isIdempotent: true,
+      isReversible: false,
+      requiresApproval: false,
+      verificationMethod: "NONE",
+      timeoutMs: 10000,
+      requiredResources: [{ type: "LIFEOS_SCHEDULE", accessMode: "SHARED_READ" }],
+      outputSchema: {
+        type: "object",
+        required: ["items", "totalCount", "returnedCount", "hasMore", "resolvedTimezone", "emptyReason"],
+        properties: {
+          items: { type: "array" },
+          chronicleItems: { type: "array" },
+          totalCount: { type: "integer" },
+          returnedCount: { type: "integer" },
+          hasMore: { type: "boolean" },
+          resolvedTimezone: { type: "string" },
+          emptyReason: { type: "string" },
+        },
+      },
+      tags: ["lifeos", "schedule", "occurrences", "calendar", "read", "query", "stage1"],
+    });
+
+    seed("lifeos.daily_logs.query_range", "INTERNAL_ADAPTER", "wellness", "Query LifeOS Daily Logs", "Queries bounded date-range daily logs with coverage metadata and privacy allowlisting", {
+      type: "object",
+      additionalProperties: false,
+      required: ["startDate", "endDate"],
+      properties: {
+        startDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+        endDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+        sections: {
+          type: "array",
+          maxItems: 8,
+          items: { type: "string", enum: ["mental", "sleep", "physical", "work", "habits", "planning", "signals", "reflection"] },
+        },
+        includeReflection: { type: "boolean" },
+        limit: { type: "integer", minimum: 1, maximum: 90 },
+        offset: { type: "integer", minimum: 0, maximum: 1000 },
+      },
+    }, {
+      operationKind: "READ",
+      contextDomain: "HEALTH",
+      isIdempotent: true,
+      isReversible: false,
+      requiresApproval: false,
+      verificationMethod: "NONE",
+      timeoutMs: 10000,
+      requiredResources: [{ type: "LIFEOS_DAILY_LOGS", accessMode: "SHARED_READ" }],
+      outputSchema: {
+        type: "object",
+        required: ["items", "totalCount", "returnedCount", "hasMore", "coverage", "emptyReason"],
+        properties: {
+          items: { type: "array" },
+          totalCount: { type: "integer" },
+          returnedCount: { type: "integer" },
+          hasMore: { type: "boolean" },
+          coverage: { type: "object" },
+          emptyReason: { type: "string" },
+        },
+      },
+      tags: ["lifeos", "daily_logs", "wellness", "read", "query", "stage1"],
+    });
+
+    seed("lifeos.telemetry.query_state_history", "INTERNAL_ADAPTER", "wellness", "Query LifeOS Telemetry State History", "Queries cognitive state history and bounded telemetry observations with explicit availability status", {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        startDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+        endDate: { type: "string", pattern: "^\\d{4}-\\d{2}-\\d{2}$" },
+        includeObservations: { type: "boolean" },
+        observationTypes: {
+          type: "array",
+          maxItems: 15,
+          items: { type: "string", minLength: 1, maxLength: 64 },
+        },
+        limit: { type: "integer", minimum: 1, maximum: 100 },
+        offset: { type: "integer", minimum: 0, maximum: 1000 },
+      },
+    }, {
+      operationKind: "READ",
+      contextDomain: "HEALTH",
+      isIdempotent: true,
+      isReversible: false,
+      requiresApproval: false,
+      verificationMethod: "NONE",
+      timeoutMs: 10000,
+      requiredResources: [{ type: "LIFEOS_TELEMETRY", accessMode: "SHARED_READ" }],
+      outputSchema: {
+        type: "object",
+        required: ["items", "totalCount", "returnedCount", "hasMore", "availabilityStatus", "emptyReason"],
+        properties: {
+          items: { type: "array" },
+          observations: { type: "array" },
+          totalCount: { type: "integer" },
+          returnedCount: { type: "integer" },
+          hasMore: { type: "boolean" },
+          availabilityStatus: { type: "string" },
+          emptyReason: { type: "string" },
+        },
+      },
+      tags: ["lifeos", "telemetry", "cognitive_state", "read", "query", "stage1"],
+    });
+
+    seed("lifeos.memory.search", "INTERNAL_ADAPTER", "context", "Search LifeOS Personal Memory", "Queries durable personal memories, preferences, constraints, and past statements using hybrid lexical and semantic retrieval", {
+      type: "object",
+      additionalProperties: false,
+      properties: {
+        query: { type: "string", maxLength: 300 },
+        domain: { type: "string", enum: ["productivity", "health", "wellness", "identity", "general"] },
+        memoryType: {
+          type: "string",
+          enum: [
+            "semantic_fact",
+            "episodic_event",
+            "behavioral_pattern",
+            "goal_intelligence",
+            "incident",
+            "intervention",
+          ],
+        },
+        includeStale: { type: "boolean" },
+        includeSuperseded: { type: "boolean" },
+        minConfidence: { type: "number", minimum: 0, maximum: 1 },
+        referenceTime: { type: "string", maxLength: 64 },
+        limit: { type: "integer", minimum: 1, maximum: 25 },
+        offset: { type: "integer", minimum: 0, maximum: 500 },
+      },
+    }, {
+      operationKind: "READ",
+      contextDomain: "GENERAL",
+      isIdempotent: true,
+      isReversible: false,
+      requiresApproval: false,
+      verificationMethod: "NONE",
+      timeoutMs: 10000,
+      requiredResources: [{ type: "LIFEOS_MEMORY", accessMode: "SHARED_READ" }],
+      outputSchema: {
+        type: "object",
+        required: ["items", "totalCount", "returnedCount", "hasMore", "retrievalMode", "emptyReason"],
+        properties: {
+          items: { type: "array" },
+          totalCount: { type: "integer" },
+          returnedCount: { type: "integer" },
+          hasMore: { type: "boolean" },
+          retrievalMode: { type: "string" },
+          emptyReason: { type: "string" },
+        },
+      },
+      tags: ["lifeos", "memory", "preferences", "constraints", "recall", "read", "query", "stage4"],
+    });
   }
 }

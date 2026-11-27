@@ -47,6 +47,7 @@ export interface ReactiveStreamState {
 
 export function useLifeOSReactiveStream(options?: {
   endpoint?: string;
+  userId?: string;
   onInvalidateTags?: (tags: string[]) => void;
   onProjectionSync?: (projection: any) => void;
   customMutate?: SWRMutateFn;
@@ -54,6 +55,10 @@ export function useLifeOSReactiveStream(options?: {
   const endpoint = options?.endpoint || "/api/surface/events";
   const optionsRef = useRef(options);
   optionsRef.current = options;
+  const streamUserIdRef = useRef<string | null>(options?.userId ?? null);
+  if (options?.userId !== undefined) {
+    streamUserIdRef.current = options.userId;
+  }
 
   const [state, setState] = useState<ReactiveStreamState>({
     role: "FOLLOWER",
@@ -90,7 +95,11 @@ export function useLifeOSReactiveStream(options?: {
       if (typeof window !== "undefined") {
         window.dispatchEvent(
           new CustomEvent("lifeos:invalidate", {
-            detail: { tags, deliverySeq },
+            detail: {
+              tags,
+              deliverySeq,
+              userId: optionsRef.current?.userId ?? streamUserIdRef.current,
+            },
           })
         );
       }
@@ -150,6 +159,15 @@ export function useLifeOSReactiveStream(options?: {
 
       es.addEventListener("system.resync_required", () => {
         coordinatorRef.current?.broadcastResync();
+      });
+
+      es.addEventListener("system.connected", (event: any) => {
+        try {
+          const payload = JSON.parse(event.data);
+          if (typeof payload?.userId === "string" && payload.userId.length > 0) {
+            streamUserIdRef.current = payload.userId;
+          }
+        } catch {}
       });
 
       es.onerror = () => {

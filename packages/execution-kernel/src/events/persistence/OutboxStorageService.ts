@@ -25,6 +25,7 @@ import {
   MutationReceiptModel,
   IMutationReceiptDoc,
 } from "../../../../../apps/web/server/db/models/MutationReceiptModel";
+import { getActiveTraceContext, linkTraceOutboxEvent, recordTraceStep } from "../../orchestration/observability/TraceContext";
 
 export class ConcurrencyConflictError extends Error {
   constructor(message: string) {
@@ -247,7 +248,16 @@ export class OutboxStorageService {
             causalityRef: draft.causalityRef || null,
             source: draft.source,
             payload: draft.payload,
-            metadata: draft.metadata || {},
+            metadata: {
+              ...(draft.metadata || {}),
+              ...(getActiveTraceContext()
+                ? {
+                  traceId: getActiveTraceContext()!.traceId,
+                  requestId: getActiveTraceContext()!.requestId,
+                  executionId: getActiveTraceContext()!.executionId,
+                }
+                : {}),
+            },
             deliveryStatus: "PENDING" as OutboxDeliveryStatus,
             leaseGeneration: 0,
             attempts: 0,
@@ -358,7 +368,16 @@ export class OutboxStorageService {
         causalityRef: draft.causalityRef || null,
         source: draft.source,
         payload: draft.payload,
-        metadata: draft.metadata || {},
+        metadata: {
+          ...(draft.metadata || {}),
+          ...(getActiveTraceContext()
+            ? {
+              traceId: getActiveTraceContext()!.traceId,
+              requestId: getActiveTraceContext()!.requestId,
+              executionId: getActiveTraceContext()!.executionId,
+            }
+            : {}),
+        },
         deliveryStatus: "PENDING_COMMIT" as OutboxDeliveryStatus,
         leaseGeneration: 0,
         attempts: 0,
@@ -420,34 +439,34 @@ export class OutboxStorageService {
     } else {
       const updateDoc = params.isDeletion
         ? {
-            $set: {
-              ...params.domainUpdates,
-              status: params.domainUpdates?.status || "deleted",
-              deletedAt: params.domainUpdates?.deletedAt || params.domainUpdates?.archivedAt || new Date(),
-              archivedAt: params.domainUpdates?.archivedAt || params.domainUpdates?.deletedAt || new Date(),
-              version: nextVersion,
-              mutationEpoch: params.fencingEpoch,
+          $set: {
+            ...params.domainUpdates,
+            status: params.domainUpdates?.status || "deleted",
+            deletedAt: params.domainUpdates?.deletedAt || params.domainUpdates?.archivedAt || new Date(),
+            archivedAt: params.domainUpdates?.archivedAt || params.domainUpdates?.deletedAt || new Date(),
+            version: nextVersion,
+            mutationEpoch: params.fencingEpoch,
+          },
+          $push: {
+            recentMutationReceipts: {
+              $each: [inDocReceipt],
+              $slice: -50,
             },
-            $push: {
-              recentMutationReceipts: {
-                $each: [inDocReceipt],
-                $slice: -50,
-              },
-            },
-          }
+          },
+        }
         : {
-            $set: {
-              ...params.domainUpdates,
-              version: nextVersion,
-              mutationEpoch: params.fencingEpoch,
+          $set: {
+            ...params.domainUpdates,
+            version: nextVersion,
+            mutationEpoch: params.fencingEpoch,
+          },
+          $push: {
+            recentMutationReceipts: {
+              $each: [inDocReceipt],
+              $slice: -50,
             },
-            $push: {
-              recentMutationReceipts: {
-                $each: [inDocReceipt],
-                $slice: -50,
-              },
-            },
-          };
+          },
+        };
 
       const updateResult = await params.aggregateModel.updateOne(filter, updateDoc);
 

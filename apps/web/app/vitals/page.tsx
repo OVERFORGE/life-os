@@ -40,6 +40,7 @@ import {
   CheckCircle2,
 } from "lucide-react";
 import { getTodayDateString } from "@/utils/date";
+import { useReactiveInvalidation } from "@/features/runtime/hooks/useReactiveInvalidation";
 
 /* ---------------- Types ---------------- */
 
@@ -288,6 +289,11 @@ export default function VitalsPage() {
   useEffect(() => {
     loadData();
   }, [loadData]);
+
+  useReactiveInvalidation({
+    tags: ["daily-log", "dashboard", "world", "nutrition", "health"],
+    onInvalidate: loadData,
+  });
 
   /* ---------------- Hydration Click ---------------- */
   const handleSetHydration = async (count: number) => {
@@ -820,7 +826,7 @@ export default function VitalsPage() {
                       </span>
                     </div>
                     <p className="text-[11px] text-[#66635B]">
-                      Unrecorded · Take a moment to gauge cognitive pace.
+                      Unrecorded · Take a moment to check in on your energy.
                     </p>
                     <button
                       onClick={() => setIsCheckInOpen(true)}
@@ -1005,7 +1011,7 @@ export default function VitalsPage() {
                         <Hourglass size={16} />
                       </div>
                       <div>
-                        <h3 className="text-sm font-bold text-[#F7F5F0]">Recovery &amp; Pacing</h3>
+                        <h3 className="text-sm font-bold text-[#F7F5F0]">Rest &amp; Recovery</h3>
                         <p className="text-[10px] text-[#85827A] uppercase tracking-wider font-mono">
                           REST BOUNDARIES
                         </p>
@@ -1123,7 +1129,7 @@ export default function VitalsPage() {
               <div className="flex items-center gap-2.5 text-[#85827A]">
                 <Shield size={16} className="text-[#D98B2B] shrink-0" />
                 <span>
-                  <strong className="text-[#D8D5CD] font-medium">Data Sovereignty:</strong> All vital logs are stored locally on device and encrypted. No telemetry is shared.
+                  <strong className="text-[#D8D5CD] font-medium">Privacy First:</strong> All health entries stay private on your account and are never shared.
                 </span>
               </div>
 
@@ -1162,7 +1168,7 @@ export default function VitalsPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <Dumbbell size={16} className="text-[#D98B2B]" />
-                  <h2 className="text-lg font-bold text-[#F7F5F0]">Gym Protocol &amp; Strength Telemetry</h2>
+                  <h2 className="text-lg font-bold text-[#F7F5F0]">Workouts &amp; Strength Progress</h2>
                 </div>
                 <p className="text-xs text-[#85827A] mt-1">
                   Autonomous split pacing, overload detection, and routine tracking.
@@ -1320,7 +1326,7 @@ export default function VitalsPage() {
               <div>
                 <div className="flex items-center gap-2">
                   <Utensils size={16} className="text-[#D98B2B]" />
-                  <h2 className="text-lg font-bold text-[#F7F5F0]">Nutrition &amp; Metabolic Telemetry</h2>
+                  <h2 className="text-lg font-bold text-[#F7F5F0]">Nutrition &amp; Daily Targets</h2>
                 </div>
                 <p className="text-xs text-[#85827A] mt-1">
                   Macro targets, micronutrient balances, and meal cadence tracker.

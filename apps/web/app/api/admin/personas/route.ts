@@ -1,3 +1,4 @@
+import { requireAdminSession } from "@/lib/adminAuth";
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { SimulationPersona } from "@/server/db/models/SimulationPersona";
@@ -58,6 +59,8 @@ function serializePersona(doc: any) {
 
 // GET /api/admin/personas
 export async function GET(req: NextRequest) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     await connectDB();
 
@@ -112,6 +115,8 @@ export async function GET(req: NextRequest) {
 
 // POST /api/admin/personas
 export async function POST(req: NextRequest) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     await connectDB();
     const rawBody = await req.json();

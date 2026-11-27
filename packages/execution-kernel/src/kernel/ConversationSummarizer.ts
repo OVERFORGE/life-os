@@ -1,4 +1,5 @@
 import { DefaultLLMProvider, LLMProvider } from "../shared/llmAdapter";
+import { resolveFastModel } from "../shared/modelRegistry";
 import { Conversation } from "@/server/db/models/Conversation";
 import { ConversationMessage } from "@/server/db/models/ConversationMessage";
 
@@ -120,7 +121,7 @@ export class ConversationSummarizer {
    */
   private async generateSummary(existingSummary: string, dialogue: string): Promise<string> {
     const systemPrompt = `You are a background conversation summarizer for Aven in LifeOS.
-Your task is to produce a concise, structured rolling summary of Daksh's conversation with Aven.
+Your task is to produce a concise, structured rolling summary of the user's conversation with Aven.
 
 PRESERVE:
 - User preferences, goals, and nutrition/fitness modes
@@ -141,7 +142,7 @@ Write a bulleted summary using concise statements. Keep under 300 words.`;
       const summary = await this.llmProvider.chat(
         userPrompt,
         systemPrompt,
-        "qwen/qwen3.8-27b"
+        resolveFastModel()
       );
       return summary.trim();
     } catch (err) {

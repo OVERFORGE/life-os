@@ -27,18 +27,8 @@ export async function GET(req: Request) {
 export async function POST(req: Request) {
   try {
     const session = await getAuthSession();
-    let userId = (session?.user as any)?.id;
+    const userId = (session?.user as any)?.id;
     let userName = (session?.user as any)?.name;
-
-    if (!userId && process.env.NODE_ENV !== "production") {
-      await connectDB();
-      const { User } = await import("@/server/db/models/User");
-      const firstUser = await User.findOne().lean();
-      if (firstUser) {
-        userId = (firstUser as any)._id.toString();
-        userName = (firstUser as any).name;
-      }
-    }
 
     if (!userId) {
       return apiError("Unauthorized", "UNAUTHORIZED", 401);
@@ -55,7 +45,11 @@ export async function POST(req: Request) {
     }
 
     const body = await req.json();
-    const { message, model, mode = "general", streamFormat, surfaceContext } = body;
+    const { message, model, mode = "general", streamFormat, surfaceContext, requestId: bodyRequestId } = body;
+    const requestId =
+      (typeof bodyRequestId === "string" && bodyRequestId.trim()) ||
+      req.headers.get("x-request-id") ||
+      undefined;
 
     if (!message || typeof message !== "string" || message.trim().length === 0) {
       return apiError("Message string is required", "BAD_REQUEST", 400);
@@ -85,12 +79,14 @@ export async function POST(req: Request) {
     return await LifeOSApplication.conversation.executeUserRequest({
       userId,
       userName,
+      requestId,
       message,
       model,
       mode,
       surfaceContext,
       timezone: userTimezone || "UTC",
       referenceTimeMs: Date.now(),
+      abortSignal: req.signal,
       streamFormat: streamFormat || (req.headers.get("accept")?.includes("text/event-stream") ? "events" : "raw"),
     });
   } catch (err: any) {

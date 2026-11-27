@@ -255,40 +255,7 @@ export class PlanValidator {
     schema: Record<string, any> | undefined,
     params: Record<string, any> | undefined
   ): { valid: boolean; errors?: string[]; reason?: string } {
-    if (!schema || schema.type !== "object") return { valid: true };
-    const required: string[] = Array.isArray(schema.required) ? schema.required : [];
-    const properties: Record<string, any> = schema.properties || {};
-
-    const errors: string[] = [];
-    const p = params || {};
-
-    for (const req of required) {
-      if (p[req] === undefined || p[req] === null) {
-        errors.push(`Missing required parameter: "${req}"`);
-      }
-    }
-
-    for (const [k, v] of Object.entries(p)) {
-      if (v === undefined || v === null) continue;
-      // If it's a dynamic $ref string, skip static type checking as it will be resolved dynamically
-      if (typeof v === "string" && v.startsWith("$ref:")) continue;
-
-      const propDef = properties[k];
-      if (!propDef || !propDef.type) continue;
-
-      if (propDef.type === "string" && typeof v !== "string") {
-        errors.push(`Invalid type for "${k}": expected string, got ${typeof v}`);
-      } else if (propDef.type === "number" && (typeof v !== "number" || !Number.isFinite(v))) {
-        errors.push(`Invalid type for "${k}": expected number, got ${typeof v}`);
-      } else if (propDef.type === "boolean" && typeof v !== "boolean") {
-        errors.push(`Invalid type for "${k}": expected boolean, got ${typeof v}`);
-      }
-    }
-
-    if (errors.length > 0) {
-      return { valid: false, errors, reason: errors.join("; ") };
-    }
-    return { valid: true };
+    return CapabilityRegistry.validateObjectAgainstSchema(schema, params, { allowDynamicRefs: true });
   }
 
   /**

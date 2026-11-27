@@ -1,5 +1,6 @@
 import { KernelDiagnosticsEngine } from "../diagnostics/KernelDiagnosticsEngine";
 import { KernelTraceEngine } from "../diagnostics/KernelTraceEngine";
+import { ProductionTracer } from "../orchestration/observability/ProductionTracer";
 import { DiagnosticsDTO } from "./dto/DiagnosticsDTO";
 import { DiagnosticsDTOMapper } from "./mappers/DiagnosticsDTOMapper";
 
@@ -14,10 +15,12 @@ export class DiagnosticsService {
   }
 
   getDiagnostics(requestId: string = "diag_service"): DiagnosticsDTO {
+    const tracer = ProductionTracer.getInstance();
+    const matchedTrace = tracer.getTraceByRequestId(requestId) || tracer.getRecentTraces(1)[0];
     const traceEngine = new KernelTraceEngine();
     const snapshot = KernelDiagnosticsEngine.getInstance().generateSnapshot({
       requestId,
-      totalDurationMs: 0,
+      totalDurationMs: matchedTrace?.durationMs ?? 0,
       traceEngine,
     });
 

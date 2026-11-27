@@ -1,0 +1,68 @@
+model_name: "hey_aven"
+target_phrase:
+  - "hey aven"
+  - "hey, aven"
+  - "hey even"
+
+custom_negative_phrases:
+  - "even"
+  - "even now"
+  - "even if"
+  - "even after"
+  - "even though"
+  - "when"
+  - "when I speak"
+  - "whenever"
+  - "been"
+  - "been working"
+  - "fine"
+  - "fine by me"
+  - "fun"
+  - "open"
+  - "upon"
+  - "won"
+  - "he won"
+  - "he went"
+  - "he even"
+  - "haven"
+  - "heaven"
+  - "seven"
+  - "kevin"
+  - "avenue"
+  - "hey everyone"
+  - "hey man"
+  - "okay even"
+
+n_samples: 15000
+n_samples_val: 1500
+tts_batch_size: 50
+augmentation_batch_size: 16
+
+piper_sample_generator_path: "./piper-sample-generator"
+output_dir: "./work/hey_aven_model"
+rir_paths:
+  - "./work/mit_rirs"
+
+background_paths:
+  - "./work/audioset_16k"
+  - "./work/fma"
+background_paths_duplication_rate:
+  - 1
+  - 1
+
+false_positive_validation_data_path: "./work/validation_set_features.npy"
+feature_data_files:
+  ACAV100M_sample: "./work/openwakeword_features_ACAV100M_2000_hrs_16bit.npy"
+
+augmentation_rounds: 2
+batch_n_per_class:
+  ACAV100M_sample: 1024
+  adversarial_negative: 100
+  positive: 100
+
+model_type: "dnn"
+layer_size: 64
+steps: 40000
+max_negative_weight: 2000
+target_false_positives_per_hour: 0.1
+

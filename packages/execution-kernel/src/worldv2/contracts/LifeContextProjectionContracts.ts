@@ -93,6 +93,15 @@ export interface IBehavioralProfileProjection {
   decayHalfLifeDays: number;
 }
 
+export interface IActiveMemoryConstraintProjection {
+  memoryId: string;
+  summary: string;
+  domain: string;
+  confidence: number;
+  source: string;
+  lastReinforcedAt: number;
+}
+
 export interface ILifeContextProjection {
   userId: string;
   projectionTimestamp: number;
@@ -104,6 +113,7 @@ export interface ILifeContextProjection {
   goalPressures: IGoalPressureProjection[];
   activeInterventions: IActiveInterventionProjection[];
   behavioralProfile?: IBehavioralProfileProjection;
+  activeMemoryConstraints?: IActiveMemoryConstraintProjection[];
   activeContextMode?: string;
   quietHoursActive: boolean;
   systemPromptContextSummary?: string;

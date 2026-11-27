@@ -15,6 +15,7 @@
 import test from "node:test";
 import assert from "node:assert";
 import crypto from "node:crypto";
+import { createMockAuditModel } from "./helpers/mockAuditModel";
 
 import {
   CapabilityRegistry,
@@ -366,17 +367,16 @@ test("STAGE 4: GENERALIZED CAPABILITY EXPANSION & DYNAMIC WORKFLOW ORCHESTRATION
     assert.strictEqual(result.normalizedPlan?.steps[0].requiresConfirmation, true);
   });
 
-  await t.test("T16: Deterministic fallback plan when model offline", async () => {
+  await t.test("T16: Planner fails closed when model is offline (zero keyword fallback)", async () => {
     const planner = new DynamicWorkflowPlanner({ allowBenchmarkFallback: true });
-    const plan = await planner.planWorkflow({
-      userRequest: "Summarize deployment failure emails and write report to Desktop/deploy_summary.txt",
-      goal: "Summarize failure emails and save",
-    });
-
-    assert.ok(plan);
-    assert.strictEqual(plan.steps.length, 3);
-    assert.strictEqual(plan.steps[0].capabilityURN, "productivity.email.search_messages");
-    assert.strictEqual(plan.steps[2].capabilityURN, "productivity.storage.write_file");
+    await assert.rejects(
+      () =>
+        planner.planWorkflow({
+          userRequest: "Summarize deployment failure emails and write report to Desktop/deploy_summary.txt",
+          goal: "Summarize failure emails and save",
+        }),
+      /PLANNING_FAILED/
+    );
   });
 
   // =========================================================================
@@ -713,7 +713,10 @@ test("STAGE 4: GENERALIZED CAPABILITY EXPANSION & DYNAMIC WORKFLOW ORCHESTRATION
   });
 
   await t.test("T27: Node failure triggers Stage 3 recovery evaluation", async () => {
-    const dispatcher = IterativeActionDispatcher.getInstance();
+    const kernel = new KernelCapabilityService(ActionAdapterRegistry.getInstance(), {
+      auditModel: createMockAuditModel(),
+    });
+    const dispatcher = new IterativeActionDispatcher(kernel);
     const plan: WorkflowExecutionPlan = {
       goal: "Test failure handling",
       userRequest: "Test failure handling",
@@ -1037,7 +1040,10 @@ test("STAGE 4: GENERALIZED CAPABILITY EXPANSION & DYNAMIC WORKFLOW ORCHESTRATION
       compensate: async () => ({ compensated: true }),
     });
 
-    const dispatcher = IterativeActionDispatcher.getInstance();
+    const kernel = new KernelCapabilityService(ActionAdapterRegistry.getInstance(), {
+      auditModel: createMockAuditModel(),
+    });
+    const dispatcher = new IterativeActionDispatcher(kernel);
     const plan: WorkflowExecutionPlan = {
       goal: "Autonomous research briefing",
       userRequest: "Autonomous research briefing",

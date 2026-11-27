@@ -7,6 +7,7 @@
  */
 
 import { DomainActionType } from "./ActionProposalContracts";
+import type { IntentRelevanceDomain } from "../../worldv2/ContextProjectionSerializer";
 
 export type TurnPrimaryClassification =
   | "ACTION_REQUEST"         // User desires state mutation (task, meal, mental, goal)
@@ -284,6 +285,12 @@ export interface SemanticTurn {
   affectiveEvidence?: SomaticAffectiveEvidence;
   conversationalSummary: string; // Factual gist for dialogue history
   clarification?: ClarificationGuidance;
+
+  // Stage 2 Structured Retrieval & Context Metadata
+  requiresRetrieval?: boolean;
+  relevanceDomains?: IntentRelevanceDomain[];
+  objectiveComplexity?: "SIMPLE" | "INVESTIGATIVE" | "MULTI_STEP";
+  informationNeed?: string;
 }
 
 /**

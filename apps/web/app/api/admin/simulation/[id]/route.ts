@@ -1,13 +1,16 @@
+import { requireAdminSession } from "@/lib/adminAuth";
 import { NextRequest, NextResponse } from "next/server";
 import { connectDB } from "@/server/db/connect";
 import { SimulationRun } from "@/server/db/models/SimulationRun";
-import { serializeRun } from "../route";
+import { serializeRun } from "../serializeRun";
 import mongoose from "mongoose";
 
 type RouteParams = { params: Promise<{ id: string }> };
 
 // GET /api/admin/simulation/[id]
 export async function GET(_req: NextRequest, props: RouteParams) {
+  const adminAuth = await requireAdminSession();
+  if (!adminAuth.ok) return adminAuth.response;
   try {
     const { id } = await props.params;
     await connectDB();

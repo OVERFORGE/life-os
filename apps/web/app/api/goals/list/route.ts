@@ -139,7 +139,7 @@ export async function GET() {
       : null;
 
     // Use existing milestones or smart defaults
-    let milestones = Array.isArray(g.milestones) && g.milestones.length > 0
+    const milestones = Array.isArray(g.milestones) && g.milestones.length > 0
       ? g.milestones
       : getDefaultMilestonesForGoal(g.title || "Goal");
 
@@ -181,7 +181,7 @@ export async function GET() {
       if (log && goalSignals.length > 0) {
         for (const sig of goalSignals) {
           const possibleBaseKey = sig.key.split(".").slice(1).join(".") || sig.key;
-          let val = log.signals?.[sig.key] ?? log.signals?.[possibleBaseKey] ?? getValueByPath(log, sig.key);
+          const val = log.signals?.[sig.key] ?? log.signals?.[possibleBaseKey] ?? getValueByPath(log, sig.key);
           if (typeof val === "boolean" && val) dayActive = true;
           else if (typeof val === "number" && val > 0) dayActive = true;
         }
@@ -196,7 +196,7 @@ export async function GET() {
       if (log && goalSignals.length > 0) {
         for (const sig of goalSignals) {
           const possibleBaseKey = sig.key.split(".").slice(1).join(".") || sig.key;
-          let val = log.signals?.[sig.key] ?? log.signals?.[possibleBaseKey] ?? getValueByPath(log, sig.key);
+          const val = log.signals?.[sig.key] ?? log.signals?.[possibleBaseKey] ?? getValueByPath(log, sig.key);
           if (typeof val === "boolean" && val) completed = true;
           else if (typeof val === "number" && val > 0) completed = true;
         }

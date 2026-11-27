@@ -2,7 +2,6 @@ import test from "node:test";
 import assert from "node:assert/strict";
 import { Supervisor } from "../orchestration/supervisor/Supervisor";
 import { DynamicRouter } from "../orchestration/supervisor/DynamicRouter";
-import { FastPathExecutor } from "../orchestration/supervisor/FastPathExecutor";
 import { ReActOrchestrator } from "../orchestration/react/ReActOrchestrator";
 import { KernelCapabilityService } from "../orchestration/kernel/KernelCapabilityService";
 import { ContextProjectionEngine } from "../orchestration/context/ContextProjectionEngine";

@@ -26,15 +26,27 @@ export type EpistemicSource =
   | "system_inference"
   | "user_reflection";
 
+export type MemoryEmbeddingStatus =
+  | "READY"
+  | "PENDING_EMBEDDING"
+  | "LEXICAL_ONLY"
+  | "FAILED";
 export type MemoryLifecycleStatus =
   | "provisional"
   | "verified"
   | "reinforced"
   | "stale"
-  | "archived";
+  | "archived"
+  | "superseded"
+  | "disputed";
+
+export type MemoryRetrievalMode = "hybrid" | "lexical_only" | "empty";
 
 export interface MemoryProvenance {
   conversationId?: string;
+  turnId?: string;
+  requestId?: string;
+  observedAt?: number;
   dailyLogDate?: string;
   observationIds?: string[];
   sourceActionId?: string;
@@ -43,6 +55,7 @@ export interface MemoryProvenance {
 
 export interface PersonalMemoryRecord {
   id: string;
+  memoryId?: string;
   userId: string;
   memoryType: MemoryType;
   domain: MemoryDomain;
@@ -69,11 +82,17 @@ export interface PersonalMemoryRecord {
   // Vector Representation
   embedding?: number[];
   embedding384?: number[];
+  embeddingStatus?: MemoryEmbeddingStatus;
   embeddingModel: string;
   embeddingVersion: number;
   
-  // Lifecycle
+  // Lifecycle & Lineage
   lifecycleStatus: MemoryLifecycleStatus;
+  sourceJobId?: string;
+  contentHash?: string;
+  slotKey?: string;
+  supersededByMemoryId?: string;
+  disputedWithMemoryIds?: string[];
   updatedAt: number;
 }
 
@@ -85,6 +104,8 @@ export interface MemoryQuery {
   memoryType?: MemoryType;
   minConfidence?: number;
   includeArchived?: boolean;
+  includeStale?: boolean;
+  includeSuperseded?: boolean;
   limit?: number;
   referenceTime?: number;
 }
@@ -92,8 +113,11 @@ export interface MemoryQuery {
 export interface ScoredMemoryResult {
   memory: PersonalMemoryRecord;
   similarityScore: number;
+  lexicalScore?: number;
+  vectorScore?: number;
   recencyScore: number;
   finalScore: number;
+  retrievalMode?: MemoryRetrievalMode;
   explanation: string;
 }
 
